@@ -181,6 +181,10 @@ function Hierarchy({
   const [editCidr, setEditCidr] = useState('');
   const [editName, setEditName] = useState('');
   const [editNote, setEditNote] = useState('');
+  const [editingSubnet, setEditingSubnet] = useState<string | null>(null);
+  const [subnetName, setSubnetName] = useState('');
+  const [subnetVlan, setSubnetVlan] = useState('');
+  const [subnetNote, setSubnetNote] = useState('');
 
   const openTake = (node: IpamContainerNode) => {
     setEditing(null);
@@ -194,10 +198,23 @@ function Hierarchy({
 
   const openEdit = (node: IpamContainerNode) => {
     setTakeFrom(null);
+    setEditingSubnet(null);
     setEditing(editing === node.id ? null : node.id);
     setEditCidr(node.cidr);
     setEditName(node.name);
     setEditNote(node.note ?? '');
+    say(null);
+  };
+
+  // LT-316: a subnet is editable where it is shown, rather than only after
+  // switching to Addresses and finding it again.
+  const openEditSubnet = (b: IpamBlock) => {
+    setTakeFrom(null);
+    setEditing(null);
+    setEditingSubnet(editingSubnet === b.cidr ? null : b.cidr);
+    setSubnetName(b.name ?? '');
+    setSubnetVlan(b.vlan === undefined ? '' : String(b.vlan));
+    setSubnetNote(b.note ?? '');
     say(null);
   };
 
@@ -306,7 +323,12 @@ function Hierarchy({
                 takeName={takeName} setTakeName={setTakeName}
                 takeVlan={takeVlan} setTakeVlan={setTakeVlan}
                 takeNote={takeNote} setTakeNote={setTakeNote}
-                editing={editing} openEdit={openEdit} closeForms={() => { setTakeFrom(null); setEditing(null); }}
+                editing={editing} openEdit={openEdit}
+                closeForms={() => { setTakeFrom(null); setEditing(null); setEditingSubnet(null); }}
+                editingSubnet={editingSubnet} onEditSubnet={openEditSubnet}
+                subnetName={subnetName} setSubnetName={setSubnetName}
+                subnetVlan={subnetVlan} setSubnetVlan={setSubnetVlan}
+                subnetNote={subnetNote} setSubnetNote={setSubnetNote}
                 editCidr={editCidr} setEditCidr={setEditCidr}
                 editName={editName} setEditName={setEditName}
                 editNote={editNote} setEditNote={setEditNote} />
@@ -340,6 +362,8 @@ function ContainerRows({
   takeFrom, openTake, takePrefix, setTakePrefix,
   takeBlock, setTakeBlock, takeName, setTakeName, takeVlan, setTakeVlan, takeNote, setTakeNote,
   editing, openEdit, closeForms, editCidr, setEditCidr, editName, setEditName, editNote, setEditNote,
+  editingSubnet, onEditSubnet, subnetName, setSubnetName, subnetVlan, setSubnetVlan,
+  subnetNote, setSubnetNote,
 }: {
   node: IpamContainerNode;
   depth: number;
@@ -366,6 +390,14 @@ function ContainerRows({
   setEditName: (v: string) => void;
   editNote: string;
   setEditNote: (v: string) => void;
+  editingSubnet: string | null;
+  onEditSubnet: (b: IpamBlock) => void;
+  subnetName: string;
+  setSubnetName: (v: string) => void;
+  subnetVlan: string;
+  setSubnetVlan: (v: string) => void;
+  subnetNote: string;
+  setSubnetNote: (v: string) => void;
 }) {
   // "/24" is what a network engineer types. Reading it as a number gave NaN,
   // no free blocks, and a message about the container being full — which was
@@ -411,7 +443,12 @@ function ContainerRows({
           <span className="cv-dim">{node.name}</span>
         </td>
         <td className="mono">{node.capacity.toLocaleString()}</td>
-        <td className="mono">{node.allocated.toLocaleString()}</td>
+        <td className="mono">
+          {node.allocated.toLocaleString()}
+          {node.overlapping && (
+            <span className="cv-help" title={t('lab.overlappingWhy')}> · {t('lab.overlapping')}</span>
+          )}
+        </td>
         <td className="mono">{node.freeSpace.toLocaleString()}</td>
         <td className="mono">{node.used.toLocaleString()} <span className="cv-help">of {node.usable.toLocaleString()}</span></td>
         <td className="cv-ipam-actions">
@@ -539,9 +576,65 @@ function ContainerRows({
             </span>
             {b.used.toLocaleString()} <span className="cv-help">of {b.usable.toLocaleString()}</span>
           </td>
-          <td />
+          <td className="cv-ipam-actions">
+            {b.subnetId && (
+              <>
+                <button type="button" className="cv-btn cv-btn-small" onClick={() => onEditSubnet(b)}>
+                  {t('ipam.edit')}
+                </button>
+                <button type="button" className="cv-btn cv-btn-small"
+                  onClick={() => { store.removeIpamSubnet(b.subnetId!); say(null, `Removed ${b.cidr}.`); }}>
+                  {t('ipam.remove')}
+                </button>
+              </>
+            )}
+          </td>
         </tr>
-      ))}
+      )).flatMap((row, i) => {
+        const b = node.subnets[i]!;
+        if (editingSubnet !== b.cidr) return [row];
+        const save = () => {
+          const vlan = subnetVlan.trim() ? Number(subnetVlan.trim()) : undefined;
+          if (vlan !== undefined && (!Number.isInteger(vlan) || vlan < 1 || vlan > 4094)) {
+            say(t('ipam.vlanRange'));
+            return;
+          }
+          const problem = store.updateIpamSubnet(b.subnetId!, {
+            name: subnetName, vlan, note: subnetNote,
+          });
+          say(problem, `Saved ${b.cidr}.`);
+          if (!problem) closeForms();
+        };
+        return [
+          row,
+          <tr key={`${b.cidr}-edit`} className="cv-ipam-form-row">
+            <td colSpan={6}>
+              <div className="cv-discover-form cv-ipam-add">
+                <label className="cv-field cv-field-narrow">
+                  <span>{t('ipam.name')}</span>
+                  <input className="cv-input" value={subnetName} autoComplete="off"
+                    onChange={(e) => setSubnetName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') save(); }} />
+                </label>
+                <label className="cv-field cv-field-narrow">
+                  <span>{t('ipam.colVlan')}</span>
+                  <input className="cv-input" value={subnetVlan} inputMode="numeric" autoComplete="off"
+                    onChange={(e) => setSubnetVlan(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') save(); }} />
+                </label>
+                <label className="cv-field">
+                  <span>{t('ipam.note')}</span>
+                  <input className="cv-input" value={subnetNote} autoComplete="off"
+                    onChange={(e) => setSubnetNote(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') save(); }} />
+                </label>
+                <button type="button" className="cv-btn cv-btn-start" onClick={save}>{t('ipam.save')}</button>
+                <button type="button" className="cv-btn cv-btn-small" onClick={closeForms}>{t('ipam.cancel')}</button>
+              </div>
+            </td>
+          </tr>,
+        ];
+      })}
 
       {node.children.map((c) => (
         <ContainerRows key={c.id} node={c} depth={depth + 1} store={store} say={say}
@@ -553,7 +646,11 @@ function ContainerRows({
           editing={editing} openEdit={openEdit} closeForms={closeForms}
           editCidr={editCidr} setEditCidr={setEditCidr}
           editName={editName} setEditName={setEditName}
-          editNote={editNote} setEditNote={setEditNote} />
+          editNote={editNote} setEditNote={setEditNote}
+          editingSubnet={editingSubnet} onEditSubnet={onEditSubnet}
+          subnetName={subnetName} setSubnetName={setSubnetName}
+          subnetVlan={subnetVlan} setSubnetVlan={setSubnetVlan}
+          subnetNote={subnetNote} setSubnetNote={setSubnetNote} />
       ))}
     </>
   );

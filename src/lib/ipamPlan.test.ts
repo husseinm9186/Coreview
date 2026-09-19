@@ -180,6 +180,41 @@ describe('space inside a container (LT-297)', () => {
     expect(t.usable).toBe(254);
   });
 
+  it('counts the area given out, not the sum of overlapping parts (LT-317)', () => {
+    // His own shape: a /8 container holding a /8 subnet *and* a /24 container
+    // that sits inside that subnet. Summing them reported more given out than
+    // the container has addresses.
+    const overlap: IpamState = {
+      containers: [
+        { id: 'c1', name: 'All', cidr: '10.0.0.0/8' },
+        { id: 'c2', name: 'Locals', cidr: '10.10.10.0/24' },
+      ],
+      subnets: [{ id: 's1', cidr: '10.0.0.0/8', name: 'Everything' }],
+    };
+    const root = containerTree(overlap, buildIpam([], overlap).blocks)[0]!;
+    expect(root.capacity).toBe(2 ** 24);
+    // The /24 is inside the /8, so the area covered is the /8 — not /8 + /24.
+    expect(root.allocated).toBe(2 ** 24);
+    expect(root.allocated).toBeLessThanOrEqual(root.capacity);
+    expect(root.freeSpace).toBe(0);
+    // And it says the children overlap rather than hiding it in a total.
+    expect(root.overlapping).toBe(true);
+  });
+
+  it('does not cry overlap when the children merely touch', () => {
+    const tidy: IpamState = {
+      containers: [{ id: 'c1', name: 'Site', cidr: '192.0.2.0/24' }],
+      subnets: [
+        { id: 's1', cidr: '192.0.2.0/25' },
+        { id: 's2', cidr: '192.0.2.128/25' },
+      ],
+    };
+    const root = containerTree(tidy, buildIpam([], tidy).blocks)[0]!;
+    expect(root.allocated).toBe(256);
+    expect(root.freeSpace).toBe(0);
+    expect(root.overlapping).toBe(false);
+  });
+
   it('finds the lowest free block of the size asked for', () => {
     expect(nextFreeBlock(texas(), 24)?.cidr).toBe('10.20.1.0/24');
     expect(nextFreeBlock(texas(), 26)?.cidr).toBe('10.20.1.0/26');

@@ -295,8 +295,13 @@ export interface IpamContainerNode {
   subnets: IpamBlock[];
   /** Every address of the block, used or not. */
   capacity: number;
-  /** Address space already given to a child container or a subnet. */
+  /** Address space already given to a child container or a subnet — the area
+   *  it covers, so an overlap is not counted twice (LT-317). */
   allocated: number;
+  /** Set when children overlap each other, which is a fact about the data
+   *  rather than an error: a subnet and a container can describe the same
+   *  addresses, and the rollup would otherwise hide it behind a total. */
+  overlapping?: boolean;
   freeSpace: number;
   /** Rolled up from everything underneath. */
   usable: number;
@@ -684,6 +689,7 @@ export function containerTree(state: IpamState | undefined, blocks: readonly Ipa
       subnets: [],
       capacity: 2 ** (32 - at.prefix),
       allocated: 0,
+      overlapping: false,
       freeSpace: 0,
       usable: 0,
       used: 0,
@@ -719,9 +725,27 @@ export function containerTree(state: IpamState | undefined, blocks: readonly Ipa
     n.children.sort((a, b) => a.network - b.network || a.prefix - b.prefix);
     n.subnets.sort((a, b) => a.network - b.network || a.prefix - b.prefix);
     for (const c of n.children) roll(c);
-    n.allocated =
-      n.children.reduce((sum, c) => sum + c.capacity, 0) +
-      n.subnets.reduce((sum, b) => sum + 2 ** (32 - b.prefix), 0);
+    // LT-317: the space actually *covered*, not the sum of the parts. A
+    // container holding both a /8 subnet and a /24 container that sits inside
+    // it was counting the /24 twice and reporting more given out than the
+    // container has addresses — a number that cannot be true, printed with a
+    // straight face. Merging the spans first makes it the area, and says so
+    // when the children overlap.
+    const spans = [
+      ...n.children.map((c) => [c.network, c.network + c.capacity] as const),
+      ...n.subnets.map((b) => [b.network, b.network + 2 ** (32 - b.prefix)] as const),
+    ].sort((a, b) => a[0] - b[0]);
+    let covered = 0;
+    let summed = 0;
+    let at = -1;
+    for (const [from, to] of spans) {
+      summed += to - from;
+      const start = Math.max(from, at);
+      if (to > start) covered += to - start;
+      at = Math.max(at, to);
+    }
+    n.allocated = covered;
+    n.overlapping = summed > covered;
     n.freeSpace = Math.max(n.capacity - n.allocated, 0);
     n.usable =
       n.children.reduce((sum, c) => sum + c.usable, 0) + n.subnets.reduce((sum, b) => sum + b.usable, 0);

@@ -101,6 +101,73 @@ interfaces with demo providers behind them, per his own instruction and the
 standing rule against stubs pretending to work.
 **Not started.**
 
+### LT-318 — Credentials an admin saves, per device and globally
+**Source:** asked 2026-09-19 — "on the side we need to add an override username
+and password for admin to ssh to the device directly by selecting the device,
+right click and ssh. same for SNMP … admin needs a save button for every user
+and password and saved on the app even after close or update the app. must be
+stored encrypted on the app data base or encrypted file … also needs button to
+clear user and password. global discovery username and password saved as well
+as SNMP with option to save and clear".
+**Most of the storage exists and must be reused, not rebuilt.** The vault is
+Argon2id + XChaCha20-Poly1305 (D-006), it survives a restart, the OS keychain
+can open it by itself (LT-262), and credentials are already bound to a device,
+a subnet or a vendor by `credentialRules` (LT-199, LT-209). LT-286 already
+keeps a project's SSH and SNMP credentials and offers Replace, Forget and
+Delete. What is missing is the *admin surface* in front of it and the override
+per device.
+**To ship, in his words:** a per-device override for SSH and for SNMP, saved
+and cleared from the device itself; the global discovery pair the same way; and
+**SSH to this device** on the right-click menu.
+**The question of what "right click and SSH" opens is answered** — asked on
+2026-09-19 and settled the same day with a screenshot of SecureCRT: "the ssh
+should be added to the bottom panel and everytime the admin ssh to device it
+should open in a new tab in SSH tab in the bottom panel grouped with the rest
+of the opened ssh sessions just like secure CRT". So: a real interactive
+terminal, inside the app, one tab per session. That is **LT-320**, and it is
+the largest piece of the three.
+**Not started.**
+
+### LT-319 — The bottom panel keeps what belongs to the diagram; the rest gets a screen
+**Source:** asked 2026-09-19 with a screenshot — "I think the bottom control
+section takes too much space, I think its best to move them into tabs like the
+address the onces that really don't need to be in the bottom panel like
+compare, Racks, from drawing from file — the rest can stay in the bottom".
+**The same split D-044 already made** when the register left the panel: the
+bottom panel answers *what is happening to my diagram right now*, and anything
+that does not is taking up room it needs. His four are the clear cases —
+Compare, Racks, From a file, From a drawing — none of which is about the state
+of the diagram while he works.
+**To ship:** those four move to a screen of their own with one bar of tabs,
+reached from the toolbar the way the register is. Monitored objects, Event
+timeline, Ping sweep, Discover devices, Backups and Path check stay: each of
+them is something running against the diagram in front of him.
+**Not started.**
+
+### LT-320 — SSH sessions in the bottom panel, a tab per device
+**Source:** asked 2026-09-19 with a screenshot of SecureCRT — "everytime the
+admin ssh to device it should open in a new tab in SSH tab in the bottom panel
+grouped with the rest of the opened ssh sessions just like secure CRT".
+**This is a real terminal, and it should be costed as one.** Not a command
+runner: a live session, keystrokes going out and bytes coming back, ANSI
+handled, resize handled, a tab per session with its connected state, and a
+device's saved credentials used to log in (LT-318).
+**What it needs that the app does not have:**
+- **A terminal emulator.** `xterm.js` is the only serious choice and would be
+  the first new front-end dependency in a long while. Writing one is not an
+  option worth considering.
+- **A streaming SSH channel in Rust.** Today's SSH runs a command and returns
+  its output; a shell channel that stays open, streams both ways and survives
+  a window resize is different code.
+- **Session state that is not the document.** A live session belongs to the
+  window, not the project: it must never be saved into a `.coreview` file, and
+  closing the project must close the sessions.
+**Worth saying plainly:** this is the biggest single item asked for since the
+IPAM, and it is the one most likely to be half-built if it is rushed. It
+should land on its own, with the terminal working against one device before any
+of the tab management is written.
+**Not started.**
+
 ### LT-139 — Stacks and virtual chassis, built from the vendor guides
 **Source:** asked 2026-09-12 — "for teh stacking build it based on the guides
 and make sure its ready to be tested for all of tehm", after supplying the
@@ -353,6 +420,58 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-315 — **bug** The whole interface went dark-on-dark on the light ground — 2026-09-19
+**Source:** reported 2026-09-19 — "Address register is dark and can't see it in
+address tab … go through the tabs and words and make sure no dark on dark and
+no white on white".
+**Two faults, and the second is the one that mattered.** `CLAUDE.md` has said
+since LT-046 that chrome reads the chrome tokens and the canvas reads the
+ground ones, because only one of them flips. It was written down and never
+checked, so it drifted:
+1. `.cv-table tbody` took its background from `--page`. Press *White
+   background* and every table turned white while its cells kept the chrome's
+   near-white text.
+2. **`.cv-app` set `color: var(--ink)`** — the inherited colour for the entire
+   application was a ground token. On the light ground that is near-black text,
+   inherited by every element that does not state its own colour, sitting on
+   dark chrome. The register was the worst of it because it is mostly table,
+   but it was everywhere: container rows, screen titles, numbers.
+**Fixed** by putting chrome on the chrome tokens — `.cv-app` inherits `--text`,
+tables and inputs and `kbd` take `--bg-raised` — and by giving `.cv-canvas` its
+own `color: var(--ink)`, which is where the ground is supposed to flip.
+**And it is now checked rather than remembered.** `groundTokens.test.ts` parses
+the stylesheet, works out which rules are canvas and which are chrome, and
+fails on any chrome rule reading a ground token. It found six on the first run.
+**One harness read the wrong element.** `interact.mjs` sampled `.cv-app` to
+decide whether the ground had turned white, which only worked because `.cv-app`
+was painting itself from `--desk` — the fault itself. It now samples the
+React Flow pane, which is the drawing surface, and checks alongside it that the
+shell *stays* dark while the ground is white.
+
+### LT-316 — Subnet rows in the hierarchy carry Edit and Remove — 2026-09-19
+**Source:** reported 2026-09-19 — "if I just take without vlan or name I can't
+edit or delete" — then **retracted the same day** after a retest: "actuly the
+Hierarchy working when I add container and take subnet I can edit it in
+address".
+**So the bug was not real, and it is not recorded as one.** What the retest
+showed instead was the thing behind the confusion: every subnet was editable,
+but only from the Addresses view, because the subnet rows in the Hierarchy had
+an empty actions cell. They now carry **Edit** and **Remove**, with the edit
+form opening on the row itself — name, VLAN and note, validated the same way.
+
+### LT-317 — **bug** A container reported more given out than it has — 2026-09-19
+**Source:** his screenshot of 2026-09-19: `10.0.0.0/8`, capacity 16,777,216,
+given out 16,777,472. A number that cannot be true, printed with a straight
+face.
+**Cause:** the rollup added every child container's capacity to every direct
+subnet's size. His `/8` container holds a `/8` subnet *and* a `/24` container
+that sits inside that subnet, so the `/24` was counted twice.
+**Fixed** by merging the spans and counting the area actually covered. Where
+the children genuinely overlap — which his do, and which is a fact about the
+data rather than an error — the row now says **overlapping** beside the figure
+instead of inventing one. A container whose children merely sit side by side
+says nothing, because there is nothing to say.
 
 ### LT-314 — The production sweep, and one commit — 2026-09-18
 **Source:** asked 2026-09-18 — "do a sweep on the app code and everything in

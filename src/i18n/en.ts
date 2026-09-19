@@ -147,6 +147,8 @@ export const en = {
   'lab.takeAndName': 'Take it',
   'lab.tookIt': 'Took {cidr} out of {container}.',
   'lab.containerSaved': 'Saved {name}.',
+  'lab.overlapping': 'overlapping',
+  'lab.overlappingWhy': 'Something inside this container covers the same addresses as something else inside it — a subnet and a container describing the same space, most often. What is given out is the space actually covered, not the two added together.',
   'lab.rd': 'Route distinguisher',
   'lab.inThisVrf': '{count} in this routing table',
   'lab.conflicts': { one: '{count} address conflict', other: '{count} address conflicts' },

@@ -176,4 +176,8 @@ are CSS variables in `src/styles.css`, where colour lives in `:root`,
 `.is-contrast.is-light` (LT-242), and `@media print`.
 Canvas elements read the ground tokens (`--ink`, `--page`, `--desk`,
 `--canvas-accent`); chrome elements read the chrome ones. Do not point one at
-the other's set — only one of them flips.
+the other's set — only one of them flips. **`src/lib/groundTokens.test.ts`
+enforces this** by parsing the stylesheet: a chrome rule reading a ground token
+fails the build. It was a written rule for months and drifted anyway — `.cv-app`
+itself was inheriting `--ink` to the whole interface, which is what LT-315
+was.

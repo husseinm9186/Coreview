@@ -875,11 +875,16 @@ const dragNode = async (selector, dx, dy, witnessSelector) => {
   const sample = () =>
     page.evaluate(() => {
       const label = document.querySelector(".cv-glyph-label, .cv-node-label");
-      const app = document.querySelector(".cv-app");
+      // The desk, not the application shell. This read `.cv-app` while that
+      // element painted itself from `--desk`, which was the LT-315 bug: the
+      // shell is chrome and chrome does not follow the ground. The pane is
+      // the drawing surface and is what the toggle is actually about.
+      const desk = document.querySelector(".react-flow__pane");
       const edge = document.querySelector(".react-flow__edge-path");
       return {
         text: label ? getComputedStyle(label).color : null,
-        ground: app ? getComputedStyle(app).backgroundColor : null,
+        ground: desk ? getComputedStyle(desk).backgroundColor : null,
+        chrome: getComputedStyle(document.querySelector(".cv-app")).backgroundColor,
         edge: edge ? edge.style.stroke : null,
       };
     });
@@ -895,6 +900,11 @@ const dragNode = async (selector, dx, dy, witnessSelector) => {
 
     check("the ground turns white",
       (luminance(light.ground) ?? 0) > 0.85, String(light.ground));
+    // And the chrome does not go with it. The shell keeps its dark background
+    // whichever ground is chosen; when it did not, every element that merely
+    // inherits a colour went near-black on near-black (LT-315).
+    check("the chrome stays dark while the ground is white",
+      (luminance(light.chrome) ?? 1) < 0.3, String(light.chrome));
     check("the text turns dark with it",
       (luminance(light.text) ?? 1) < 0.3 && (luminance(dark.text) ?? 0) > 0.6,
       `${dark.text} -> ${light.text}`);
