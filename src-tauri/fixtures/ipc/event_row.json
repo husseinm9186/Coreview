@@ -1,0 +1,16 @@
+{
+  "id": "event-1",
+  "project_id": "project-1",
+  "session_id": "session-1",
+  "timestamp_ms": 3,
+  "object_type": "node",
+  "object_id": "node-1",
+  "object_name": "CORE-SW1",
+  "event_type": "transition",
+  "previous_status": "healthy",
+  "current_status": "down",
+  "probe_type": "icmp",
+  "target": "192.0.2.10",
+  "rtt_ms": 1.5,
+  "message": "No reply"
+}

@@ -1,0 +1,48 @@
+{
+  "seed": "192.0.2.1",
+  "subnets": [
+    "192.0.2.0/24"
+  ],
+  "crawlClasses": [
+    "switch"
+  ],
+  "maxHops": 3,
+  "maxDevices": 200,
+  "secondFactor": false,
+  "addressPreference": "management",
+  "interfaceName": "Vlan1",
+  "port": 22,
+  "transport": "ssh",
+  "vdom": "root",
+  "snmp": [
+    {
+      "version": "v3",
+      "community": "not-a-real-community",
+      "username": "reader",
+      "authProtocol": "sha",
+      "authPassword": "not-a-real-auth",
+      "privacy": "aes 256",
+      "privacyPassword": "not-a-real-priv"
+    }
+  ],
+  "credentialId": "cred-ssh",
+  "snmpCredentialIds": [
+    "cred-snmp"
+  ],
+  "details": {
+    "routes": true,
+    "spanningTree": false,
+    "vlans": true
+  },
+  "bindings": [
+    {
+      "scope": "subnet",
+      "value": "192.0.2.0/24",
+      "credentialId": "cred-ssh"
+    }
+  ],
+  "reverseDns": true,
+  "concurrency": 4,
+  "perHostTimeoutSecs": 120,
+  "retries": 1
+}

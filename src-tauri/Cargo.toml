@@ -1,0 +1,55 @@
+[package]
+name = "coreview"
+version = "0.2.0"
+description = "Coreview — local-first network diagram designer with live connectivity validation"
+authors = ["Mohammed Almoola <https://www.linkedin.com/in/malmoola>"]
+edition = "2021"
+license = "LicenseRef-Almoola-Free-Proprietary"
+# Proprietary: never published to crates.io.
+publish = false
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = ["isolation"] }
+
+[dependencies]
+coreview-probe = { path = "../crates/coreview-probe" }
+coreview-discover = { path = "../crates/coreview-discover" }
+# LT-258: every message from the page passes a sandboxed frame first.
+tauri = { version = "2", features = ["isolation"] }
+tauri-plugin-dialog = "2"
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio = { version = "1", features = ["sync", "rt-multi-thread"] }
+tokio-util = "0.7"
+uuid = { version = "1", features = ["v4"] }
+svg2pdf = "0.13.0"
+# The same version svg2pdf resolves, named directly to put several diagrams
+# into one document (LT-251).
+pdf-writer = "0.12"
+# Already resolved through zip; named directly to open a compressed draw.io
+# page (LT-244).
+flate2 = "1"
+zip = { version = "4.2.0", default-features = false, features = ["deflate"] }
+open = "5"
+roxmltree = "0.20"
+# LT-262: the vault key in the OS keychain, when the operator asks for it —
+# Credential Manager, the macOS Keychain, or the Secret Service over D-Bus.
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+zeroize = "1"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[dev-dependencies]
+tempfile = "3"
+# LT-266: arbitrary input for the IPC contract tests.
+proptest = "1"
+# Already resolved transitively through usvg (pdf.rs); pinned as a direct
+# dependency so tests can check a converted SVG is well-formed XML, not just
+# that it contains the right substrings. LT-084 was exactly this: a tag-count
+# bug that a substring check would not have caught.
+roxmltree = "0.20"

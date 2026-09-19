@@ -1,0 +1,19 @@
+{
+  "meta": {
+    "id": "project-1",
+    "name": "Lab",
+    "customer": "Example Co",
+    "site": "HQ",
+    "ticket": "CHG-1",
+    "engineer": "Sam",
+    "description": "",
+    "created_at": 1,
+    "updated_at": 2,
+    "archived": false
+  },
+  "document_version": 1,
+  "document": {
+    "pages": [],
+    "anything": "the document is opaque to Rust"
+  }
+}

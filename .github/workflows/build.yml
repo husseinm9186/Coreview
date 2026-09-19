@@ -1,0 +1,346 @@
+name: build
+
+# Tauri does not support cross-compiling bundles between platforms, so each
+# one is built on its own runner. Linux produces .deb and AppImage; Windows
+# produces the NSIS .exe and the MSI; macOS produces a universal .dmg that
+# runs on both Apple Silicon and Intel.
+#
+# LT-311: every installer, on every push — NSIS, MSI, .deb, AppImage, the
+# universal .dmg, and the offline Windows installer that carries the WebView2
+# runtime. LT-305's Windows-only narrowing is over; he asked for all of them.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # One workspace now, so one cache and one target/ at the repo root.
+      - uses: Swatinem/rust-cache@v2
+
+      # The probe crate is Tauri-free, so it needs none of the GTK stack.
+      # src-tauri does; on Windows nothing extra is required.
+      - name: Linux build dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libsoup-3.0-dev libssl-dev libdbus-1-dev \
+            libxdo-dev libayatana-appindicator3-dev librsvg2-dev \
+            build-essential curl wget file pkg-config \
+            iputils-ping traceroute
+
+      - run: npm ci
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Frontend tests
+        run: npm test
+
+      # generate_context! validates that frontendDist exists, so the web build
+      # has to happen before any cargo command that expands it.
+      - name: Build frontend
+        run: npm run build
+
+      - name: Probe crate tests
+        run: cargo test -p coreview-probe
+
+      # Live tests run real ping processes against 127.0.0.1 and the RFC 5737
+      # documentation range. Loopback is available on both runners; the
+      # documentation range is expected to time out, which is the point.
+      - name: Probe crate live tests
+        run: cargo test -p coreview-probe --test live_linux -- --test-threads=1
+
+      - name: Backend tests
+        run: cargo test -p coreview
+
+      # Findings are echoed as annotations as well as logged. A failure here is
+      # otherwise only visible by downloading the job log, which needs admin
+      # rights on the repository — so a red tick said "Clippy failed" and
+      # nothing more. The one that prompted this was an import used only by
+      # Linux-only tests, invisible on the Linux runner.
+      - name: Clippy
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! cargo clippy --workspace --all-targets --message-format=short -- -D warnings 2>&1 | tee clippy.txt; then
+            grep -E "(warning|error)(\[|:)" clippy.txt | head -40 | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+            exit 1
+          fi
+
+      # LT-265: known vulnerabilities. What ships — every Rust crate, and the
+      # npm packages bundled into the app — fails the build. Development-only
+      # npm packages (the test runner and dev server) are reported as a warning:
+      # they never reach an installer, and their fixes are major upgrades that
+      # get their own roadmap item. Ignored Rust advisories, each with its
+      # reason, are in .cargo/audit.toml.
+      - name: npm audit
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          npm audit --omit=dev
+          npm audit || echo "::warning title=npm audit::development-only packages have advisories; see this step's log"
+
+      - name: Install cargo-audit
+        if: matrix.os == 'ubuntu-latest'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: cargo audit
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo audit
+
+  # Every installer: NSIS and MSI for Windows, .deb and AppImage for Linux, the
+  # universal .dmg for macOS, and — since LT-311 — the offline Windows pair in
+  # a job of its own below.
+  bundle:
+    name: bundle (${{ matrix.os }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: coreview-linux
+            paths: |
+              target/release/bundle/deb/*.deb
+              target/release/bundle/appimage/*.AppImage
+          - os: windows-latest
+            artifact: coreview-windows
+            paths: |
+              target/release/bundle/nsis/*.exe
+              target/release/bundle/msi/*.msi
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Linux build dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libsoup-3.0-dev libssl-dev libdbus-1-dev \
+            libxdo-dev libayatana-appindicator3-dev librsvg2-dev \
+            build-essential curl wget file pkg-config \
+            xdg-utils
+
+      - run: npm ci
+
+      # Signs when a certificate is configured, and quietly does not when it is
+      # not, so forks and pull requests still build.
+      - name: Prepare code signing
+        if: matrix.os == 'windows-latest'
+        uses: ./.github/actions/sign-windows
+        with:
+          certificate: ${{ secrets.WINDOWS_CERTIFICATE }}
+          password: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+
+      # This one carries a WebView2 *bootstrapper* rather than the runtime: the
+      # runtime itself goes in both the NSIS exe and the MSI and takes them
+      # past 500 MB, for a 7.8 MB application. WebView2 ships with Windows 11
+      # and with Edge on Windows 10, so the bootstrapper almost never has
+      # anything to fetch — this is the installer nearly everyone wants. The
+      # machine with no internet *and* no WebView2 is served by
+      # `bundle-windows-offline` below (LT-311).
+      #
+      # rusqlite is built with `bundled`, so there is no external SQLite.
+      - name: Build bundles
+        run: npm run tauri build
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.paths }}
+          if-no-files-found: error
+
+  # LT-311, asked for on 2026-09-18 — "also build the offline installer".
+  #
+  # The same application, bundled with `webviewInstallMode: offlineInstaller`,
+  # so the WebView2 runtime is *inside* the installer and setup needs no
+  # internet at all. That is what takes it past 500 MB, which is why it was
+  # held back from 2026-09-12 (LT-123) until he asked for it.
+  #
+  # A job of its own rather than another matrix leg: it builds the same commit
+  # twice on the same runner kind, and keeping it separate means a failure here
+  # never holds up the installer everyone else uses.
+  bundle-windows-offline:
+    name: bundle (Windows, offline installer)
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - name: Prepare code signing
+        uses: ./.github/actions/sign-windows
+        with:
+          certificate: ${{ secrets.WINDOWS_CERTIFICATE }}
+          password: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+
+      # `--config` merges over tauri.conf.json rather than replacing it, so the
+      # offline build differs from the ordinary one in exactly one field and
+      # cannot drift in any other.
+      - name: Build the offline installers
+        run: npx tauri build --config src-tauri/tauri.offline.conf.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coreview-windows-offline
+          path: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/msi/*.msi
+          if-no-files-found: error
+
+  # macOS, for the same reason Windows has its own runner: Tauri cannot
+  # cross-compile a macOS bundle, and building a .dmg needs `hdiutil`, which
+  # exists nowhere but macOS. So nothing about this job can be reproduced on
+  # the Linux machine this repo is developed on — the CI run is the only place
+  # it is ever built, and only a Mac can confirm it opens.
+  #
+  # Universal rather than the runner's own Apple Silicon: an Intel Mac cannot
+  # run an arm64 build at all, and "which Mac is it" is not a question a
+  # download gets to ask. It costs a second compile of the same code.
+  #
+  # Unsigned, because there is no Apple Developer certificate to sign with
+  # (unlike Windows, which has one). macOS quarantines a downloaded app that
+  # nobody has notarised and calls it "damaged", which it is not — the step
+  # that clears it is written down in docs/HANDOVER.md rather than left to be
+  # discovered.
+  #
+  # Its own job, so a platform that cannot be tested from here can never
+  # fail the bundles that can.
+  bundle-macos:
+    name: bundle (macOS, universal .dmg)
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: npm ci
+
+      - name: Build bundles
+        run: npm run tauri build -- --target universal-apple-darwin
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coreview-macos
+          path: target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+  # Does the AppImage carry WebKit, or does it quietly rely on the build host
+  # having it? That is the claim worth testing, and the only one an AppImage
+  # actually makes: the format deliberately excludes the graphics stack,
+  # because libGL is driver-coupled and bundling it breaks acceleration on the
+  # host. So the container gets a minimal *desktop* runtime — X, GL, fonts,
+  # the things any real machine has — and pointedly NOT libwebkit2gtk-4.1-0,
+  # libgtk-3-0 or anything -dev. If the app starts, it started on its own
+  # WebKit.
+  #
+  # The first version of this job installed nothing but xvfb and expected the
+  # app to run, which no desktop application could have done.
+  appimage-smoke:
+    name: AppImage on a machine without WebKit
+    needs: bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: coreview-linux
+          path: dist-artifacts
+
+      - name: Launch under a bare container
+        run: |
+          find dist-artifacts -name '*.AppImage' -exec chmod +x {} \;
+          APPIMAGE=$(find dist-artifacts -name '*.AppImage' | head -1)
+          test -n "$APPIMAGE" || { echo "no AppImage in the artifact"; exit 1; }
+          echo "testing $APPIMAGE"
+          docker run --rm -v "$PWD:/w" -w /w ubuntu:24.04 bash -eux -c '
+            apt-get update -qq
+            # A minimal desktop runtime. No FUSE package: --appimage-extract
+            # does not use FUSE, and 24.04 renamed it libfuse2t64 anyway, which
+            # is what broke the first version of this job.
+            apt-get install -y -qq --no-install-recommends               xvfb ca-certificates               libgl1 libegl1 libgbm1 libdrm2               libx11-6 libx11-xcb1 libxcb1 libxrandr2 libxi6               libfontconfig1 libfreetype6 libharfbuzz0b libfribidi0 fonts-dejavu-core
+            # Prove the host really has no WebKit of its own.
+            ! ldconfig -p | grep -q libwebkit2gtk || { echo "host already has WebKit; test proves nothing"; exit 1; }
+            chmod +x '"$APPIMAGE"'
+            '"$APPIMAGE"' --appimage-extract >/dev/null
+            # WebKitGTK will not realise its window without these where there
+            # is no GPU; verified locally, where it otherwise sits at an
+            # unmapped 10x10 placeholder and prints nothing at all.
+            export WEBKIT_DISABLE_DMABUF_RENDERER=1
+            export WEBKIT_DISABLE_COMPOSITING_MODE=1
+            export LIBGL_ALWAYS_SOFTWARE=1
+            # Keep the output: a smoke test that cannot say why it failed is
+            # not worth having.
+            timeout 40 xvfb-run -a ./squashfs-root/AppRun >/tmp/app.log 2>&1 &
+            PID=$!
+            sleep 25
+            if kill -0 $PID 2>/dev/null; then
+              echo "AppImage stayed up for 25s using its own bundled WebKit"
+              kill $PID
+            else
+              echo "AppImage exited early; its output was:"
+              cat /tmp/app.log || true
+              exit 1
+            fi
+          '

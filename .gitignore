@@ -1,0 +1,15 @@
+node_modules/
+dist/
+target/
+src-tauri/target/
+src-tauri/gen/
+*.local
+.DS_Store
+.vscode/
+*.coreview
+*.livetopo
+*.deb
+
+# D-028: the shipped stencils folder carries no artwork, only its README.
+stencils/*
+!stencils/README.md

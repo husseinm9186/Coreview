@@ -1,0 +1,748 @@
+/**
+ * Drawing the topology as an SVG, from the document model.
+ *
+ * The obvious implementation — serialise the live `.react-flow__viewport` —
+ * produces a file that opens blank. React Flow lays nodes out as absolutely
+ * positioned HTML `<div>`s inside that viewport; the only real SVG in there is
+ * the edge layer. Wrapping HTML in an `<svg>` element and saving it yields a
+ * document whose node markup no renderer will draw, and the failure is silent:
+ * the file is valid SVG, the edges and title block appear, and every device is
+ * missing.
+ *
+ * So the diagram is drawn here instead, from nodes, edges and statuses. That
+ * costs a second implementation of the node's appearance, and buys three
+ * things: the export works, it does not depend on what is currently mounted or
+ * scrolled into view, and it is a pure function that can be tested without a
+ * browser.
+ */
+import { noteBlocks, plainLine } from './noteMarkdown';
+import { inkMarkup, type InkStroke } from './ink';
+import { getBezierPath, getSmoothStepPath, getStraightPath, Position } from '@xyflow/react';
+import {
+  SHEET_SECTION_TINT,
+  sheetFor,
+  type Sheet,
+  deviceColor,
+  notePalette,
+  readableOn,
+  statusColors,
+  type Ground,
+} from '../theme';
+import { glyphMarkup } from './glyphSvg';
+import { jumpsFor, withJumps } from './lineJumps';
+import { MAX_EDGES_FOR_JUMPS } from '../components/edges/pathRegistry';
+import { drawsStacked } from './stacked';
+import { centreLabel } from './cables';
+import { printFriendly } from './printTheme';
+import { obstaclesFor, routeAround, routePath, type Side as RouteSide } from './avoidRoute';
+import { alignedX, safeColour, sizeOf as textSizeOf, svgTextAttrs } from './textStyle';
+import { BOUNDARIES, boundaryChip, isBoundaryKind } from './boundaries';
+import { capPath, capsFor, dashFor } from './linkStyle';
+import { fitOnSheet } from './paper';
+import {
+  anchorPoint,
+  bearingAnchor,
+  centreOf,
+  nearestSide,
+  SIDE_TO_POSITION,
+  type Anchor as FloatingAnchorPoint,
+} from './floatingAnchor';
+import type { TopoEdge, TopoNode } from '../state/store';
+import type {
+  DeviceNodeData,
+  HealthStatus,
+  LinkData,
+  NoteNodeData,
+  ProjectMeta,
+} from '../types/domain';
+import { SHAPE_DEVICE_TYPES, STATUS_GLYPH, STATUS_LABEL } from '../types/domain';
+
+/** Default node box, matching what the palette and samples create. */
+const NODE_W = 176;
+const NODE_H = 96;
+const PAD = 48;
+const HEADER_H = 86;
+
+
+/**
+ * What the exported sheet is painted on.
+ *
+ * The export used to be dark whatever the operator was working on, so a
+ * diagram drawn for a document came out as a black rectangle in the middle of
+ * a white page. It now follows the ground on screen, which also means the
+ * colours are the ones that were chosen against that ground.
+ */
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const round4 = (n: number) => Math.round(n * 10000) / 10000;
+
+/** An edge id as something an `id` attribute and a `url(#…)` can both carry. */
+function cssId(id: string): string {
+  return id.replace(/[^A-Za-z0-9_-]/g, '_');
+}
+
+
+export interface DiagramInput {
+  meta: ProjectMeta;
+  nodes: TopoNode[];
+  edges: TopoEdge[];
+  /** Status per node id. Resolved by the caller so this stays pure. */
+  nodeStatus: (id: string) => HealthStatus;
+  /** Status per edge id. */
+  linkStatus: (id: string) => HealthStatus;
+  includeTitleBlock: boolean;
+  /** Mirrors the canvas setting, so the file matches the screen. */
+  nodeStyle?: 'glyph' | 'card';
+  /** Which ground the diagram is drawn on. The export follows it, so a
+   *  diagram prepared for a document does not come out as a black rectangle
+   *  in the middle of a white page. */
+  ground?: Ground;
+  /** The sheet to place the diagram on. Absent means the file is sized to the
+   *  diagram, which is right for the screen and wrong for a document. */
+  page?: { width: number; height: number; margin?: number };
+  /** Render exactly this rect — the on-screen page — rather than shrink-wrap
+   *  the content. What you see on the sheet is what the file holds. */
+  sheetRect?: { x: number; y: number; w: number; h: number };
+  /** One sheet of a multi-sheet export (LT-028): the diagram-space rectangle
+   *  this sheet shows, at full size. The drawing is clipped to it so a device
+   *  straddling two sheets is not drawn whole on both. */
+  tile?: { x: number; y: number; w: number; h: number };
+  /** Hops where links cross (LT-161). Mirrors the page's canvas setting, so
+   *  the file matches the screen; on unless it is turned off. */
+  lineJumps?: boolean;
+  /** Outline or solid device glyphs, as the page draws them (LT-168). */
+  glyphVariant?: 'outline' | 'solid';
+  /** Print-friendly (LT-194): greys on white, whatever the ground. */
+  print?: boolean;
+  /** LT-238: freehand ink to draw over the diagram, when it is shown. */
+  ink?: InkStroke[];
+  /** Injected so the output is deterministic in tests. */
+  now?: Date;
+  /** LT-254: wrap each object in `<g data-node="id">`, for a page that lets
+   *  them be clicked. Off for files, which have no use for it. */
+  tagNodes?: boolean;
+}
+
+function esc(s: string): string {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c,
+  );
+}
+
+/**
+ * Cuts text to what fits in `width` pixels.
+ *
+ * SVG `<text>` neither wraps nor ellipsizes, so a long hostname would run
+ * across the neighbouring device. Measuring properly needs a canvas and a
+ * loaded font; the average advance of the UI face at these sizes is close
+ * enough to 0.55em that a character count gets the same result without either.
+ */
+export function fit(text: string, width: number, fontSize: number): string {
+  const max = Math.max(1, Math.floor(width / (fontSize * 0.55)));
+  return text.length <= max ? text : `${text.slice(0, Math.max(1, max - 1))}…`;
+}
+
+function sizeOf(n: TopoNode): { w: number; h: number } {
+  const m = n as { width?: number; height?: number; measured?: { width?: number; height?: number } };
+  return {
+    w: m.width ?? m.measured?.width ?? NODE_W,
+    h: m.height ?? m.measured?.height ?? NODE_H,
+  };
+}
+
+/** Whether a node is drawn as a round glyph rather than a box — the same
+ *  test `LiveEdge` makes, so an exported link meets a shape exactly where the
+ *  canvas draws it meeting it (LT-107). */
+function drawnRound(n: TopoNode, nodeStyle: 'glyph' | 'card'): boolean {
+  if (nodeStyle !== 'glyph' || n.type !== 'device') return false;
+  return !SHAPE_DEVICE_TYPES.has((n.data as DeviceNodeData).deviceType);
+}
+
+/** Where a handle sits on a node, and which way an edge leaves it. */
+function anchor(
+  n: TopoNode,
+  handle: string | null | undefined,
+  fallback: Position,
+  floating?: FloatingAnchorPoint,
+  /** The node at the other end, and how nodes are drawn: with both, the edge
+   *  leaves on the bearing to that node instead of a fixed side (LT-107). */
+  toward?: { other: TopoNode; nodeStyle: 'glyph' | 'card'; pinned: boolean },
+) {
+  const { w, h } = sizeOf(n);
+  const { x, y } = n.position;
+  if (floating) {
+    const side = SIDE_TO_POSITION[nearestSide(floating)];
+    const p = anchorPoint({ x, y, w, h }, floating);
+    return { x: p.x, y: p.y, side };
+  }
+  if (toward && !toward.pinned) {
+    const o = sizeOf(toward.other);
+    const bearing = bearingAnchor(
+      { x, y, w, h },
+      centreOf({ x: toward.other.position.x, y: toward.other.position.y, w: o.w, h: o.h }),
+      drawnRound(n, toward.nodeStyle),
+    );
+    const p = anchorPoint({ x, y, w, h }, bearing);
+    return { x: p.x, y: p.y, side: SIDE_TO_POSITION[nearestSide(bearing)] };
+  }
+  const side =
+    handle === 't' ? Position.Top
+    : handle === 'b' ? Position.Bottom
+    : handle === 'l' ? Position.Left
+    : handle === 'r' ? Position.Right
+    : fallback;
+  switch (side) {
+    case Position.Top: return { x: x + w / 2, y, side };
+    case Position.Bottom: return { x: x + w / 2, y: y + h, side };
+    case Position.Left: return { x, y: y + h / 2, side };
+    default: return { x: x + w, y: y + h / 2, side };
+  }
+}
+
+function pathFor(type: LinkData['pathType'], p: Parameters<typeof getBezierPath>[0]) {
+  switch (type) {
+    case 'straight':
+      return getStraightPath({ sourceX: p.sourceX, sourceY: p.sourceY, targetX: p.targetX, targetY: p.targetY });
+    case 'step':
+      return getSmoothStepPath({ ...p, borderRadius: 0 });
+    case 'smoothstep':
+      return getSmoothStepPath({ ...p, borderRadius: 12 });
+    default:
+      return getBezierPath(p);
+  }
+}
+
+/** The device glyph, as markup, tinted and placed. */
+function iconMarkup(
+  type: DeviceNodeData['deviceType'],
+  color: string,
+  x: number,
+  y: number,
+  size: number,
+  stacked = false,
+  solid = false,
+): string {
+  // The glyphs are authored on a 24x24 grid with stroke="currentColor"; a
+  // nested <svg> scales one without touching its paths.
+  return glyphMarkup(type, color, stacked, solid).replace(
+    '<svg ',
+    `<svg x="${x}" y="${y}" width="${size}" height="${size}" `,
+  );
+}
+
+function nodeMarkup(
+  n: TopoNode,
+  status: HealthStatus,
+  nodeStyle: 'glyph' | 'card',
+  sheet: Sheet,
+  glyphVariant: 'outline' | 'solid' = 'outline',
+): string {
+  const { w, h } = sizeOf(n);
+  const { x, y } = n.position;
+  // LT-168: the page's variant unless the device sets its own.
+  const solidOf = (d: DeviceNodeData) => (d.style?.glyphVariant ?? glyphVariant) === 'solid';
+
+  if (n.type === 'note') {
+    const d = n.data as NoteNodeData;
+    const fs = d.fontSize || 12;
+    // LT-237: the same Markdown reading the note itself draws from.
+    const lines = [...(d.title ? [{ text: d.title, bold: true }] : []), ...noteBlocks(d.body).map(plainLine)]
+      .slice(0, Math.max(1, Math.floor((h - 18) / (fs * 1.5))));
+    const ink = notePalette(d.variant ?? 'plain', 'light');
+    const body = lines
+      .map(({ text, bold }, i) => {
+        return `<text x="${x + 11}" y="${y + 18 + i * fs * 1.5}" fill="${esc(d.textColor ?? ink.text)}" font-size="${fs}"${bold ? ' font-weight="700"' : ''}>${esc(fit(text, w - 22, fs))}</text>`;
+      })
+      .join('');
+    return `<g><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="${esc(d.background ?? ink.background)}" stroke="${esc(d.borderColor ?? ink.border)}" stroke-width="1.5"/>${body}</g>`;
+  }
+
+  const d = n.data as DeviceNodeData;
+  // The same rule the canvas uses: what a device is, until something is
+  // watching it.
+  const color = deviceColor(d.deviceType, status, sheet.ground);
+  // Health, not the device's own paint — a blue switch must not read as
+  // though blue said something about its state.
+  const statusInk = status === 'unknown' ? sheet.inkDim : statusColors(sheet.ground)[status];
+  const border = d.style?.border ?? color;
+  const bg = d.style?.background ?? sheet.surface;
+  const isShape = SHAPE_DEVICE_TYPES.has(d.deviceType);
+  const isText = d.deviceType === 'text';
+  const primary =
+    d.addresses?.find((a) => a.isPrimary)?.address ?? d.addresses?.[0]?.address ?? '';
+
+  // The glyph presentation: symbol on top, name beneath, no box. Mirrors
+  // DeviceNode so the exported diagram is the one on screen.
+  if (nodeStyle === 'glyph' && !isShape && !isText) {
+    const size = 46;
+    const cx = x + w / 2;
+    const iconY = y + 4;
+    const parts: string[] = [
+      d.imageDataUrl
+        ? `<image x="${cx - size / 2}" y="${iconY}" width="${size}" height="${size}" href="${esc(d.imageDataUrl)}" preserveAspectRatio="xMidYMid meet"/>`
+        : iconMarkup(d.deviceType, d.style?.iconColor ?? color, cx - size / 2, iconY, size, drawsStacked(d), solidOf(d)),
+      `<g><circle cx="${cx + size / 2 - 2}" cy="${iconY + 4}" r="7.5" fill="${color}" stroke="${sheet.paper}" stroke-width="2"/>` +
+        `<text x="${cx + size / 2 - 2}" y="${iconY + 7.5}" text-anchor="middle" fill="${sheet.onStatus}" font-size="9" font-weight="700">${esc(STATUS_GLYPH[status])}</text></g>`,
+    ];
+
+    let ty = iconY + size + 14;
+    // Text may be wider than the node box, exactly as on screen.
+    const textW = Math.max(w, 170);
+    // LT-181: the name as it is styled on the canvas.
+    const fs = textSizeOf(d.labelStyle, 12);
+    const at = alignedX(d.labelStyle?.align, cx, textW);
+    const nameText = fit(d.label, textW, fs);
+    parts.push(
+      labelBackground(d.labelStyle, at, ty, nameText, fs) +
+        `<text x="${at.x}" y="${ty}" text-anchor="${at.anchor}"${svgTextAttrs(d.labelStyle, { size: fs, fill: sheet.ink, weight: 600 })}>${esc(nameText)}</text>`,
+    );
+    if (d.showDetails) {
+      if (primary) {
+        ty += 13;
+        parts.push(
+          `<text x="${cx}" y="${ty}" text-anchor="middle" fill="${sheet.inkDim}" font-size="10" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">${esc(fit(primary, textW, 10))}</text>`,
+        );
+      }
+      ty += 13;
+      parts.push(
+        `<text x="${cx}" y="${ty}" text-anchor="middle" fill="${statusInk}" font-size="10" font-weight="600">${esc(STATUS_LABEL[status])}</text>`,
+      );
+      if (d.maintenance) {
+        ty += 13;
+        parts.push(
+          `<text x="${cx}" y="${ty}" text-anchor="middle" fill="${statusColors(sheet.ground).maintenance}" font-size="10">In maintenance</text>`,
+        );
+      }
+    }
+    return `<g>${parts.join('')}</g>`;
+  }
+
+  // A section is an area, not a device: it carries its name in the corner,
+  // has no health of its own, and everything else stands inside it.
+  if (d.deviceType === 'zone') {
+    const tint = SHEET_SECTION_TINT[sheet.ground];
+    // LT-166: a logical boundary leads with its chip and has its own dash.
+    const chip = boundaryChip(d);
+    const title = [chip, d.label].filter(Boolean).join('  ');
+    const label = title ? esc(fit(title, w - 30, 12)) : '';
+    const dash = isBoundaryKind(d.boundaryKind) ? BOUNDARIES[d.boundaryKind].dash : '6 4';
+    return (
+      // fill-opacity rather than an eight-digit hex: SVG 1.1 has no alpha in a
+      // colour literal, and a renderer that does not understand one falls back
+      // to black — which drew the section as a solid slab over its contents.
+      `<g><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${tint}" fill-opacity="0.05" ` +
+      `stroke="${tint}" stroke-width="1.5" stroke-dasharray="${dash}"/>` +
+      (label
+        ? `<rect x="${x}" y="${y}" width="${Math.min(w, label.length * 7 + 20)}" height="21" rx="4" fill="${tint}" fill-opacity="0.14"/>` +
+          `<text x="${x + 10}" y="${y + 15}" fill="${sheet.ink}" font-size="12" font-weight="600">${label}</text>`
+        : '') +
+      `</g>`
+    );
+  }
+
+  let box: string;
+  if (d.deviceType === 'circle') {
+    box = `<ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${w / 2}" ry="${h / 2}" fill="${esc(bg)}" stroke="${esc(border)}" stroke-width="1.5"/>`;
+  } else if (d.deviceType === 'diamond') {
+    const pts = `${x + w / 2},${y} ${x + w},${y + h / 2} ${x + w / 2},${y + h} ${x},${y + h / 2}`;
+    box = `<polygon points="${pts}" fill="${esc(bg)}" stroke="${esc(border)}" stroke-width="1.5"/>`;
+  } else if (d.deviceType === 'cloud') {
+    // Drawn in a 200x100 box and stretched, exactly as the node does it — a
+    // border and a radius cannot make a cloud.
+    const sx = w / 200;
+    const sy = h / 100;
+    box =
+      `<g transform="translate(${x},${y}) scale(${sx},${sy})">` +
+      `<path d="M46,88 C22,88 8,74 10,58 C12,44 26,36 38,39 C43,17 63,6 84,11 ` +
+      `C99,15 109,26 112,39 C126,29 148,32 157,47 C176,46 192,58 189,73 ` +
+      `C187,84 174,88 160,88 Z" fill="${esc(bg)}" stroke="${esc(border)}" ` +
+      `stroke-width="1.5" vector-effect="non-scaling-stroke"/></g>`;
+  } else if (isText) {
+    box = '';
+  } else {
+    const rx = d.deviceType === 'rounded' ? 16 : 8;
+    box = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${esc(bg)}" stroke="${esc(border)}" stroke-width="1.5"/>`;
+  }
+
+  // Layout mirrors the node component: glyph on the left, text beside it,
+  // centred when there is no glyph to sit next to.
+  const iconSize = 30;
+  const showIcon = !isShape;
+  const textX = showIcon ? x + 10 + iconSize + 9 : x + w / 2;
+  const anchorAttr = showIcon ? '' : ' text-anchor="middle"';
+  const detail = d.showDetails && !isText;
+  const primaryAddress = primary;
+  const textW = showIcon ? w - (10 + iconSize + 9) - 10 : w - 16;
+
+  // Vertical centring of the whole text block, so a node without details is
+  // not top-heavy the way a fixed baseline would make it.
+  // LT-182: a text box or callout keeps its line breaks.
+  const multiline = d.deviceType === 'text' || d.deviceType === 'callout';
+  const nameLines = multiline ? d.label.split('\n') : [d.label];
+  const nameStep = Math.round(textSizeOf(d.labelStyle, 12) * 1.3);
+  const rows = 1 + (detail ? (primaryAddress ? 1 : 0) + 1 + (d.maintenance ? 1 : 0) : 0);
+  const blockH = 12 + (nameLines.length - 1) * nameStep + (rows - 1) * 14;
+  let ty = y + h / 2 - blockH / 2 + 11;
+
+  const parts: string[] = [box];
+  if (showIcon) {
+    parts.push(
+      d.imageDataUrl
+        ? `<image x="${x + 10}" y="${y + h / 2 - iconSize / 2}" width="${iconSize}" height="${iconSize}" href="${esc(d.imageDataUrl)}" preserveAspectRatio="xMidYMid meet"/>`
+        : iconMarkup(d.deviceType, d.style?.iconColor ?? color, x + 10, y + h / 2 - iconSize / 2, iconSize, drawsStacked(d), solidOf(d)),
+    );
+  }
+  // LT-181: the name as it is styled. A plain shape's text is centred in it, so
+  // alignment moves it; beside an icon it keeps its place.
+  const nameSize = textSizeOf(d.labelStyle, 12);
+  const nameAt = showIcon ? { x: textX, anchor: 'start' as const } : alignedX(d.labelStyle?.align, textX, textW);
+  nameLines.forEach((line, i) => {
+    if (i > 0) ty += nameStep;
+    const nameLine = fit(line, textW, nameSize);
+    parts.push(
+      labelBackground(d.labelStyle, nameAt, ty, nameLine, nameSize) +
+        `<text x="${nameAt.x}" y="${ty}"${showIcon ? anchorAttr : ` text-anchor="${nameAt.anchor}"`}${svgTextAttrs(d.labelStyle, { size: nameSize, fill: sheet.ink, weight: 600 })}>${esc(nameLine)}</text>`,
+    );
+  });
+  if (detail) {
+    if (primaryAddress) {
+      ty += 14;
+      parts.push(
+        `<text x="${textX}" y="${ty}"${anchorAttr} fill="${sheet.inkDim}" font-size="10" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">${esc(fit(primaryAddress, textW, 10))}</text>`,
+      );
+    }
+    ty += 14;
+    parts.push(
+      `<text x="${textX}" y="${ty}"${anchorAttr} fill="${statusInk}" font-size="10" font-weight="600">${esc(STATUS_LABEL[status])}</text>`,
+    );
+    if (d.maintenance) {
+      ty += 14;
+      parts.push(
+        `<text x="${textX}" y="${ty}"${anchorAttr} fill="${statusColors(sheet.ground).maintenance}" font-size="10">In maintenance</text>`,
+      );
+    }
+  }
+
+  if (!isText) {
+    // Status is never carried by colour alone; the badge repeats it as a glyph.
+    parts.push(
+      `<g><circle cx="${x + w}" cy="${y}" r="8.5" fill="${color}" stroke="${sheet.paper}" stroke-width="2"/>` +
+        `<text x="${x + w}" y="${y + 3.5}" text-anchor="middle" fill="${sheet.onStatus}" font-size="10" font-weight="700">${esc(STATUS_GLYPH[status])}</text></g>`,
+    );
+  }
+
+  return `<g>${parts.join('')}</g>`;
+}
+
+/** A styled label's background (LT-181), sized to its text. */
+function labelBackground(
+  t: DeviceNodeData['labelStyle'],
+  at: { x: number; anchor: 'start' | 'middle' | 'end' },
+  baseline: number,
+  text: string,
+  size: number,
+): string {
+  const fill = safeColour(t?.background);
+  if (!fill) return '';
+  const w = text.length * size * 0.58 + 8;
+  const left = at.anchor === 'start' ? at.x - 4 : at.anchor === 'end' ? at.x - w + 4 : at.x - w / 2;
+  return `<rect x="${left}" y="${baseline - size}" width="${w}" height="${size + 5}" rx="3" fill="${fill}"/>`;
+}
+
+/** Where a link runs in the export — its two ends and its plain path, before
+ *  any hop. Shared by the drawing and by the hop detection (LT-161), so the
+ *  two can never disagree about where a link is. */
+function linkGeometry(e: TopoEdge, nodes: Map<string, TopoNode>, nodeStyle: 'glyph' | 'card') {
+  const s = nodes.get(e.source);
+  const t = nodes.get(e.target);
+  if (!s || !t) return null;
+
+  const data = (e.data ?? {}) as LinkData;
+  // Without explicit handles React Flow uses right-to-left; matching that keeps
+  // the export's routing the same as the screen's.
+  const pinned = Boolean(data.pinnedSides);
+  const a = anchor(s, e.sourceHandle, Position.Right, data.sourceAnchor, {
+    other: t,
+    nodeStyle,
+    pinned,
+  });
+  const b = anchor(t, e.targetHandle, Position.Left, data.targetAnchor, {
+    other: s,
+    nodeStyle,
+    pinned,
+  });
+  // LT-178: routed round the devices in the way, as the canvas draws it.
+  if (data.pathType === 'avoid') {
+    const route = routeAround(
+      { x: a.x, y: a.y }, a.side as RouteSide, { x: b.x, y: b.y }, b.side as RouteSide,
+      obstaclesFor([...nodes.values()]),
+    );
+    if (route) {
+      const { path, labelAt } = routePath(route);
+      return { a, b, path, labelX: labelAt.x, labelY: labelAt.y };
+    }
+  }
+  const [path, labelX, labelY] = pathFor(data.pathType === 'avoid' ? 'smoothstep' : (data.pathType ?? 'smoothstep'), {
+    sourceX: a.x, sourceY: a.y, targetX: b.x, targetY: b.y,
+    sourcePosition: a.side, targetPosition: b.side,
+  });
+  return { a, b, path, labelX, labelY };
+}
+
+function edgeMarkup(
+  e: TopoEdge,
+  nodes: Map<string, TopoNode>,
+  status: HealthStatus,
+  sheet: Sheet,
+  nodeStyle: 'glyph' | 'card',
+  /** Draws the hops into the path (LT-161); absent draws it plain. */
+  hop?: (path: string) => string,
+): string {
+  const geometry = linkGeometry(e, nodes, nodeStyle);
+  if (!geometry) return '';
+  const data = (e.data ?? {}) as LinkData;
+  const { a, b, path, labelX, labelY } = geometry;
+  const drawn = hop ? hop(path) : path;
+
+  const color = statusColors(sheet.ground)[status];
+  // A link given a colour of its own keeps it, darkened only as far as the
+  // ground needs — the same rule the canvas applies.
+  const lineColor =
+    data.colorMode === 'fixed' && data.color ? readableOn(data.color, sheet.ground) : color;
+  const width = data.width ?? 2;
+  const dash = dashFor(data.lineStyle, status);
+  const caps = capsFor(data);
+  const capId = (which: 'start' | 'end') => `cv-cap-${cssId(e.id)}-${which}`;
+  const startShape = capPath(caps.start);
+  const endShape = capPath(caps.end);
+  const arrowEnd = endShape ? ` marker-end="url(#${capId('end')})"` : '';
+  const arrowStart = startShape ? ` marker-start="url(#${capId('start')})"` : '';
+
+  const marker = (which: 'start' | 'end', shape: { d: string; filled: boolean }) =>
+    `<marker id="${capId(which)}" markerWidth="12" markerHeight="12" refX="${
+      which === 'end' ? 8 : 0
+    }" refY="4" orient="${
+      which === 'end' ? 'auto' : 'auto-start-reverse'
+    }" markerUnits="strokeWidth"><path d="${shape.d}" fill="${
+      shape.filled ? lineColor : 'none'
+    }" stroke="${lineColor}" stroke-width="${shape.filled ? 0 : 1.4}"/></marker>`;
+
+  const parts = [
+    startShape || endShape
+      ? `<defs>${startShape ? marker('start', startShape) : ''}${
+          endShape ? marker('end', endShape) : ''
+        }</defs>`
+      : '',
+    `<path d="${drawn}" fill="none" stroke="${lineColor}" stroke-width="${width}"${dash ? ` stroke-dasharray="${dash}"` : ''}${status === 'disabled' ? ' opacity="0.55"' : ''}${arrowEnd}${arrowStart}/>`,
+  ];
+
+  // The centre label's box is worked out first because the port labels are
+  // placed around it.
+  // LT-167: the cable tag leads the centre label, as on the canvas.
+  const centreText = centreLabel(data) ? `${STATUS_GLYPH[status]} ${centreLabel(data)}` : null;
+  const centreW = centreText ? centreText.length * 6.2 + 12 : 0;
+
+  // Port labels sit *beside* the line rather than on it. Placing them a
+  // fraction along the line is what the canvas does, and it works there
+  // because the labels are small HTML that the browser paints last. Here a
+  // short link — two stacked switches a few pixels apart — puts the port label
+  // under the link label, which is drawn after and opaque, so the port name
+  // disappears from the export. Offsetting perpendicular is also how ports are
+  // labelled on a drawn diagram: beside the line, near their interface.
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+
+  const portLabel = (text: string, from: { x: number; y: number }, toward: { x: number; y: number }) => {
+    const w = text.length * 5.6 + 10;
+    // Along the line: clear of the node border, never past the midpoint, so
+    // the two ends' labels cannot cross over each other.
+    const along = Math.min(26, len * 0.35);
+    const ux = (toward.x - from.x) / len;
+    const uy = (toward.y - from.y) / len;
+    let off = w / 2 + 5;
+    // On a short link the centre label reaches this far out too. Rather than
+    // shift every label on every diagram, step aside only where it is needed.
+    const nearCentre =
+      centreText != null &&
+      Math.abs(from.x + ux * along - labelX) < centreW / 2 + w / 2 &&
+      Math.abs(from.y + uy * along - labelY) < 17;
+    if (nearCentre) off = centreW / 2 + w / 2 + 6;
+    const px = from.x + ux * along + -uy * off;
+    const py = from.y + uy * along + ux * off;
+    const ps = data.portLabelStyle;
+    return `<g><rect x="${px - w / 2}" y="${py - 8}" width="${w}" height="15" rx="3" fill="${safeColour(ps?.background) ?? sheet.paper}" stroke="${sheet.line}"/>` +
+      `<text x="${px}" y="${py + 3}" text-anchor="middle"${svgTextAttrs(ps, { size: 10, fill: sheet.inkDim })} font-family="ui-monospace, SFMono-Regular, Menlo, monospace">${esc(text)}</text></g>`;
+  };
+  if (data.sourcePortLabel) parts.push(portLabel(data.sourcePortLabel, a, b));
+  if (data.targetPortLabel) parts.push(portLabel(data.targetPortLabel, b, a));
+
+  if (centreText) {
+    parts.push(
+      `<g><rect x="${labelX - centreW / 2}" y="${labelY - 9}" width="${centreW}" height="18" rx="4" fill="${safeColour(data.labelStyle?.background) ?? sheet.surface}" stroke="${color}"/>` +
+        `<text x="${labelX}" y="${labelY + 4}" text-anchor="middle"${svgTextAttrs(data.labelStyle, { size: 11, fill: sheet.ink })}>${esc(centreText)}</text></g>`,
+    );
+  }
+  return `<g>${parts.join('')}</g>`;
+}
+
+function markerDefs(sheet: Sheet): string {
+  const colors = statusColors(sheet.ground);
+  return (Object.keys(colors) as HealthStatus[])
+    .map((s) => {
+      const c = colors[s];
+      return (
+        `<marker id="cv-arrow-${s}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">` +
+        `<path d="M0 0 L10 5 L0 10 z" fill="${c}"/></marker>` +
+        `<marker id="cv-arrow-rev-${s}" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">` +
+        `<path d="M10 0 L0 5 L10 10 z" fill="${c}"/></marker>`
+      );
+    })
+    .join('');
+}
+
+function legend(width: number, sheet: Sheet): string {
+  const items: HealthStatus[] = ['healthy', 'warning', 'down', 'unknown', 'maintenance'];
+  const colors = statusColors(sheet.ground);
+  return items
+    .map((s, i) => {
+      const x = width - 520 + i * 104;
+      // The glyph as well as the colour (LT-194): a key of five dots is five
+      // identical dots once printed in greys, or read by someone who cannot
+      // tell the colours apart.
+      return `<g><circle cx="${x}" cy="46" r="6" fill="${colors[s]}"/><text x="${x}" y="49" text-anchor="middle" fill="${sheet.onStatus}" font-size="8" font-weight="700">${esc(STATUS_GLYPH[s])}</text><text x="${x + 12}" y="50" fill="${sheet.inkDim}" font-size="11">${STATUS_LABEL[s]}</text></g>`;
+    })
+    .join('');
+}
+
+/** The whole diagram as a standalone SVG document. */
+export function renderDiagramSvg(input: DiagramInput): string {
+  // LT-194: print is drawn on the light sheet and then taken to greys.
+  if (input.print) return printFriendly(renderInColour({ ...input, ground: 'light' }));
+  return renderInColour(input);
+}
+
+function renderInColour(input: DiagramInput): string {
+  const { meta, nodes, edges, includeTitleBlock } = input;
+  const sheet = sheetFor(input.ground ?? 'dark');
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+
+  // Bounds: the on-screen sheet when the caller passes it — what you see on
+  // the page is what the file holds — otherwise shrink-wrapped to the model,
+  // so the export never depends on what is scrolled into view.
+  let minX: number, minY: number, contentW: number, contentH: number;
+  if (input.tile) {
+    minX = input.tile.x + PAD;
+    minY = input.tile.y + PAD;
+    contentW = input.tile.w;
+    contentH = input.tile.h;
+  } else if (input.sheetRect) {
+    minX = input.sheetRect.x + PAD;
+    minY = input.sheetRect.y + PAD;
+    contentW = input.sheetRect.w;
+    contentH = input.sheetRect.h;
+  } else {
+    minX = Infinity; minY = Infinity;
+    let maxX = -Infinity, maxY = -Infinity;
+    for (const n of nodes) {
+      const { w, h } = sizeOf(n);
+      minX = Math.min(minX, n.position.x);
+      minY = Math.min(minY, n.position.y);
+      maxX = Math.max(maxX, n.position.x + w);
+      maxY = Math.max(maxY, n.position.y + h);
+    }
+    if (!nodes.length) { minX = 0; minY = 0; maxX = 800; maxY = 600; }
+    // LT-280: wide enough for the title block's legend (520px) and a
+    // subtitle beside it, when there is a title block.
+    contentW = Math.max(includeTitleBlock ? 900 : 560, Math.round(maxX - minX) + PAD * 2);
+    contentH = Math.max(360, Math.round(maxY - minY) + PAD * 2);
+  }
+  const headerH = includeTitleBlock ? HEADER_H : 0;
+  const totalH = contentH + headerH;
+
+  const subtitle = [meta.customer, meta.site, meta.ticket, meta.engineer].filter(Boolean).join('  ·  ');
+  const header = includeTitleBlock
+    ? `<g font-family="ui-sans-serif, Segoe UI, sans-serif">
+    <rect x="0" y="0" width="${contentW}" height="${HEADER_H}" fill="${sheet.header}"/>
+    <text x="18" y="30" fill="${sheet.ink}" font-size="18" font-weight="600">${esc(meta.name)}</text>
+    <text x="18" y="52" fill="${sheet.inkDim}" font-size="12">${esc(fit(subtitle, Math.max(12, contentW - 520 - 30), 12))}</text>
+    <text x="18" y="72" fill="${sheet.inkDim}" font-size="11">Exported ${esc(
+      (input.now ?? new Date()).toLocaleString(),
+    )} · Status reflects checks run from the exporting machine</text>
+    ${legend(contentW, sheet)}
+  </g>`
+    : '';
+
+  // Edges first, so a line never covers the device it lands on.
+  // Sections first, then links, then devices. A section drawn over its
+  // contents makes a sheet of empty boxes, and a line drawn over a device
+  // makes it look connected to the middle of the box.
+  // LT-161: hops where links cross, by the canvas's own rule — every link's
+  // plain path is something the others may hop over, a leader never hops
+  // itself, and on a diagram past MAX_EDGES_FOR_JUMPS none are drawn.
+  const plainPaths = new Map<string, string>();
+  if (input.lineJumps ?? true) {
+    for (const e of edges) {
+      const g = linkGeometry(e, byId, input.nodeStyle ?? 'glyph');
+      if (g) plainPaths.set(e.id, g.path);
+    }
+  }
+  const hopFor = (e: TopoEdge): ((path: string) => string) | undefined => {
+    const data = (e.data ?? {}) as LinkData;
+    if (plainPaths.size === 0 || plainPaths.size > MAX_EDGES_FOR_JUMPS || data.kind === 'leader') return undefined;
+    // Sized to the line, as on the canvas.
+    const radius = Math.max(5, (data.width ?? 2) * 2.6);
+    return (path) => withJumps(path, jumpsFor(e.id, path, plainPaths, radius * 2), radius);
+  };
+  const isSection = (n: TopoNode) =>
+    n.type === 'device' && (n.data as DeviceNodeData).deviceType === 'zone';
+  const tag = (n: TopoNode, markup: string) => (input.tagNodes ? `<g data-node="${esc(n.id)}">${markup}</g>` : markup);
+  const body =
+    nodes.filter(isSection).map((n) => tag(n, nodeMarkup(n, input.nodeStatus(n.id), input.nodeStyle ?? 'glyph', sheet, input.glyphVariant))).join('') +
+    edges
+      .map((e) => edgeMarkup(e, byId, input.linkStatus(e.id), sheet, input.nodeStyle ?? 'glyph', hopFor(e)))
+      .join('') +
+    nodes
+      .filter((n) => !isSection(n))
+      .map((n) => tag(n, nodeMarkup(n, input.nodeStatus(n.id), input.nodeStyle ?? 'glyph', sheet, input.glyphVariant)))
+      .join('') +
+    // LT-238: ink over everything, as on the canvas.
+    inkMarkup(input.ink ?? []);
+
+  const clipId = input.tile ? `cv-tile-${Math.round(minX)}-${Math.round(minY)}` : null;
+  const clipDef = clipId
+    ? `<clipPath id="${clipId}"><rect x="0" y="${headerH}" width="${contentW}" height="${contentH}"/></clipPath>`
+    : '';
+  const clipAttr = clipId ? ` clip-path="url(#${clipId})"` : '';
+  const drawing =
+    `  <defs>${markerDefs(sheet)}${clipDef}</defs>\n` +
+    `  ${header}\n` +
+    `  <g${clipAttr} transform="translate(${PAD - minX}, ${headerH + PAD - minY})">${body}</g>`;
+
+  // Placed on a sheet when one was asked for. The drawing keeps its own
+  // coordinates and is scaled and centred as a whole, so nothing inside has
+  // to know it is on paper.
+  const placed = input.page
+    ? fitOnSheet(
+        { width: contentW, height: totalH },
+        { w: input.page.width, h: input.page.height },
+        input.page.margin ?? 36,
+      )
+    : null;
+
+  if (placed) {
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${placed.width}" height="${placed.height}" viewBox="0 0 ${placed.width} ${placed.height}" font-family="ui-sans-serif, Segoe UI, Roboto, sans-serif">
+  <rect width="100%" height="100%" fill="${sheet.paper}"/>
+  <g transform="translate(${round2(placed.x)}, ${round2(placed.y)}) scale(${round4(placed.scale)})">
+${drawing}
+  </g>
+</svg>`;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${contentW}" height="${totalH}" viewBox="0 0 ${contentW} ${totalH}" font-family="ui-sans-serif, Segoe UI, Roboto, sans-serif">
+  <rect width="100%" height="100%" fill="${sheet.paper}"/>
+${drawing}
+</svg>`;
+}

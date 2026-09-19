@@ -1,0 +1,82 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Coreview",
+  "version": "0.2.0",
+  "identifier": "net.coreview.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Coreview",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "theme": "Dark",
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "pattern": {
+        "use": "isolation",
+        "options": {
+          "dir": "../isolation"
+        }
+      },
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "msi",
+      "deb",
+      "appimage",
+      "app",
+      "dmg"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    },
+    "shortDescription": "Coreview \u2014 Network Diagramming & Validation",
+    "longDescription": "Coreview \u2014 Network Diagramming & Validation. Draw the topology you are actually working on, point it at real addresses, and watch the links while you work. Discovery by SSH, SNMP, CDP and LLDP; an address register with subnets, ranges and allocation; configuration backups and before-and-after comparison. Everything stays on this machine: no account, no cloud, no telemetry.",
+    "linux": {
+      "deb": {
+        "depends": [
+          "iputils-ping",
+          "traceroute",
+          "libdbus-1-3"
+        ]
+      }
+    },
+    "category": "Utility",
+    "resources": {
+      "../LICENSE": "LICENSE.txt",
+      "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md"
+    },
+    "publisher": "Mohammed Almoola",
+    "copyright": "\u00a9 2026 Mohammed Almoola. All rights reserved.",
+    "licenseFile": "../LICENSE",
+    "homepage": "https://www.linkedin.com/in/malmoola"
+  }
+}

@@ -1,0 +1,423 @@
+//! Live integration tests against the real host network stack.
+//!
+//! These run actual `ping` processes and real TCP connects. They are the
+//! backend half of TEST_PLAN cases 6, 7, 9, 12, 13 and 19 — the parts that
+//! can be observed without driving the UI.
+//!
+//! Targets are deliberately safe: 127.0.0.1 (always answers) and the RFC 5737
+//! documentation range 192.0.2.0/24 (must never answer). Nothing here touches
+//! a network the operator did not choose.
+//!
+//! Requires a `ping` binary. Run with: cargo test --test live_linux -- --nocapture
+
+use coreview_probe::engine::{run_once, Engine, EngineEvent, SessionState};
+// Only the two zombie tests use this, and both are Linux-only — /proc is how
+// they count defunct children. Left ungated it is an unused import on Windows,
+// which `clippy -D warnings` in CI turns into a failed build.
+#[cfg(target_os = "linux")]
+use coreview_probe::icmp::probe_icmp;
+use coreview_probe::types::{HealthStatus, Outcome, ProbeConfig, ProbeKind};
+use std::time::{Duration, Instant};
+
+fn probe(id: &str, target: &str, kind: ProbeKind) -> ProbeConfig {
+    // Struct-update from the shared defaults rather than a full literal, so
+    // a new ProbeConfig field (LT-087/088/089) does not have to be added
+    // here by hand every time one is added to the type.
+    ProbeConfig {
+        name: format!("probe-{id}"),
+        kind,
+        interval_seconds: 1,
+        ..ProbeConfig::defaults(id, "live-test", &format!("node-{id}"), target)
+    }
+}
+
+/// Case 6 (backend): a reachable ICMP target reports success with an RTT.
+#[tokio::test]
+async fn loopback_icmp_really_succeeds() {
+    let r = run_once(&probe("lo", "127.0.0.1", ProbeKind::Icmp)).await;
+    println!("127.0.0.1 -> {:?} rtt={:?} :: {}", r.outcome, r.rtt_ms, r.summary);
+    assert_eq!(r.outcome, Outcome::Success, "loopback must answer: {}", r.summary);
+    assert!(r.rtt_ms.is_some(), "an RTT should have been parsed from real ping output");
+}
+
+/// Case 7 (backend): the documentation range does not answer, and the failure
+/// is a timeout rather than being misreported as anything else.
+#[tokio::test]
+async fn documentation_range_icmp_really_fails() {
+    let r = run_once(&probe("doc", "192.0.2.1", ProbeKind::Icmp)).await;
+    println!("192.0.2.1 -> {:?} :: {}", r.outcome, r.summary);
+    assert_ne!(r.outcome, Outcome::Success, "RFC 5737 range must not answer");
+    assert!(
+        matches!(r.outcome, Outcome::Timeout | Outcome::Unreachable),
+        "expected timeout or unreachable, got {:?} ({})",
+        r.outcome,
+        r.summary
+    );
+}
+
+/// Case 19 (backend): a shell-injection-shaped target is rejected before any
+/// process is spawned, and the marker file is never created.
+#[tokio::test]
+async fn injection_target_is_rejected_and_touches_nothing() {
+    let marker = std::path::Path::new("/tmp/coreview_pwned_marker");
+    let _ = std::fs::remove_file(marker);
+
+    for hostile in [
+        "10.0.0.1 && touch /tmp/coreview_pwned_marker",
+        "10.0.0.1; touch /tmp/coreview_pwned_marker",
+        "10.0.0.1 | touch /tmp/coreview_pwned_marker",
+        "$(touch /tmp/coreview_pwned_marker)",
+        "`touch /tmp/coreview_pwned_marker`",
+        "-c1 127.0.0.1",
+    ] {
+        let r = run_once(&probe("evil", hostile, ProbeKind::Icmp)).await;
+        println!("{hostile:?} -> {:?} :: {}", r.outcome, r.summary);
+        assert_eq!(
+            r.outcome,
+            Outcome::InvalidTarget,
+            "hostile target must fail closed: {hostile:?}"
+        );
+    }
+
+    assert!(
+        !marker.exists(),
+        "SECURITY FAILURE: injection created {}",
+        marker.display()
+    );
+}
+
+/// Case 12 (backend): run_once registers no schedule — the engine stays idle.
+#[tokio::test]
+async fn test_now_starts_no_background_work() {
+    let (engine, _rx) = Engine::new(20);
+    let _ = run_once(&probe("once", "127.0.0.1", ProbeKind::Icmp)).await;
+    assert_eq!(engine.session_state().await, SessionState::Stopped);
+    assert!(engine.active_project().await.is_none());
+    assert!(engine.snapshot().await.is_empty());
+}
+
+/// Cases 6 + 7 + 9 (backend), end to end through the scheduler: a healthy
+/// target reaches `healthy` and a dead one reaches `down` only after the
+/// failure threshold, with transitions emitted.
+#[tokio::test]
+async fn engine_reaches_healthy_and_down_against_the_real_stack() {
+    let (engine, mut rx) = Engine::new(20);
+    engine
+        .start(
+            "session-1".into(),
+            "live-test".into(),
+            vec![
+                probe("up", "127.0.0.1", ProbeKind::Icmp),
+                probe("down", "192.0.2.1", ProbeKind::Icmp),
+            ],
+        )
+        .await
+        .expect("engine start");
+
+    let deadline = Instant::now() + Duration::from_secs(45);
+    let (mut saw_healthy, mut saw_down) = (false, false);
+    let mut transitions = Vec::new();
+
+    while Instant::now() < deadline && !(saw_healthy && saw_down) {
+        match tokio::time::timeout(Duration::from_secs(5), rx.recv()).await {
+            Ok(Some(EngineEvent::Transition { transition, .. })) => {
+                let (probe_id, previous, current) =
+                    (transition.probe_id.clone(), transition.previous, transition.current);
+                println!(
+                    "transition {probe_id}: {previous:?} -> {current:?}  :: {}",
+                    transition.message
+                );
+                transitions.push((probe_id.clone(), current));
+                if probe_id == "up" && current == HealthStatus::Healthy {
+                    saw_healthy = true;
+                }
+                if probe_id == "down" && current == HealthStatus::Down {
+                    saw_down = true;
+                }
+            }
+            Ok(Some(_)) => {}
+            Ok(None) => break,
+            Err(_) => {}
+        }
+    }
+
+    engine.stop().await;
+
+    assert!(saw_healthy, "127.0.0.1 never reached healthy; saw {transitions:?}");
+    assert!(saw_down, "192.0.2.1 never reached down; saw {transitions:?}");
+
+    // The dead probe must not have gone down on the first failure.
+    let first_down = transitions
+        .iter()
+        .position(|(id, st)| id == "down" && *st == HealthStatus::Down);
+    assert!(first_down.is_some(), "expected a down transition");
+}
+
+/// Case 13 (backend): stop() clears the session and empties the snapshot, and
+/// no ping process outlives it.
+#[tokio::test]
+async fn stop_kills_the_session_and_leaves_no_children() {
+    let (engine, _rx) = Engine::new(20);
+    engine
+        .start(
+            "session-2".into(),
+            "live-test".into(),
+            vec![probe("a", "127.0.0.1", ProbeKind::Icmp)],
+        )
+        .await
+        .expect("engine start");
+
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert_eq!(engine.session_state().await, SessionState::Running);
+    // Guard against a vacuous pass: if the probe was never scheduled, the
+    // post-stop "snapshot is empty" assertion below would succeed for the
+    // wrong reason.
+    assert!(
+        !engine.snapshot().await.is_empty(),
+        "probe was never scheduled, so this test would pass vacuously"
+    );
+
+    engine.stop().await;
+    assert_eq!(engine.session_state().await, SessionState::Stopped);
+    assert!(engine.active_project().await.is_none());
+    // ARCHITECTURE.md: "every probe status resets to unknown — a stopped
+    // session is not evidence". The probe list is deliberately KEPT so the UI
+    // can still draw the objects; it is the *status* that must be cleared.
+    let after = engine.snapshot().await;
+    assert!(!after.is_empty(), "probe list should survive stop so the UI can render it");
+    for s in &after {
+        assert!(
+            matches!(s.status, HealthStatus::Unknown | HealthStatus::Disabled),
+            "probe {} kept status {:?} after stop — a stopped session must not be evidence",
+            s.probe_id,
+            s.status
+        );
+    }
+
+    // Give any orphaned child a moment to surface, then check for ours.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let out = std::process::Command::new("pgrep")
+        .args(["-f", "ping -c 1 -W 1 127.0.0.1"])
+        .output();
+    if let Ok(o) = out {
+        let pids = String::from_utf8_lossy(&o.stdout);
+        let pids: Vec<_> = pids.split_whitespace().collect();
+        assert!(pids.is_empty(), "ping processes survived stop(): {pids:?}");
+    }
+}
+
+
+/// Counts `[ping] <defunct>` children of this test process.
+fn zombie_pings() -> usize {
+    let out = std::process::Command::new("ps")
+        .args(["-eo", "stat,comm,ppid"])
+        .output();
+    let me = std::process::id().to_string();
+    match out {
+        Ok(o) => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .filter(|l| {
+                let mut f = l.split_whitespace();
+                let stat = f.next().unwrap_or("");
+                let comm = f.next().unwrap_or("");
+                let ppid = f.next().unwrap_or("");
+                stat.starts_with('Z') && comm == "ping" && ppid == me
+            })
+            .count(),
+        Err(_) => 0,
+    }
+}
+
+/// Invariant: dropping a probe future mid-flight leaves no zombie behind.
+///
+/// Kept as a guard, not as a regression test. During Phase 3 a
+/// `[ping] <defunct>` was observed just after Stop validation, and this test
+/// was written to reproduce it. It does not — it passes identically with and
+/// without an explicit reap, both here and when dropping the future directly
+/// rather than going through Engine::stop().
+///
+/// That conclusion — that `kill_on_drop(true)` reaps, just not synchronously,
+/// and the sighting was inside the window — was wrong, and this comment used
+/// to record it as settled. The window is unbounded when nothing else is
+/// spawning, which is exactly the state after Stop: one child survived nearly
+/// two minutes in the running app. `ping_once` now spawns and waits
+/// explicitly so a timeout can kill *and* reap.
+///
+/// This test still does not reproduce it, because a test binary always has
+/// something else spawning to drive the process driver. It stays as a floor:
+/// it would catch a regression that stopped killing children at all. What
+/// settled the question was the app, not this.
+#[tokio::test]
+async fn dropping_a_probe_future_leaves_no_zombie() {
+    assert_eq!(zombie_pings(), 0, "test started with pre-existing zombies");
+
+    for i in 0..6 {
+        // A target that never answers, so the child is still running when the
+        // future is dropped.
+        let cfg = probe("drop", &format!("192.0.2.{}", 20 + i), ProbeKind::Icmp);
+        let fut = run_once(&cfg);
+        tokio::pin!(fut);
+        tokio::select! {
+            _ = &mut fut => panic!("probe finished too fast to exercise cancellation"),
+            _ = tokio::time::sleep(Duration::from_millis(150)) => {}
+        }
+        // `fut` goes out of scope here, which is the cancellation path under
+        // test. (An explicit drop() would be a no-op: tokio::pin! rebinds the
+        // name to a Pin<&mut Fut>, and dropping a reference drops nothing.)
+    }
+
+    // Let any reaper task run.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    let z = zombie_pings();
+    assert_eq!(z, 0, "{z} ping zombie(s) survived a dropped probe future");
+}
+
+/// Counts this process's defunct children.
+///
+/// Reads /proc directly rather than shelling out to ps, so the test does not
+/// depend on a tool being installed or on its output format.
+#[cfg(target_os = "linux")]
+fn zombie_children() -> usize {
+    let me = std::process::id();
+    let Ok(entries) = std::fs::read_dir("/proc") else { return 0 };
+    let mut zombies = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(pid) = name.to_str().and_then(|n| n.parse::<u32>().ok()) else { continue };
+        let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { continue };
+        // "pid (comm) state ppid ..." — comm can contain spaces and brackets,
+        // so the fields after it are found from the last ')'.
+        let Some(after) = stat.rsplit_once(')').map(|(_, rest)| rest) else { continue };
+        let mut fields = after.split_whitespace();
+        let state = fields.next().unwrap_or("");
+        let ppid: u32 = fields.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+        if ppid == me && state == "Z" {
+            zombies += 1;
+        }
+    }
+    zombies
+}
+
+/// A probe that times out must leave no defunct process behind.
+///
+/// **This test does not reproduce the bug it was written for, and passed
+/// against the unfixed code.** Recording that rather than implying otherwise,
+/// because the same mistake was made in Phase 3: a guard that cannot fail
+/// looks like evidence and is not.
+///
+/// The condition needs a runtime that is alive but idle. Tokio reaps orphans
+/// when its process driver is polled, and in a test binary other tests keep
+/// spawning, so the reap always happens. In the running app, after validation
+/// stops, nothing spawns — and a `[ping] <defunct>` was observed surviving
+/// nearly two minutes there. What settled it was the app itself: the same
+/// start-then-stop showed one zombie before the fix and none after, checked
+/// every three seconds for fifteen seconds.
+///
+/// Kept as a floor. It would still catch a regression that stopped killing
+/// children at all.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_timed_out_probe_leaves_no_zombie() {
+    let before = zombie_children();
+
+    // The documentation range does not answer, so this reaches the timeout.
+    for i in 0..4 {
+        let result = probe_icmp(&format!("z{i}"), "192.0.2.1", 300, 0).await;
+        assert!(!result.outcome.is_success(), "192.0.2.1 must not answer");
+    }
+
+    // Long enough that a lazy reap would have had every chance, and with
+    // nothing else spawning — which is the condition that exposes it.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    let after = zombie_children();
+    assert_eq!(
+        after, before,
+        "left {} defunct child process(es) behind",
+        after.saturating_sub(before)
+    );
+}
+
+/// The same, for a probe cancelled part-way rather than timing out — and with
+/// the same caveat: it passes either way, and is a floor rather than proof.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_cancelled_probe_leaves_no_zombie() {
+    let before = zombie_children();
+
+    for i in 0..4 {
+        let id = format!("c{i}");
+        let fut = probe_icmp(&id, "192.0.2.2", 4_000, 0);
+        tokio::pin!(fut);
+        // Poll it far enough to spawn the child, then abandon it.
+        let _ = tokio::time::timeout(Duration::from_millis(120), &mut fut).await;
+    }
+
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    let after = zombie_children();
+    assert_eq!(
+        after, before,
+        "left {} defunct child process(es) behind",
+        after.saturating_sub(before)
+    );
+}
+
+/// LT-062: a probe added while the session runs starts producing samples
+/// without a stop/start, and a removed one stops. Real engine, real pings
+/// against loopback.
+#[tokio::test]
+async fn a_probe_added_mid_session_starts_probing() {
+    let (engine, mut rx) = Engine::new(20);
+    let mut first = probe("first", "127.0.0.1", ProbeKind::Icmp);
+    first.interval_seconds = 1;
+    engine
+        .start("s-update".into(), "live-test".into(), vec![first.clone()])
+        .await
+        .expect("start");
+
+    // The joiner, one interval in.
+    let mut second = probe("second", "127.0.0.1", ProbeKind::Icmp);
+    second.interval_seconds = 1;
+    let count = engine
+        .update(vec![first.clone(), second.clone()])
+        .await
+        .expect("update");
+    assert_eq!(count, 2, "the session now watches both");
+
+    // Samples for the joiner must arrive without any restart.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut joined = false;
+    while Instant::now() < deadline {
+        match tokio::time::timeout(Duration::from_secs(2), rx.recv()).await {
+            Ok(Some(EngineEvent::Sample { result, .. })) if result.probe_id == "second" => {
+                joined = true;
+                break;
+            }
+            Ok(Some(_)) => {}
+            _ => break,
+        }
+    }
+    assert!(joined, "the added probe never produced a sample");
+
+    // And a removed one stops: drop the first, drain briefly, then require
+    // silence from it.
+    engine.update(vec![second]).await.expect("update 2");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    while tokio::time::timeout(Duration::from_millis(50), rx.recv()).await.is_ok() {}
+    let mut late_first = false;
+    let quiet_until = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < quiet_until {
+        if let Ok(Some(EngineEvent::Sample { result, .. })) =
+            tokio::time::timeout(Duration::from_millis(500), rx.recv()).await
+        {
+            if result.probe_id == "first" {
+                late_first = true;
+            }
+        }
+    }
+    assert!(!late_first, "a removed probe kept producing samples");
+
+    engine.stop().await;
+}

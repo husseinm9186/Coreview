@@ -1,0 +1,14 @@
+# `cargo audit`'s configuration (LT-265). Every ignored advisory says why it
+# cannot reach Coreview; one that can is fixed or gated on, never ignored.
+
+[advisories]
+ignore = [
+  # RUSTSEC-2023-0071, `rsa` ("Marvin"): a timing side channel that can recover
+  # an RSA *private* key from many timed decryptions or signatures. It comes in
+  # through `russh`. Coreview logs in over SSH with a password or keyboard-
+  # interactive only (`crates/coreview-discover/src/ssh.rs`) and holds no RSA
+  # private key; the only RSA operation it performs is verifying a device's
+  # host-key signature, which uses the public key. There is no fixed release.
+  # Revisit if public-key login is ever added.
+  "RUSTSEC-2023-0071",
+]

@@ -1,0 +1,659 @@
+import { describe, expect, it } from 'vitest';
+
+import { fit, renderDiagramSvg } from './diagram';
+import type { TopoEdge, TopoNode } from '../state/store';
+import type { HealthStatus, ProjectMeta } from '../types/domain';
+import { SHAPE_DEVICE_TYPES } from '../types/domain';
+
+const meta: ProjectMeta = {
+  id: 'p1', name: 'Branch cutover', customer: 'Acme', site: 'HQ', ticket: 'CHG-1',
+  engineer: 'Sam', description: '', createdAt: 0, updatedAt: 0, archived: false,
+};
+
+function device(id: string, x: number, y: number, over: Record<string, unknown> = {}): TopoNode {
+  return {
+    id, type: 'device', position: { x, y }, width: 176, height: 96,
+    data: {
+      label: `Device ${id}`, deviceType: 'access-switch', tags: [],
+      addresses: [{ id: 'a', label: 'Mgmt', address: '10.0.0.1', isPrimary: true }],
+      locked: false, maintenance: false, showDetails: true, ...over,
+    },
+  } as TopoNode;
+}
+
+const link: TopoEdge = {
+  id: 'e1', source: 'n1', target: 'n2', sourceHandle: 'r', targetHandle: 'l',
+  data: {
+    sourcePortLabel: 'Gi1/0/1', targetPortLabel: 'Gi0/1', label: 'Uplink',
+    pathType: 'smoothstep', direction: 'forward', width: 2, color: '#2fbf6b',
+    enabled: true, maintenance: false, healthRule: { type: 'both-endpoints' },
+  },
+} as TopoEdge;
+
+const render = (
+  nodes: TopoNode[],
+  edges: TopoEdge[] = [],
+  status: HealthStatus = 'healthy',
+  nodeStyle: 'glyph' | 'card' = 'card',
+) =>
+  renderDiagramSvg({
+    meta, nodes, edges,
+    nodeStatus: () => status,
+    linkStatus: () => status,
+    includeTitleBlock: true,
+    nodeStyle,
+    now: new Date(0),
+  });
+
+describe('what counts as a plain shape rather than a device', () => {
+  it('is one list, so the export draws a callout the way the canvas does', () => {
+    // LT-108: the canvas and the export each kept their own copy and the
+    // copies differed — the canvas treated `callout` as a shape, the export
+    // did not, so a callout was a box on screen and a device glyph in the
+    // exported file. An export that does not show what the canvas shows is
+    // the one thing an export must never do (D-001).
+    for (const type of ['callout', 'zone', 'text', 'cloud', 'rectangle']) {
+      expect(SHAPE_DEVICE_TYPES.has(type)).toBe(true);
+    }
+    // In glyph mode a device is drawn as its symbol with the name beneath and
+    // no box; a plain shape keeps its box. So the box is the tell.
+    // No title block, so the only boxes in the file are the node's own.
+    const only = (deviceType: string) =>
+      renderDiagramSvg({
+        meta, edges: [], nodes: [device('n1', 0, 0, { deviceType, label: 'Note this' })],
+        nodeStatus: () => 'healthy' as HealthStatus,
+        linkStatus: () => 'healthy' as HealthStatus,
+        includeTitleBlock: false, nodeStyle: 'glyph', now: new Date(0),
+      });
+    // A plain shape is drawn as a box the size of the node. A device glyph is
+    // drawn as its symbol with the name beneath and no box at all — so the
+    // node-sized box is the tell. (Not just any `<rect>`: the switch symbol
+    // is itself drawn out of them.)
+    const nodeBox = 'width="176" height="96"';
+    expect(only('callout')).toContain(nodeBox);
+    expect(only('access-switch')).not.toContain(nodeBox);
+  });
+});
+
+describe('renderDiagramSvg', () => {
+  it('draws every node, not just what a DOM scrape would find', () => {
+    // The bug this replaced: React Flow lays nodes out as HTML divs, so
+    // serialising its viewport produced a file with edges and no devices.
+    const svg = render([device('n1', 0, 0), device('n2', 400, 0)], [link]);
+    expect(svg).toContain('Device n1');
+    expect(svg).toContain('Device n2');
+    expect(svg).not.toContain('<div');
+  });
+
+  it('draws the link, its ports and its label', () => {
+    const svg = render([device('n1', 0, 0), device('n2', 400, 0)], [link]);
+    expect(svg).toContain('Gi1/0/1');
+    expect(svg).toContain('Gi0/1');
+    expect(svg).toContain('Uplink');
+    // The arrow has to be referenced *and* defined. A reference to a marker
+    // that is not in the file draws nothing, and it draws nothing silently.
+    const ref = /marker-end="url\(#([^)]+)\)"/.exec(svg);
+    expect(ref, 'no marker-end on the link').not.toBeNull();
+    expect(svg).toContain(`<marker id="${ref![1]}"`);
+  });
+
+  it('paints the arrowhead in the link own colour', () => {
+    // Markers used to be shared per status, and a marker in a shared defs
+    // cannot see the colour of the path using it — every arrowhead stayed the
+    // health colour however the link was painted.
+    const painted = {
+      ...link,
+      data: { ...link.data, colorMode: 'fixed' as const, color: '#b76eff' },
+    } as TopoEdge;
+    const svg = render([device('n1', 0, 0), device('n2', 400, 0)], [painted]);
+    const ref = /marker-end="url\(#([^)]+)\)"/.exec(svg);
+    const marker = svg.slice(svg.indexOf(`<marker id="${ref![1]}"`));
+    expect(marker.slice(0, 400).toLowerCase()).toContain('#b76eff');
+  });
+
+  it('draws the device glyph as real paths', () => {
+    const svg = render([device('n1', 0, 0)]);
+    // The icons are authored with stroke="currentColor", which no standalone
+    // renderer resolves — they have to be tinted on the way out.
+    expect(svg).not.toContain('currentColor');
+    expect(svg).toContain('<path');
+  });
+
+  it('carries status as a glyph as well as a colour', () => {
+    const down = render([device('n1', 0, 0)], [], 'down');
+    expect(down).toContain('✕');
+    expect(down).toContain('#e4564a');
+    expect(down).toContain('Down');
+  });
+
+  it('sizes the canvas to the content, including nodes far off screen', () => {
+    // A node at x=4000 is off screen at any zoom; the export still has to hold it.
+    const svg = render([device('n1', 0, 0), device('n2', 4000, 2000)]);
+    const [, w, h] = /width="(\d+)" height="(\d+)"/.exec(svg)!.map(Number);
+    expect(w).toBeGreaterThan(4000);
+    expect(h).toBeGreaterThan(2000);
+  });
+
+  it('shifts negative coordinates into view', () => {
+    // React Flow allows negative positions; a viewBox starting at 0 would clip them.
+    const svg = render([device('n1', -900, -500), device('n2', 0, 0)]);
+    expect(svg).toContain('translate(948, 634)');
+  });
+
+  it('escapes text that would otherwise break the document', () => {
+    const svg = render([device('n1', 0, 0, { label: 'Core & <edge> "A"' })]);
+    expect(svg).toContain('Core &amp; &lt;edge&gt;');
+    expect(svg).not.toContain('<edge>');
+  });
+
+  it('draws a link from a floating anchor point instead of the fixed side (LT-098)', () => {
+    // n2 sits at x=400, 176x96 — the default left-middle anchor is (400, 48);
+    // a floating anchor at the box's top-left corner is (400, 0) instead.
+    const anchored: TopoEdge = {
+      ...link,
+      data: { ...link.data, pathType: 'straight', targetAnchor: { x: 0, y: 0 } },
+    } as TopoEdge;
+    const svg = render([device('n1', 0, 0), device('n2', 400, 0)], [anchored]);
+    expect(svg).toContain('400,0');
+    expect(svg).not.toContain('400,48');
+  });
+
+  it('leaves a shape on the bearing to the other device, not a fixed side (LT-107)', () => {
+    // n1 is 176x96 at the origin, so its centre is (88,48); n2 is down and to
+    // the right. The old fixed right-hand handle was (176,48) — a link that
+    // left sideways and then turned a corner. The bearing crosses the box's
+    // bottom edge at (136,96) instead.
+    const diagonal: TopoEdge = { ...link, data: { ...link.data, pathType: 'straight' } } as TopoEdge;
+    const svg = render([device('n1', 0, 0), device('n2', 400, 400)], [diagonal]);
+    expect(svg).toContain('136,96');
+    expect(svg).not.toContain('176,48');
+  });
+
+  it('meets a round glyph on its circle rather than out at the box corner (LT-107)', () => {
+    // Same two devices, drawn as glyphs: the outline is the circle the icon
+    // actually is, so the link lands nearer the centre than the box edge.
+    const diagonal: TopoEdge = { ...link, data: { ...link.data, pathType: 'straight' } } as TopoEdge;
+    const nodes = [device('n1', 0, 0), device('n2', 400, 400)];
+    const asCard = render(nodes, [diagonal], 'healthy', 'card');
+    const asGlyph = render(nodes, [diagonal], 'healthy', 'glyph');
+    expect(asCard).toContain('136,96');
+    expect(asGlyph).not.toContain('136,96');
+  });
+
+  it('a hand-placed anchor still wins over the bearing (LT-098 kept)', () => {
+    const pinned: TopoEdge = {
+      ...link,
+      data: { ...link.data, pathType: 'straight', sourceAnchor: { x: 0, y: 0 } },
+    } as TopoEdge;
+    const svg = render([device('n1', 0, 0), device('n2', 400, 400)], [pinned]);
+    // The top-left corner the anchor names, not the bearing's (136,96).
+    expect(svg).toContain('M0,0');
+  });
+
+  it('keeps port labels clear of the link label on a short link', () => {
+    // Two devices stacked with a small gap: placing the port label a fraction
+    // along the line put it under the link label, which is drawn after and
+    // opaque, so the port name vanished from the export.
+    const short: TopoEdge = {
+      ...link, sourceHandle: 'b', targetHandle: 't',
+      data: { ...link.data, label: 'Primary ISP' },
+    } as TopoEdge;
+    const svg = render([device('n1', 0, 0), device('n2', 0, 150)], [short]);
+    const port = /<rect x="([\d.-]+)" y="([\d.-]+)"[^>]*stroke="#2a3644"/.exec(svg)!;
+    const centre = /<rect x="([\d.-]+)" y="([\d.-]+)" width="([\d.-]+)" height="18"/.exec(svg)!;
+    const boxesOverlap =
+      Math.abs(Number(port[1]) - Number(centre[1])) < 40 &&
+      Math.abs(Number(port[2]) - Number(centre[2])) < 16;
+    expect(boxesOverlap).toBe(false);
+    expect(svg).toContain('Gi1/0/1');
+  });
+
+  it('renders a note node with its own colours', () => {
+    const note = {
+      id: 'x', type: 'note', position: { x: 0, y: 0 }, width: 200, height: 120,
+      data: {
+        title: 'Rollback', body: '- [ ] Restore config\n- [x] Confirm', variant: 'change',
+        fontSize: 12, textColor: '#f0e6d2', background: '#2a1f10', borderColor: '#8a6a2a',
+        locked: false,
+      },
+    } as unknown as TopoNode;
+    const svg = render([note]);
+    expect(svg).toContain('Rollback');
+    expect(svg).toContain('Restore config');
+    expect(svg).toContain('#2a1f10');
+  });
+
+  it('produces a parsable document with no unclosed tags', () => {
+    const svg = render([device('n1', 0, 0), device('n2', 400, 100)], [link]);
+    const opens = (svg.match(/<g[ >]/g) ?? []).length;
+    const closes = (svg.match(/<\/g>/g) ?? []).length;
+    expect(opens).toBe(closes);
+    expect(svg.trimEnd().endsWith('</svg>')).toBe(true);
+  });
+
+  it('still produces a document with nothing drawn', () => {
+    const svg = render([]);
+    expect(svg).toContain('Branch cutover');
+    expect(svg).toContain('</svg>');
+  });
+});
+
+describe('the glyph presentation', () => {
+  it('draws no box, but still the glyph, the name and the status', () => {
+    // The canvas draws these as a symbol with its name beneath and no border.
+    // An export that kept the card would be a different diagram.
+    const svg = render([device('n1', 0, 0)], [], 'healthy', 'glyph');
+    expect(svg).toContain('Device n1');
+    expect(svg).toContain('10.0.0.1');
+    expect(svg).toContain('Healthy');
+    expect(svg).toContain('<path');
+    // No node body box. Counting <rect> would not show this — the chassis
+    // glyph is drawn from rects too — so look for the box at the node's own
+    // geometry, which is what the card draws and the glyph does not.
+    expect(svg).not.toMatch(/<rect x="0" y="0" width="176" height="96"/);
+  });
+
+  it('still draws the annotation shapes as shapes', () => {
+    // A rectangle drawn as a glyph is not a rectangle.
+    const svg = render([device('s1', 0, 0, { deviceType: 'rectangle' })], [], 'healthy', 'glyph');
+    expect(svg).toMatch(/<rect[^>]*rx="8"/);
+  });
+
+  it('keeps the card presentation available', () => {
+    const svg = render([device('n1', 0, 0)], [], 'healthy', 'card');
+    expect(svg).toMatch(/<rect x="0" y="0" width="176" height="96"/);
+  });
+});
+
+describe('fit', () => {
+  it('leaves text that fits alone', () => {
+    expect(fit('core-sw-01', 200, 12)).toBe('core-sw-01');
+  });
+
+  it('truncates text that would run past the node', () => {
+    const out = fit('a-very-long-hostname-that-will-not-fit', 60, 12);
+    expect(out.endsWith('…')).toBe(true);
+    expect(out.length).toBeLessThan(12);
+  });
+});
+
+describe('the ground the sheet is printed on', () => {
+  const nodes = [
+    {
+      id: 'n1', type: 'device', position: { x: 0, y: 0 }, width: 176, height: 96,
+      data: {
+        label: 'CORE-SW', deviceType: 'core-switch', tags: [],
+        addresses: [{ id: 'a', label: 'Mgmt', address: '10.0.0.1', isPrimary: true }],
+        locked: false, maintenance: false, showDetails: true,
+      },
+    },
+  ] as unknown as Parameters<typeof renderDiagramSvg>[0]['nodes'];
+
+  const sheet = (ground?: 'dark' | 'light') =>
+    renderDiagramSvg({
+      meta, nodes, edges: [], nodeStatus: () => 'healthy', linkStatus: () => 'healthy',
+      includeTitleBlock: true, now: new Date(0), ground,
+    });
+
+  it('prints on white when the diagram is drawn on white', () => {
+    // A diagram prepared for a document used to come out as a black rectangle
+    // in the middle of a white page.
+    expect(sheet('light')).toContain('fill="#ffffff"');
+    expect(sheet('light')).not.toContain('fill="#0a120f"');
+  });
+
+  it('still prints dark when that is what is on screen', () => {
+    expect(sheet('dark')).toContain('fill="#0a120f"');
+  });
+
+  it('stays dark for a caller that has not said', () => {
+    // Every existing caller and test predates the option.
+    expect(sheet()).toContain('fill="#0a120f"');
+  });
+
+  it('uses the colours chosen for that ground, not the other one', () => {
+    const light = sheet('light');
+    const dark = sheet('dark');
+    // Healthy is #0a8a3f on white and #2fbf6b on black.
+    expect(light).toContain('#0a8a3f');
+    expect(light).not.toContain('#2fbf6b');
+    expect(dark).toContain('#2fbf6b');
+  });
+
+  it('writes text in ink that reads on the paper', () => {
+    expect(sheet('light')).toContain('fill="#0d1722"');
+    expect(sheet('dark')).toContain('fill="#e6f7ee"');
+  });
+});
+
+describe('sections in the export', () => {
+  const zone = {
+    id: 'z1', type: 'device', position: { x: -40, y: -40 }, width: 400, height: 300,
+    data: { label: 'DMZ', deviceType: 'zone', tags: [], addresses: [],
+      locked: false, maintenance: false, showDetails: true },
+  } as unknown as Parameters<typeof renderDiagramSvg>[0]['nodes'][number];
+
+  const dev = {
+    id: 'n1', type: 'device', position: { x: 60, y: 60 }, width: 176, height: 96,
+    data: { label: 'FW-1', deviceType: 'firewall', tags: [], addresses: [],
+      locked: false, maintenance: false, showDetails: true },
+  } as unknown as Parameters<typeof renderDiagramSvg>[0]['nodes'][number];
+
+  it('never puts colour alpha in a hex literal', () => {
+    // SVG 1.1 has no alpha in a colour, and a renderer that meets an
+    // eight-digit hex falls back to black — which drew the section as a solid
+    // slab over everything standing in it.
+    const svg = renderDiagramSvg({
+      meta, nodes: [zone, dev], edges: [], nodeStatus: () => 'unknown',
+      linkStatus: () => 'unknown', includeTitleBlock: false, now: new Date(0),
+    });
+    expect(svg).not.toMatch(/#[0-9a-fA-F]{8}\b/);
+    expect(svg).toContain('fill-opacity');
+  });
+
+  it('gives a section its name and no health of its own', () => {
+    // A section is an area. Nothing probes it, and a badge on it would be
+    // reporting on nothing.
+    const svg = renderDiagramSvg({
+      meta, nodes: [zone], edges: [], nodeStatus: () => 'unknown',
+      linkStatus: () => 'unknown', includeTitleBlock: false, now: new Date(0),
+    });
+    expect(svg).toContain('DMZ');
+    expect(svg).not.toContain('Unknown');
+  });
+
+  it('draws a section behind what stands in it', () => {
+    // Drawn in document order, so a section after its contents covers them
+    // and the sheet is a set of empty boxes.
+    const svg = renderDiagramSvg({
+      meta, nodes: [dev, zone], edges: [], nodeStatus: () => 'unknown',
+      linkStatus: () => 'unknown', includeTitleBlock: false, now: new Date(0),
+    });
+    expect(svg).toContain('DMZ');
+    expect(svg).toContain('FW-1');
+    expect(svg.indexOf('DMZ')).toBeLessThan(svg.indexOf('FW-1'));
+  });
+});
+
+describe('putting the diagram on a sheet', () => {
+  const nodes = [
+    {
+      id: 'n1', type: 'device', position: { x: 0, y: 0 }, width: 176, height: 96,
+      data: { label: 'CORE-SW', deviceType: 'core-switch', tags: [], addresses: [],
+        locked: false, maintenance: false, showDetails: true },
+    },
+  ] as unknown as Parameters<typeof renderDiagramSvg>[0]['nodes'];
+
+  const render = (page?: { width: number; height: number }) =>
+    renderDiagramSvg({
+      meta, nodes, edges: [], nodeStatus: () => 'healthy', linkStatus: () => 'healthy',
+      includeTitleBlock: false, now: new Date(0), page,
+    });
+
+  it('is sized to the diagram when no sheet is asked for', () => {
+    // The right default for the screen: nobody wants a screenshot with
+    // margins round it.
+    const svg = render();
+    expect(svg).not.toContain('width="1123"');
+  });
+
+  it('takes the sheet dimensions when one is', () => {
+    const svg = render({ width: 1123, height: 794 });
+    expect(svg).toContain('width="1123"');
+    expect(svg).toContain('height="794"');
+  });
+
+  it('scales and centres the whole drawing rather than each part', () => {
+    // One transform round everything, so nothing inside has to know it is on
+    // paper — and the geometry stays exactly what it was.
+    const svg = render({ width: 1123, height: 794 });
+    expect(svg).toMatch(/<g transform="translate\([\d.]+, [\d.]+\) scale\([\d.]+\)">/);
+  });
+
+  it('paints the whole sheet, not just the drawing', () => {
+    // Otherwise the diagram sits on a transparent page, which prints as
+    // whatever the printer feels like.
+    const svg = render({ width: 1123, height: 794 });
+    expect(svg).toContain('<rect width="100%" height="100%"');
+  });
+
+  it('does not enlarge a small diagram to fill the page', () => {
+    const svg = render({ width: 1123, height: 794 });
+    const scale = Number(/scale\(([\d.]+)\)/.exec(svg)![1]);
+    expect(scale).toBe(1);
+  });
+});
+
+describe('rendering exactly the on-screen page', () => {
+  const nodes = [
+    {
+      id: 'n1', type: 'device', position: { x: 300, y: 200 }, width: 176, height: 96,
+      data: { label: 'CORE-SW', deviceType: 'core-switch', tags: [], addresses: [],
+        locked: false, maintenance: false, showDetails: true },
+    },
+  ] as unknown as Parameters<typeof renderDiagramSvg>[0]['nodes'];
+
+  const sheetRect = { x: 0, y: 0, w: 2340, h: 1224 };
+  const render = () =>
+    renderDiagramSvg({
+      meta, nodes, edges: [], nodeStatus: () => 'healthy', linkStatus: () => 'healthy',
+      includeTitleBlock: false, now: new Date(0), sheetRect,
+    });
+
+  it('is the sheet, not a shrink-wrap of the content', () => {
+    // The page grew on screen; the file is that page, so what you see is
+    // what whoever receives the file sees.
+    const svg = render();
+    expect(svg).toContain('width="2340"');
+    expect(svg).toContain('height="1224"');
+  });
+
+  it('keeps the device where it sits on the sheet', () => {
+    // One node at 300,200 on a sheet anchored at 0,0: shrink-wrapping would
+    // slide it to the margin and every export would recompose the layout.
+    const svg = render();
+    const m = /<g transform="translate\((-?[\d.]+), (-?[\d.]+)\)">/.exec(svg)!;
+    expect(Number(m[1])).toBeCloseTo(0);
+  });
+
+  it('carries no selection chrome and no minimap', () => {
+    const svg = render();
+    expect(svg).not.toContain('cv-minimap');
+    expect(svg).not.toContain('is-selected');
+    expect(svg).not.toContain('cv-guide');
+  });
+});
+
+describe('multi-sheet tiling clips each sheet (LT-028)', () => {
+  const base = {
+    meta: { id: 'p', name: 'Net', customer: '', site: '', ticket: '', engineer: '', createdAt: 0, updatedAt: 0, archived: false },
+    nodes: [
+      { id: 'left', type: 'device', position: { x: 0, y: 0 }, width: 76, height: 76, data: { label: 'LEFT', deviceType: 'router', tags: [], addresses: [], locked: false, maintenance: false, showDetails: true } },
+      { id: 'right', type: 'device', position: { x: 1400, y: 0 }, width: 76, height: 76, data: { label: 'RIGHT', deviceType: 'router', tags: [], addresses: [], locked: false, maintenance: false, showDetails: true } },
+    ],
+    edges: [],
+    nodeStatus: () => 'healthy' as const,
+    linkStatus: () => 'healthy' as const,
+    includeTitleBlock: false,
+    now: new Date(0),
+  };
+
+  it('a tile carries a clip-path and both sheets render', () => {
+    const left = renderDiagramSvg({ ...base, page: { width: 800, height: 600 }, tile: { x: -20, y: -20, w: 728, h: 528 } } as never);
+    const right = renderDiagramSvg({ ...base, page: { width: 800, height: 600 }, tile: { x: 708, y: -20, w: 728, h: 528 } } as never);
+    expect(left).toContain('clip-path=');
+    expect(right).toContain('clip-path=');
+    // Both are valid single-sheet SVGs placed on the page.
+    expect(left).toContain('<svg');
+    expect(right).toContain('<svg');
+    // The two tiles use different clip ids (different origins).
+    const idOf = (svg: string) => /clipPath id="([^"]+)"/.exec(svg)![1];
+    expect(idOf(left)).not.toBe(idOf(right));
+  });
+});
+
+describe('the export hops and stacks as the canvas does (LT-159, LT-161)', () => {
+  const curve = (id: string, source: string, target: string, sourceHandle: string, targetHandle: string) =>
+    ({
+      ...link, id, source, target, sourceHandle, targetHandle,
+      data: { ...link.data, pathType: 'bezier', label: '', sourcePortLabel: '', targetPortLabel: '' },
+    }) as TopoEdge;
+  // One link down the middle, one across it: two bezier links that cross.
+  const nodes = [device('n1', 400, 0), device('n2', 400, 500), device('n3', 0, 250), device('n4', 800, 250)];
+  const edges = [curve('v', 'n1', 'n2', 'b', 't'), curve('h', 'n3', 'n4', 'r', 'l')];
+  const hopped = (svg: string) => (svg.match(/<path d="[^"]*A\d[^"]*"/g) ?? []).length;
+
+  it('a bezier link hops where it crosses another, once', () => {
+    expect(hopped(render(nodes, edges))).toBe(1);
+  });
+
+  it('draws no hop when line jumps are off for the page', () => {
+    const svg = renderDiagramSvg({
+      meta, nodes, edges, nodeStatus: () => 'healthy', linkStatus: () => 'healthy',
+      includeTitleBlock: true, nodeStyle: 'card', lineJumps: false, now: new Date(0),
+    });
+    expect(hopped(svg)).toBe(0);
+  });
+
+  it('draws a stack or an HA device stacked, and a single switch plain', () => {
+    for (const style of ['glyph', 'card'] as const) {
+      const svg = render(
+        [device('s', 0, 0, { stackKind: 'StackWise' }), device('h', 300, 0, { deviceType: 'firewall', ha: true }), device('one', 600, 0)],
+        [], 'healthy', style,
+      );
+      expect((svg.match(/data-stacked/g) ?? []).length, style).toBe(2);
+    }
+  });
+});
+
+describe('a logical boundary in the export (LT-166)', () => {
+  it('leads with its chip and draws its own dash', () => {
+    const vlan = device('z', 0, 0, { deviceType: 'zone', label: 'Users', boundaryKind: 'vlan', boundaryId: '20' });
+    const svg = render([vlan]);
+    expect(svg).toContain('VLAN 20  Users');
+    expect(svg).toContain('stroke-dasharray="6 4"');
+    const area = render([device('a', 0, 0, { deviceType: 'zone', label: 'Core', boundaryKind: 'ospf-area', boundaryId: '0' })]);
+    expect(area).toContain('Area 0  Core');
+    expect(area).toContain('stroke-dasharray="4 2 4 6"');
+  });
+});
+
+describe('a cable type in the export (LT-167)', () => {
+  it('tags the link, with or without a label of its own', () => {
+    const nodes = [device('n1', 0, 0), device('n2', 400, 0)];
+    const tagged = { ...link, data: { ...link.data, cableType: 'fiber-sm' } } as TopoEdge;
+    expect(render(nodes, [tagged])).toContain('SMF · Uplink');
+    const bare = { ...link, data: { ...link.data, label: '', cableType: 'copper' } } as TopoEdge;
+    expect(render(nodes, [bare])).toMatch(/<text[^>]*>[^<]*Cu<\/text>/);
+  });
+});
+
+describe('a link routed round devices in the export (LT-178)', () => {
+  it('draws the same route the canvas does, clear of the device in the way', () => {
+    const top = device('top', 0, 0);
+    const bottom = device('bottom', 0, 500);
+    const wall = device('wall', -60, 230);
+    const around = { ...link, source: 'top', target: 'bottom', sourceHandle: 'b', targetHandle: 't',
+      data: { ...link.data, label: '', pathType: 'avoid' } } as TopoEdge;
+    const svg = render([top, bottom, wall], [around]);
+    const d = /<path d="(M[^"]*)" fill="none"/.exec(svg)?.[1] ?? '';
+    expect(d).toContain('Q');
+    const pts = [...d.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)].map((m) => ({ x: +m[1]!, y: +m[2]! }));
+    const box = { x: -60, y: 230, w: 176, h: 96 };
+    const cuts = pts.slice(1).some((b, i) => {
+      const a = pts[i]!;
+      return Math.max(a.x, b.x) > box.x && Math.min(a.x, b.x) < box.x + box.w && Math.max(a.y, b.y) > box.y && Math.min(a.y, b.y) < box.y + box.h;
+    });
+    expect(cuts).toBe(false);
+  });
+});
+
+describe('every arrowhead and line style in the export (LT-180)', () => {
+  const caps = ['none', 'arrow', 'open-arrow', 'circle', 'square', 'diamond'] as const;
+  const styles = { solid: null, dashed: '10 6', dotted: '2 5', 'dash-dot': '12 5 2 5' } as const;
+  const nodes = [device('n1', 0, 0), device('n2', 400, 0)];
+
+  it('draws each cap at each end', () => {
+    for (const start of caps) {
+      for (const end of caps) {
+        const svg = render(nodes, [{ ...link, data: { ...link.data, startCap: start, endCap: end } } as TopoEdge]);
+        expect(svg.includes('marker-start='), `start ${start}`).toBe(start !== 'none');
+        expect(svg.includes('marker-end='), `end ${end}`).toBe(end !== 'none');
+      }
+    }
+  });
+
+  it('draws each line style', () => {
+    for (const [style, dash] of Object.entries(styles)) {
+      const svg = render(nodes, [{ ...link, data: { ...link.data, lineStyle: style } } as TopoEdge]);
+      const path = /<path d="M[^"]*" fill="none"[^>]*>/.exec(svg)?.[0] ?? '';
+      if (dash) expect(path, style).toContain(`stroke-dasharray="${dash}"`);
+      else expect(path, style).not.toContain('stroke-dasharray');
+    }
+  });
+});
+
+describe('styled labels in the export (LT-181)', () => {
+  it('writes a device name and a link label as they are styled', () => {
+    const styled = device('n1', 0, 0, { labelStyle: { bold: true, italic: true, size: 18, color: '#aa0000', background: '#ffee88', align: 'left' } });
+    const plain = device('n2', 400, 0);
+    const edge = { ...link, data: { ...link.data, label: 'Uplink', labelStyle: { italic: true, color: '#0000aa', background: '#ddeeff' }, portLabelStyle: { bold: true } } } as TopoEdge;
+    for (const style of ['glyph', 'card'] as const) {
+      const svg = render([styled, plain], [edge], 'healthy', style);
+      const name = new RegExp('<text[^>]*fill="#aa0000"[^>]*font-size="18"[^>]*font-weight="700"[^>]*font-style="italic"[^>]*>Device n1</text>');
+      expect(svg, style).toMatch(name);
+      expect(svg, style).toContain('fill="#ffee88"');
+      expect(svg, style).toMatch(/<text[^>]*fill="#0000aa"[^>]*font-style="italic"[^>]*>[^<]*Uplink<\/text>/);
+      expect(svg, style).toContain('fill="#ddeeff"');
+      expect(svg, style).toMatch(/<text[^>]*font-weight="700"[^>]*font-family="ui-monospace[^>]*>Gi1\/0\/1<\/text>/);
+      // The unstyled device keeps its defaults.
+      expect(svg, style).toMatch(/<text[^>]*font-size="12" font-weight="600"[^>]*>Device n2<\/text>/);
+    }
+  });
+
+  it('left-aligns a styled name in the glyph export against the edge of its text box', () => {
+    const svg = render([device('n1', 0, 0, { labelStyle: { align: 'left' } })], [], 'healthy', 'glyph');
+    expect(svg).toMatch(/<text[^>]*text-anchor="start"[^>]*>Device n1<\/text>/);
+  });
+});
+
+describe('a text box in the export (LT-182)', () => {
+  it('keeps its line breaks, each line its own row', () => {
+    const box = device('t', 0, 0, { deviceType: 'text', label: 'First line\nSecond line\nThird', labelStyle: { italic: true } });
+    const svg = render([box], [], 'healthy', 'card');
+    const rows = [...svg.matchAll(/<text x="[^"]*" y="([^"]*)"[^>]*font-style="italic"[^>]*>([^<]*)<\/text>/g)];
+    expect(rows.map((r) => r[2])).toEqual(['First line', 'Second line', 'Third']);
+    const ys = rows.map((r) => Number(r[1]));
+    expect(ys[1]! - ys[0]!).toBeGreaterThan(10);
+    expect(ys[2]! - ys[1]!).toBe(ys[1]! - ys[0]!);
+  });
+});
+
+
+describe('freehand ink in the export (LT-238)', () => {
+  it('is drawn over the diagram, and only what was passed in', () => {
+    const ink = [{ id: 's1', points: [0, 0, 40, 10], color: '#4ea8f0', width: 3 }];
+    const withInk = renderDiagramSvg({
+      meta, nodes: [device('n1', 0, 0)], edges: [], nodeStatus: () => 'healthy', linkStatus: () => 'healthy',
+      includeTitleBlock: false, ink, now: new Date(0),
+    });
+    expect(withInk).toContain('<path d="M0,0L40,10" fill="none" stroke="#4ea8f0" stroke-width="3"');
+    expect(withInk.indexOf('stroke="#4ea8f0"')).toBeGreaterThan(withInk.indexOf('Device n1'));
+    expect(render([device('n1', 0, 0)])).not.toContain('stroke="#4ea8f0"');
+  });
+});
+
+describe('the title block of a narrow drawing (LT-280)', () => {
+  it('keeps the subtitle clear of the status legend', () => {
+    const long = { ...meta, customer: 'Example Customer Group', site: 'Headquarters Building North', ticket: 'CHG-004211', engineer: 'Sam Example' };
+    const svg = renderDiagramSvg({
+      meta: long, nodes: [device('n1', 0, 0)], edges: [],
+      nodeStatus: () => 'healthy', linkStatus: () => 'healthy', includeTitleBlock: true, now: new Date(0),
+    });
+    const width = Number(/<svg[^>]*\swidth="(\d+)"/.exec(svg)![1]);
+    const legendStart = width - 520 - 6;
+    const subtitle = /<text x="18" y="52"[^>]*font-size="12">([^<]*)<\/text>/.exec(svg)![1]!;
+    // The same width estimate `fit` uses: 0.55em a character.
+    expect(18 + subtitle.length * 12 * 0.55).toBeLessThanOrEqual(legendStart);
+  });
+});

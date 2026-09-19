@@ -1,0 +1,33 @@
+{
+  "title": "Lab",
+  "pages": [
+    {
+      "name": "Core",
+      "width": 1584,
+      "height": 1224,
+      "shapes": [
+        {
+          "id": "a",
+          "name": "CORE-SW1",
+          "x": 0,
+          "y": 0,
+          "width": 76,
+          "height": 76
+        }
+      ],
+      "links": [
+        {
+          "from": "a",
+          "to": "a",
+          "label": "Gi0/1",
+          "points": [
+            [
+              10,
+              20
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}

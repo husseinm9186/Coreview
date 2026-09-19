@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The Coreview mark (LT-309).
+
+  Drawn here rather than imported: Coreview ships no third-party artwork
+  (D-028), and an application icon has to hold together from a 16px tray entry
+  to a 1024px store tile, which no raster does. Everything below is geometry.
+
+  What it says: a core at the centre of a hexagon, four things attached to it
+  on the compass points, and four smaller taps on the diagonals — a topology
+  seen from above. The grid ticks behind it are the canvas the app draws on.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="Coreview">
+  <title>Coreview</title>
+  <defs>
+    <linearGradient id="cvCore" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#14b88a"/>
+    </linearGradient>
+    <linearGradient id="cvHex" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2bb9f0"/>
+      <stop offset="1" stop-color="#14b88a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- The canvas behind it: four corner ticks, the way the grid reads on the
+       drawing surface. Faint on purpose — at 16px they disappear, which is
+       what they should do. -->
+  <g stroke="#2bb9f0" stroke-opacity="0.34" stroke-width="3" stroke-linecap="round">
+    <path d="M60 96h34M77 79v34"/>
+    <path d="M452 96h-34M435 79v34"/>
+    <path d="M60 416h34M77 399v34"/>
+    <path d="M452 416h-34M435 399v34"/>
+  </g>
+
+  <!-- Spokes, drawn first so the nodes sit on top of them. -->
+  <g stroke="#2bb9f0" stroke-width="10" stroke-linecap="round">
+    <path d="M256 196V150"/>
+    <path d="M256 316v46"/>
+    <path d="M196 256h-46"/>
+    <path d="M316 256h46"/>
+  </g>
+  <g stroke="#14b88a" stroke-opacity="0.55" stroke-width="7" stroke-linecap="round">
+    <path d="M214 214 176 176"/>
+    <path d="M298 214 336 176"/>
+    <path d="M214 298 176 336"/>
+    <path d="M298 298 336 336"/>
+  </g>
+
+  <!-- The core: a hexagon holding a cube seen in isometric. -->
+  <path d="M256 168 332 212v88l-76 44-76-44v-88z" fill="none" stroke="url(#cvHex)" stroke-width="12"
+        stroke-linejoin="round"/>
+  <path d="M256 214 296 237v46l-40 23-40-23v-46z" fill="url(#cvCore)"/>
+  <path d="M256 214 296 237l-40 23-40-23z" fill="#7df0e4" fill-opacity="0.85"/>
+  <path d="M256 260v46l-40-23v-46z" fill="#0f766e" fill-opacity="0.35"/>
+
+  <!-- Four attached things, north/south/east/west: what a diagram is made of. -->
+  <g fill="none" stroke="#2bb9f0" stroke-width="11" stroke-linejoin="round">
+    <rect x="206" y="66" width="100" height="84" rx="18"/>
+    <rect x="362" y="206" width="100" height="84" rx="18"/>
+    <rect x="206" y="362" width="100" height="84" rx="18"/>
+  </g>
+  <rect x="50" y="206" width="100" height="84" rx="18" fill="none" stroke="#14b88a" stroke-width="11"
+        stroke-linejoin="round"/>
+
+  <!-- What is inside them: rows on three, a little topology on the fourth. -->
+  <g stroke="#2bb9f0" stroke-width="9" stroke-linecap="round">
+    <path d="M230 92h52M230 108h52M230 124h52"/>
+    <path d="M410 232h28M410 250h28M410 268h28"/>
+    <path d="M230 388h52M230 406h34"/>
+  </g>
+  <g fill="#2bb9f0">
+    <circle cx="392" cy="232" r="5"/><circle cx="392" cy="250" r="5"/><circle cx="392" cy="268" r="5"/>
+  </g>
+  <g stroke="#14b88a" stroke-width="8" stroke-linecap="round" fill="none">
+    <path d="M100 232v18M100 250 82 268M100 250l18 18"/>
+  </g>
+  <g fill="#14b88a">
+    <circle cx="100" cy="228" r="9"/><circle cx="80" cy="272" r="9"/><circle cx="120" cy="272" r="9"/>
+  </g>
+
+  <!-- The four taps on the diagonals: the amber is the one warm note, and it
+       is also the app's warning colour, so the mark uses the palette it
+       paints with. -->
+  <g fill="#f0b429">
+    <rect x="150" y="150" width="26" height="26" rx="6"/>
+    <rect x="336" y="150" width="26" height="26" rx="6"/>
+    <rect x="150" y="336" width="26" height="26" rx="6"/>
+    <rect x="336" y="336" width="26" height="26" rx="6"/>
+  </g>
+</svg>

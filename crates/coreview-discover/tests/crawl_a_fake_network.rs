@@ -1,0 +1,814 @@
+//! Crawls a small fake network end to end.
+//!
+//! Two SSH servers stand in for two switches, on 127.0.0.1 and 127.0.0.2 — the
+//! whole of 127.0.0.0/8 is loopback, so both can listen on the same port and
+//! the crawler can reach them the way it would reach real devices, by address
+//! alone.
+//!
+//! The topology is deliberately awkward:
+//!
+//! * SW1 advertises SW2, and SW2 advertises SW1 straight back. A crawler
+//!   without a visited set loops between them forever.
+//! * SW2 also advertises an access point, which must appear in the results and
+//!   must not be logged into.
+//! * SW2 advertises an Aruba switch over LLDP only, which a CDP-only crawl
+//!   would never see.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use russh::server::{self, Auth, Msg, Session};
+use russh::{Channel, ChannelId};
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
+
+use coreview_discover::crawl::{crawl, CrawlEvent, CrawlOptions};
+use coreview_discover::filter::DiscoveryFilter;
+use coreview_discover::hostkeys::HostKeyStore;
+use coreview_discover::ssh::{Credentials, Secret, SshOptions};
+use coreview_discover::types::DeviceClass;
+use coreview_probe::sweep::parse_cidr;
+
+/// CDP as SW1 sees the world: one neighbour, SW2 at 127.0.0.2.
+fn sw1_cdp() -> String {
+    "-------------------------\r\n\
+     Device ID: SW2.lab.example.com\r\n\
+     Entry address(es):\r\n  IP address: 127.0.0.2\r\n\
+     Platform: cisco WS-C2960X-24TS-L,  Capabilities: Switch IGMP\r\n\
+     Interface: GigabitEthernet1/0/1,  Port ID (outgoing port): GigabitEthernet1/0/2\r\n\
+     Holdtime : 137 sec\r\n\r\n\
+     Total cdp entries displayed : 1\r\n"
+        .into()
+}
+
+/// SW2 points back at SW1 — the loop — and adds an access point.
+fn sw2_cdp() -> String {
+    "-------------------------\r\n\
+     Device ID: SW1.lab.example.com\r\n\
+     Entry address(es):\r\n  IP address: 127.0.0.1\r\n\
+     Platform: cisco WS-C3850-48P,  Capabilities: Router Switch\r\n\
+     Interface: GigabitEthernet1/0/2,  Port ID (outgoing port): GigabitEthernet1/0/1\r\n\
+     Holdtime : 140 sec\r\n\r\n\
+     -------------------------\r\n\
+     Device ID: AP-FLOOR2\r\n\
+     Entry address(es):\r\n  IP address: 127.0.0.9\r\n\
+     Platform: cisco AIR-CAP2702I-E-K9,  Capabilities: Trans-Bridge\r\n\
+     Interface: GigabitEthernet1/0/7,  Port ID (outgoing port): GigabitEthernet0\r\n\
+     Holdtime : 155 sec\r\n\r\n\
+     Total cdp entries displayed : 2\r\n"
+        .into()
+}
+
+/// An Aruba switch, visible over LLDP only.
+fn sw2_lldp() -> String {
+    "------------------------------------------------\r\n\
+     Local Intf: Gi1/0/12\r\n\
+     Chassis id: 001a.2b3c.4d5e\r\n\
+     Port id: 001a.2b3c.4d60\r\n\
+     Port Description: 1/1/1\r\n\
+     System Name: ARUBA-EDGE-1\r\n\r\n\
+     System Description:\r\n\
+     ArubaOS-CX GL_10.09.1010, Aruba 6300M\r\n\r\n\
+     Time remaining: 97 seconds\r\n\
+     Enabled Capabilities: B,R\r\n\
+     Management Addresses:\r\n    IP: 10.20.30.40\r\n\r\n\
+     Total entries displayed: 1\r\n"
+        .into()
+}
+
+#[derive(Clone)]
+struct FakeSwitch {
+    hostname: String,
+    cdp: String,
+    lldp: String,
+    loopback: String,
+    /// `show ip arp`, for resolving a neighbour that advertises no address.
+    arp: String,
+    /// `show mac address-table`, for resolving one by the port it is on.
+    macs: String,
+}
+
+impl server::Handler for FakeSwitch {
+    type Error = russh::Error;
+
+    async fn auth_password(&mut self, _user: &str, password: &str) -> Result<Auth, Self::Error> {
+        if password == "correct-horse" {
+            Ok(Auth::Accept)
+        } else {
+            Ok(Auth::Reject {
+                proceed_with_methods: None,
+                partial_success: false,
+            })
+        }
+    }
+
+    async fn channel_open_session(
+        &mut self,
+        _channel: Channel<Msg>,
+        reply: server::ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
+    }
+
+    async fn pty_request(
+        &mut self,
+        _channel: ChannelId,
+        _term: &str,
+        _cw: u32,
+        _rh: u32,
+        _pw: u32,
+        _ph: u32,
+        _modes: &[(russh::Pty, u32)],
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn shell_request(
+        &mut self,
+        channel: ChannelId,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        session.data(channel, format!("\r\n{}#", self.hostname).into_bytes())?;
+        Ok(())
+    }
+
+    async fn data(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let line = String::from_utf8_lossy(data);
+        let command = line.trim();
+
+        let body: String = match command {
+            "terminal length 0" | "enable" => String::new(),
+            "show cdp neighbors detail" => self.cdp.clone(),
+            "show lldp neighbors detail" => self.lldp.clone(),
+            "show ip arp" => self.arp.clone(),
+            "show mac address-table" => self.macs.clone(),
+            "show ip interface brief" => format!(
+                "Interface              IP-Address      OK? Method Status                Protocol\r\n\
+                 GigabitEthernet1/0/1   {}        YES NVRAM  up                    up\r\n\
+                 Loopback0              {}       YES NVRAM  up                    up\r\n",
+                self.hostname_address(),
+                self.loopback
+            ),
+            "show version" => format!(
+                "Cisco IOS Software, C2960X Software, Version 15.2(4)E7\r\n\
+                 cisco WS-C2960X-24TS-L (APM86XXX) processor\r\n\
+                 Model number            : WS-C2960X-24TS-L\r\n\
+                 {} uptime is 3 weeks\r\n",
+                self.hostname
+            ),
+            _ => "% Invalid input detected at '^' marker.\r\n".into(),
+        };
+
+        session.data(
+            channel,
+            format!("{command}\r\n{body}{}#", self.hostname).into_bytes(),
+        )?;
+        Ok(())
+    }
+}
+
+impl FakeSwitch {
+    fn hostname_address(&self) -> &str {
+        if self.hostname == "SW1" {
+            "127.0.0.1"
+        } else {
+            "127.0.0.2"
+        }
+    }
+}
+
+/// Starts a switch on `bind_ip:port`.
+async fn start(bind_ip: &str, port: u16, switch: FakeSwitch) {
+    let key = russh::keys::PrivateKey::random(&mut rand::rng(), russh::keys::Algorithm::Ed25519)
+        .expect("host key");
+    let config = Arc::new(server::Config {
+        inactivity_timeout: Some(Duration::from_secs(30)),
+        auth_rejection_time: Duration::from_millis(1),
+        keys: vec![key],
+        ..Default::default()
+    });
+    let listener = tokio::net::TcpListener::bind((bind_ip, port)).await.unwrap();
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            let config = Arc::clone(&config);
+            let switch = switch.clone();
+            tokio::spawn(async move {
+                let _ = server::run_stream(config, stream, switch).await;
+            });
+        }
+    });
+}
+
+/// A port free on both loopback addresses.
+async fn free_port() -> u16 {
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = l.local_addr().unwrap().port();
+    drop(l);
+    port
+}
+
+async fn start_network() -> u16 {
+    let port = free_port().await;
+    start(
+        "127.0.0.1",
+        port,
+        FakeSwitch {
+            hostname: "SW1".into(),
+            cdp: sw1_cdp(),
+            lldp: sw1_lldp(),
+            loopback: "10.255.0.1".into(),
+            // SW1 has seen the silent switch and knows its address.
+            arp: concat!(
+                "Protocol  Address          Age (min)  Hardware Addr   Type   Interface\r\n",
+                "Internet  127.0.0.4               0   e81c.ba00.0002  ARPA   Vlan1\r\n",
+                "Internet  127.0.0.9               0   7456.3c00.0001  ARPA   Vlan1\r\n",
+            )
+            .into(),
+            // Gi0/5 has learned exactly one address, so whatever is on the far
+            // end is the thing holding it. Gi0/6 has two, so it leads to
+            // another switch and picking one of them would be a guess.
+            macs: concat!(
+                "Vlan    Mac Address       Type        Ports\r\n",
+                "   1    7456.3c00.0001    DYNAMIC     Gi0/5\r\n",
+                "   1    aaaa.bbbb.cccc    DYNAMIC     Gi0/6\r\n",
+                "   1    aaaa.bbbb.cccd    DYNAMIC     Gi0/6\r\n",
+            )
+            .into(),
+        },
+    )
+    .await;
+    start(
+        "127.0.0.2",
+        port,
+        FakeSwitch {
+            hostname: "SW2".into(),
+            cdp: sw2_cdp(),
+            lldp: sw2_lldp(),
+            loopback: "10.255.0.2".into(),
+            arp: String::new(),
+            macs: String::new(),
+        },
+    )
+    .await;
+    // The switch SW1 can see but that advertises no address of its own. It is
+    // reachable — the point is that its address has to be worked out from the
+    // chassis id and SW1's ARP table before anything can reach it.
+    start(
+        "127.0.0.4",
+        port,
+        FakeSwitch {
+            hostname: "SILENT-SW".into(),
+            cdp: String::new(),
+            lldp: String::new(),
+            loopback: "10.255.0.4".into(),
+            arp: String::new(),
+            macs: String::new(),
+        },
+    )
+    .await;
+    port
+}
+
+/// A switch that advertises a chassis id and no management address, which is
+/// what a FortiSwitch does and what left one undrawable on the real network.
+fn sw1_lldp() -> String {
+    concat!(
+        // A switch that advertises a chassis id and no management address,
+        // which is what a FortiSwitch does.
+        "------------------------------------------------\r\n",
+        "Local Intf: Gi0/9\r\n",
+        "Chassis id: e81c.ba00.0002\r\n",
+        "Port id: port24\r\n",
+        "System Name: SILENT-SW\r\n\r\n",
+        "System Description:\r\n",
+        "FortiSwitch-224E v7.6.1\r\n\r\n",
+        "Time remaining: 96 seconds\r\n",
+        "System Capabilities: B,R\r\n",
+        "Enabled Capabilities: B\r\n\r\n",
+        // A name and nothing else. Its port has learned exactly one address,
+        // so the switch knows where it is even though it never said.
+        "------------------------------------------------\r\n",
+        "Local Intf: Gi0/5\r\n",
+        "Chassis id: DESKTOP-QUIET\r\n",
+        "Port id: eth0\r\n",
+        "System Name: DESKTOP-QUIET\r\n\r\n",
+        "Time remaining: 96 seconds\r\n",
+        "System Capabilities: S\r\n",
+        "Enabled Capabilities: S\r\n\r\n",
+        // The same, but its port carries two addresses, so which one it is
+        // cannot be established.
+        "------------------------------------------------\r\n",
+        "Local Intf: Gi0/6\r\n",
+        "Chassis id: CROWDED-PORT\r\n",
+        "Port id: eth0\r\n",
+        "System Name: CROWDED-PORT\r\n\r\n",
+        "Time remaining: 96 seconds\r\n",
+        "System Capabilities: S\r\n",
+        "Enabled Capabilities: S\r\n\r\n",
+        "Total entries displayed: 3\r\n",
+    )
+    .into()
+}
+
+fn creds() -> Credentials {
+    Credentials {
+        username: "admin".into(),
+        password: Secret::new("correct-horse"),
+        enable_password: None,
+    }
+}
+
+fn options(port: u16) -> CrawlOptions {
+    CrawlOptions {
+        filter: DiscoveryFilter {
+            // 127.0.0.0/8 keeps the crawl on the fake network; the Aruba's
+            // 10.20.30.40 is outside it and must not be dialled.
+            subnets: vec![parse_cidr("127.0.0.0/8").unwrap()],
+            ..Default::default()
+        },
+        ssh: SshOptions {
+            port,
+            connect_timeout: Duration::from_secs(5),
+            auth_timeout: Duration::from_secs(10),
+            command_timeout: Duration::from_secs(10),
+        },
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn crawls_two_switches_without_looping_between_them() {
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, mut rx) = mpsc::channel(256);
+
+    let result = crawl(
+        "127.0.0.1",
+        creds(),
+        options(port),
+        store,
+        tx,
+        CancellationToken::new(),
+    )
+    .await;
+
+    let names: Vec<&str> = result.devices.iter().map(|d| d.hostname.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["SW1", "SW2", "SILENT-SW"],
+        "both switches plus the one whose address came from ARP, each once"
+    );
+    assert!(result.failures.is_empty(), "unexpected failures: {:?}", result.failures);
+    assert!(!result.cancelled);
+
+    // SW2 advertises SW1 back. Without a visited set this never terminates,
+    // and the fact that it did is the assertion.
+    let reached = rx
+        .try_recv()
+        .into_iter()
+        .chain(std::iter::from_fn(|| rx.try_recv().ok()))
+        .filter(|e| matches!(e, CrawlEvent::Reached(_)))
+        .count();
+    assert_eq!(reached, 3, "one Reached event per device, no repeats");
+}
+
+/// One estate, more than one login.
+///
+/// Sites migrate between TACACS realms and appliances keep their own local
+/// account. On the network this was built against, the Cisco and the
+/// FortiSwitch take different passwords, so a crawl with one credential set
+/// reached one of them and never both.
+#[tokio::test]
+async fn a_rejected_password_falls_back_to_the_next_credential() {
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+
+    let wrong = Credentials {
+        username: "netops".into(),
+        password: Secret::new("not-the-password"),
+        enable_password: None,
+    };
+    let mut opts = options(port);
+    opts.fallback_credentials = vec![creds()];
+
+    let result = crawl("127.0.0.1", wrong, opts, store, tx, CancellationToken::new()).await;
+
+    let names: Vec<&str> = result.devices.iter().map(|d| d.hostname.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["SW1", "SW2", "SILENT-SW"],
+        "the second credential should get in"
+    );
+    assert!(result.failures.is_empty(), "{:?}", result.failures);
+}
+
+/// LT-209: a login bound to a subnet is tried on the devices in it, before the
+/// run's own — with the run's login wrong everywhere, the bound one is the only
+/// way in, and a device outside the subnet stays out.
+#[tokio::test]
+async fn a_login_bound_to_a_subnet_is_used_on_devices_inside_it_only() {
+    use coreview_discover::bindings::{Binding, Scope};
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+
+    let wrong = Credentials {
+        username: "netops".into(),
+        password: Secret::new("not-the-password"),
+        enable_password: None,
+    };
+    let mut opts = options(port);
+    opts.bindings = vec![Binding {
+        scope: Scope::parse("subnet", "127.0.0.1/32").unwrap(),
+        ssh: Some(creds()),
+        snmp: None,
+    }];
+
+    let result = crawl("127.0.0.1", wrong, opts, store, tx, CancellationToken::new()).await;
+
+    let names: Vec<&str> = result.devices.iter().map(|d| d.hostname.as_str()).collect();
+    assert!(names.contains(&"SW1"), "the bound login gets into the device it is bound to: {names:?}");
+    assert!(!names.contains(&"SW2"), "and is not tried outside its subnet: {names:?}");
+    assert!(
+        result.failures.iter().any(|f| f.address == "127.0.0.2"),
+        "SW2 fails on the run's own login: {:?}",
+        result.failures
+    );
+}
+
+/// LT-207: two seeds in one network do not crawl it twice, and each seed that
+/// is its own island is reached.
+#[tokio::test]
+async fn several_seeds_share_one_visited_set() {
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+    let seeds = vec!["127.0.0.2".to_string(), "127.0.0.1".to_string()];
+    let result = coreview_discover::crawl::crawl_from(&seeds, creds(), options(port), store, tx, CancellationToken::new()).await;
+    let mut names: Vec<&str> = result.devices.iter().map(|d| d.hostname.as_str()).collect();
+    names.sort();
+    assert_eq!(names, vec!["SILENT-SW", "SW1", "SW2"], "each device once");
+}
+
+/// The fallback is for a rejected password and nothing else.
+#[tokio::test]
+async fn every_credential_being_wrong_still_reports_one_failure() {
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+
+    let wrong = |p: &str| Credentials {
+        username: "netops".into(),
+        password: Secret::new(p),
+        enable_password: None,
+    };
+    let mut opts = options(port);
+    opts.fallback_credentials = vec![wrong("also-wrong")];
+
+    let result = crawl("127.0.0.1", wrong("wrong"), opts, store, tx, CancellationToken::new()).await;
+
+    assert!(result.devices.is_empty());
+    assert_eq!(result.failures.len(), 1, "one device, one failure: {:?}", result.failures);
+    assert!(
+        result.failures[0].reason.contains("rejected"),
+        "the last rejection is what to report: {:?}",
+        result.failures[0]
+    );
+}
+
+/// LLDP does not require a management address, and plenty of devices do not
+/// advertise one. Without resolving it there is nowhere to connect, and no
+/// credential can help — a FortiSwitch sat undrawable on the real network for
+/// exactly this reason.
+#[tokio::test]
+async fn a_neighbour_that_advertises_no_address_is_resolved_from_arp() {
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+
+    let result = crawl("127.0.0.1", creds(), options(port), store, tx, CancellationToken::new()).await;
+
+    let silent = result
+        .devices
+        .iter()
+        .find(|d| d.hostname == "SILENT-SW")
+        .expect("the switch with no advertised address should have been reached");
+    // Its chassis id is e81c.ba00.0002 and SW1's ARP table maps that to
+    // 127.0.0.4. Nothing else in the crawl knows that address.
+    assert_eq!(silent.address, "127.0.0.4");
+
+    // And it is one device, not two: the same switch must not appear once as
+    // an addressless neighbour and again as a reached device.
+    assert_eq!(
+        result.devices.iter().filter(|d| d.hostname == "SILENT-SW").count(),
+        1
+    );
+}
+
+/// A device that announces a name and no address at all.
+///
+/// The switch learned exactly one address on that port, so the thing on the
+/// far end is what holds it. LABDESKTOP01 on the real network is found this
+/// way and no other.
+#[tokio::test]
+async fn a_neighbour_with_only_a_name_is_resolved_from_the_port_it_is_on() {
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+
+    let result = crawl("127.0.0.1", creds(), options(port), store, tx, CancellationToken::new()).await;
+
+    let sw1 = result.devices.iter().find(|d| d.hostname == "SW1").expect("SW1");
+    let quiet = sw1
+        .neighbors
+        .iter()
+        .find(|n| n.short_name == "DESKTOP-QUIET")
+        .expect("the device that announces only a name");
+    assert_eq!(quiet.address(), Some("127.0.0.9"));
+
+    // And the port with two addresses on it is left alone: the far end is
+    // another switch, and choosing one of them would be a guess.
+    let crowded = sw1
+        .neighbors
+        .iter()
+        .find(|n| n.short_name == "CROWDED-PORT")
+        .expect("the neighbour on the shared port");
+    assert_eq!(
+        crowded.address(),
+        None,
+        "a port with more than one address must not be guessed from"
+    );
+}
+
+#[tokio::test]
+async fn an_access_point_is_recorded_but_never_logged_into() {
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+
+    let result = crawl("127.0.0.1", creds(), options(port), store, tx, CancellationToken::new()).await;
+
+    // Nothing tried to log into it — there is no SSH server on 127.0.0.9, so a
+    // crawl that tried would have recorded a failure.
+    assert!(
+        !result.failures.iter().any(|f| f.address == "127.0.0.9"),
+        "the crawler dialled an access point: {:?}",
+        result.failures
+    );
+    assert!(!result.devices.iter().any(|d| d.hostname.contains("AP")));
+
+    // But it is still in the results, because it belongs on a diagram.
+    let ap = result
+        .not_visited
+        .iter()
+        .find(|n| n.short_name == "AP-FLOOR2")
+        .expect("the access point should be reported, just not crawled");
+    assert_eq!(ap.class, DeviceClass::AccessPoint);
+}
+
+#[tokio::test]
+async fn a_switch_only_lldp_can_see_is_found() {
+    // The Aruba. A CDP-only crawl misses it silently.
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+
+    let result = crawl("127.0.0.1", creds(), options(port), store, tx, CancellationToken::new()).await;
+
+    let aruba = result
+        .not_visited
+        .iter()
+        .find(|n| n.short_name == "ARUBA-EDGE-1")
+        .expect("LLDP-only neighbour missing from the results");
+    assert_eq!(aruba.class, DeviceClass::Switch);
+    assert_eq!(aruba.addresses[0].ip, "10.20.30.40");
+
+    // It is a switch, so it would normally be crawled — but its address is
+    // outside the subnet filter, which is what keeps a crawl inside an estate.
+    assert!(
+        !result.failures.iter().any(|f| f.address == "10.20.30.40"),
+        "the crawler left the subnet filter: {:?}",
+        result.failures
+    );
+}
+
+#[tokio::test]
+async fn the_probe_target_is_the_loopback_not_the_address_dialled() {
+    // The point of running `show ip interface brief` during a crawl.
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+
+    let result = crawl("127.0.0.1", creds(), options(port), store, tx, CancellationToken::new()).await;
+
+    let sw1 = result.devices.iter().find(|d| d.hostname == "SW1").unwrap();
+    assert_eq!(sw1.address, "127.0.0.1", "reached on the seed address");
+    assert_eq!(
+        sw1.probe_target, "10.255.0.1",
+        "a probe should aim at the loopback, which stays up when a port does not"
+    );
+    assert_eq!(sw1.class, DeviceClass::Switch);
+    assert_eq!(sw1.platform.as_deref(), Some("WS-C2960X-24TS-L"));
+}
+
+#[tokio::test]
+async fn a_hop_limit_stops_the_crawl_going_further() {
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+
+    let result = crawl(
+        "127.0.0.1",
+        creds(),
+        CrawlOptions {
+            max_hops: 0,
+            ..options(port)
+        },
+        store,
+        tx,
+        CancellationToken::new(),
+    )
+    .await;
+
+    assert_eq!(result.devices.len(), 1, "only the seed should be visited");
+    assert_eq!(result.devices[0].hostname, "SW1");
+    // Its neighbours are still reported — they were seen, just not followed.
+    assert!(result.not_visited.iter().any(|n| n.short_name == "SW2"));
+}
+
+#[tokio::test]
+async fn one_unreachable_device_does_not_end_the_crawl() {
+    // The failure mode the Python original had: an exception deep in the
+    // recursion takes the whole survey with it.
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+
+    // Seed with a dead address first; the crawl should report it and stop
+    // there, having nothing else queued — then prove the same run style works
+    // from a live seed.
+    let dead = crawl(
+        "127.0.0.3",
+        creds(),
+        options(port),
+        Arc::clone(&store),
+        tx.clone(),
+        CancellationToken::new(),
+    )
+    .await;
+    assert_eq!(dead.devices.len(), 0);
+    assert_eq!(dead.failures.len(), 1, "the failure should be recorded, not thrown");
+    assert!(dead.failures[0].reason.contains("127.0.0.3"), "got: {:?}", dead.failures[0]);
+
+    let live = crawl("127.0.0.1", creds(), options(port), store, tx, CancellationToken::new()).await;
+    assert_eq!(live.devices.len(), 3, "a later crawl is unaffected");
+}
+
+#[tokio::test]
+async fn wrong_credentials_fail_every_device_rather_than_hanging() {
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+
+    let result = crawl(
+        "127.0.0.1",
+        Credentials {
+            username: "admin".into(),
+            password: Secret::new("wrong"),
+            enable_password: None,
+        },
+        options(port),
+        store,
+        tx,
+        CancellationToken::new(),
+    )
+    .await;
+
+    assert!(result.devices.is_empty());
+    assert_eq!(result.failures.len(), 1);
+    let reason = &result.failures[0].reason;
+    assert!(!reason.contains("wrong"), "the password leaked into a failure: {reason}");
+}
+
+/// A port that accepts a connection and then says nothing, the way a device
+/// behind a half-open firewall does. Counts how often it was dialled.
+async fn silent_listener(ip: &str) -> (u16, Arc<std::sync::atomic::AtomicUsize>) {
+    let listener = tokio::net::TcpListener::bind((ip, 0)).await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = Arc::clone(&count);
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((stream, _)) = listener.accept().await {
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            held.push(stream);
+        }
+    });
+    (port, count)
+}
+
+fn quick(port: u16) -> CrawlOptions {
+    let mut o = options(port);
+    o.ssh.connect_timeout = Duration::from_millis(300);
+    o
+}
+
+/// LT-208: a device that never answered is tried again, as many times as the
+/// run allows, and says so.
+#[tokio::test]
+async fn a_device_that_does_not_answer_is_retried() {
+    let (port, dialled) = silent_listener("127.0.0.1").await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, mut rx) = mpsc::channel(256);
+    let mut opts = quick(port);
+    opts.retries = 2;
+    let result = crawl("127.0.0.1", creds(), opts, store, tx, CancellationToken::new()).await;
+    assert_eq!(result.failures.len(), 1);
+    assert_eq!(dialled.load(std::sync::atomic::Ordering::SeqCst), 3, "the first try and two more");
+    let retries = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter(|e| matches!(e, CrawlEvent::Retrying { .. }))
+        .count();
+    assert_eq!(retries, 2);
+}
+
+/// LT-208: a device that takes longer than the per-device limit is given up on.
+#[tokio::test]
+async fn a_device_that_takes_too_long_is_given_up_on() {
+    let (port, _) = silent_listener("127.0.0.1").await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+    let mut opts = options(port);
+    opts.ssh.connect_timeout = Duration::from_secs(30);
+    opts.per_host_timeout = Duration::from_millis(400);
+    opts.retries = 0;
+    let started = std::time::Instant::now();
+    let result = crawl("127.0.0.1", creds(), opts, store, tx, CancellationToken::new()).await;
+    assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
+    assert_eq!(result.failures.len(), 1);
+    assert!(result.failures[0].reason.contains("gave up"), "{:?}", result.failures[0]);
+}
+
+/// LT-208: several devices are worked on at once, up to the limit.
+#[tokio::test]
+async fn devices_are_visited_side_by_side() {
+    let (port, _) = silent_listener("127.0.0.1").await;
+    // The same port on three more loopback addresses, all silent.
+    for ip in ["127.0.0.3", "127.0.0.4", "127.0.0.5"] {
+        let l = tokio::net::TcpListener::bind((ip, port)).await.unwrap();
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((s, _)) = l.accept().await {
+                held.push(s);
+            }
+        });
+    }
+    let seeds: Vec<String> = ["127.0.0.1", "127.0.0.3", "127.0.0.4", "127.0.0.5"].iter().map(|s| s.to_string()).collect();
+    let run = |concurrency: usize| {
+        let seeds = seeds.clone();
+        async move {
+            let mut opts = quick(port);
+            opts.ssh.connect_timeout = Duration::from_millis(500);
+            opts.retries = 0;
+            opts.concurrency = concurrency;
+            let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+            let (tx, _rx) = mpsc::channel(256);
+            let started = std::time::Instant::now();
+            let r = coreview_discover::crawl::crawl_from(&seeds, creds(), opts, store, tx, CancellationToken::new()).await;
+            (started.elapsed(), r.failures.len())
+        }
+    };
+    let (together, failed) = run(4).await;
+    assert_eq!(failed, 4);
+    let (one_by_one, _) = run(1).await;
+    assert!(one_by_one >= Duration::from_millis(1_900), "{one_by_one:?}");
+    assert!(together < one_by_one / 2, "four at once {together:?}, one at a time {one_by_one:?}");
+}
+
+/// LT-208: stopping a run stops it now, not after the slowest device.
+#[tokio::test]
+async fn cancelling_stops_visits_in_progress() {
+    let (port, _) = silent_listener("127.0.0.1").await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+    let mut opts = options(port);
+    opts.ssh.connect_timeout = Duration::from_secs(30);
+    let cancel = CancellationToken::new();
+    let stopper = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        stopper.cancel();
+    });
+    let started = std::time::Instant::now();
+    let result = crawl("127.0.0.1", creds(), opts, store, tx, cancel).await;
+    assert!(result.cancelled);
+    assert!(started.elapsed() < Duration::from_secs(3), "{:?}", started.elapsed());
+}
