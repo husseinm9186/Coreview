@@ -7,11 +7,7 @@ import { useStore } from '../state/store';
 import { DiscoverPanel } from './DiscoverPanel';
 import { CrawlPanel } from './CrawlPanel';
 import { BackupPanel } from './BackupPanel';
-import { VisioImportPanel } from './VisioImportPanel';
-import { RackPanel } from './RackPanel';
 import { PathCheckPanel } from './PathCheckPanel';
-import { ComparePanel } from './ComparePanel';
-import { CsvImportPanel } from './CsvImportPanel';
 import { STATUS_COLOR } from './edges/LiveEdge';
 import { linkStatus } from '../health/evaluate';
 import { formatTime } from '../lib/timeFormat';
@@ -113,7 +109,9 @@ export function StatusPanel() {
   const nodeStatusOf = useStore((s) => s.nodeStatus);
   const select = useStore((s) => s.select);
 
-  const [tab, setTab] = useState<'objects' | 'events' | 'discover' | 'crawl' | 'backup' | 'csv' | 'visio' | 'racks' | 'path' | 'compare'>('objects');
+  // LT-319: Compare, Racks and the two imports left for a screen of their own.
+  // What is here is what reports on the diagram while it is being worked on.
+  const [tab, setTab] = useState<'objects' | 'events' | 'discover' | 'crawl' | 'backup' | 'path'>('objects');
   useEffect(() => {
     if (!panelRequest) return;
     // LT-300: the register moved to a screen of its own. Anything that still
@@ -121,6 +119,10 @@ export function StatusPanel() {
     // longer here.
     if (panelRequest === 'ipam' || panelRequest === 'lab') {
       useStore.getState().setRegisterOpen(true);
+    } else if (panelRequest === 'compare' || panelRequest === 'racks' || panelRequest === 'csv' || panelRequest === 'visio') {
+      // LT-319: these four are a screen now. Anything still asking for the tab
+      // gets the screen, opened on the view it asked for.
+      useStore.getState().setToolsOpen(true, panelRequest);
     } else {
       setTab(panelRequest as typeof tab);
     }
@@ -287,7 +289,7 @@ export function StatusPanel() {
   }
 
   return (
-    <div className={`cv-panel${tab === "crawl" || tab === "discover" || tab === "backup" || tab === "csv" || tab === "visio" || tab === "racks" || tab === "compare" ? " is-tall" : ""}${tab === "racks" ? " is-racks" : ""}`}>
+    <div className={`cv-panel${tab === 'crawl' || tab === 'discover' || tab === 'backup' ? ' is-tall' : ''}`}>
       <div className="cv-panel-head">
         <div
           className="cv-tabs"
@@ -357,36 +359,6 @@ export function StatusPanel() {
           <button
             type="button"
             role="tab"
-            aria-selected={tab === 'csv'}
-            tabIndex={tab === 'csv' ? 0 : -1}
-            className={tab === 'csv' ? 'is-active' : ''}
-            onClick={() => setTab('csv')}
-          >
-            From a file
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'visio'}
-            tabIndex={tab === 'visio' ? 0 : -1}
-            className={tab === 'visio' ? 'is-active' : ''}
-            onClick={() => setTab('visio')}
-          >
-            From a drawing
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'racks'}
-            tabIndex={tab === 'racks' ? 0 : -1}
-            className={tab === 'racks' ? 'is-active' : ''}
-            onClick={() => setTab('racks')}
-          >
-            Racks
-          </button>
-          <button
-            type="button"
-            role="tab"
             aria-selected={tab === 'path'}
             tabIndex={tab === 'path' ? 0 : -1}
             className={tab === 'path' ? 'is-active' : ''}
@@ -394,19 +366,9 @@ export function StatusPanel() {
           >
             Path check
           </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'compare'}
-            tabIndex={tab === 'compare' ? 0 : -1}
-            className={tab === 'compare' ? 'is-active' : ''}
-            onClick={() => setTab('compare')}
-          >
-            Compare
-          </button>
         </div>
 
-        {tab !== 'discover' && tab !== 'crawl' && tab !== 'backup' && tab !== 'csv' && tab !== 'visio' && tab !== 'racks' && tab !== 'path' && tab !== 'compare' && (
+        {tab !== 'discover' && tab !== 'crawl' && tab !== 'backup' && tab !== 'path' && (
           <>
             <input
               className="cv-input cv-panel-search"
@@ -450,16 +412,8 @@ export function StatusPanel() {
           />
         ) : tab === 'backup' ? (
           <BackupPanel fromCrawl={handedOver} onConsumed={() => setHandedOver([])} />
-        ) : tab === 'csv' ? (
-          <CsvImportPanel />
-        ) : tab === 'visio' ? (
-          <VisioImportPanel />
-        ) : tab === 'racks' ? (
-          <RackPanel />
         ) : tab === 'path' ? (
           <PathCheckPanel />
-        ) : tab === 'compare' ? (
-          <ComparePanel />
         ) : tab === 'objects' ? (
           <table className="cv-table">
             <thead>

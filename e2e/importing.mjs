@@ -122,8 +122,31 @@ const st = (fn, arg) => page.evaluate(fn, arg);
 const allNodes = () => st(() => window.__cvStore.getState().doc.pages.flatMap((pg) => pg.nodes));
 const nodeByLabel = async (label) => (await allNodes()).find((n) => n.data.label === label);
 const calls = (cmd) => st((cmd) => window.__calls.filter((c) => c.cmd === cmd), cmd);
-const tab = (name) => page.locator(".cv-panel .cv-tabs button", { hasText: name }).first().click();
-const panel = page.locator(".cv-panel");
+
+// LT-319: Compare, Racks and the two imports left the bottom panel for a
+// screen of their own. Opening one is a button on the toolbar and then a tab,
+// so this says which of the two a name is and goes to the right place.
+const TOOLS = new Set(["From a file", "From a drawing", "Racks", "Compare"]);
+const openTab = async (name) => {
+  if (TOOLS.has(name)) {
+    if (!(await page.locator(".cv-tools").count())) {
+      await page.locator(".cv-btn-tools").first().click();
+      await page.waitForTimeout(250);
+    }
+    await page.locator(".cv-tools .cv-tabs button", { hasText: name }).first().click();
+    return;
+  }
+  if (await page.locator(".cv-tools").count()) {
+    await page.locator(".cv-tools .cv-register-back").first().click();
+    await page.waitForTimeout(250);
+  }
+  await page.locator(".cv-panel .cv-tabs button", { hasText: name }).first().click();
+};
+const tab = openTab;
+// Whichever of the two is in front: the screen when it is open, the panel
+// otherwise. The screen is rendered before the workspace, so `.first()` picks
+// it while it is there.
+const panel = page.locator(".cv-tools-body, .cv-panel").first();
 const exported = () => st(() => window.__exports);
 const clearExports = () => st(() => { window.__exports = []; });
 

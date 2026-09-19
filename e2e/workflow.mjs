@@ -117,7 +117,11 @@ await page.waitForTimeout(150);
 check("> lists commands", /Command.*Open Racks/.test(await palette.locator("li").first().textContent()), await palette.locator("li").first().textContent());
 await page.keyboard.press("Enter");
 await page.waitForTimeout(400);
-check("and a command runs", (await page.locator(".cv-panel button.is-active", { hasText: /^Racks$/ }).count()) === 1);
+// LT-319: the command is named the same and still opens Racks — on the Tools
+// screen, which is where Racks lives now.
+check("and a command runs", (await page.locator(".cv-tools button.is-active", { hasText: /^Racks$/ }).count()) === 1);
+await page.locator(".cv-tools .cv-register-back").first().click();
+await page.waitForTimeout(300);
 
 await blur();
 await page.keyboard.press("Control+k");
@@ -359,12 +363,18 @@ await page.keyboard.press("Shift+F6");
 const region3 = await page.evaluate(() => ["cv-topbar", "cv-palette", "react-flow", "cv-inspector", "cv-panel"].find((c) => document.activeElement?.closest(`.${c}`)));
 check("and Shift+F6 back", region3 === "cv-topbar", region3);
 
-const activeTab = page.locator(".cv-tabs [role=tab][aria-selected=true]");
+// The panel is collapsed until something asks for it. LT-319 took Racks out
+// of it, and the palette command above used to be what opened it.
+if (await page.locator(".cv-panel.is-collapsed").count()) {
+  await page.locator(".cv-panel.is-collapsed button", { hasText: "Show status and events" }).click();
+  await page.waitForTimeout(300);
+}
+const activeTab = page.locator(".cv-panel .cv-tabs [role=tab][aria-selected=true]");
 const tabBefore = await activeTab.textContent();
 await activeTab.focus();
 await page.keyboard.press("ArrowRight");
 await page.waitForTimeout(200);
-const after = await page.locator(".cv-tabs [role=tab][aria-selected=true]").textContent();
+const after = await page.locator(".cv-panel .cv-tabs [role=tab][aria-selected=true]").textContent();
 check("arrow keys move along the panel's tabs", tabBefore !== after && (await page.evaluate(() => document.activeElement?.getAttribute("aria-selected"))) === "true", `${tabBefore} → ${after}`);
 
 // ----------------------------------------------------- LT-242 high contrast
@@ -417,8 +427,17 @@ all.push(...await audit("device inspector"));
 await page.evaluate(() => { const s = window.__cvStore.getState(); s.select(null, "e1"); });
 await page.waitForTimeout(400);
 all.push(...await audit("link inspector"));
-for (const tab of ["Monitored objects", "Event timeline", "Ping sweep", "Discover devices", "Backups", "From a file", "From a drawing", "Racks", "Path check", "Compare"]) {
-  await page.locator(".cv-tabs button", { hasText: tab }).first().click().catch(() => {});
+for (const tab of ["Monitored objects", "Event timeline", "Ping sweep", "Discover devices", "Backups", "Path check"]) {
+  await page.locator(".cv-panel .cv-tabs button", { hasText: tab }).first().click().catch(() => {});
+  await page.waitForTimeout(300);
+  all.push(...await audit(tab));
+}
+// LT-319: and the four that moved to the Tools screen, which is still chrome
+// and still has to name every control it shows.
+await page.locator(".cv-btn-tools").first().click().catch(() => {});
+await page.waitForTimeout(300);
+for (const tab of ["Compare", "Racks", "From a file", "From a drawing"]) {
+  await page.locator(".cv-tools .cv-tabs button", { hasText: tab }).first().click().catch(() => {});
   await page.waitForTimeout(300);
   all.push(...await audit(tab));
 }

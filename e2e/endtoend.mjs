@@ -92,8 +92,28 @@ await page.waitForTimeout(800);
 const st = (fn, arg) => page.evaluate(fn, arg);
 const devices = () => st(() => window.__cvStore.getState().doc.pages[0].nodes.filter((n) => n.type === "device").map((n) => n.data));
 const calls = (cmd) => st((cmd) => window.__calls.filter((c) => c.cmd === cmd), cmd);
-const panel = page.locator(".cv-panel");
-const tab = (name) => panel.locator(".cv-tabs button", { hasText: name }).first().click();
+
+// LT-319: Compare, Racks and the two imports left the bottom panel for a
+// screen of their own. Opening one is a button on the toolbar and then a tab,
+// so this says which of the two a name is and goes to the right place.
+const TOOLS = new Set(["From a file", "From a drawing", "Racks", "Compare"]);
+const openTab = async (name) => {
+  if (TOOLS.has(name)) {
+    if (!(await page.locator(".cv-tools").count())) {
+      await page.locator(".cv-btn-tools").first().click();
+      await page.waitForTimeout(250);
+    }
+    await page.locator(".cv-tools .cv-tabs button", { hasText: name }).first().click();
+    return;
+  }
+  if (await page.locator(".cv-tools").count()) {
+    await page.locator(".cv-tools .cv-register-back").first().click();
+    await page.waitForTimeout(250);
+  }
+  await page.locator(".cv-panel .cv-tabs button", { hasText: name }).first().click();
+};
+const panel = page.locator(".cv-tools-body, .cv-panel").first();
+const tab = openTab;
 
 // 1. Import the inventory.
 await tab("From a file");

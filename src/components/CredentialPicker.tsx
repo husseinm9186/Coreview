@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { ipc, isDesktop, type CredentialSummary } from '../lib/ipc';
 import { useStore } from '../state/store';
+import { VaultPassphraseForm } from './VaultGate';
 
 /**
  * Choose a saved credential, or type one for this run.
@@ -47,9 +48,6 @@ export function CredentialPicker({
   const [minimum, setMinimum] = useState(12);
   // The keeping half: closed until asked for, because most runs are one-off.
   const [keeping, setKeeping] = useState(false);
-  const [passphrase, setPassphrase] = useState('');
-  const [again, setAgain] = useState('');
-  const [keepKey, setKeepKey] = useState(true);
   const [problem, setProblem] = useState<string | null>(null);
   const [kept, setKept] = useState<string | null>(null);
   // LT-293: changing or getting rid of a kept credential, without leaving the
@@ -116,18 +114,12 @@ export function CredentialPicker({
     else setKeeping(true);
   };
 
-  /** Make the vault if there is none, open it if it is shut, then keep it. */
+  /** Put it in the vault. The vault is already open by the time this runs —
+   *  `VaultPassphraseForm` is what makes or unlocks it (LT-318). */
   const keep = () => {
     if (!typed) return;
     setProblem(null);
-    const open = !exists
-      ? passphrase !== again
-        ? Promise.reject(new Error('The two passphrases do not match.'))
-        : ipc.createVault(passphrase).then(() => (keepKey ? ipc.rememberVaultKey() : undefined))
-      : !unlocked
-        ? ipc.unlockVault(passphrase).then(() => (keepKey ? ipc.rememberVaultKey() : undefined))
-        : Promise.resolve(undefined);
-    void open
+    void Promise.resolve()
       .then(() =>
         ipc.saveCredential({
           // LT-293: replacing keeps the same record, so every project pointing
@@ -146,20 +138,12 @@ export function CredentialPicker({
         useStore.getState().rememberCredential(kind, id);
         onChoose(id);
         setKeeping(false);
-        setPassphrase('');
-        setAgain('');
         if (replacing) {
           setReplacing(false);
           setKept('Replaced. The password behind it is the new one from now on.');
           return;
         }
-        setKept(
-          exists
-            ? 'Kept. This project will reach for it next time.'
-            : keepKey
-              ? 'Kept, and the vault will open by itself on this computer.'
-              : 'Kept. The vault asks for its passphrase once each time Coreview starts.',
-        );
+        setKept('Kept. This project will reach for it next time.');
       })
       .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)));
   };
@@ -278,40 +262,13 @@ export function CredentialPicker({
               Keep for this project
             </button>
           ) : (
-            <div className="cv-keep-cred-form">
-              <p className="cv-help">
-                {exists
-                  ? 'The vault is locked. Its passphrase opens it; the credential goes in there, and this project remembers which one it is.'
-                  : `Kept credentials live in an encrypted vault. Choose a passphrase for it — at least ${minimum} characters. It is never stored, and there is no recovery, because a recovery path is a second way in.`}
-              </p>
-              <label className="cv-field cv-field-narrow">
-                <span>Vault passphrase</span>
-                <input className="cv-input" type="password" value={passphrase}
-                  autoComplete={exists ? 'current-password' : 'new-password'}
-                  onChange={(e) => setPassphrase(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && (exists || passphrase.length >= minimum)) keep(); }} />
-              </label>
-              {!exists && (
-                <label className="cv-field cv-field-narrow">
-                  <span>Again</span>
-                  <input className="cv-input" type="password" value={again} autoComplete="new-password"
-                    onChange={(e) => setAgain(e.target.value)} />
-                </label>
-              )}
-              {/* LT-262, and the point of the exercise: without this the
-                  passphrase is typed once per session instead of once ever. */}
-              <label className="cv-check cv-check-inline" title="The key that opens the vault — never the passphrase — is kept by Windows Credential Manager, the macOS Keychain or the Secret Service. Anyone who can use this computer's account can then use the saved credentials.">
-                <input type="checkbox" checked={keepKey} onChange={(e) => setKeepKey(e.target.checked)} />
-                Open the vault by itself on this computer
-              </label>
-              <button type="button" className="cv-btn cv-btn-start" onClick={keep}
-                disabled={exists ? !passphrase : passphrase.length < minimum}>
-                {exists ? 'Unlock and keep' : 'Create vault and keep'}
-              </button>
-              <button type="button" className="cv-btn cv-btn-small" onClick={() => { setKeeping(false); setProblem(null); }}>
-                Cancel
-              </button>
-            </div>
+            <VaultPassphraseForm
+              vault={{ exists, unlocked, minimum }}
+              verb="keep"
+              onProblem={setProblem}
+              onCancel={() => setKeeping(false)}
+              onOpened={keep}
+            />
           )}
           {problem && <p className="cv-problem">{problem}</p>}
           {!problem && kept && <p className="cv-help">{kept}</p>}

@@ -8,6 +8,7 @@ import { Palette } from './components/Palette';
 import { ProjectScreen } from './components/ProjectScreen';
 import { HelpScreen } from './components/HelpScreen';
 import { RegisterScreen } from './components/RegisterScreen';
+import { ToolsScreen } from './components/ToolsScreen';
 import { StatusPanel } from './components/StatusPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TopBar } from './components/TopBar';
@@ -33,6 +34,7 @@ export default function App() {
   const presenting = useStore((s) => s.presenting);
   const registerOpen = useStore((s) => s.registerOpen);
   const helpOpen = useStore((s) => s.helpOpen);
+  const toolsOpen = useStore((s) => s.toolsOpen);
 
   // LT-193: presentation takes the whole screen where the window can go full
   // screen, and leaving full screen by the system's own means leaves
@@ -121,13 +123,15 @@ export default function App() {
         {registerOpen && (
           <ErrorBoundary what="The address register"><RegisterScreen /></ErrorBoundary>
         )}
+        {/* LT-319: Compare, Racks and the two imports, out of the bottom panel. */}
+        {toolsOpen && <ErrorBoundary what="The tools"><ToolsScreen /></ErrorBoundary>}
         {helpOpen && <ErrorBoundary what="The guide"><HelpScreen /></ErrorBoundary>}
         {/* The narrow layouts show the palette or the inspector, not both,
             and which one depends on whether there is something to inspect. */}
         <div
           className={[
             'cv-main',
-            registerOpen || helpOpen ? 'is-behind' : '',
+            registerOpen || helpOpen || toolsOpen ? 'is-behind' : '',
             selection ? 'has-selection' : '',
             paletteOpen ? '' : 'palette-hidden',
             inspectorOpen ? '' : 'inspector-hidden',
@@ -166,7 +170,7 @@ export default function App() {
             {inspectorOpen ? '›' : '‹'}
           </button>
         </div>
-        {!registerOpen && !helpOpen && (
+        {!registerOpen && !helpOpen && !toolsOpen && (
           <ErrorBoundary what="The monitoring panel"><StatusPanel /></ErrorBoundary>
         )}
       </div>

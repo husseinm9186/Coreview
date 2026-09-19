@@ -142,6 +142,7 @@ node e2e/endtoend.mjs      # import → crawl → review → validate → export
 node e2e/guide.mjs         # the guided sample and its tour (LT-271)
 node e2e/ipam.mjs          # the address register: subnets, ranges, records, editing (LT-285–297)
 node e2e/ipamlab.mjs      # the register's screen: hierarchy, allocation, split/merge, history (LT-297, LT-300)
+node e2e/credentials.mjs  # a device's own login: saved encrypted, never in the document (LT-318)
 node e2e/checks.mjs       # pass/fail checks against a run's captures (LT-153)
 node e2e/groups.mjs       # ordered collection groups, pauses and stops (LT-154)
 ```

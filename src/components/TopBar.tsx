@@ -746,6 +746,15 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           {t('register.open')}
         </button>
 
+        {/* LT-319: and the four that are not about the diagram either — two
+            imports, the racks and the comparison — which were taking a third of
+            the bottom panel's width to say so. */}
+        <button type="button" className="cv-btn cv-btn-tools"
+          title="Compare two backup runs, lay out racks, and bring devices in from a file or a drawing"
+          onClick={() => store.setToolsOpen(true)}>
+          {t('tools.open')}
+        </button>
+
         {/* LT-232. */}
         <CanvasFilterMenu />
 

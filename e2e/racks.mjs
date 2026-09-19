@@ -91,9 +91,11 @@ const UNIT = 14;
 const dragInto = async (source, rackName, topU, units) => {
   const rackUnits = await slots(rackName).evaluate((el) => Math.round(el.clientHeight / 14));
   const y = 2 + (rackUnits - topU) * UNIT + UNIT / 2;
-  // The panel scrolls: bring the target U into view first, as a person would.
+  // The screen scrolls: bring the target U into view first, as a person would.
+  // LT-319 moved racks from the bottom panel to the Tools screen, so the box
+  // that scrolls is that screen's body.
   await slots(rackName).evaluate((el, y) => {
-    const body = el.closest(".cv-panel-body");
+    const body = el.closest(".cv-register-body, .cv-panel-body");
     const r = el.getBoundingClientRect();
     const b = body.getBoundingClientRect();
     body.scrollTop += r.top + y - (b.top + b.height / 2);
@@ -103,7 +105,11 @@ const dragInto = async (source, rackName, topU, units) => {
   await page.waitForTimeout(300);
 };
 
-await page.locator(".cv-panel-tabs button, .cv-panel button", { hasText: /^Racks$/ }).first().click();
+// LT-319: racks are on the Tools screen now, which is where a 42U elevation
+// can have the height it always needed.
+await page.locator(".cv-btn-tools").first().click();
+await page.waitForTimeout(250);
+await page.locator(".cv-tools .cv-tabs button", { hasText: /^Racks$/ }).first().click();
 await page.waitForTimeout(300);
 
 // ------------------------------------------------------ LT-196 from devices
@@ -212,6 +218,10 @@ check("a pasted copy is not in the original's U", copy.rack === "RACK-01" && cop
 check("and waits to be placed", (await page.locator(".cv-rack-foot").first().textContent()).includes("Not placed: SRV-1"));
 
 // ------------------------------------------------------------- LT-198 cables
+// Back to the diagram: the inspector is part of the workspace, which the
+// Tools screen covers (LT-319).
+await page.locator(".cv-tools .cv-register-back").first().click();
+await page.waitForTimeout(300);
 await page.locator(".cv-panel button", { hasText: /^Monitored objects/ }).first().click();
 await st(() => window.__cvStore.getState().select(null, "e2"));
 await page.waitForTimeout(300);

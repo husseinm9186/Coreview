@@ -306,6 +306,13 @@ interface Store {
   /** LT-303: the user guide, on a screen of its own. */
   helpOpen: boolean;
   setHelpOpen: (on: boolean) => void;
+  /** LT-319: Compare, Racks and the two imports, on a screen of their own.
+   *  None of them reports on the live diagram, and all four want height the
+   *  bottom panel does not have. A way of looking, so never saved. */
+  toolsOpen: boolean;
+  toolsView: 'compare' | 'racks' | 'csv' | 'visio';
+  setToolsOpen: (on: boolean, view?: 'compare' | 'racks' | 'csv' | 'visio') => void;
+  setToolsView: (view: 'compare' | 'racks' | 'csv' | 'visio') => void;
   /** LT-184: true while the canvas is being printed, so views set not to
    *  print are left off the page. Not part of the document. */
   printing: boolean;
@@ -812,6 +819,8 @@ export const useStore = create<Store>((set, get) => ({
   vaultRevision: 0,
   registerOpen: false,
   helpOpen: false,
+  toolsOpen: false,
+  toolsView: 'compare',
   doc: emptyDocument(),
   dirty: false,
   lastSavedAt: null,
@@ -1105,12 +1114,20 @@ export const useStore = create<Store>((set, get) => ({
     set({ printing: on });
   },
 
+  setToolsOpen(on, view) {
+    set({ toolsOpen: on, ...(view ? { toolsView: view } : {}), ...(on ? { registerOpen: false, helpOpen: false } : {}) });
+  },
+
+  setToolsView(view) {
+    set({ toolsView: view });
+  },
+
   setRegisterOpen(on) {
-    set({ registerOpen: on, ...(on ? { helpOpen: false } : {}) });
+    set({ registerOpen: on, ...(on ? { helpOpen: false, toolsOpen: false } : {}) });
   },
 
   setHelpOpen(on) {
-    set({ helpOpen: on, ...(on ? { registerOpen: false } : {}) });
+    set({ helpOpen: on, ...(on ? { registerOpen: false, toolsOpen: false } : {}) });
   },
 
   setPresenting(on) {

@@ -102,7 +102,7 @@ SD-WAN, MPLS L3VPN, a wireless survey or two racks. Names and addresses are
 placeholders from the documentation ranges, and nothing is monitored until you
 add checks.
 
-**Racks.** The **Racks** tab in the bottom panel draws the project's racks U by U.
+**Racks.** **Tools ▸ Racks** on the toolbar draws the project's racks U by U.
 Give devices a rack name in the inspector (**Rack / room**) and click **Build racks
 from devices**, or **Add rack** and drag devices in from the list. A box always
 lands on a whole U; a spot something else holds is refused and the message says
@@ -527,6 +527,16 @@ or vendor** in the crawl panel does the same for a subnet or for every device a
 neighbour reports as, say, a FortiSwitch. The most specific match is tried first.
 Only the vault's reference is sent; the password never leaves the vault.
 
+**A login for one device.** **Its own username and password**, further down the
+same inspector, is where you type one instead of choosing one. SSH takes a
+username, a password and an enable secret; SNMP takes v2c or v3 with its
+algorithms. **Save** puts it in the encrypted vault — making the vault and
+asking for a passphrase if there is not one yet — and writes only its reference
+on the device, so it is still there after the app is closed or updated.
+**Replace** types a new one over it and **Clear** deletes it from the vault
+outright. The project file never holds the password, which is why it can be
+handed to somebody else.
+
 **Before and after.** **Dry run** shows what a run would do — seeds, logins,
 limits, commands — without sending anything. **Profile** saves the whole form
 under a name (never a password) to use again.
@@ -561,7 +571,7 @@ from this machine on ICMP, a TCP port or a UDP port, or from a device using its
 own ping over SSH. It shows the path the diagram draws between them, hop by hop,
 and names the first one that is down.
 
-**Compare.** The **Compare** tab puts two validation sessions, or two crawls,
+**Compare.** **Tools ▸ Compare** puts two validation sessions, or two crawls,
 side by side — availability and response times that got worse; firmware, ports,
 neighbours and routes that changed — and saves the comparison as Markdown or CSV.
 
@@ -843,7 +853,9 @@ Changes need two validation sessions or two crawls to compare.
 
 ## Bring in what you already have
 
-**A spreadsheet.** **From a file** reads a CSV or an Excel workbook (`.xlsx`).
+These are on the toolbar under **Tools**.
+
+**A spreadsheet.** **Tools ▸ From a file** reads a CSV or an Excel workbook (`.xlsx`).
 Choose the sheet, check the header row, say whether each row is a device or a
 link, and match each field to a column — the guesses come from the column names
 and every one can be changed. Nothing is added until **Add**. An old `.xls` has
@@ -854,7 +866,7 @@ output for devices, cables and IP addresses, in one file or several. Devices
 arrive with role, site, rack and position; cables become links. No token is
 needed: nothing is contacted.
 
-**A drawing.** **From a drawing** reads Visio (`.vsdx`) and draw.io (`.drawio`)
+**A drawing.** **Tools ▸ From a drawing** reads Visio (`.vsdx`) and draw.io (`.drawio`)
 files, every page, with addresses, ports, line colours, routed bends and label
 formatting. Lines that join nothing — a bus drawn as a line — are listed, not
 guessed at.

@@ -651,6 +651,12 @@ split also had a practical cost: a panel sized for watching a scan run was
 clipping the split review and the container tree.
 **The test of whether this was right** is that nobody has to be told which of
 two places to look. One screen, one bar of views, one answer.
+**Extended 2026-09-19 (LT-319):** the same line moved three more things out.
+Racks, Compare and the two imports are not about the diagram in front of you
+either, and the panel had reached ten tabs — so they joined a second screen,
+**Tools**, on the same pattern. The panel now holds six, all of them something
+running against the diagram while it is worked on. The sentence above is the
+rule; the register was only the first case of it.
 
 ### D-045 — The guide in the app is the guide in the repository — 2026-09-18
 **Decision:** the Help screen renders `docs/USER_GUIDE.md`, imported at build

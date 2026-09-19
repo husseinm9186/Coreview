@@ -101,49 +101,6 @@ interfaces with demo providers behind them, per his own instruction and the
 standing rule against stubs pretending to work.
 **Not started.**
 
-### LT-318 — Credentials an admin saves, per device and globally
-**Source:** asked 2026-09-19 — "on the side we need to add an override username
-and password for admin to ssh to the device directly by selecting the device,
-right click and ssh. same for SNMP … admin needs a save button for every user
-and password and saved on the app even after close or update the app. must be
-stored encrypted on the app data base or encrypted file … also needs button to
-clear user and password. global discovery username and password saved as well
-as SNMP with option to save and clear".
-**Most of the storage exists and must be reused, not rebuilt.** The vault is
-Argon2id + XChaCha20-Poly1305 (D-006), it survives a restart, the OS keychain
-can open it by itself (LT-262), and credentials are already bound to a device,
-a subnet or a vendor by `credentialRules` (LT-199, LT-209). LT-286 already
-keeps a project's SSH and SNMP credentials and offers Replace, Forget and
-Delete. What is missing is the *admin surface* in front of it and the override
-per device.
-**To ship, in his words:** a per-device override for SSH and for SNMP, saved
-and cleared from the device itself; the global discovery pair the same way; and
-**SSH to this device** on the right-click menu.
-**The question of what "right click and SSH" opens is answered** — asked on
-2026-09-19 and settled the same day with a screenshot of SecureCRT: "the ssh
-should be added to the bottom panel and everytime the admin ssh to device it
-should open in a new tab in SSH tab in the bottom panel grouped with the rest
-of the opened ssh sessions just like secure CRT". So: a real interactive
-terminal, inside the app, one tab per session. That is **LT-320**, and it is
-the largest piece of the three.
-**Not started.**
-
-### LT-319 — The bottom panel keeps what belongs to the diagram; the rest gets a screen
-**Source:** asked 2026-09-19 with a screenshot — "I think the bottom control
-section takes too much space, I think its best to move them into tabs like the
-address the onces that really don't need to be in the bottom panel like
-compare, Racks, from drawing from file — the rest can stay in the bottom".
-**The same split D-044 already made** when the register left the panel: the
-bottom panel answers *what is happening to my diagram right now*, and anything
-that does not is taking up room it needs. His four are the clear cases —
-Compare, Racks, From a file, From a drawing — none of which is about the state
-of the diagram while he works.
-**To ship:** those four move to a screen of their own with one bar of tabs,
-reached from the toolbar the way the register is. Monitored objects, Event
-timeline, Ping sweep, Discover devices, Backups and Path check stay: each of
-them is something running against the diagram in front of him.
-**Not started.**
-
 ### LT-320 — SSH sessions in the bottom panel, a tab per device
 **Source:** asked 2026-09-19 with a screenshot of SecureCRT — "everytime the
 admin ssh to device it should open in a new tab in SSH tab in the bottom panel
@@ -151,7 +108,9 @@ grouped with the rest of the opened ssh sessions just like secure CRT".
 **This is a real terminal, and it should be costed as one.** Not a command
 runner: a live session, keystrokes going out and bytes coming back, ANSI
 handled, resize handled, a tab per session with its connected state, and a
-device's saved credentials used to log in (LT-318).
+device's saved credentials used to log in (LT-318) — and **SSH to this
+device** on the right-click menu, which is the part of his credential request
+that had to wait for a terminal to exist.
 **What it needs that the app does not have:**
 - **A terminal emulator.** `xterm.js` is the only serious choice and would be
   the first new front-end dependency in a long while. Writing one is not an
@@ -420,6 +379,62 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-319 — The bottom panel keeps what belongs to the diagram — 2026-09-19
+**Source:** asked 2026-09-19 with a screenshot — "I think the bottom control
+section takes too much space, I think its best to move them into tabs like the
+address the onces that really don't need to be in the bottom panel like
+compare, Racks, from drawing from file — the rest can stay in the bottom".
+**The same split D-044 made when the register left the panel.** The bottom
+panel answers one question — *what is happening to my diagram right now* — and
+it had grown to ten tabs, so the answer arrived in a strip a few rows tall.
+Four of the ten were never that question.
+**Shipped:** **Tools** on the toolbar, beside the register, holding his four —
+Compare, Racks, From a file, From a drawing — as one bar of tabs on a screen of
+their own. Monitored objects, Event timeline, Ping sweep, Discover devices,
+Backups and Path check stay in the panel, because each is something running
+against the diagram while he works.
+**Two things fall out of it.** A 42U rack no longer needs `.cv-panel.is-racks`
+to borrow 64% of the window — the screen has the height, which is where it was
+always going to have to come from. And the command palette's entries are
+unchanged in name and still work: `requestPanelTab` redirects the four old tab
+ids to the screen, so anything that learned them keeps working.
+**Checked** through `racks.mjs`, `validation.mjs`, `importing.mjs`,
+`endtoend.mjs` and `workflow.mjs`, all of which drove those four as panel tabs
+and now drive them as a screen; `workflow.mjs` still audits every control on
+both for an accessible name.
+
+### LT-318 — A device keeps its own username and password — 2026-09-19
+**Source:** asked 2026-09-19 — "on the side we need to add an override username
+and password for admin to ssh to the device directly by selecting the device …
+same for SNMP. override … admin needs a save button for every user and password
+and saved on the app even after close or update the app. must be stored
+encrypted on the app data base or encrypted file … also needs button to clear
+user and password. global discovery username and password saved as well as SNMP
+with option to save and clear".
+**Half of it already existed and was not rebuilt.** The vault is Argon2id +
+XChaCha20-Poly1305 (D-006), it survives a restart, the OS keychain can open it
+by itself (LT-262), and LT-286 already saves and restores the **global**
+discovery login — SSH and every SNMP row — with Keep, Forget and Delete in the
+Discover devices panel. That half is his "global … with option to save and
+clear", and it works today.
+**The missing half was the device.** The inspector could only *choose* a
+credential somebody had already built in Settings, which on a fresh install is
+an empty list: there was no way to give one switch its own login from the
+switch. **Its own username and password** now sits on every device — SSH with
+a username, password and enable secret; SNMP with v2c or v3, the algorithm
+words included — with **Save**, **Replace** and **Clear**.
+**What is stored where, and it is checked:** Save makes the vault if there is
+none (the passphrase form is now one component, `VaultGate`, rather than a
+second copy of the flow inside `CredentialPicker`), puts the secret in it
+encrypted, and writes only the **id** on the node. `e2e/credentials.mjs` drives
+it end to end and asserts the password never reaches the saved document —
+twenty-one checks, including that clearing deletes the vault record and unsets
+the id. `credentialOverride.test.ts` pins the encoding the Rust side reads
+back, where an empty username is what means v2c.
+**Not shipped here, and deliberately:** *SSH to this device* on the right-click
+menu. It is not a credential question — it needs a terminal — and it is
+**LT-320**.
 
 ### LT-315 — **bug** The whole interface went dark-on-dark on the light ground — 2026-09-19
 **Source:** reported 2026-09-19 — "Address register is dark and can't see it in

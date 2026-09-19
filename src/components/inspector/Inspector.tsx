@@ -8,6 +8,7 @@ import { AttachmentsSection, NeighboursSection } from './DeviceRelations';
 import { PortView } from './PortView';
 import { CommentsSection } from './CommentsSection';
 import { probeFromTemplate, templateFromProbe } from '../../lib/probeTemplates';
+import { CredentialOverride } from '../CredentialOverride';
 import { SavedCredentialSelect } from '../CredentialPicker';
 import { portNames } from '../../lib/shapeCatalog';
 import { MAX_TEXT_SIZE, MIN_TEXT_SIZE, isStyled, safeSize, type TextAlign, type TextStyle } from '../../lib/textStyle';
@@ -1088,6 +1089,9 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
   }
 
   const d = node.data as DeviceNodeData;
+  // What a saved credential is named after, so the vault list is readable on
+  // a machine holding several projects (LT-318).
+  const deviceLabel = d.hostname?.trim() || d.label?.trim() || d.addresses?.[0]?.address || '';
   const auto = deviceColor(d.deviceType, status, ground);
   const setColor = (key: keyof NonNullable<DeviceNodeData['style']>, value: string) =>
     update(nodeId, { style: { ...d.style, [key]: value } });
@@ -1398,6 +1402,15 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
             onChange={(id) => update(nodeId, { snmpCredentialId: id })} />
         </Field>
       </div>
+      {/* LT-318: and the other half — typing one here, rather than only being
+          able to choose one that somebody has already built in Settings. */}
+      <details className="cv-cred-overrides">
+        <summary>Its own username and password</summary>
+        <CredentialOverride kind="ssh" device={deviceLabel} credentialId={d.sshCredentialId}
+          onChange={(id) => update(nodeId, { sshCredentialId: id })} />
+        <CredentialOverride kind="snmp" device={deviceLabel} credentialId={d.snmpCredentialId}
+          onChange={(id) => update(nodeId, { snmpCredentialId: id })} />
+      </details>
       {d.inventory && <InventorySection inventory={d.inventory} />}
       {/* LT-234. */}
       <NeighboursSection nodeId={nodeId} />
