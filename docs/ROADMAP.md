@@ -101,32 +101,6 @@ interfaces with demo providers behind them, per his own instruction and the
 standing rule against stubs pretending to work.
 **Not started.**
 
-### LT-320 — SSH sessions in the bottom panel, a tab per device
-**Source:** asked 2026-09-19 with a screenshot of SecureCRT — "everytime the
-admin ssh to device it should open in a new tab in SSH tab in the bottom panel
-grouped with the rest of the opened ssh sessions just like secure CRT".
-**This is a real terminal, and it should be costed as one.** Not a command
-runner: a live session, keystrokes going out and bytes coming back, ANSI
-handled, resize handled, a tab per session with its connected state, and a
-device's saved credentials used to log in (LT-318) — and **SSH to this
-device** on the right-click menu, which is the part of his credential request
-that had to wait for a terminal to exist.
-**What it needs that the app does not have:**
-- **A terminal emulator.** `xterm.js` is the only serious choice and would be
-  the first new front-end dependency in a long while. Writing one is not an
-  option worth considering.
-- **A streaming SSH channel in Rust.** Today's SSH runs a command and returns
-  its output; a shell channel that stays open, streams both ways and survives
-  a window resize is different code.
-- **Session state that is not the document.** A live session belongs to the
-  window, not the project: it must never be saved into a `.coreview` file, and
-  closing the project must close the sessions.
-**Worth saying plainly:** this is the biggest single item asked for since the
-IPAM, and it is the one most likely to be half-built if it is rushed. It
-should land on its own, with the terminal working against one device before any
-of the tab management is written.
-**Not started.**
-
 ### LT-139 — Stacks and virtual chassis, built from the vendor guides
 **Source:** asked 2026-09-12 — "for teh stacking build it based on the guides
 and make sure its ready to be tested for all of tehm", after supplying the
@@ -379,6 +353,38 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-320 — A shell on a device, in a tab, beside the others — 2026-09-19
+**Source:** asked 2026-09-19 with a screenshot of SecureCRT — "the ssh should be
+added to the bottom panel and everytime the admin ssh to device it should open
+in a new tab in SSH tab in the bottom panel grouped with the reset of the opened
+ssh sessions just like secure CRT" — and the half of LT-318 that had to wait for
+a terminal to exist: "ssh to the device directly by selecting the device, right
+click and ssh".
+**What it needed that the app did not have, all three built:**
+- **A terminal emulator.** `@xterm/xterm` 5.5.0 and `@xterm/addon-fit`, both
+  MIT, both now in `THIRD-PARTY-NOTICES.md`. The first new front-end dependency
+  in a long while, and not one worth writing.
+- **A streaming SSH channel.** `ssh::Shell` in `coreview-discover` shares the
+  handshake with `Device` and then stays out of the way: raw bytes both
+  directions, `xterm-256color` rather than the `vt100` a capture asks for, a
+  PTY sized by the terminal and resized with it, and no prompt detection,
+  paging or enable — a person wants the device's own screen.
+- **Session state that is not the document** — D-047, written the same day.
+**Shipped:** **SSH to this device** on a device's right-click menu; an **SSH**
+tab in the bottom panel showing how many are open; a tab per session with its
+connected state and a close button; the device's saved login used to connect
+(LT-318); the terminals kept mounted so switching tabs keeps every line the
+device has said; and closing the project closing every shell.
+**Two refusals before anything is sent**, because a timeout is the wrong answer
+to both: a device with no address, and a device with no login of its own, each
+say which half is missing. `sshLaunch.test.ts` pins those rules.
+**Checked** by `e2e/ssh.mjs` — twenty-three checks over the real protocol
+(base64 in, base64 out, two sessions at once kept apart), plus `sane_size` in
+Rust for the PTY a terminal that has not been laid out yet would ask for.
+**Not tested against a device**, and it says so: the harness stubs the backend
+because a switch is not available to it. The Rust half compiles and its pure
+parts are tested; the first real session is the operator's.
 
 ### LT-319 — The bottom panel keeps what belongs to the diagram — 2026-09-19
 **Source:** asked 2026-09-19 with a screenshot — "I think the bottom control

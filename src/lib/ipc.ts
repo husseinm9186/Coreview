@@ -435,6 +435,18 @@ export type SshProgress =
   | { kind: 'ready'; host: string; hostname: string }
   | { kind: 'running'; host: string; command: string };
 
+/** LT-320: a live SSH session, as the backend lists it. */
+export interface SshSession {
+  id: string;
+  address: string;
+}
+
+/** What a live session reports. `bytes` is base64: a chunk can end in the
+ *  middle of a multi-byte character, and decoding is the terminal's job. */
+export type SshEvent =
+  | { kind: 'data'; id: string; bytes: string }
+  | { kind: 'closed'; id: string; reason: string };
+
 export type CrawlEvent =
   | { kind: 'started'; seed: string }
   /** LT-278: the progress is nested — it has a `kind` of its own. */
@@ -934,6 +946,41 @@ export const ipc = {
     if (!isDesktop) return () => {};
     const { listen } = await import('@tauri-apps/api/event');
     return listen('coreview://crawl-result', (e) => handler(e.payload as CrawlResult));
+  },
+
+  // ---------------------------------------------------- LT-320 SSH sessions
+
+  /** Opens a shell on a device and returns the session's id. The password
+   *  never crosses this boundary: the credential is named by its vault id. */
+  sshOpen(address: string, credentialId: string, size: { cols: number; rows: number }, port?: number) {
+    if (!isDesktop) throw new BackendUnavailable('An SSH session');
+    return invoke<string>('ssh_open', { address, credentialId, port, cols: size.cols, rows: size.rows });
+  },
+  /** Keystrokes, base64 as they came off the terminal. */
+  sshSend(id: string, bytes: string) {
+    return invoke<void>('ssh_send', { id, bytes });
+  },
+  sshResize(id: string, cols: number, rows: number) {
+    return invoke<void>('ssh_resize', { id, cols, rows });
+  },
+  sshClose(id: string) {
+    return invoke<void>('ssh_close', { id });
+  },
+  /** Ends every session. Closing a project must not leave a shell logged in. */
+  sshCloseAll() {
+    if (!isDesktop) return Promise.resolve(0);
+    return invoke<number>('ssh_close_all');
+  },
+  /** The sessions this process still holds. They outlive a page reload, which
+   *  is how the tab strip finds them again. */
+  sshSessions() {
+    if (!isDesktop) return Promise.resolve([] as SshSession[]);
+    return invoke<SshSession[]>('ssh_sessions');
+  },
+  async onSshEvent(handler: (e: SshEvent) => void): Promise<() => void> {
+    if (!isDesktop) return () => {};
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen('coreview://ssh', (e) => handler(e.payload as SshEvent));
   },
 
   /** Capture configurations into the chosen backup folder. */

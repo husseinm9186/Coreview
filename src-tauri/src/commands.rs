@@ -35,6 +35,9 @@ pub struct AppState {
     pub vault_key: Mutex<Option<coreview_discover::vault::VaultKey>>,
     /// LT-260: how often each kind of network job may start.
     pub limiter: crate::ratelimit::RateLimiter,
+    /// LT-320: the interactive SSH sessions the window has open. Belongs to
+    /// the window, never to a project — nothing here is ever written down.
+    pub sessions: std::sync::Arc<crate::terminal::Sessions>,
 }
 
 type CmdResult<T> = Result<T, String>;

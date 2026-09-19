@@ -684,3 +684,25 @@ of those follows a preference.
 **High contrast turns the dot texture off.** Texture costs contrast, which is
 the entire purpose of that ground.
 
+
+### D-047 — An SSH session belongs to the window, never to the project — 2026-09-19
+**Decision:** a live shell (LT-320) is held by the running process and the open
+window. It is not written to the database, never reaches a `.coreview` file,
+and closing the project closes every session. The only thing the document holds
+is what it already held — the id of a credential in the vault.
+**Rejected:** remembering which devices had shells open and reopening them with
+the project. It reads like a convenience and is not one.
+**Why:** three reasons, and the third is the one that settles it.
+1. A TCP connection cannot be saved. What would be saved is a *list of devices
+   to log into*, which is a different thing wearing the same name.
+2. Reopening on load means logging into an estate because somebody opened a
+   file. The app does not send traffic without being asked, and opening a
+   project is not asking.
+3. **A session names a host and a username.** A project file is meant to be
+   shareable — that is the whole reason the password lives in the vault and not
+   in the document (D-006, D-027). Writing down "this engineer had a shell open
+   on this address as this user" puts back exactly what that separation exists
+   to keep out.
+**What is kept instead:** the sessions survive a *page* reload, because they
+live in the Rust process — `ssh_sessions` lists them, so the tab strip can find
+them again after a hot reload without anything being persisted.

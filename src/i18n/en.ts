@@ -21,6 +21,16 @@ export const en = {
   'report.make': 'Make the PDF',
   'report.making': 'Making the PDF…',
 
+  // Open shells, one tab each (LT-320).
+  'ssh.title': 'SSH',
+  'ssh.tab': 'SSH ({count})',
+  'ssh.empty': 'No sessions. Right-click a device and choose SSH to this device.',
+  'ssh.closeOne': 'Close the session to {name}',
+  'ssh.connect': 'SSH to this device',
+  'ssh.noAddress': 'This device has no address to connect to.',
+  'ssh.noCredential': 'Give this device a username and password first — Its own username and password, in the inspector.',
+  'ssh.opening': 'Connecting to {name}…',
+
   // The tools that are not about the diagram in front of you (LT-319).
   'tools.title': 'Tools',
   'tools.open': 'Tools',

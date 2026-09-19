@@ -18,6 +18,7 @@ mod ipc_contract;
 mod file_properties;
 mod commands;
 mod discovery;
+mod terminal;
 mod vault_commands;
 mod db;
 
@@ -124,6 +125,7 @@ fn main() {
             backup_cancel: Mutex::new(None),
             vault_key: Mutex::new(None),
             limiter: ratelimit::RateLimiter::default(),
+            sessions: std::sync::Arc::new(terminal::Sessions::default()),
         })
         .setup(move |app| {
             commands::pump_events(app.handle().clone(), rx);
@@ -175,6 +177,12 @@ fn main() {
             commands::read_spreadsheet,
             commands::save_project_folder,
             commands::ipc_refused,
+            terminal::ssh_open,
+            terminal::ssh_send,
+            terminal::ssh_resize,
+            terminal::ssh_close,
+            terminal::ssh_close_all,
+            terminal::ssh_sessions,
             vault_commands::list_credential_use,
             vault_commands::clear_credential_use,
             vault_commands::remember_vault_key,

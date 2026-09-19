@@ -1256,6 +1256,23 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-keep-cred-held { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cv-keep-cred-held .cv-help { margin: 0; max-width: 62ch; }
 
+/* LT-320: open shells, one tab each, in the bottom panel. Chrome colours —
+   the terminal's own palette is handed to xterm from these same tokens. */
+.cv-ssh { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.cv-ssh-empty { padding: 12px; }
+.cv-ssh-tabs { flex: 0 0 auto; padding: 4px 8px 0; gap: 2px; flex-wrap: wrap; }
+.cv-ssh-tab { display: inline-flex; align-items: stretch; }
+.cv-ssh-tab > button:first-child { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-ssh-close {
+  background: none; border: 0; color: var(--text-faint); cursor: pointer;
+  padding: 0 6px; font-size: 13px; line-height: 1;
+}
+.cv-ssh-close:hover { color: var(--down); }
+.cv-ssh-screens { flex: 1; min-height: 0; padding: 6px 8px 8px; }
+.cv-ssh-screen { height: 100%; min-height: 0; }
+/* xterm sizes itself to this box, so the box has to have a size of its own. */
+.cv-ssh-screen .xterm { height: 100%; }
+
 /* LT-318: a login typed on the device itself, in the inspector. Chrome
    colours throughout — the inspector does not follow the canvas ground. */
 .cv-cred-overrides { margin: 8px 0; border: 1px solid var(--line); border-radius: var(--radius); }

@@ -252,7 +252,7 @@ fn resolve_ssh(
 }
 
 /// Loads remembered host keys into a store the transport can use.
-fn load_host_keys(state: &AppState) -> CmdResult<Arc<std::sync::Mutex<HostKeyStore>>> {
+pub fn load_host_keys(state: &AppState) -> CmdResult<Arc<std::sync::Mutex<HostKeyStore>>> {
     let conn = state.db.lock().map_err(db_err)?;
     let pairs = db::all_host_keys(&conn).map_err(db_err)?;
     Ok(Arc::new(std::sync::Mutex::new(HostKeyStore::from_pairs(pairs))))
@@ -267,7 +267,7 @@ fn load_host_keys(state: &AppState) -> CmdResult<Arc<std::sync::Mutex<HostKeySto
 /// `remember_host_key` refuses to overwrite, so this cannot launder a changed
 /// key into the database: a device whose key differed never reached the point
 /// of being remembered anyway, because the connection was refused.
-fn persist_host_keys(app: &AppHandle, store: &Arc<std::sync::Mutex<HostKeyStore>>) {
+pub fn persist_host_keys(app: &AppHandle, store: &Arc<std::sync::Mutex<HostKeyStore>>) {
     use tauri::Manager;
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

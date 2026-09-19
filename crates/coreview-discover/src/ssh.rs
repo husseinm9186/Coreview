@@ -506,6 +506,202 @@ impl Device {
     }
 }
 
+/// An interactive shell on a device: bytes in, bytes out, nothing interpreted
+/// (LT-320).
+///
+/// `Device` is the other way to use the same connection — it drives the CLI,
+/// reads until it recognises a prompt, strips echo and answers `--More--`.
+/// That is exactly wrong for a person at a keyboard: they want the device's
+/// own screen, escape sequences and all, and a terminal emulator on the other
+/// end to draw it. So this shares the handshake and then stays out of the way.
+///
+/// It reads and writes raw bytes and knows nothing about prompts, paging or
+/// enable. The PTY is sized by the terminal that will draw it, and resized
+/// when that terminal is.
+pub struct Shell {
+    host: String,
+    handle: client::Handle<Verifier>,
+    channel: russh::Channel<client::Msg>,
+}
+
+impl Shell {
+    /// Connects, authenticates and asks for a shell on a PTY of this size.
+    ///
+    /// The terminal type is `xterm-256color` rather than the `vt100` a capture
+    /// asks for: a capture wants the plainest output a device will give, and a
+    /// person wants the device to use the colour and the line editing it has.
+    pub async fn open(
+        host: &str,
+        credentials: &Credentials,
+        options: SshOptions,
+        store: Arc<std::sync::Mutex<HostKeyStore>>,
+        cols: u32,
+        rows: u32,
+        progress: Option<mpsc::Sender<SshProgress>>,
+    ) -> Result<Self, SshError> {
+        let say = |p: SshProgress| {
+            if let Some(tx) = &progress {
+                let _ = tx.try_send(p);
+            }
+        };
+
+        say(SshProgress::Connecting {
+            host: host.to_string(),
+        });
+
+        let rejection = Arc::new(std::sync::Mutex::new(None));
+        let verifier = Verifier {
+            host: host.to_string(),
+            port: options.port,
+            store,
+            rejection: Arc::clone(&rejection),
+        };
+
+        let config = Arc::new(client::Config {
+            // A person leaves a session open while they think. Five minutes of
+            // silence is not a dead connection, so this one keeps going where
+            // a crawl's does not.
+            inactivity_timeout: None,
+            keepalive_interval: Some(Duration::from_secs(30)),
+            preferred: network_device_algorithms(),
+            ..Default::default()
+        });
+
+        say(SshProgress::CheckingHostKey {
+            host: host.to_string(),
+        });
+
+        let connect = client::connect(config, (host, options.port), verifier);
+        let mut handle = match timeout(options.connect_timeout, connect).await {
+            Err(_) => {
+                return Err(SshError::ConnectTimeout {
+                    host: host.to_string(),
+                    timeout: options.connect_timeout,
+                })
+            }
+            Ok(Err(e)) => {
+                if let Some(why) = rejection.lock().unwrap().take() {
+                    return Err(SshError::HostKeyChanged(why));
+                }
+                return Err(SshError::Protocol {
+                    host: host.to_string(),
+                    source: e,
+                });
+            }
+            Ok(Ok(h)) => h,
+        };
+
+        say(SshProgress::Authenticating {
+            host: host.to_string(),
+        });
+        let auth = authenticate(&mut handle, host, credentials, &say);
+        match timeout(options.auth_timeout, auth).await {
+            Err(_) => {
+                return Err(SshError::AuthTimeout {
+                    host: host.to_string(),
+                    timeout: options.auth_timeout,
+                })
+            }
+            Ok(result) => result?,
+        }
+
+        let channel = handle
+            .channel_open_session()
+            .await
+            .map_err(|e| SshError::Protocol {
+                host: host.to_string(),
+                source: e,
+            })?;
+        let (cols, rows) = sane_size(cols, rows);
+        channel
+            .request_pty(true, "xterm-256color", cols, rows, 0, 0, &[])
+            .await
+            .map_err(|e| SshError::Protocol {
+                host: host.to_string(),
+                source: e,
+            })?;
+        channel
+            .request_shell(true)
+            .await
+            .map_err(|e| SshError::Protocol {
+                host: host.to_string(),
+                source: e,
+            })?;
+
+        say(SshProgress::Ready {
+            host: host.to_string(),
+            hostname: String::new(),
+        });
+
+        Ok(Shell {
+            host: host.to_string(),
+            handle,
+            channel,
+        })
+    }
+
+    /// Keystrokes, as typed. Nothing is added — not even a newline.
+    pub async fn send(&mut self, bytes: &[u8]) -> Result<(), SshError> {
+        self.channel
+            .data(bytes)
+            .await
+            .map_err(|e| SshError::Protocol {
+                host: self.host.clone(),
+                source: e,
+            })
+    }
+
+    /// The window changed size, so the device should rewrap.
+    pub async fn resize(&mut self, cols: u32, rows: u32) -> Result<(), SshError> {
+        let (cols, rows) = sane_size(cols, rows);
+        self.channel
+            .window_change(cols, rows, 0, 0)
+            .await
+            .map_err(|e| SshError::Protocol {
+                host: self.host.clone(),
+                source: e,
+            })
+    }
+
+    /// The next bytes the device sent, or `None` when the session has ended.
+    ///
+    /// Standard error is returned alongside standard output, because a
+    /// terminal has one screen and that is where a device's warnings belong.
+    pub async fn read(&mut self) -> Option<Vec<u8>> {
+        loop {
+            match self.channel.wait().await {
+                None => return None,
+                Some(ChannelMsg::Data { data }) => return Some(data.to_vec()),
+                Some(ChannelMsg::ExtendedData { data, .. }) => return Some(data.to_vec()),
+                Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) => return None,
+                Some(_) => continue,
+            }
+        }
+    }
+
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
+    pub async fn close(self) {
+        let _ = self.channel.eof().await;
+        let _ = self
+            .handle
+            .disconnect(Disconnect::ByApplication, "", "English")
+            .await;
+    }
+}
+
+/// A PTY size a device will accept.
+///
+/// A terminal that has not been laid out yet reports zero columns, and a
+/// zero-width PTY makes some devices wrap every line at column one; an absurd
+/// width makes others refuse the request outright. Pure, so the clamping is
+/// tested without a device.
+pub fn sane_size(cols: u32, rows: u32) -> (u32, u32) {
+    (cols.clamp(20, 500), rows.clamp(5, 200))
+}
+
 /// Which method to lead with, given what the server advertised after a
 /// `none` query. Separated so the decision is testable without a server.
 ///
@@ -639,6 +835,25 @@ fn second_factor_message(instructions: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::sane_size;
+
+    #[test]
+    fn a_terminal_that_has_not_been_laid_out_yet_still_gets_a_usable_pty() {
+        // A hidden or unmeasured terminal reports zero columns. A zero-width
+        // PTY makes some devices wrap every line at column one (LT-320).
+        assert_eq!(sane_size(0, 0), (20, 5));
+    }
+
+    #[test]
+    fn an_absurd_size_is_brought_back_to_something_a_device_will_accept() {
+        assert_eq!(sane_size(100_000, 100_000), (500, 200));
+    }
+
+    #[test]
+    fn an_ordinary_window_is_passed_through_untouched() {
+        assert_eq!(sane_size(120, 30), (120, 30));
+    }
+
     use super::*;
 
     #[test]

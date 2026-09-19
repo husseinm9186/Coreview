@@ -22,6 +22,8 @@ pub enum Job {
     ProbeTest,
     Traceroute,
     DevicePing,
+    /// LT-320: opening an interactive terminal on a device.
+    SshSession,
 }
 
 impl Job {
@@ -35,6 +37,8 @@ impl Job {
             Job::ProbeTest => (120, "A test check"),
             Job::Traceroute => (20, "A traceroute"),
             Job::DevicePing => (30, "A ping from a device"),
+            // A person opens a handful of tabs; a loop would open thousands.
+            Job::SshSession => (30, "An SSH session"),
         }
     }
 }

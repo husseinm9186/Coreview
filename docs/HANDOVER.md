@@ -452,6 +452,24 @@ trust the summary below over that file; it is a signpost and it will rot.
   icons are generated from it, and the toolbar draws the same shape in
   `currentColor`.
 
+- **Shipped 2026-09-19, the three he asked for after the release:** LT-318 put
+  **Its own username and password** on every device — type an SSH or SNMP login
+  on the device itself, Save puts it in the vault encrypted and writes only the
+  id on the node, Clear deletes it. The vault passphrase flow is one component
+  now (`VaultGate.tsx`); the *global* discovery pair already saved and restored
+  (LT-286) and was not rebuilt. LT-319 moved Compare, Racks, From a file and
+  From a drawing out of a ten-tab bottom panel onto a **Tools** screen, on the
+  same rule the register left under (D-044, extended). LT-320 is the big one:
+  **a real terminal**. `@xterm/xterm` in front, `ssh::Shell` in
+  `coreview-discover` behind, `src-tauri/src/terminal.rs` holding the live
+  sessions, an **SSH** tab in the panel with a tab per device, and **SSH to
+  this device** on the right-click menu. A session belongs to the window and is
+  never written down (D-047) — it survives a page reload because it lives in
+  the Rust process, and closing the project closes every shell.
+  **It has not met a device.** `e2e/ssh.mjs` drives the real protocol against a
+  stubbed backend, and the Rust half compiles and has its pure parts tested;
+  the first session against hardware is the operator's.
+
 - **The 2026-09-16 mission (phases 2–8) is done except what waits on him:**
   LT-201/221 (Q-011, no router that peers), LT-205/218 (Q-008, HTTP),
   LT-223/229 (D-030 not accepted), LT-261 (Q-012, OpenSSL in every

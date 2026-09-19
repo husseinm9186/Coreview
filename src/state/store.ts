@@ -115,6 +115,21 @@ export interface ProjectPage {
 }
 
 /** The durable part of a project. Everything else is UI or live state. */
+/** One SSH session's tab (LT-320). Window state — see `sshSessions`. */
+export interface SshTab {
+  /** The backend's session id; also the key of its terminal. */
+  id: string;
+  /** What was connected to. */
+  address: string;
+  /** What the tab is called — the device's name where it has one. */
+  label: string;
+  /** The node it was opened from, so the tab can select it again. */
+  nodeId?: string;
+  status: 'open' | 'closed';
+  /** Why it ended, once it has. */
+  reason?: string;
+}
+
 export interface ProjectDocument {
   pages: ProjectPage[];
   /** Which page is being viewed and edited. Always one of `pages` once
@@ -306,6 +321,20 @@ interface Store {
   /** LT-303: the user guide, on a screen of its own. */
   helpOpen: boolean;
   setHelpOpen: (on: boolean) => void;
+  /** LT-320: the interactive SSH sessions this window has open, one per tab
+   *  in the panel's SSH section. Window state, never the document: a live
+   *  connection cannot be saved, and a `.coreview` file must not carry a
+   *  hostname and a username it was never asked to keep. */
+  sshSessions: SshTab[];
+  sshActive: string | null;
+  openSshTab: (tab: SshTab) => void;
+  setSshActive: (id: string | null) => void;
+  /** The session ended — at the device's end or ours. The tab stays, with
+   *  what it said, until it is closed by hand: a shell that vanishes the
+   *  moment it drops takes the error message with it. */
+  endSshTab: (id: string, reason: string) => void;
+  /** Takes the tab away. The backend is told separately. */
+  forgetSshTab: (id: string) => void;
   /** LT-319: Compare, Racks and the two imports, on a screen of their own.
    *  None of them reports on the live diagram, and all four want height the
    *  bottom panel does not have. A way of looking, so never saved. */
@@ -821,6 +850,8 @@ export const useStore = create<Store>((set, get) => ({
   helpOpen: false,
   toolsOpen: false,
   toolsView: 'compare',
+  sshSessions: [],
+  sshActive: null,
   doc: emptyDocument(),
   dirty: false,
   lastSavedAt: null,
@@ -994,6 +1025,9 @@ export const useStore = create<Store>((set, get) => ({
     // Closing always stops probing first (test cases 14, 15).
     if (get().session.state !== 'stopped') await get().stopValidation();
     if (get().meta && get().dirty) await get().saveProject();
+    // LT-320: and every shell. Leaving a project must not leave a login open
+    // on somebody's core switch.
+    if (get().sshSessions.length) await ipc.sshCloseAll().catch(() => 0);
     set({
       meta: null,
       doc: emptyDocument(),
@@ -1005,6 +1039,8 @@ export const useStore = create<Store>((set, get) => ({
       future: [],
       selectedNodeId: null,
       selectedEdgeId: null,
+      sshSessions: [],
+      sshActive: null,
     });
   },
 
@@ -1112,6 +1148,34 @@ export const useStore = create<Store>((set, get) => ({
 
   setPrinting(on) {
     set({ printing: on });
+  },
+
+  openSshTab(tab) {
+    set((s) => ({
+      sshSessions: [...s.sshSessions.filter((t) => t.id !== tab.id), tab],
+      sshActive: tab.id,
+      panelOpen: true,
+    }));
+  },
+
+  setSshActive(id) {
+    set({ sshActive: id });
+  },
+
+  endSshTab(id, reason) {
+    set((s) => ({
+      sshSessions: s.sshSessions.map((t) => (t.id === id ? { ...t, status: 'closed' as const, reason } : t)),
+    }));
+  },
+
+  forgetSshTab(id) {
+    set((s) => {
+      const left = s.sshSessions.filter((t) => t.id !== id);
+      return {
+        sshSessions: left,
+        sshActive: s.sshActive === id ? (left[left.length - 1]?.id ?? null) : s.sshActive,
+      };
+    });
   },
 
   setToolsOpen(on, view) {

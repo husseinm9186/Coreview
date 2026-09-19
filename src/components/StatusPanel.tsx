@@ -2,12 +2,14 @@ import { memo, useEffect, useMemo, useState } from 'react';
 import { useStableList } from '../lib/useStableList';
 import { useReactFlow } from '@xyflow/react';
 import { findNodes } from '../lib/findNodes';
+import { t } from '../i18n';
 
 import { useStore } from '../state/store';
 import { DiscoverPanel } from './DiscoverPanel';
 import { CrawlPanel } from './CrawlPanel';
 import { BackupPanel } from './BackupPanel';
 import { PathCheckPanel } from './PathCheckPanel';
+import { SshPanel } from './SshPanel';
 import { STATUS_COLOR } from './edges/LiveEdge';
 import { linkStatus } from '../health/evaluate';
 import { formatTime } from '../lib/timeFormat';
@@ -111,7 +113,7 @@ export function StatusPanel() {
 
   // LT-319: Compare, Racks and the two imports left for a screen of their own.
   // What is here is what reports on the diagram while it is being worked on.
-  const [tab, setTab] = useState<'objects' | 'events' | 'discover' | 'crawl' | 'backup' | 'path'>('objects');
+  const [tab, setTab] = useState<'objects' | 'events' | 'discover' | 'crawl' | 'backup' | 'path' | 'ssh'>('objects');
   useEffect(() => {
     if (!panelRequest) return;
     // LT-300: the register moved to a screen of its own. Anything that still
@@ -131,6 +133,8 @@ export function StatusPanel() {
   // Devices handed over from a crawl, so a discovery can go straight to a
   // backup without being drawn first.
   const [handedOver, setHandedOver] = useState<{ address: string; name: string }[]>([]);
+  // LT-320: how many shells are open, on the tab itself.
+  const sshCount = useStore((s) => s.sshSessions.length);
   const [query, setQuery] = useState('');
   const rf = useReactFlow();
   // The active page only (LT-094): jumpToFirst below centres the viewport on
@@ -289,7 +293,7 @@ export function StatusPanel() {
   }
 
   return (
-    <div className={`cv-panel${tab === 'crawl' || tab === 'discover' || tab === 'backup' ? ' is-tall' : ''}`}>
+    <div className={`cv-panel${tab === 'crawl' || tab === 'discover' || tab === 'backup' || tab === 'ssh' ? ' is-tall' : ''}`}>
       <div className="cv-panel-head">
         <div
           className="cv-tabs"
@@ -366,9 +370,21 @@ export function StatusPanel() {
           >
             Path check
           </button>
+          {/* LT-320: open shells. It is about the diagram in front of you —
+              these are its devices — so this one belongs in the panel. */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'ssh'}
+            tabIndex={tab === 'ssh' ? 0 : -1}
+            className={tab === 'ssh' ? 'is-active' : ''}
+            onClick={() => setTab('ssh')}
+          >
+            {sshCount ? t('ssh.tab', { count: sshCount }) : t('ssh.title')}
+          </button>
         </div>
 
-        {tab !== 'discover' && tab !== 'crawl' && tab !== 'backup' && tab !== 'path' && (
+        {tab !== 'discover' && tab !== 'crawl' && tab !== 'backup' && tab !== 'path' && tab !== 'ssh' && (
           <>
             <input
               className="cv-input cv-panel-search"
@@ -414,6 +430,8 @@ export function StatusPanel() {
           <BackupPanel fromCrawl={handedOver} onConsumed={() => setHandedOver([])} />
         ) : tab === 'path' ? (
           <PathCheckPanel />
+        ) : tab === 'ssh' ? (
+          <SshPanel />
         ) : tab === 'objects' ? (
           <table className="cv-table">
             <thead>

@@ -94,10 +94,14 @@ src/                 React front end
   styles.css         Every colour the chrome paints with, as CSS variables
 crates/
   coreview-discover  Crawling: SSH, telnet, CDP, LLDP, FortiOS, SNMP, ARP,
-                     stacking and virtual chassis, the default route
+                     stacking and virtual chassis, the default route; and
+                     `ssh::Shell`, the interactive session behind the
+                     terminal (LT-320)
   coreview-probe     ICMP/TCP/DNS probing and the ping sweep's identification
                      (names over LLMNR/NetBIOS/mDNS, MAC, OUI, ports); no Tauri
-src-tauri/           Commands, SQLite, credential vault, icon library scan
+src-tauri/           Commands, SQLite, credential vault, icon library scan;
+                     `terminal.rs` holds the live SSH sessions, which belong
+                     to the window and are never written down (D-047)
   fixtures/ipc/      One payload per structured command input, written from
                      src/lib/ipcPayloads.ts and read by the Rust contract test
 isolation/           The sandboxed frame every IPC message passes (LT-258);
@@ -143,6 +147,7 @@ node e2e/guide.mjs         # the guided sample and its tour (LT-271)
 node e2e/ipam.mjs          # the address register: subnets, ranges, records, editing (LT-285–297)
 node e2e/ipamlab.mjs      # the register's screen: hierarchy, allocation, split/merge, history (LT-297, LT-300)
 node e2e/credentials.mjs  # a device's own login: saved encrypted, never in the document (LT-318)
+node e2e/ssh.mjs          # shells in the panel, a tab each, keystrokes and resize (LT-320)
 node e2e/checks.mjs       # pass/fail checks against a run's captures (LT-153)
 node e2e/groups.mjs       # ordered collection groups, pauses and stops (LT-154)
 ```

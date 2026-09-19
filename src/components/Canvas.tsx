@@ -43,6 +43,9 @@ import { allPrinted, isEditable, isPrinted, isVisible, layersOf } from '../lib/l
 import { resetToDefault, styleOf } from '../lib/linkDefaults';
 import { useStore, type TopoEdge, type TopoNode, moveGroups } from '../state/store';
 import { activePage, withPage, pageNodeById } from '../lib/pages';
+import { planSsh } from '../lib/sshLaunch';
+import { ipc, isDesktop } from '../lib/ipc';
+import { t } from '../i18n';
 import { uid } from '../lib/id';
 import { DEVICE_LABEL } from './icons';
 import { shapeDefaultFields } from '../lib/shapeCatalog';
@@ -151,6 +154,34 @@ interface MenuState {
   x: number;
   y: number;
   items: MenuItem[];
+}
+
+
+/**
+ * Opens a shell on a device and puts its tab in front (LT-320).
+ *
+ * The two ways this fails before anything is sent — no address, no credential
+ * of its own — are decided by `planSsh` and reported as themselves. A timeout
+ * would be the wrong answer to both.
+ */
+async function openSsh(nodeId: string, data: DeviceNodeData) {
+  const store = useStore.getState();
+  const plan = planSsh(data);
+  if (!plan.ok) {
+    store.setStatusMessage(t(plan.reason === 'noAddress' ? 'ssh.noAddress' : 'ssh.noCredential'));
+    return;
+  }
+  store.setStatusMessage(t('ssh.opening', { name: plan.label }));
+  store.requestPanelTab('ssh');
+  try {
+    // A size the device can use straight away; the terminal tells it the real
+    // one as soon as it has been laid out.
+    const id = await ipc.sshOpen(plan.address, plan.credentialId, { cols: 120, rows: 30 });
+    useStore.getState().openSshTab({ id, address: plan.address, label: plan.label, nodeId, status: 'open' });
+    useStore.getState().setStatusMessage(null);
+  } catch (e: unknown) {
+    useStore.getState().setStatusMessage(e instanceof Error ? e.message : String(e));
+  }
 }
 
 export function Canvas() {
@@ -364,6 +395,10 @@ export function Canvas() {
       })),
       ...(primaryTarget
         ? [{ label: 'Traceroute', onSelect: () => setTracerouteTarget(primaryTarget) }]
+        : []),
+      // LT-320: a shell on this device, in the panel, beside the others.
+      ...(node?.type === 'device' && isDesktop
+        ? [{ label: t('ssh.connect'), onSelect: () => void openSsh(nodeId, node.data as DeviceNodeData) }]
         : []),
       {
         label: 'Duplicate',

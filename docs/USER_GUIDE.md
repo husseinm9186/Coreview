@@ -527,6 +527,14 @@ or vendor** in the crawl panel does the same for a subnet or for every device a
 neighbour reports as, say, a FortiSwitch. The most specific match is tried first.
 Only the vault's reference is sent; the password never leaves the vault.
 
+**A shell on a device.** Right-click a device and choose **SSH to this
+device**. It logs in with the device's own saved login and opens as a tab in
+the bottom panel's **SSH** section, beside every other shell you have open —
+a real terminal, so line editing, colour and `?` completion all work as they do
+on the device. Switching tabs keeps everything the device has said. A device
+with no address, or no login of its own, says so rather than waiting to time
+out. Sessions are never saved: closing the project closes them all.
+
 **A login for one device.** **Its own username and password**, further down the
 same inspector, is where you type one instead of choosing one. SSH takes a
 username, a password and an enable secret; SNMP takes v2c or v3 with its
