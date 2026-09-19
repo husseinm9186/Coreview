@@ -388,10 +388,16 @@ it is not finished. Only **complete** lines are coloured, with the tail of a
 chunk held until its newline arrives, and each character claimed by at most one
 rule so escapes never nest. Eighteen tests, including a whole exchange
 reassembled to prove nothing is lost.
-**One bug found by the harness and fixed with a test**: a device ends a line
-with `\r\n`, and reading that trailing carriage return as a mid-line redraw
-made *every* line untouchable — nothing was coloured at all until the e2e run
-said so.
+**Two bugs, each found by running it and each fixed with a test.** The harness
+found the first: a device ends a line with `\r\n`, and reading that trailing
+carriage return as a mid-line redraw made *every* line untouchable, so nothing
+was coloured at all. **A real 2960CX found the second**: `show ip interface
+brief` has an `OK?` column heading, and `ok` was matching inside it — a heading
+coloured as though it were a state, on every table the device prints.
+**Otherwise it came through clean on real output — 2026-09-19:** 1,724 bytes
+fed in 37-byte chunks that land mid-word and mid-line-ending, 55 coloured runs,
+every escape balanced, and the text identical once the colour is stripped back
+out.
 
 ### LT-323 — The terminal's font and size are the admin's choice — 2026-09-19
 **Source:** asked 2026-09-19 — "also fonts and size".
@@ -421,8 +427,11 @@ meant to be read and diffed, and a file full of `ESC[` is neither.
 **A tick on the tab** says which sessions are being recorded, from any other
 tab; **Save the log** can be switched off without ending the session; and it
 ticks when the log is actually open rather than when it was asked for.
-**Not proved against a device.** The path, the naming and the stripping are
-tested; the first real transcript is the operator's.
+**Proved against a device — 2026-09-19.** A real 2960CX session was run
+through `SessionLog` end to end: 1,724 bytes in, 1,724 readable out, no escape
+sequence and no bare carriage return surviving into the file. The path and the
+naming are still only tested logically — those are `backup_path_named`'s rules,
+which backups have been using for months.
 
 ### LT-326 — Save, Replace and Wipe on the discovery logins — 2026-09-19
 **Source:** asked 2026-09-19 with two screenshots of the Discover devices tab —
@@ -543,6 +552,9 @@ command line is how a keepalive becomes a configuration change.
 **What it cannot do, and the guide says so:** a device with its own
 `exec-timeout` will still close the session on its own schedule. This stops the
 idle timers and the NAT translations in between; it cannot overrule the device.
+**Proved against a device — 2026-09-19:** the keepalive went out on a live
+2960CX session and the device sent nothing back at all, which is the point —
+it must not disturb what somebody is half-way through typing.
 
 ### LT-320 — A shell on a device, in a tab, beside the others — 2026-09-19
 **Source:** asked 2026-09-19 with a screenshot of SecureCRT — "the ssh should be
@@ -569,12 +581,16 @@ device has said; and closing the project closing every shell.
 **Two refusals before anything is sent**, because a timeout is the wrong answer
 to both: a device with no address, and a device with no login of its own, each
 say which half is missing. `sshLaunch.test.ts` pins those rules.
-**Checked** by `e2e/ssh.mjs` — twenty-three checks over the real protocol
+**Checked** by `e2e/ssh.mjs` — forty-three checks over the real protocol
 (base64 in, base64 out, two sessions at once kept apart), plus `sane_size` in
 Rust for the PTY a terminal that has not been laid out yet would ask for.
-**Not tested against a device**, and it says so: the harness stubs the backend
-because a switch is not available to it. The Rust half compiles and its pure
-parts are tested; the first real session is the operator's.
+**And it has now met hardware — 2026-09-19**, at his instruction to run it
+against the lab switch. `examples/interactive_shell.rs` drove a real 2960CX
+through `ssh::Shell` with no stubs: shell open in 0.75s, the device drew its
+prompt, a window-change to 200x50 was accepted, a keepalive went out and typed
+nothing into the session, and typed commands came back echoed — which is what
+proves the keystrokes arrived *as keystrokes* rather than as a command run on
+somebody's behalf. `verified_against_hardware` is earned for the terminal.
 
 ### LT-319 — The bottom panel keeps what belongs to the diagram — 2026-09-19
 **Source:** asked 2026-09-19 with a screenshot — "I think the bottom control

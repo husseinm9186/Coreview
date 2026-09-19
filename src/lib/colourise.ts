@@ -53,7 +53,11 @@ const RULES: { re: RegExp; colour: string }[] = [
   // and `notconnect` does not match `connect`.
   { re: /\b(?:administratively down|admin down|err-?disabled|disabled|shutdown)\b/gi, colour: COLOUR.warn },
   { re: /\b(?:down|failed|failure|denied|error|errors|invalid|unreachable|timeout|timed out|drop|drops|dropped)\b/gi, colour: COLOUR.bad },
-  { re: /\b(?:up|connected|established|reachable|success|succeeded|ok|active|forwarding)\b/gi, colour: COLOUR.good },
+  // `ok` carries a negative lookahead for `?`, which is not fussiness: every
+  // `show ip interface brief` has an `OK?` column heading, and colouring a
+  // heading as though it were a state is wrong on every line of every table
+  // (found against a real 2960CX, LT-322).
+  { re: /\b(?:up|connected|established|reachable|success|succeeded|ok(?!\?)|active|forwarding)\b/gi, colour: COLOUR.good },
   // A MAC, in the three spellings devices use.
   { re: /\b(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}\b|\b[0-9a-f]{4}(?:\.[0-9a-f]{4}){2}\b/gi, colour: COLOUR.address },
   // IPv4, with an optional prefix length.

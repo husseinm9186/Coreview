@@ -54,6 +54,24 @@ describe('colouring output a device sent plain (LT-322)', () => {
     expect(colouriseLine('CORE-SW1#show version')).not.toContain(`${ESC}[95m`);
   });
 
+  it('does not colour a column heading as though it were a state', () => {
+    // The heading line of `show ip interface brief`, copied from a real
+    // 2960CX. `OK?` is a heading; colouring it green says the opposite of
+    // nothing, on every table the device prints.
+    const heading = 'Interface              IP-Address      OK? Method Status                Protocol';
+    expect(colouriseLine(heading)).toBe(heading);
+  });
+
+  it('still colours ok when it is genuinely a state', () => {
+    expect(shape(colouriseLine('status: ok'))).toBe('status: <92>ok<0>');
+  });
+
+  it('colours a real interface row the way an engineer reads it', () => {
+    // Also from the 2960CX, unchanged apart from the address.
+    expect(shape(colouriseLine('GigabitEthernet0/2     unassigned      YES unset  down                  down')))
+      .toBe('<94>GigabitEthernet0/2<0>     unassigned      YES unset  <91>down<0>                  <91>down<0>');
+  });
+
   it('never nests one colour inside another', () => {
     // Several rules want different parts of this line. Every escape must be
     // opened and closed once, in order, or the terminal keeps the wrong

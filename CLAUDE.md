@@ -44,7 +44,10 @@ the **Now** and **Blocked** sections back in three lines or fewer.
 - `crates/coreview-probe` is Tauri-free on purpose.
 - Parsers are written against captured output from real hardware, not against
   documentation. `crates/coreview-discover/examples/try_commands.rs` and
-  `raw_login.rs` are for capturing it. **One exception, and it is recorded:**
+  `raw_login.rs` are for capturing it, and `interactive_shell.rs` drives the
+  terminal's own `ssh::Shell` against a device the way a person would — it is
+  what earned LT-320–325 the right to say they have met hardware.
+  **One exception, and it is recorded:**
   the stacking parsers were built from vendor guides at the operator's
   instruction (D-026). Each says so in its own doc comment and reports
   `verified_against_hardware() == false` until it has met a device;
