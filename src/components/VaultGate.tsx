@@ -75,7 +75,28 @@ export function VaultPassphraseForm({
   const [again, setAgain] = useState('');
   const [keepKey, setKeepKey] = useState(true);
   const { exists, unlocked, minimum } = vault;
-  const ready = exists ? passphrase.length > 0 : passphrase.length >= minimum;
+
+  /**
+   * Why the button is not offered yet, or null (LT-329).
+   *
+   * The rule itself is unchanged and stays — twelve characters is the vault's
+   * minimum and the operator has confirmed he wants it. What was wrong is that
+   * the button simply went grey: the minimum is stated in the paragraph above,
+   * and then nothing at all is said at the point where pressing it does
+   * nothing. That is what "can't create vault and save" was.
+   */
+  const waitingFor = ((): string | null => {
+    if (!passphrase) return 'Type the vault passphrase.';
+    if (exists) return null;
+    if (passphrase.length < minimum) {
+      const short = minimum - passphrase.length;
+      return `${short} more character${short === 1 ? '' : 's'} — a new vault's passphrase must be at least ${minimum}.`;
+    }
+    if (!again) return 'Type the passphrase again to confirm it.';
+    if (again !== passphrase) return 'The two passphrases do not match.';
+    return null;
+  })();
+  const ready = waitingFor === null;
 
   const open = () => {
     onProblem(null);
@@ -123,7 +144,10 @@ export function VaultPassphraseForm({
         <input type="checkbox" checked={keepKey} disabled={disabled} onChange={(e) => setKeepKey(e.target.checked)} />
         Open the vault by itself on this computer
       </label>
-      <button type="button" className="cv-btn cv-btn-start" onClick={open} disabled={disabled || !ready}>
+      {/* Said where it is needed, not only in the paragraph above (LT-329). */}
+      {waitingFor && <p className="cv-help cv-vault-waiting">{waitingFor}</p>}
+      <button type="button" className="cv-btn cv-btn-start" onClick={open}
+        disabled={disabled || !ready} title={waitingFor ?? undefined}>
         {exists ? `Unlock and ${verb}` : `Create vault and ${verb}`}
       </button>
       <button type="button" className="cv-btn cv-btn-small" onClick={() => { onProblem(null); onCancel(); }}>

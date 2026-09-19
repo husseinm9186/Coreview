@@ -561,8 +561,16 @@ impl Shell {
             // A person leaves a session open while they think. Five minutes of
             // silence is not a dead connection, so this one keeps going where
             // a crawl's does not.
+            //
+            // The keepalive is *not* set here, and that is the point (LT-325):
+            // russh would send it from inside its own loop, where nothing can
+            // see it happen. `keepalive()` below is driven by the session task
+            // instead, on an interval the operator sets, so the window can say
+            // when the device was last spoken to. `keepalive_max: 0` leaves
+            // russh out of deciding a session is dead.
             inactivity_timeout: None,
-            keepalive_interval: Some(Duration::from_secs(30)),
+            keepalive_interval: None,
+            keepalive_max: 0,
             preferred: network_device_algorithms(),
             ..Default::default()
         });
@@ -644,6 +652,29 @@ impl Shell {
     pub async fn send(&mut self, bytes: &[u8]) -> Result<(), SshError> {
         self.channel
             .data(bytes)
+            .await
+            .map_err(|e| SshError::Protocol {
+                host: self.host.clone(),
+                source: e,
+            })
+    }
+
+    /// Tells the device we are still here, without typing anything into the
+    /// session (LT-325).
+    ///
+    /// This is an SSH-level global request. **Nothing is ever written to the
+    /// shell to keep it alive** — a newline sent into somebody's half-typed
+    /// command line is how a keepalive turns into a configuration change.
+    /// What it stops is the idle timer on the device, and the NAT or firewall
+    /// in between quietly dropping a connection nobody is using.
+    ///
+    /// It cannot promise the device answered: SSH keepalives are fire and
+    /// forget unless the peer chooses to reply. What it does prove is that
+    /// this end is still connected, which is what fails first when a session
+    /// has gone away underneath.
+    pub async fn keepalive(&self) -> Result<(), SshError> {
+        self.handle
+            .send_keepalive(true)
             .await
             .map_err(|e| SshError::Protocol {
                 host: self.host.clone(),

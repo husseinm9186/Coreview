@@ -18,12 +18,17 @@
 //! connection cannot be saved — and pretending otherwise is how a document
 //! ends up holding a hostname and a username it should not.
 use std::collections::HashMap;
+use std::io::Write as _;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use base64::Engine as _;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::mpsc;
 
+use coreview_discover::backup::{backup_path_named, BackupKind};
+use coreview_discover::sessionlog::SessionLog;
 use coreview_discover::ssh::{Shell, SshError, SshOptions};
 
 use crate::commands::AppState;
@@ -34,6 +39,12 @@ type CmdResult<T> = Result<T, String>;
 enum Instruction {
     Send(Vec<u8>),
     Resize(u32, u32),
+    /// LT-324: start appending a readable transcript to this file.
+    LogTo(PathBuf),
+    /// Stop writing the transcript. The file is left where it is.
+    LogStop,
+    /// LT-325: how often to tell the device we are still here, or never.
+    Keepalive(Option<Duration>),
     Close,
 }
 
@@ -113,6 +124,22 @@ enum SessionEvent {
     Data { id: String, bytes: String },
     /// The session ended, with why — the device hung up, or it was closed here.
     Closed { id: String, reason: String },
+    /// LT-325: a keepalive went out, and the connection was still there to
+    /// take it. The window shows this so "is it still up" is answered by
+    /// looking rather than by typing into somebody's command line.
+    Alive { id: String, at: u64 },
+    /// LT-324: the transcript is being written here, or has stopped.
+    Logging { id: String, path: Option<String> },
+    /// Something went wrong that did not end the session — the log file could
+    /// not be written to, most likely.
+    Warning { id: String, message: String },
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or_default()
 }
 
 /// Opens a shell on a device and returns the id of the session.
@@ -120,6 +147,10 @@ enum SessionEvent {
 /// The credential comes out of the vault by id, exactly as a crawl's does, and
 /// its use is recorded the same way (LT-264). Nothing is typed into this
 /// command: a password never crosses the IPC boundary.
+// A Tauri command's arguments are named fields of one JSON object, so they are
+// flat by construction; grouping them into a struct here would only move the
+// same names one level down and change the isolation frame's table with them.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn ssh_open(
     app: AppHandle,
@@ -129,6 +160,7 @@ pub async fn ssh_open(
     port: Option<u16>,
     cols: Option<u32>,
     rows: Option<u32>,
+    keepalive_seconds: Option<u64>,
 ) -> CmdResult<String> {
     state.limiter.allow(crate::ratelimit::Job::SshSession)?;
     let address = address.trim().to_string();
@@ -167,12 +199,43 @@ pub async fn ssh_open(
     // app handle: a session whose task has ended must come out of the map, or
     // the next send to it waits forever on a channel nobody is reading.
     let registry = Arc::clone(&state.sessions);
+    let mut every = keepalive_seconds.filter(|s| *s > 0).map(Duration::from_secs);
     tauri::async_runtime::spawn(async move {
+        // The transcript, when one is asked for: the file it is appended to
+        // and the state machine that makes it readable (LT-324).
+        let mut log: Option<(PathBuf, std::fs::File)> = None;
+        let mut shaper = SessionLog::new();
+        // Never zero: `tokio::time::interval` panics on a zero period, and a
+        // keepalive that is switched off is a timer that never fires rather
+        // than a branch that is missing.
+        let mut ticker = tokio::time::interval(every.unwrap_or(Duration::from_secs(3600)));
+        // The first tick of an interval is immediate, which would send a
+        // keepalive to a device we have only just finished logging into.
+        ticker.tick().await;
+
         let reason = loop {
             tokio::select! {
                 // Bytes from the device go straight to the window.
                 chunk = shell.read() => match chunk {
                     Some(bytes) => {
+                        if let Some((path, file)) = log.as_mut() {
+                            let readable = shaper.feed(&bytes);
+                            if !readable.is_empty() {
+                                if let Err(e) = file.write_all(&readable) {
+                                    let _ = emitter.emit("coreview://ssh", SessionEvent::Warning {
+                                        id: session_id.clone(),
+                                        message: format!("The session log at {} could not be written: {e}", path.display()),
+                                    });
+                                    // Stop rather than warn on every chunk. The
+                                    // session itself is not in trouble.
+                                    log = None;
+                                    let _ = emitter.emit("coreview://ssh", SessionEvent::Logging {
+                                        id: session_id.clone(),
+                                        path: None,
+                                    });
+                                }
+                            }
+                        }
                         let _ = emitter.emit("coreview://ssh", SessionEvent::Data {
                             id: session_id.clone(),
                             bytes: base64::engine::general_purpose::STANDARD.encode(&bytes),
@@ -180,6 +243,16 @@ pub async fn ssh_open(
                     }
                     None => break "The device closed the session.".to_string(),
                 },
+                // LT-325: still here.
+                _ = ticker.tick(), if every.is_some() => {
+                    if let Err(e) = shell.keepalive().await {
+                        break describe(e);
+                    }
+                    let _ = emitter.emit("coreview://ssh", SessionEvent::Alive {
+                        id: session_id.clone(),
+                        at: now_ms(),
+                    });
+                }
                 // Instructions from the window go straight to the device.
                 instruction = instructions.recv() => match instruction {
                     None | Some(Instruction::Close) => break "Closed.".to_string(),
@@ -192,6 +265,37 @@ pub async fn ssh_open(
                         if let Err(e) = shell.resize(cols, rows).await {
                             break describe(e);
                         }
+                    }
+                    Some(Instruction::LogTo(path)) => {
+                        match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+                            Ok(file) => {
+                                shaper = SessionLog::new();
+                                let said = path.display().to_string();
+                                log = Some((path, file));
+                                let _ = emitter.emit("coreview://ssh", SessionEvent::Logging {
+                                    id: session_id.clone(),
+                                    path: Some(said),
+                                });
+                            }
+                            Err(e) => {
+                                let _ = emitter.emit("coreview://ssh", SessionEvent::Warning {
+                                    id: session_id.clone(),
+                                    message: format!("The session log at {} could not be opened: {e}", path.display()),
+                                });
+                            }
+                        }
+                    }
+                    Some(Instruction::LogStop) => {
+                        log = None;
+                        let _ = emitter.emit("coreview://ssh", SessionEvent::Logging {
+                            id: session_id.clone(),
+                            path: None,
+                        });
+                    }
+                    Some(Instruction::Keepalive(next)) => {
+                        every = next.filter(|d| !d.is_zero());
+                        ticker = tokio::time::interval(every.unwrap_or(Duration::from_secs(3600)));
+                        ticker.tick().await;
                     }
                 },
             }
@@ -250,6 +354,113 @@ pub async fn ssh_close(state: State<'_, AppState>, id: String) -> CmdResult<()> 
     Ok(())
 }
 
+/// Starts appending this session's transcript to a file (LT-324).
+///
+/// The file goes exactly where a backup of the same device would: the
+/// configuration folder the project already points at, one folder per device,
+/// named by the same pattern with `session` as the kind. That is what was
+/// asked for — "the same folders where the configuration files are pointed to
+/// save just like how the backup saves the output and the name of the files"
+/// — and reusing `backup_path_named` means it also inherits the check that a
+/// device calling itself `../../etc` cannot write outside the folder.
+///
+/// Appended, not replaced: reconnecting to the same device on the same day
+/// adds to the transcript rather than starting it again, and a session that is
+/// still open already has its log on disk.
+#[tauri::command]
+pub async fn ssh_log_start(
+    state: State<'_, AppState>,
+    id: String,
+    folder: String,
+    device: String,
+    address: String,
+    site: Option<String>,
+    pattern: Option<String>,
+) -> CmdResult<String> {
+    let folder = folder.trim();
+    if folder.is_empty() {
+        return Err("No configuration folder has been chosen yet — pick one on the project screen.".into());
+    }
+    let path = backup_path_named(
+        std::path::Path::new(folder),
+        device.trim(),
+        address.trim(),
+        site.as_deref().unwrap_or("").trim(),
+        // One file per device per day. A session is not a run: reconnecting
+        // three times in an afternoon should read as one afternoon.
+        &stamp_for_today(),
+        BackupKind::Session,
+        pattern.as_deref(),
+    )
+    .map_err(|e| e.to_string())?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Could not make {}: {e}", parent.display()))?;
+    }
+    let said = path.display().to_string();
+    let to_device = state.sessions.sender(&id)?;
+    to_device
+        .send(Instruction::LogTo(path))
+        .await
+        .map_err(|_| "That session is no longer open.".to_string())?;
+    Ok(said)
+}
+
+/// Stops writing the transcript. What is already on disk stays.
+#[tauri::command]
+pub async fn ssh_log_stop(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    let to_device = state.sessions.sender(&id)?;
+    to_device
+        .send(Instruction::LogStop)
+        .await
+        .map_err(|_| "That session is no longer open.".to_string())
+}
+
+/// How often this session tells the device it is still there, or never (LT-325).
+#[tauri::command]
+pub async fn ssh_keepalive(
+    state: State<'_, AppState>,
+    id: String,
+    seconds: Option<u64>,
+) -> CmdResult<()> {
+    let to_device = state.sessions.sender(&id)?;
+    to_device
+        .send(Instruction::Keepalive(
+            seconds.filter(|s| *s > 0).map(Duration::from_secs),
+        ))
+        .await
+        .map_err(|_| "That session is no longer open.".to_string())
+}
+
+/// `20260919` — the day, not the minute.
+///
+/// A backup stamps to the second because two runs an hour apart are two
+/// different captures. A session log is a transcript that is appended to, so
+/// the day is the unit: one file, however many times the device was dialled.
+fn stamp_for_today() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    let days = now / 86_400;
+    let (y, m, d) = civil_from_days(days as i64);
+    format!("{y:04}{m:02}{d:02}-000000")
+}
+
+/// Days since the epoch as a calendar date. Howard Hinnant's `civil_from_days`,
+/// which is the standard way to do this without a date library.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
 /// Which sessions are still open.
 ///
 /// The sessions live in this process, not in the page, so reloading the window
@@ -277,4 +488,161 @@ pub async fn ssh_close_all(state: State<'_, AppState>) -> CmdResult<usize> {
 /// here to keep the mapping in one place if that stops being true.
 fn describe(e: SshError) -> String {
     e.to_string()
+}
+
+// ----------------------------------------------- LT-321 somebody else's terminal
+
+/// The default command for opening a session in whatever the machine already
+/// has, when nothing has been configured.
+///
+/// `{user}`, `{host}` and `{port}` are filled in. These are the clients people
+/// actually have: PuTTY on Windows, the `ssh://` handler on macOS — which is
+/// Terminal unless something else has claimed it — and the desktop's own
+/// terminal on Linux, which `x-terminal-emulator` is the Debian answer to.
+pub fn default_external_command() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "putty -ssh {user}@{host} -P {port}"
+    } else if cfg!(target_os = "macos") {
+        "open ssh://{user}@{host}:{port}"
+    } else {
+        "x-terminal-emulator -e ssh -p {port} {user}@{host}"
+    }
+}
+
+/// Splits a command template into a program and its arguments.
+///
+/// **There is no shell here, and that is the whole design.** The template is
+/// split first and the host, user and port are substituted into the pieces
+/// afterwards, so a device that calls itself `; rm -rf ~` can only ever end up
+/// as one argument to PuTTY. Double quotes group a piece that contains spaces,
+/// which is what a Windows path needs.
+pub fn split_command(template: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    let mut quoted = false;
+    let mut started = false;
+    for ch in template.chars() {
+        match ch {
+            '"' => {
+                quoted = !quoted;
+                started = true;
+            }
+            c if c.is_whitespace() && !quoted => {
+                if started {
+                    out.push(std::mem::take(&mut current));
+                    started = false;
+                }
+            }
+            c => {
+                current.push(c);
+                started = true;
+            }
+        }
+    }
+    if started {
+        out.push(current);
+    }
+    out
+}
+
+/// The exact argument list to run, with the device's details filled in.
+///
+/// Pure, so what would be executed is testable without executing it.
+pub fn argv_for(template: &str, user: &str, host: &str, port: u16) -> Result<Vec<String>, String> {
+    let pieces = split_command(template);
+    if pieces.is_empty() {
+        return Err("The external terminal command is empty.".into());
+    }
+    let port = port.to_string();
+    let filled: Vec<String> = pieces
+        .into_iter()
+        .map(|p| {
+            p.replace("{user}", user)
+                .replace("{host}", host)
+                .replace("{port}", &port)
+        })
+        .collect();
+    Ok(filled)
+}
+
+/// Hands the connection to the terminal the machine already has (LT-321).
+///
+/// **The password does not go with it, and it is not an oversight.** PuTTY's
+/// `-pw` and every equivalent put the password on a command line, where any
+/// other account on the machine can read it straight out of the process list —
+/// which is the opposite of there being a vault at all (D-006). The username
+/// and the address go; the client asks for the rest. Coreview knows nothing
+/// about the session after this: no log, no colouring, no keepalive. Those are
+/// what the panel is for.
+#[tauri::command]
+pub fn ssh_external(
+    state: State<'_, AppState>,
+    address: String,
+    username: String,
+    port: Option<u16>,
+    command: Option<String>,
+) -> CmdResult<Vec<String>> {
+    state.limiter.allow(crate::ratelimit::Job::SshSession)?;
+    let address = address.trim();
+    if address.is_empty() {
+        return Err("That device has no address to connect to.".into());
+    }
+    let configured = command.unwrap_or_default();
+    let template = match configured.trim() {
+        "" => default_external_command(),
+        t => t,
+    };
+    let argv = argv_for(template, username.trim(), address, port.unwrap_or(22))?;
+    let (program, args) = argv.split_first().expect("argv_for refuses an empty template");
+
+    std::process::Command::new(program)
+        .args(args)
+        .spawn()
+        .map_err(|e| {
+            format!("Could not start {program}: {e}. Set the external terminal command in Settings if it lives somewhere else.")
+        })?;
+    Ok(argv.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::civil_from_days;
+
+    use super::{argv_for, split_command};
+
+    #[test]
+    fn a_hostile_device_name_can_only_ever_be_one_argument() {
+        // No shell runs this, so the worst a name can do is be a bad argument.
+        let argv = argv_for("putty -ssh {user}@{host} -P {port}", "ops", "; rm -rf ~", 22).unwrap();
+        assert_eq!(argv, ["putty", "-ssh", "ops@; rm -rf ~", "-P", "22"]);
+    }
+
+    #[test]
+    fn a_quoted_windows_path_stays_one_piece() {
+        assert_eq!(
+            split_command("\"C:\\Program Files\\PuTTY\\putty.exe\" -ssh {host}"),
+            ["C:\\Program Files\\PuTTY\\putty.exe", "-ssh", "{host}"]
+        );
+    }
+
+    #[test]
+    fn an_empty_command_is_refused_rather_than_run() {
+        assert!(argv_for("   ", "ops", "192.0.2.10", 22).is_err());
+    }
+
+    #[test]
+    fn every_placeholder_is_filled_in_including_repeats() {
+        let argv = argv_for("t -e ssh {host} {host}:{port}", "", "192.0.2.10", 2222).unwrap();
+        assert_eq!(argv, ["t", "-e", "ssh", "192.0.2.10", "192.0.2.10:2222"]);
+    }
+
+    #[test]
+    fn a_day_number_becomes_the_date_that_names_the_log() {
+        // The epoch, a leap day, and a date after one, which is where a
+        // hand-rolled calendar goes wrong if it is going to.
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+        assert_eq!(civil_from_days(19_782), (2024, 2, 29));
+        assert_eq!(civil_from_days(19_783), (2024, 3, 1));
+        assert_eq!(civil_from_days(20_715), (2026, 9, 19));
+    }
 }

@@ -706,3 +706,42 @@ the project. It reads like a convenience and is not one.
 **What is kept instead:** the sessions survive a *page* reload, because they
 live in the Rust process — `ssh_sessions` lists them, so the tab strip can find
 them again after a hot reload without anything being persisted.
+
+### D-048 — The password never goes to a terminal Coreview did not open — 2026-09-19
+**Decision:** **SSH in an external terminal** (LT-321) hands the client the
+username, the address and the port. It does not hand it the password, and
+there is no setting that makes it.
+**Rejected:** PuTTY's `-pw`, and the equivalent every other client offers.
+**Why:** a command line is not private. On Windows any account can read
+another process's command line; on Linux and macOS `ps` shows it to everyone
+by default. A password that goes through `-pw` is readable by every user on
+the machine for as long as the session lasts, and lands in shell history and
+in crash dumps besides. The vault exists so that the secret is in one
+encrypted place (D-006); writing it onto a command line undoes that in one
+step, and does it silently.
+**What the operator gets instead:** the client asks. PuTTY, `ssh` and Terminal
+all prompt, and the username is already filled in, so it is one password typed
+rather than two fields.
+**And the honest trade, which the roadmap says out loud:** Coreview knows
+nothing about a session it did not open — no transcript (LT-324), no colouring
+(LT-322), no keepalive it controls (LT-325). Those are what the panel is for,
+and that is why the panel stays the default.
+
+### D-049 — A device inherits; a crawl is asked — 2026-09-19
+**Decision:** the project's saved login (`credentialDefaults`) is used
+**silently** by any device that has no login of its own (LT-330), and is
+**offered as an unticked checkbox** in the Discover devices form.
+**Rejected:** one rule for both. The obvious reading of "everything inherits
+the global password" would have had the crawl form arrive pre-filled, which is
+what it used to do.
+**Why the two differ:** scale and intent. Opening a shell on one device is an
+action aimed at that device, and nothing is sent until it is asked for — having
+to pick a credential first is friction with no safety in it. A crawl walks an
+estate, logging into every device it finds, and starting that with a credential
+somebody saved for a different purpose is not a convenience. So the one that
+fans out asks, and the one that does not, does not.
+**The operator asked for exactly this** and it is worth recording that the two
+halves of his message only look contradictory: "by default all devices should
+inherit the global ssh and snmp password" and "global should be first but
+unchecked by default in the discover devices section" are about different
+scopes, and both are implemented as written.

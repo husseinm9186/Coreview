@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Edge, Node } from '@xyflow/react';
 import { applyEdgeChanges, applyNodeChanges, type EdgeChange, type NodeChange } from '@xyflow/react';
 
-import { ipc, isDesktop, type ProbeResultDto, type IconLibEntry } from '../lib/ipc';
+import { ipc, isDesktop, type ProbeResultDto, type IconLibEntry, type StoredSettings } from '../lib/ipc';
 import { uid } from '../lib/id';
 import { newProbe } from '../lib/probes';
 import { migrateDocument } from '../lib/migrate';
@@ -128,6 +128,11 @@ export interface SshTab {
   status: 'open' | 'closed';
   /** Why it ended, once it has. */
   reason?: string;
+  /** LT-324: where this session's transcript is being appended, if it is. */
+  logPath?: string | null;
+  /** LT-325: when the device last took a keepalive, so "is it still up" is
+   *  answered by looking rather than by typing into somebody's command line. */
+  lastAlive?: number;
 }
 
 export interface ProjectDocument {
@@ -191,7 +196,66 @@ export interface AppSettings {
   backupFolder: string | null;
   /** Where exports land without prompting. Null falls back to a save dialog. */
   exportFolder: string | null;
+  /** LT-321–325: how the SSH terminal behaves. How somebody likes to read and
+   *  work, so these belong to the machine and never to a project. */
+  terminal: TerminalSettings;
 }
+
+/**
+ * The terminal's preferences as they come back from the settings table.
+ *
+ * Everything stored is a string, and a stored value that has become nonsense —
+ * a hand-edited database, a setting written by an older build — falls back to
+ * the default rather than leaving the terminal with a font size of `NaN`.
+ */
+export function terminalFromStored(stored: StoredSettings, current: TerminalSettings): TerminalSettings {
+  const number = (raw: string | undefined, fallback: number, low: number, high: number) => {
+    const n = Number(raw);
+    return raw !== undefined && Number.isFinite(n) ? Math.min(Math.max(n, low), high) : fallback;
+  };
+  const flag = (raw: string | undefined, fallback: boolean) =>
+    raw === undefined ? fallback : raw === 'true';
+  return {
+    fontFamily: stored.sshFontFamily ?? current.fontFamily,
+    fontSize: number(stored.sshFontSize, current.fontSize, 8, 32),
+    colourise: flag(stored.sshColourise, current.colourise),
+    // Zero is off, and is a real choice; anything above an hour is not.
+    keepaliveSeconds: number(stored.sshKeepaliveSeconds, current.keepaliveSeconds, 0, 3600),
+    logByDefault: flag(stored.sshLogByDefault, current.logByDefault),
+    openWith: stored.sshOpenWith === 'external' ? 'external' : 'panel',
+    externalCommand: stored.sshExternalCommand ?? current.externalCommand,
+  };
+}
+
+/** @see AppSettings.terminal */
+export interface TerminalSettings {
+  fontFamily: string;
+  fontSize: number;
+  /** LT-322: colour output from devices that send none. */
+  colourise: boolean;
+  /** LT-325: seconds between keepalives; 0 turns them off. */
+  keepaliveSeconds: number;
+  /** LT-324: start every session logging, without being asked each time. */
+  logByDefault: boolean;
+  /** LT-321: where a plain **SSH to this device** goes. */
+  openWith: 'panel' | 'external';
+  /** The command that opens somebody else's terminal, with {user}, {host} and
+   *  {port}. Empty means the sensible one for this platform. */
+  externalCommand: string;
+}
+
+/** What the terminal does before anyone has said otherwise. */
+export const TERMINAL_DEFAULTS: TerminalSettings = {
+  fontFamily: '',
+  fontSize: 12,
+  colourise: true,
+  // Long enough not to be chatter, short enough to beat a five-minute idle
+  // timer and to hold a NAT translation open.
+  keepaliveSeconds: 30,
+  logByDefault: false,
+  openWith: 'panel',
+  externalCommand: '',
+};
 
 export interface HistoryEntry {
   pages: ProjectPage[];
@@ -335,13 +399,17 @@ interface Store {
   endSshTab: (id: string, reason: string) => void;
   /** Takes the tab away. The backend is told separately. */
   forgetSshTab: (id: string) => void;
+  /** LT-324: the transcript started, moved or stopped. */
+  setSshLog: (id: string, path: string | null) => void;
+  /** LT-325: a keepalive went out and the connection took it. */
+  noteSshAlive: (id: string, at: number) => void;
   /** LT-319: Compare, Racks and the two imports, on a screen of their own.
    *  None of them reports on the live diagram, and all four want height the
    *  bottom panel does not have. A way of looking, so never saved. */
   toolsOpen: boolean;
-  toolsView: 'compare' | 'racks' | 'csv' | 'visio';
-  setToolsOpen: (on: boolean, view?: 'compare' | 'racks' | 'csv' | 'visio') => void;
-  setToolsView: (view: 'compare' | 'racks' | 'csv' | 'visio') => void;
+  toolsView: 'compare' | 'racks' | 'csv' | 'visio' | 'settings';
+  setToolsOpen: (on: boolean, view?: 'compare' | 'racks' | 'csv' | 'visio' | 'settings') => void;
+  setToolsView: (view: 'compare' | 'racks' | 'csv' | 'visio' | 'settings') => void;
   /** LT-184: true while the canvas is being printed, so views set not to
    *  print are left off the page. Not part of the document. */
   printing: boolean;
@@ -492,6 +560,8 @@ interface Store {
   loadEvents: () => Promise<void>;
 
   setSettings: (patch: Partial<AppSettings>) => void;
+  /** LT-321–325: a terminal preference, remembered on this machine. */
+  setTerminalSettings: (patch: Partial<TerminalSettings>) => void;
   loadSettings: () => Promise<void>;
   chooseFolder: (which: 'backupFolder' | 'exportFolder') => Promise<string | null>;
   clearFolder: (which: 'backupFolder' | 'exportFolder') => Promise<void>;
@@ -884,6 +954,7 @@ export const useStore = create<Store>((set, get) => ({
     ground: 'dark',
     backupFolder: null,
     exportFolder: null,
+    terminal: TERMINAL_DEFAULTS,
   },
   panelOpen: viewPref('panelOpen'),
   // Which panels are open is a view preference for this machine, not part of
@@ -1176,6 +1247,14 @@ export const useStore = create<Store>((set, get) => ({
         sshActive: s.sshActive === id ? (left[left.length - 1]?.id ?? null) : s.sshActive,
       };
     });
+  },
+
+  setSshLog(id, path) {
+    set((s) => ({ sshSessions: s.sshSessions.map((t) => (t.id === id ? { ...t, logPath: path } : t)) }));
+  },
+
+  noteSshAlive(id, at) {
+    set((s) => ({ sshSessions: s.sshSessions.map((t) => (t.id === id ? { ...t, lastAlive: at } : t)) }));
   },
 
   setToolsOpen(on, view) {
@@ -2750,6 +2829,25 @@ export const useStore = create<Store>((set, get) => ({
     set({ events: await ipc.listEvents(meta.id) });
   },
 
+  setTerminalSettings(patch) {
+    set((s) => ({ settings: { ...s.settings, terminal: { ...s.settings.terminal, ...patch } } }));
+    // Written through one key at a time, the way every other stored setting
+    // is, so nothing has to parse a blob back out on the next start.
+    const keys: Record<keyof TerminalSettings, keyof StoredSettings> = {
+      fontFamily: 'sshFontFamily',
+      fontSize: 'sshFontSize',
+      colourise: 'sshColourise',
+      keepaliveSeconds: 'sshKeepaliveSeconds',
+      logByDefault: 'sshLogByDefault',
+      openWith: 'sshOpenWith',
+      externalCommand: 'sshExternalCommand',
+    };
+    for (const [key, value] of Object.entries(patch)) {
+      const stored = keys[key as keyof TerminalSettings];
+      if (stored) void ipc.setSetting(stored, String(value)).catch(() => undefined);
+    }
+  },
+
   setSettings(patch) {
     if (patch.minimap !== undefined) rememberView('minimap', patch.minimap);
     // LT-242: a machine preference, kept like the others.
@@ -2774,6 +2872,7 @@ export const useStore = create<Store>((set, get) => ({
         ...s.settings,
         backupFolder: stored.backupFolder ?? null,
         exportFolder: stored.exportFolder ?? null,
+        terminal: terminalFromStored(stored, s.settings.terminal),
       },
       iconLibraryDir: stored.iconLibraryDir ?? s.iconLibraryDir,
     }));

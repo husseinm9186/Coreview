@@ -17,10 +17,16 @@ import { VaultPassphraseForm } from './VaultGate';
  * LT-286: typed also used to mean *typed again, every time*. A fresh install
  * has no vault, so there was nothing to choose and no way to keep what had
  * just been typed without leaving the run and building a vault by hand in
- * Settings. "Keep for this project" does that here, at the moment the password
- * is in front of someone: it makes the vault if there is none, puts the
- * credential in it, and writes the id — never the secret (D-006) — on the
- * project, so the next scan or backup starts with it already chosen.
+ * Settings. **Save** does that here, at the moment the password is in
+ * front of someone: it makes the vault if there is none, puts the credential
+ * in it, and writes the id — never the secret (D-006) — on the project, so the
+ * next scan or backup starts with it already chosen.
+ *
+ * LT-326: the buttons are named the way the operator asked for them — **Save**,
+ * **Replace**, **Wipe** — with **Forget for this project** kept beside Wipe
+ * because they are not the same thing and the difference matters. Forgetting
+ * stops *this project* using a credential; wiping takes it out of the vault
+ * for every project on the machine, and cannot be undone.
  */
 export function CredentialPicker({
   kind,
@@ -57,7 +63,9 @@ export function CredentialPicker({
 
   const projectName = useStore((s) => s.meta?.name ?? '');
   const defaults = useStore((s) => s.doc.credentialDefaults);
-  const wanted = remember && kind === 'ssh' ? defaults?.ssh : undefined;
+  // LT-330: SNMP too. A project keeps a list of SNMP credentials because a
+  // scan tries each in turn; the first is the one everything falls back to.
+  const wanted = remember ? (kind === 'ssh' ? defaults?.ssh : defaults?.snmp?.[0]) : undefined;
 
   const refresh = useCallback(
     () =>
@@ -80,15 +88,22 @@ export function CredentialPicker({
     void refresh();
   }, [refresh, vaultRevision]);
 
-  // What this project used last time, once the vault is open and the
-  // credential is still in it. Only when nothing has been chosen by hand.
-  useEffect(() => {
-    if (!wanted || chosen || !unlocked) return;
-    if (saved.some((c) => c.id === wanted)) onChoose(wanted);
-    // onChoose is a setState from the panel above and stable enough to leave
-    // out; including it re-runs this on every keystroke in the form.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wanted, chosen, unlocked, saved]);
+  /**
+   * The project's saved login, offered rather than applied (LT-330).
+   *
+   * It used to be chosen for you as soon as the vault opened. The operator
+   * asked for the opposite and gave the reason in the asking: "global should be
+   * first but unchecked by default in the discover devices section". A crawl
+   * logs into a whole estate, and it must not start doing that because a
+   * credential was once saved for something else — so this is a tick, and it
+   * is first in the order once it is ticked.
+   *
+   * A device on the diagram is the other way round and inherits silently
+   * (`planSsh`): one device is not an estate, and nothing is sent until the
+   * session is asked for.
+   */
+  const projectLogin = remember ? saved.find((c) => c.id === wanted) : undefined;
+  const usingProject = Boolean(wanted) && chosen === wanted;
 
   const chosenLabel = saved.find((c) => c.id === chosen)?.label;
   const usable = unlocked && saved.length > 0;
@@ -150,6 +165,17 @@ export function CredentialPicker({
 
   return (
     <>
+      {projectLogin && (
+        <label className="cv-check cv-check-inline cv-cred-project"
+          title="Tried before anything typed here. Saved under Tools ▸ Settings.">
+          <input type="checkbox" checked={usingProject} disabled={disabled}
+            onChange={(e) => {
+              onChoose(e.target.checked ? wanted! : null);
+              setKept(null);
+            }} />
+          Use this project&rsquo;s saved {kind === 'ssh' ? 'login' : 'SNMP credential'} first — {projectLogin.label}
+        </label>
+      )}
       {(usable || chosenUnresolved) && (
         <label className="cv-field cv-field-narrow">
           <span>Credentials</span>
@@ -192,8 +218,8 @@ export function CredentialPicker({
               {confirmWipe ? (
                 <>
                   <span className="cv-help">
-                    Delete “{chosenLabel ?? 'this credential'}” from the vault? The password goes
-                    with it, for every project that uses it. This cannot be undone.
+                    Wipe “{chosenLabel ?? 'this credential'}” from the vault? The username and
+                    password go with it, for every project that uses them. This cannot be undone.
                   </span>
                   <button type="button" className="cv-btn cv-btn-small cv-btn-danger" disabled={disabled}
                     onClick={() => {
@@ -206,11 +232,11 @@ export function CredentialPicker({
                           useStore.getState().forgetCredential(kind, chosen);
                           onChoose(null);
                           setConfirmWipe(false);
-                          setKept('Deleted from the vault.');
+                          setKept('Wiped from the vault.');
                         })
                         .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)));
                     }}>
-                    Delete it
+                    Wipe it
                   </button>
                   <button type="button" className="cv-btn cv-btn-small" onClick={() => setConfirmWipe(false)}>
                     Cancel
@@ -221,7 +247,7 @@ export function CredentialPicker({
                   <button type="button" className="cv-btn cv-btn-small" disabled={disabled}
                     title="Type a new username and password over this saved credential. Every project using it follows."
                     onClick={() => { setReplacing(true); setKept(null); setProblem(null); }}>
-                    Replace it
+                    Replace
                   </button>
                   <button type="button" className="cv-btn cv-btn-small" disabled={disabled}
                     title="This project stops using it. The credential stays in the vault."
@@ -232,9 +258,10 @@ export function CredentialPicker({
                     }}>
                     Forget for this project
                   </button>
-                  <button type="button" className="cv-btn cv-btn-small" disabled={disabled}
+                  <button type="button" className="cv-btn cv-btn-small cv-btn-danger" disabled={disabled}
+                    title="Take the username and password out of the vault altogether. Every project using them loses them."
                     onClick={() => { setConfirmWipe(true); setKept(null); setProblem(null); }}>
-                    Delete from the vault
+                    Wipe
                   </button>
                 </>
               )}
@@ -256,10 +283,12 @@ export function CredentialPicker({
               </button>
             </div>
           ) : !keeping ? (
-            <button type="button" className="cv-btn cv-btn-small" disabled={disabled || !fillable}
-              title={fillable ? undefined : 'Fill the username and password in first'}
+            <button type="button" className="cv-btn cv-btn-small cv-btn-start" disabled={disabled || !fillable}
+              title={fillable
+                ? 'Put this username and password in the encrypted vault, and remember that this project uses them.'
+                : 'Fill the username and password in first'}
               onClick={() => void openThenKeep()}>
-              Keep for this project
+              Save
             </button>
           ) : (
             <VaultPassphraseForm

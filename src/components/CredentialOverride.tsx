@@ -35,6 +35,7 @@ export function CredentialOverride({
   credentialId,
   onChange,
   disabled = false,
+  scope = 'device',
 }: {
   kind: 'ssh' | 'snmp';
   /** What the device is called, which is what the saved credential is named after. */
@@ -42,6 +43,10 @@ export function CredentialOverride({
   credentialId: string | undefined;
   onChange: (id: string | undefined) => void;
   disabled?: boolean;
+  /** What this login belongs to. The same form does both (LT-327); only the
+   *  words change, because "for this device" on the Settings screen would be
+   *  saying the opposite of what it does. */
+  scope?: 'device' | 'project';
 }) {
   const { vault, refresh: refreshVault } = useVaultState();
   const [saved, setSaved] = useState<CredentialSummary[]>([]);
@@ -213,8 +218,12 @@ export function CredentialOverride({
   return (
     <div className="cv-cred-override" data-kind={kind}>
       <div className="cv-cred-override-head">
-        <strong>{t(kind === 'ssh' ? 'cred.ssh' : 'cred.snmp')}</strong>
-        <span className="cv-help">{t('cred.override')}</span>
+        <strong>
+          {t(scope === 'project'
+            ? (kind === 'ssh' ? 'cred.sshProject' : 'cred.snmpProject')
+            : (kind === 'ssh' ? 'cred.ssh' : 'cred.snmp'))}
+        </strong>
+        <span className="cv-help">{t(scope === 'project' ? 'cred.projectHint' : 'cred.override')}</span>
       </div>
 
       {held && !editing ? (

@@ -96,12 +96,13 @@ crates/
   coreview-discover  Crawling: SSH, telnet, CDP, LLDP, FortiOS, SNMP, ARP,
                      stacking and virtual chassis, the default route; and
                      `ssh::Shell`, the interactive session behind the
-                     terminal (LT-320)
+                     terminal (LT-320), and `sessionlog` (LT-324)
   coreview-probe     ICMP/TCP/DNS probing and the ping sweep's identification
                      (names over LLMNR/NetBIOS/mDNS, MAC, OUI, ports); no Tauri
 src-tauri/           Commands, SQLite, credential vault, icon library scan;
                      `terminal.rs` holds the live SSH sessions, which belong
-                     to the window and are never written down (D-047)
+                     to the window and are never written down (D-047), and
+                     launches an external client without the password (D-048)
   fixtures/ipc/      One payload per structured command input, written from
                      src/lib/ipcPayloads.ts and read by the Rust contract test
 isolation/           The sandboxed frame every IPC message passes (LT-258);
@@ -147,7 +148,7 @@ node e2e/guide.mjs         # the guided sample and its tour (LT-271)
 node e2e/ipam.mjs          # the address register: subnets, ranges, records, editing (LT-285–297)
 node e2e/ipamlab.mjs      # the register's screen: hierarchy, allocation, split/merge, history (LT-297, LT-300)
 node e2e/credentials.mjs  # a device's own login: saved encrypted, never in the document (LT-318)
-node e2e/ssh.mjs          # shells in the panel, a tab each, keystrokes and resize (LT-320)
+node e2e/ssh.mjs          # shells in the panel: tabs, colour, font, log, keepalive (LT-320–325)
 node e2e/checks.mjs       # pass/fail checks against a run's captures (LT-153)
 node e2e/groups.mjs       # ordered collection groups, pauses and stops (LT-154)
 ```
@@ -187,3 +188,11 @@ enforces this** by parsing the stylesheet: a chrome rule reading a ground token
 fails the build. It was a written rule for months and drifted anyway — `.cv-app`
 itself was inheriting `--ink` to the whole interface, which is what LT-315
 was.
+
+**`:root` declares `color-scheme: dark`, and that line is load-bearing**
+(LT-328). Some controls are drawn by the engine, not by us — the scrollbars, a
+number field's spinners, and the reveal eye inside a password field, which
+WebView2 draws as `::-ms-reveal`. A page that declares no scheme is assumed to
+be light and all of them come out dark on this app's dark chrome, which no rule
+of ours can reach. `src/lib/nativeControls.test.ts` holds it, and `@media print`
+sets `light` because paper is light whatever the screen is doing.

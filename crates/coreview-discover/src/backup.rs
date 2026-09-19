@@ -300,6 +300,11 @@ pub enum BackupKind {
     Startup,
     /// A list of show commands the operator wrote, filed as one file (LT-149).
     ShowCommands,
+    /// LT-324: the transcript of an interactive session, appended as it runs.
+    /// It is not a capture anything took — it is what a person did — but it
+    /// belongs in the same folder under the same naming, which is what was
+    /// asked for.
+    Session,
 }
 
 impl BackupKind {
@@ -308,6 +313,7 @@ impl BackupKind {
             BackupKind::Running => "running-config",
             BackupKind::Startup => "startup-config",
             BackupKind::ShowCommands => "show-commands",
+            BackupKind::Session => "session",
         }
     }
 
@@ -319,6 +325,7 @@ impl BackupKind {
             BackupKind::Running => Some("show running-config"),
             BackupKind::Startup => Some("show startup-config"),
             BackupKind::ShowCommands => None,
+            BackupKind::Session => None,
         }
     }
 }

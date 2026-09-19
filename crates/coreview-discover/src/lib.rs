@@ -49,6 +49,7 @@ pub mod pathcheck;
 pub mod ptr;
 pub mod routes;
 pub mod seeds;
+pub mod sessionlog;
 pub mod stp;
 pub mod uptime;
 pub mod vlans;

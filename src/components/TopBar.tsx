@@ -750,7 +750,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
             imports, the racks and the comparison — which were taking a third of
             the bottom panel's width to say so. */}
         <button type="button" className="cv-btn cv-btn-tools"
-          title="Compare two backup runs, lay out racks, and bring devices in from a file or a drawing"
+          title="Settings, comparing two backup runs, rack elevations, and bringing devices in from a file or a drawing"
           onClick={() => store.setToolsOpen(true)}>
           {t('tools.open')}
         </button>

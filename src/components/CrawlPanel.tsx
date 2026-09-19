@@ -295,15 +295,16 @@ export function CrawlPanel({
         // setting. The setting is one scan's shape for whoever opens the app;
         // the project's credentials belong to the estate it describes, and a
         // second project must not start with the first one's login.
-        const kept = useStore.getState().doc.credentialDefaults;
-        if (kept?.ssh) setCredentialId(kept.ssh);
-        else if (st.scanCredentialId) setCredentialId(st.scanCredentialId);
+        // LT-330: the project's own login is now *offered* as a tick rather
+        // than chosen for you — "global should be first but unchecked by
+        // default in the discover devices section". A crawl logs into an
+        // estate, and it must not start doing that because a credential was
+        // saved for something else. What the *scan* was last set up with is
+        // still restored, because that is this form's own memory rather than
+        // somebody else's credential.
+        if (st.scanCredentialId) setCredentialId(st.scanCredentialId);
 
-        const keptSnmp = kept?.snmp ?? [];
-        if (keptSnmp.length) {
-          setSnmpRows(keptSnmp.map((id) => ({ ...blankSnmpRow(), credentialId: id })));
-          setSnmpOpen(true);
-        } else if (st.scanSnmpRows) {
+        if (st.scanSnmpRows) {
           const restored = restoreSnmpRows(st.scanSnmpRows);
           if (restored.length) {
             setSnmpRows(restored);
@@ -965,7 +966,7 @@ export function CrawlPanel({
                   secret: row.version === 'v3' ? row.authPass : row.community,
                   secondSecret: row.version === 'v3' ? row.privPass : undefined,
                 }}>
-                <span className="cv-help cv-snmp-typed">Typed below. Keep it for this project and the next scan starts with it.</span>
+                <span className="cv-help cv-snmp-typed">Typed below. Save it and the next scan starts with it.</span>
               </CredentialPicker>
               {row.credentialId === null && (
                 <>
@@ -1065,7 +1066,7 @@ export function CrawlPanel({
 
       <p className="cv-discover-status">
         {problem ? <span className="cv-discover-problem">{problem}</span>
-          : status ?? 'Typed credentials are used for this run and then forgotten. "Keep for this project" puts them in the encrypted vault and remembers which one this project uses, so the next scan does not ask again.'}
+          : status ?? 'Typed credentials are used for this run and then forgotten. Save puts them in the encrypted vault and remembers which one this project uses, so the next scan does not ask again; Replace types a new password over one, and Wipe takes it out of the vault altogether.'}
       </p>
 
       {rows.length > 0 && (

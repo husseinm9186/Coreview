@@ -129,11 +129,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            artifact: coreview-linux
-            paths: |
-              target/release/bundle/deb/*.deb
-              target/release/bundle/appimage/*.AppImage
+          # LT-331: Windows only for now, at the operator's instruction —
+          # "don't push all installers yet to github only windows installer for
+          # now please I will tell you when to push the rest of the installers
+          # later". The Linux leg is commented rather than deleted so putting
+          # it back is one edit; `test` still runs on both, so nothing about
+          # Linux goes unchecked, only the bundling is paused.
+          # - os: ubuntu-latest
+          #   artifact: coreview-linux
+          #   paths: |
+          #     target/release/bundle/deb/*.deb
+          #     target/release/bundle/appimage/*.AppImage
           - os: windows-latest
             artifact: coreview-windows
             paths: |
@@ -261,6 +267,10 @@ jobs:
   bundle-macos:
     name: bundle (macOS, universal .dmg)
     needs: test
+    # LT-331: paused at the operator's instruction — Windows only until he says
+    # otherwise. `if: false` rather than deletion, so it comes back in one edit
+    # with its whole history intact.
+    if: false
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
@@ -301,6 +311,9 @@ jobs:
   appimage-smoke:
     name: AppImage on a machine without WebKit
     needs: bundle
+    # LT-331: there is no AppImage to smoke-test while the Linux bundle is
+    # paused. Goes back on with it.
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8

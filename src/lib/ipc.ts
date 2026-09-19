@@ -445,7 +445,13 @@ export interface SshSession {
  *  middle of a multi-byte character, and decoding is the terminal's job. */
 export type SshEvent =
   | { kind: 'data'; id: string; bytes: string }
-  | { kind: 'closed'; id: string; reason: string };
+  | { kind: 'closed'; id: string; reason: string }
+  /** LT-325: a keepalive went out and the connection was there to take it. */
+  | { kind: 'alive'; id: string; at: number }
+  /** LT-324: where the transcript is being written, or that it has stopped. */
+  | { kind: 'logging'; id: string; path: string | null }
+  /** Something went wrong that did not end the session. */
+  | { kind: 'warning'; id: string; message: string };
 
 export type CrawlEvent =
   | { kind: 'started'; seed: string }
@@ -624,6 +630,18 @@ export type StoredSettings = Partial<{
   backupChecks: string;
   /** LT-154: ordered collection groups, as JSON. None ship built in. */
   backupGroups: string;
+  /** LT-321/322/323/325: how the terminal behaves. How somebody likes to read
+   *  and work, so these are settings on the machine rather than facts about
+   *  the estate — a project carries none of them. */
+  sshFontFamily: string;
+  sshFontSize: string;
+  sshColourise: string;
+  sshKeepaliveSeconds: string;
+  sshLogByDefault: string;
+  /** Where a plain **SSH to this device** goes: `panel` or `external`. */
+  sshOpenWith: string;
+  /** The command that opens a session elsewhere, with {user} {host} {port}. */
+  sshExternalCommand: string;
 }>;
 
 export const ipc = {
@@ -952,9 +970,39 @@ export const ipc = {
 
   /** Opens a shell on a device and returns the session's id. The password
    *  never crosses this boundary: the credential is named by its vault id. */
-  sshOpen(address: string, credentialId: string, size: { cols: number; rows: number }, port?: number) {
+  sshOpen(
+    address: string,
+    credentialId: string,
+    size: { cols: number; rows: number },
+    port?: number,
+    keepaliveSeconds?: number,
+  ) {
     if (!isDesktop) throw new BackendUnavailable('An SSH session');
-    return invoke<string>('ssh_open', { address, credentialId, port, cols: size.cols, rows: size.rows });
+    return invoke<string>('ssh_open', {
+      address, credentialId, port, cols: size.cols, rows: size.rows, keepaliveSeconds,
+    });
+  },
+  /** LT-324: append this session's transcript beside the device's backups.
+   *  Returns the path it is writing to. */
+  sshLogStart(id: string, where: {
+    folder: string; device: string; address: string; site?: string; pattern?: string;
+  }) {
+    return invoke<string>('ssh_log_start', { id, ...where });
+  },
+  sshLogStop(id: string) {
+    return invoke<void>('ssh_log_stop', { id });
+  },
+  /** LT-325: how often this session says it is still there. 0 or undefined
+   *  turns it off. */
+  sshKeepalive(id: string, seconds: number | undefined) {
+    return invoke<void>('ssh_keepalive', { id, seconds });
+  },
+  /** LT-321: hand the connection to the terminal the machine already has.
+   *  The password is deliberately not passed — the client asks for it.
+   *  Returns what was actually run, so the window can say so. */
+  sshExternal(address: string, username: string, port?: number, command?: string) {
+    if (!isDesktop) throw new BackendUnavailable('An external terminal');
+    return invoke<string[]>('ssh_external', { address, username, port, command });
   },
   /** Keystrokes, base64 as they came off the terminal. */
   sshSend(id: string, bytes: string) {

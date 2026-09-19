@@ -521,7 +521,11 @@ authenticating, waiting for a push approval, collecting, done, or failed and why
 tree and the routing table, and whether to look up names in reverse DNS. What was
 read appears in the device's inspector under **From the last crawl**.
 
-**Which login where.** In a device's inspector, **Log in with** and **SNMP with**
+**Which login where.** The discovery form offers the project's saved login as a
+tick box, named, and **off until you tick it** — a crawl logs into a whole
+estate, so it does not start doing that on its own. Ticked, it is tried first;
+anything typed below it is tried after. The same goes for each SNMP row.
+In a device's inspector, **Log in with** and **SNMP with**
 pick saved credentials to try on that device first. **Saved credentials by subnet
 or vendor** in the crawl panel does the same for a subnet or for every device a
 neighbour reports as, say, a FortiSwitch. The most specific match is tried first.
@@ -534,6 +538,43 @@ a real terminal, so line editing, colour and `?` completion all work as they do
 on the device. Switching tabs keeps everything the device has said. A device
 with no address, or no login of its own, says so rather than waiting to time
 out. Sessions are never saved: closing the project closes them all.
+
+**Or the terminal you already use.** The same menu offers **SSH in an external
+terminal**, which hands the connection to PuTTY, Terminal or whatever your
+desktop uses. **The password is not passed to it** — no client takes one
+without putting it on a command line, where the rest of the machine can read it
+— so the client asks, with the username already filled in. Coreview knows
+nothing about a session it did not open: no log, no colouring, no keepalive.
+Set which one the first menu entry uses, and the command to run, on the SSH
+tab.
+
+**The controls on the SSH tab** apply to every session you have open:
+
+- **Font** and **Size** — how the terminal is drawn. Remembered on this
+  computer, not in the project.
+- **Colour the output** — adds colour to devices that send plain text: errors
+  and `%` lines, up and down, addresses, MACs, interface names and the prompt.
+  *Administratively down* is coloured apart from *down*, because one is a
+  decision and the other is a fault. A device that colours its own output, and
+  anything drawing a full screen, is left exactly as it is.
+- **Save the log** — appends a readable transcript of this session beside the
+  device's backups: the same configuration folder, the same folder per device,
+  the same file-name pattern, with `session` as the kind. One file per device
+  per day, appended to, so reconnecting continues the same transcript. Escape
+  sequences are taken out, so the file can be read and diffed. A ✎ on a tab
+  says that session is being recorded.
+- **Keepalive** — how often, in seconds, to tell the device the session is
+  still there, so its idle timer does not close it. **Nothing is typed into the
+  session**; this is an SSH-level message. **Last confirmed** says when the
+  connection last took one. Set it to 0 to turn it off. A device with its own
+  `exec-timeout` will still close the session on its own schedule — this stops
+  the idle timers and the NAT translations in between, not the device itself.
+
+**The project's own login.** **Tools ▸ Settings** holds one SSH and one SNMP
+login for the whole project: **Save** puts it in the encrypted vault, **Replace**
+types a new one over it, and **Wipe** takes it out of the vault altogether.
+**Every device with no login of its own uses it**, so a whole estate needs one
+password typed once.
 
 **A login for one device.** **Its own username and password**, further down the
 same inspector, is where you type one instead of choosing one. SSH takes a

@@ -230,7 +230,7 @@ check("every key written is one the backend actually stores",
 // does.
 
 const loginFormEarly = page.locator('.cv-discover-form', { has: page.locator('span:text-is("Username")') }).first();
-const keep = page.locator("button", { hasText: "Keep for this project" }).first();
+const keep = page.locator(".cv-panel button", { hasText: /^Save$/ }).first();
 check("the run's own form offers to keep the credential", (await keep.count()) === 1);
 await keep.click();
 await page.waitForTimeout(300);
@@ -261,7 +261,7 @@ check("the project records which credential it uses, by id", kept?.ssh === "cred
 
 const snmpRow = page.locator(".cv-snmp-row").first();
 if (await snmpRow.count()) {
-  await snmpRow.locator("button", { hasText: "Keep for this project" }).first().click();
+  await snmpRow.locator("button", { hasText: /^Save$/ }).first().click();
   await page.waitForTimeout(600);
   const keptSnmp = await page.evaluate(() => window.__cvStore.getState().doc.credentialDefaults?.snmp ?? []);
   check("the project records its SNMP credential too", keptSnmp.length === 1, JSON.stringify(keptSnmp));
@@ -283,12 +283,12 @@ check("and says what keeping one does", /vault/i.test(formText), formText.slice(
 // ------------------------- LT-293: replace, forget for this project, and wipe
 
 const heldButton = (label) => page.locator(".cv-keep-cred-held button", { hasText: label }).first();
-check("a kept credential offers to be replaced", (await heldButton("Replace it").count()) === 1);
+check("a kept credential offers to be replaced", (await heldButton("Replace").count()) === 1);
 check("to be dropped by this project", (await heldButton("Forget for this project").count()) === 1);
-check("and to be deleted outright", (await heldButton("Delete from the vault").count()) === 1);
+check("and to be wiped outright", (await heldButton("Wipe").count()) === 1);
 
 // Replace: the same record is overwritten, so the project's reference holds.
-await heldButton("Replace it").click();
+await heldButton("Replace").click();
 await page.waitForTimeout(300);
 await field("Username").fill("Coreview2");
 await field("Password").fill("PLAINTEXT-REPLACED-4d1e");
@@ -320,10 +320,10 @@ await field("Credentials").selectOption("cred-1");
 await page.waitForTimeout(400);
 check("choosing it again records it on the project",
   (await page.evaluate(() => window.__cvStore.getState().doc.credentialDefaults?.ssh)) === "cred-1");
-await heldButton("Delete from the vault").click();
+await heldButton("Wipe").click();
 await page.waitForTimeout(250);
 check("deleting asks first", (await page.locator(".cv-keep-cred-held .cv-help").count()) === 1);
-await page.locator(".cv-keep-cred-held button", { hasText: "Delete it" }).first().click();
+await page.locator(".cv-keep-cred-held button", { hasText: "Wipe it" }).first().click();
 await page.waitForTimeout(600);
 // Only that one goes: the SNMP credential kept above is nothing to do with it.
 check("deleting takes that credential out of the vault",
@@ -338,8 +338,24 @@ check("so the password fields come back",
 // Put one back, so the restart below has something to find.
 await field("Username").fill("Coreview");
 await field("Password").fill(SECRETS.password);
-await page.locator("button", { hasText: "Keep for this project" }).first().click();
-await page.waitForTimeout(600);
+await page.locator(".cv-panel button", { hasText: /^Save$/ }).first().click();
+await page.waitForTimeout(800);
+
+// LT-330: the project's own login is a tick, not something applied silently.
+const projectTick = page.locator(".cv-cred-project input").first();
+check("the project's saved login is offered as a checkbox", (await projectTick.count()) === 1);
+check("named, so it is clear which login is being offered",
+  /Use this project.s saved login first/.test(await page.locator(".cv-cred-project").first().textContent()),
+  (await page.locator(".cv-cred-project").first().textContent()).slice(0, 120));
+await projectTick.uncheck();
+await page.waitForTimeout(400);
+check("unticking it goes back to typing one for this run",
+  (await page.locator('.cv-discover-form .cv-field', { has: page.locator('span:text-is("Password")') }).count()) >= 1);
+await projectTick.check();
+await page.waitForTimeout(400);
+check("and ticking it puts the project's login back in first place",
+  (await field("Credentials").inputValue()).startsWith("cred-"));
+
 
 // ------------------------------------------------- and it survives a restart
 

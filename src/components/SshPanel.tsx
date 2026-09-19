@@ -4,16 +4,22 @@ import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
 import { t } from '../i18n';
+import { Colouriser } from '../lib/colourise';
 import { ipc, type SshEvent } from '../lib/ipc';
+import { formatTime } from '../lib/timeFormat';
 import { useStore, type SshTab } from '../state/store';
 
 /**
- * Open shells, one tab each (LT-320).
+ * Open shells, one tab each (LT-320), with the controls that make one usable
+ * for a day's work (LT-322–325).
  *
  * The operator asked for SecureCRT's arrangement in as many words: right-click
  * a device, get a shell, and find every shell he has open sitting as tabs
  * beside each other. This is that — the bottom panel's **SSH** section, a tab
- * per session, the device's own screen inside it.
+ * per session, the device's own screen inside it — plus the four things he
+ * asked for next: colour for devices that send none, a font and a size, a
+ * transcript saved where the backups go, and a keepalive so a session stays up
+ * until it is closed rather than until the device gets bored.
  *
  * Nothing here interprets what the device sends. `xterm.js` draws it, and
  * keystrokes go back exactly as typed. That is the difference between this and
@@ -26,7 +32,7 @@ import { useStore, type SshTab } from '../state/store';
  * inactive ones are hidden, and the instances are kept in the module-level map
  * below, which is also where the event listener finds them.
  */
-const terminals = new Map<string, { term: Terminal; fit: FitAddon }>();
+const terminals = new Map<string, { term: Terminal; fit: FitAddon; colour: Colouriser }>();
 
 /** Drops a terminal and everything it was holding. */
 function dispose(id: string) {
@@ -35,6 +41,19 @@ function dispose(id: string) {
   held.term.dispose();
   terminals.delete(id);
 }
+
+/** Fonts worth offering, and the reason each one is here (LT-323). */
+const FONTS: { value: string; label: string }[] = [
+  { value: '', label: 'System monospace' },
+  { value: 'Cascadia Mono, Consolas, monospace', label: 'Cascadia Mono' },
+  { value: 'Consolas, monospace', label: 'Consolas' },
+  { value: 'JetBrains Mono, monospace', label: 'JetBrains Mono' },
+  { value: 'Menlo, monospace', label: 'Menlo' },
+  { value: 'DejaVu Sans Mono, monospace', label: 'DejaVu Sans Mono' },
+  { value: 'Courier New, monospace', label: 'Courier New' },
+];
+
+const SYSTEM_MONO = 'ui-monospace, "Cascadia Mono", "JetBrains Mono", Consolas, monospace';
 
 /** The colours a terminal draws with, read from the chrome's own tokens so a
  *  shell does not sit in the window looking like a different application. */
@@ -51,31 +70,82 @@ function themeFromChrome(): Record<string, string> {
   };
 }
 
+/** Base64 from the backend, as the bytes it stands for. */
+function decode(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 export function SshPanel() {
   const tabs = useStore((s) => s.sshSessions);
   const active = useStore((s) => s.sshActive);
   const setActive = useStore((s) => s.setSshActive);
+  const terminal = useStore((s) => s.settings.terminal);
+  const setTerminal = useStore((s) => s.setTerminalSettings);
+  const backupFolder = useStore((s) => s.settings.backupFolder);
+  const timeFormat = useStore((s) => s.settings.timeFormat);
   const [problem, setProblem] = useState<string | null>(null);
+
+  const current = tabs.find((tab) => tab.id === active);
 
   // One listener for every session: the event carries the id, and the map
   // above says which terminal it belongs to.
+  //
+  // `colourise` is read from the store inside the handler rather than closed
+  // over, so switching the toggle takes effect on the next byte instead of
+  // needing the subscription torn down and rebuilt mid-session.
   useEffect(() => {
     let stop: (() => void) | undefined;
     let cancelled = false;
+    // A prompt never ends in a newline, so the colouriser would hold it back
+    // for ever. Whatever is still held a moment after the device stops talking
+    // is written through uncoloured.
+    const flushes = new Map<string, ReturnType<typeof setTimeout>>();
+    const flushSoon = (id: string) => {
+      clearTimeout(flushes.get(id));
+      flushes.set(
+        id,
+        setTimeout(() => {
+          const held = terminals.get(id);
+          if (held?.colour.pending) held.term.write(held.colour.flush());
+        }, 40),
+      );
+    };
+
     void ipc
       .onSshEvent((e: SshEvent) => {
         const held = terminals.get(e.id);
         if (e.kind === 'data') {
-          // Base64 in, bytes out. `atob` gives one character per byte, which
-          // is what xterm's byte-oriented write wants.
-          const binary = atob(e.bytes);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-          held?.term.write(bytes);
+          if (!held) return;
+          const bytes = decode(e.bytes);
+          if (!useStore.getState().settings.terminal.colourise) {
+            // Anything the colouriser was holding goes out first, or the
+            // screen loses a line at the moment the toggle is turned off.
+            if (held.colour.pending) held.term.write(held.colour.flush());
+            held.term.write(bytes);
+            return;
+          }
+          held.term.write(held.colour.feed(new TextDecoder().decode(bytes)));
+          flushSoon(e.id);
           return;
         }
-        held?.term.write(`\r\n\x1b[2m${e.reason}\x1b[0m\r\n`);
-        useStore.getState().endSshTab(e.id, e.reason);
+        if (e.kind === 'closed') {
+          if (held?.colour.pending) held.term.write(held.colour.flush());
+          held?.term.write(`\r\n\x1b[2m${e.reason}\x1b[0m\r\n`);
+          useStore.getState().endSshTab(e.id, e.reason);
+          return;
+        }
+        if (e.kind === 'alive') {
+          useStore.getState().noteSshAlive(e.id, e.at);
+          return;
+        }
+        if (e.kind === 'logging') {
+          useStore.getState().setSshLog(e.id, e.path);
+          return;
+        }
+        setProblem(e.message);
       })
       .then((off) => {
         if (cancelled) off();
@@ -84,17 +154,108 @@ export function SshPanel() {
       .catch((err: unknown) => setProblem(err instanceof Error ? err.message : String(err)));
     return () => {
       cancelled = true;
+      for (const timer of flushes.values()) clearTimeout(timer);
       stop?.();
     };
   }, []);
+
+  // The font and the size belong to every open session at once, so they are
+  // applied here rather than inside each terminal.
+  useEffect(() => {
+    for (const held of terminals.values()) {
+      held.term.options.fontFamily = terminal.fontFamily || SYSTEM_MONO;
+      held.term.options.fontSize = terminal.fontSize;
+      try {
+        held.fit.fit();
+      } catch {
+        /* not laid out yet; the resize observer will do it */
+      }
+    }
+  }, [terminal.fontFamily, terminal.fontSize]);
 
   // A tab that has gone — closed by hand, or taken away with the project —
   // leaves a terminal holding a canvas and its scrollback. Nothing else drops
   // them, so this does.
   useEffect(() => {
-    const live = new Set(tabs.map((t) => t.id));
+    const live = new Set(tabs.map((tab) => tab.id));
     for (const id of [...terminals.keys()]) if (!live.has(id)) dispose(id);
   }, [tabs]);
+
+  /** Start or stop this session's transcript (LT-324). */
+  const toggleLog = (tab: SshTab) => {
+    setProblem(null);
+    if (tab.logPath) {
+      void ipc.sshLogStop(tab.id).catch((e: unknown) => setProblem(String(e)));
+      return;
+    }
+    if (!backupFolder) {
+      setProblem(t('ssh.logNoFolder'));
+      return;
+    }
+    const node = tab.nodeId
+      ? useStore
+          .getState()
+          .doc.pages.flatMap((page) => page.nodes)
+          .find((n) => n.id === tab.nodeId)
+      : undefined;
+    const data = (node?.data ?? {}) as { site?: string };
+    void ipc
+      .sshLogStart(tab.id, {
+        folder: backupFolder,
+        device: tab.label,
+        address: tab.address,
+        site: data.site ?? '',
+        pattern: undefined,
+      })
+      .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)));
+  };
+
+  const controls = (
+    <div className="cv-ssh-controls">
+      <label className="cv-field cv-field-narrow">
+        <span>{t('ssh.font')}</span>
+        <select className="cv-input" value={terminal.fontFamily}
+          onChange={(e) => setTerminal({ fontFamily: e.target.value })}>
+          {FONTS.map((f) => (
+            <option key={f.label} value={f.value}>{f.value ? f.label : t('ssh.systemFont')}</option>
+          ))}
+        </select>
+      </label>
+      <label className="cv-field cv-field-narrow cv-ssh-size">
+        <span>{t('ssh.size')}</span>
+        <input className="cv-input" type="number" min={8} max={32} value={terminal.fontSize}
+          onChange={(e) => setTerminal({ fontSize: Math.min(Math.max(Number(e.target.value) || 12, 8), 32) })} />
+      </label>
+      <label className="cv-check cv-check-inline" title={t('ssh.colourHint')}>
+        <input type="checkbox" checked={terminal.colourise}
+          onChange={(e) => setTerminal({ colourise: e.target.checked })} />
+        {t('ssh.colour')}
+      </label>
+      <label className="cv-check cv-check-inline" title={t('ssh.logHint')}>
+        <input type="checkbox" checked={Boolean(current?.logPath)} disabled={!current}
+          onChange={() => current && toggleLog(current)} />
+        {t('ssh.log')}
+      </label>
+      <label className="cv-field cv-field-narrow cv-ssh-size" title={t('ssh.keepaliveHint')}>
+        <span>{t('ssh.keepalive')}</span>
+        <input className="cv-input" type="number" min={0} max={3600} value={terminal.keepaliveSeconds}
+          onChange={(e) => {
+            const seconds = Math.min(Math.max(Number(e.target.value) || 0, 0), 3600);
+            setTerminal({ keepaliveSeconds: seconds });
+            // Every open session follows, not just the next one opened.
+            for (const tab of useStore.getState().sshSessions) {
+              if (tab.status === 'open') void ipc.sshKeepalive(tab.id, seconds).catch(() => undefined);
+            }
+          }} />
+      </label>
+      <span className="cv-help cv-ssh-state">
+        {current?.logPath && <span className="cv-ssh-logging">{t('ssh.logTo', { path: current.logPath })}</span>}
+        {current?.lastAlive !== undefined && (
+          <span>{t('ssh.aliveAt', { time: formatTime(current.lastAlive, timeFormat) })}</span>
+        )}
+      </span>
+    </div>
+  );
 
   if (tabs.length === 0) {
     return (
@@ -116,6 +277,7 @@ export function SshPanel() {
               onClick={() => setActive(tab.id)}>
               {tab.status === 'closed' ? '○ ' : '● '}
               {tab.label}
+              {tab.logPath ? ' ✎' : ''}
             </button>
             <button type="button" className="cv-ssh-close" aria-label={t('ssh.closeOne', { name: tab.label })}
               onClick={() => {
@@ -128,6 +290,7 @@ export function SshPanel() {
           </span>
         ))}
       </div>
+      {controls}
       {problem && <p className="cv-problem">{problem}</p>}
       <div className="cv-ssh-screens">
         {tabs.map((tab) => (
@@ -147,9 +310,10 @@ function SshTerminal({ tab, visible }: { tab: SshTab; visible: boolean }) {
     if (!mount) return;
     let held = terminals.get(tab.id);
     if (!held) {
+      const { fontFamily, fontSize } = useStore.getState().settings.terminal;
       const term = new Terminal({
-        fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--mono').trim() || 'monospace',
-        fontSize: 12,
+        fontFamily: fontFamily || SYSTEM_MONO,
+        fontSize,
         // A device's output is worth scrolling back through; this is a few
         // hundred kilobytes per session and is not written anywhere.
         scrollback: 5000,
@@ -159,7 +323,7 @@ function SshTerminal({ tab, visible }: { tab: SshTab; visible: boolean }) {
       });
       const fit = new FitAddon();
       term.loadAddon(fit);
-      held = { term, fit };
+      held = { term, fit, colour: new Colouriser() };
       terminals.set(tab.id, held);
       // Keystrokes as typed. Nothing is added, not even a newline: Enter is
       // already a carriage return in the data xterm hands over.

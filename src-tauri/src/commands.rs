@@ -767,7 +767,7 @@ pub fn set_setting(
     // This table is plain text in the same database as the projects, and the
     // operator asked in as many words that nothing he types is ever written
     // where it could leave the machine.
-    const ALLOWED: [&str; 16] = [
+    const ALLOWED: [&str; 23] = [
         "backupFolder",
         "exportFolder",
         "iconLibraryDir",
@@ -800,6 +800,20 @@ pub fn set_setting(
         // LT-154: ordered collection groups — names and the roles and tags
         // they match. No secrets; none ship built in (D-027).
         "backupGroups",
+        // LT-321/322/323/325: how the terminal behaves — a font, a size,
+        // whether to colour plain output, how often to say we are still here,
+        // whether to log by default, where a plain SSH goes, and the command
+        // that opens somebody else's terminal. Preferences about reading and
+        // working, so they live on the machine and not in a project. No
+        // secrets: the external command carries {user} and {host}, never a
+        // password (LT-321).
+        "sshFontFamily",
+        "sshFontSize",
+        "sshColourise",
+        "sshKeepaliveSeconds",
+        "sshLogByDefault",
+        "sshOpenWith",
+        "sshExternalCommand",
     ];
     if !ALLOWED.contains(&key.as_str()) {
         return Err(format!("{key} is not a setting Coreview stores"));

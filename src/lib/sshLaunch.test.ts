@@ -41,11 +41,31 @@ describe('what stops a session before anything is sent', () => {
 
   it('and hands over the address, the credential id and the name when both are there', () => {
     expect(planSsh(device({ hostname: 'CORE-SW1', addresses: [at('192.0.2.10', true)], sshCredentialId: 'cred-1' })))
-      .toEqual({ ok: true, address: '192.0.2.10', credentialId: 'cred-1', label: 'CORE-SW1' });
+      .toEqual({ ok: true, address: '192.0.2.10', credentialId: 'cred-1', label: 'CORE-SW1', inherited: false });
   });
 
   it('does not accept a credential id that is only spaces', () => {
     expect(planSsh(device({ addresses: [at('192.0.2.10')], sshCredentialId: '   ' })))
       .toEqual({ ok: false, reason: 'noCredential' });
+  });
+});
+
+describe('a device with no login of its own inherits the project\u2019s (LT-330)', () => {
+  const plain = device({ addresses: [at('192.0.2.10', true)] });
+
+  it('falls back to the project, and says that is what happened', () => {
+    expect(planSsh(plain, 'project-cred')).toEqual({
+      ok: true, address: '192.0.2.10', credentialId: 'project-cred', label: 'SW-A', inherited: true,
+    });
+  });
+
+  it('but the device\u2019s own wins, which is what makes it an override', () => {
+    const own = device({ addresses: [at('192.0.2.10', true)], sshCredentialId: 'its-own' });
+    expect(planSsh(own, 'project-cred')).toMatchObject({ credentialId: 'its-own', inherited: false });
+  });
+
+  it('and with neither there is still nothing to try', () => {
+    expect(planSsh(plain, '   ')).toEqual({ ok: false, reason: 'noCredential' });
+    expect(planSsh(plain)).toEqual({ ok: false, reason: 'noCredential' });
   });
 });

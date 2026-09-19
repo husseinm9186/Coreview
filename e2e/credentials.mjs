@@ -154,10 +154,33 @@ await page.waitForTimeout(400);
 const passphrase = field(ssh, "Vault passphrase");
 check("with no vault on the machine, it asks for a passphrase rather than failing",
   (await passphrase.count()) === 1);
+
+// LT-329: the minimum stands, and the form now says what it is waiting for
+// rather than greying the button out in silence. "can't create vault and save"
+// was that silence, not the rule.
+const create = ssh.locator("button", { hasText: "Create vault and save" }).first();
+await passphrase.fill("short");
+await page.waitForTimeout(250);
+check("a passphrase under the minimum is still refused", await create.isDisabled());
+check("and the form says how many more characters it wants",
+  /7 more characters/.test(await ssh.textContent()), (await ssh.textContent()).slice(0, 200));
+
 await passphrase.fill("not-a-real-passphrase");
+await page.waitForTimeout(250);
+check("then it asks for the confirmation, which is the next thing missing",
+  (await create.isDisabled()) && /again to confirm/.test(await ssh.textContent()),
+  (await ssh.textContent()).slice(0, 200));
+
+await field(ssh, "Again").fill("not-the-same-passphrase");
+await page.waitForTimeout(250);
+check("and says so when the two do not match, before anything is created",
+  (await create.isDisabled()) && /do not match/.test(await ssh.textContent()),
+  (await ssh.textContent()).slice(0, 200));
+
 await field(ssh, "Again").fill("not-a-real-passphrase");
-await page.waitForTimeout(200);
-await ssh.locator("button", { hasText: "Create vault and save" }).first().click();
+await page.waitForTimeout(250);
+check("with both right, it is offered", !(await create.isDisabled()));
+await create.click();
 await page.waitForTimeout(700);
 
 const saved = await page.evaluate(() => window.__saved);

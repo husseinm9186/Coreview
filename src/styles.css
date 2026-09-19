@@ -3,6 +3,17 @@
    block near the bottom for paper. A hex anywhere else in this file, or
    anywhere in `src/` outside `src/theme.ts`, is a bug. */
 :root {
+  /* The chrome is dark, always (LT-046), and the browser has to be told so —
+     this is not decoration (LT-328).
+     A page that declares no colour scheme is assumed to be light, and every
+     control the engine draws itself is then drawn for a light page: the
+     scrollbars, the spinners on a number field, and — the one that was
+     reported — the reveal button inside a password field, which WebView2 draws
+     as `::-ms-reveal`. A dark glyph on our dark field is invisible, and no
+     amount of styling our own elements reaches it, because we do not draw it.
+     One line fixes every one of them, everywhere, at once. */
+  color-scheme: dark;
+
   /* The same named palette on the dark ground, so every rule below is written
      once against the names and neither ground has a set of its own. */
   --desk: #0a120f;
@@ -762,6 +773,8 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
      colours set from script follow because printing switches the ground
      first, and this covers a plain Ctrl+P as well. */
   body, .cv-app {
+    /* Paper is a light page, whatever the screen is doing (LT-328). */
+    color-scheme: light;
     /* LT-046 split the canvas ink from the chrome text; paper needs the
        canvas set too, or a dark-ground print keeps light-grey labels. */
     --desk: #ffffff;
@@ -1084,6 +1097,17 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
    clipped in the bottom panel. */
 .cv-register-body .cv-ipam-scroll { overflow-x: auto; }
 
+/* LT-327: Settings, on the same screen. Chrome colours throughout. */
+.cv-settings { display: flex; flex-direction: column; gap: 18px; padding: 14px; max-width: 980px; }
+.cv-settings-block { display: flex; flex-direction: column; gap: 8px; }
+.cv-settings-block h2 {
+  margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+.cv-settings-block > .cv-help { margin: 0; max-width: 78ch; }
+.cv-settings-creds { display: flex; flex-direction: column; gap: 10px; }
+.cv-settings-creds .cv-cred-override { border: 1px solid var(--line); border-radius: var(--radius); }
+
 /* LT-319: the same screen, holding Compare, Racks and the two imports. These
    were panels, so their own padding is already right; the screen does not add
    a second layer of it. */
@@ -1252,6 +1276,8 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   padding: 12px; background: var(--panel);
 }
 .cv-keep-cred-form .cv-help { flex: 1 0 100%; margin: 0; }
+/* LT-329: said where the button is, not only in the paragraph at the top. */
+.cv-vault-waiting { color: var(--text-dim); }
 /* LT-293: what can be done to a credential this project already keeps. */
 .cv-keep-cred-held { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .cv-keep-cred-held .cv-help { margin: 0; max-width: 62ch; }
@@ -1268,6 +1294,14 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   padding: 0 6px; font-size: 13px; line-height: 1;
 }
 .cv-ssh-close:hover { color: var(--down); }
+.cv-ssh-controls {
+  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px;
+  padding: 4px 8px 6px; border-bottom: 1px solid var(--line);
+}
+.cv-ssh-controls .cv-field { margin-bottom: 0; flex: 0 0 auto; }
+.cv-ssh-size .cv-input { width: 5.5em; min-width: 0; }
+.cv-ssh-state { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; align-items: baseline; }
+.cv-ssh-logging { color: var(--healthy); }
 .cv-ssh-screens { flex: 1; min-height: 0; padding: 6px 8px 8px; }
 .cv-ssh-screen { height: 100%; min-height: 0; }
 /* xterm sizes itself to this box, so the box has to have a size of its own. */
@@ -1293,12 +1327,27 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-vault-table td, .cv-vault-table th { font-size: 12px; }
 .cv-secret-cell { display: flex; align-items: center; gap: 6px; }
 .cv-second-secret { color: var(--text-faint); }
+/* An eye is a control, not de-emphasised text, so it takes `--text-dim`
+   rather than `--text-faint`: the fainter token does not carry enough contrast
+   for something meant to be found and clicked (LT-328). */
 .cv-eye {
   background: none; border: none; padding: 2px; cursor: pointer;
-  color: var(--text-faint); display: inline-flex; align-items: center;
+  color: var(--text-dim); display: inline-flex; align-items: center;
   border-radius: 3px;
 }
-.cv-eye:hover { color: var(--accent); }
+.cv-eye:hover, .cv-eye:focus-visible { color: var(--accent); }
+.cv-eye:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Belt and braces for the engine's own reveal button. `color-scheme` above is
+   what actually fixes it; these give it our colour rather than the engine's
+   idea of a dark page, and give it a hit area big enough to aim at. */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  color: var(--text-dim);
+  filter: invert(0);
+  cursor: pointer;
+  margin-right: 2px;
+}
 .cv-menu-danger { color: var(--warning) !important; }
 
 /* ---- subnet list ------------------------------------------------------- */

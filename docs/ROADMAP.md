@@ -354,6 +354,196 @@ pulled into Phase 1.*
 
 ## Done
 
+### LT-321 — A choice of terminal: the panel, or the one already on the machine — 2026-09-19
+**Source:** asked 2026-09-19 — "is it possible to let the admin select if they
+want to open real terminal like putty or use the panel ssh".
+**Shipped:** both entries are always on a device's right-click menu — **SSH to
+this device** and **SSH in an external terminal** — and a setting says which
+one the first entry does, so a preference never takes the other choice away.
+The command is `{user}@{host}` with `{port}`, defaulting to PuTTY on Windows,
+the `ssh://` handler on macOS and `x-terminal-emulator` on Linux, and editable
+for anything else.
+**The password is not passed, and that is D-048**, not an omission. `-pw` and
+its equivalents put the secret on a command line, where the rest of the machine
+can read it. The client asks; the username is already filled in.
+**There is no shell.** The command template is split into a program and
+arguments *first*, and the host and user are substituted into the pieces
+afterwards, so a device calling itself `; rm -rf ~` can only ever be one
+argument to PuTTY. Four Rust tests hold that, including the quoted Windows
+path that made splitting necessary in the first place.
+**Said plainly in the guide:** Coreview knows nothing about a session it did
+not open — no log, no colour, no keepalive.
+
+### LT-322 — Colour the output of devices that do not colour it themselves — 2026-09-19
+**Source:** asked 2026-09-19 — "the panel ssh should have colorize output of
+command line interface for devices where CLI is not colored by default".
+**Shipped:** `src/lib/colourise.ts`, on by default, with a toggle in the SSH
+tab. Errors and `%` lines, down and failure words, administratively down as its
+own colour (a decision, not a fault), up and connected, addresses and MACs in
+all three spellings, interface names, and the prompt.
+**Everything about it is shaped by doing no harm.** A line carrying an escape
+of its own passes through untouched, so a device that colours itself is left
+alone. A line being redrawn — a pager, `?` completion — is left alone, because
+it is not finished. Only **complete** lines are coloured, with the tail of a
+chunk held until its newline arrives, and each character claimed by at most one
+rule so escapes never nest. Eighteen tests, including a whole exchange
+reassembled to prove nothing is lost.
+**One bug found by the harness and fixed with a test**: a device ends a line
+with `\r\n`, and reading that trailing carriage return as a mid-line redraw
+made *every* line untouchable — nothing was coloured at all until the e2e run
+said so.
+
+### LT-323 — The terminal's font and size are the admin's choice — 2026-09-19
+**Source:** asked 2026-09-19 — "also fonts and size".
+**Shipped:** a font and a size on the SSH tab, applied to every open session at
+once rather than only the next one, and remembered in the settings table — on
+the machine, because this is how somebody likes to read and not a fact about
+the estate.
+
+### LT-324 — Save the session log, appended, where the backups go — 2026-09-19
+**Source:** asked 2026-09-19 — "a checkbox to save log and save the log in the
+same folders where the configuration files are pointed to save just like how
+the backup saves the output and the name of the files, but it must append".
+**Shipped exactly that, by reusing what backups already decided.** The
+configuration folder from the project screen, one folder per device,
+`backup_path_named` and the same `{site}_{device}_{stamp}_{kind}` pattern with
+a new `BackupKind::Session` — so it also inherits the check that a device
+calling itself `../../etc` cannot write outside the folder. Opened with
+`append`, so reconnecting adds to the transcript rather than starting it again,
+and a session still running already has its log on disk.
+**The stamp is the day, not the second.** A backup stamps to the second because
+two runs an hour apart are two captures; a transcript that is appended to wants
+one file for the afternoon.
+**Escape sequences are stripped** — `sessionlog.rs`, a nine-test state machine
+that survives a sequence split across two chunks, resolves a redrawn line to
+its final form, and rubs out what a backspace rubbed out. A saved capture is
+meant to be read and diffed, and a file full of `ESC[` is neither.
+**A tick on the tab** says which sessions are being recorded, from any other
+tab; **Save the log** can be switched off without ending the session; and it
+ticks when the log is actually open rather than when it was asked for.
+**Not proved against a device.** The path, the naming and the stripping are
+tested; the first real transcript is the operator's.
+
+### LT-326 — Save, Replace and Wipe on the discovery logins — 2026-09-19
+**Source:** asked 2026-09-19 with two screenshots of the Discover devices tab —
+"I need save button for snmp user and password in discover devices and save
+button for the crawler user and password. also wipe and replace button".
+**The machinery was there and called the wrong thing.** LT-286 already put the
+whole life cycle under both the SSH login and each SNMP row; his screenshots
+show the unkept state, where the only button said **Keep for this project** —
+which does not read as Save, and where the wipe was three clicks away behind a
+credential that had to exist first.
+**Shipped:** **Save**, **Replace** and **Wipe**, in both places, in his words.
+**Forget for this project** is kept beside Wipe because they are not the same
+thing: forgetting stops *this* project using a credential, wiping takes it out
+of the vault for every project on the machine and cannot be undone. Wipe is
+marked as the destructive one and still asks first.
+**No new storage.** The vault, `credentialDefaults` and the bindings were
+already right (LT-318).
+
+### LT-327 — Settings, on the Tools screen — 2026-09-19
+**Source:** asked 2026-09-19 — "i need settings tab for global ssh user and
+password and snmp user and password place it in tools and settings in the top
+menue".
+**There was nowhere that answered "what does this project log in with".** The
+vault was on the project screen, which you have to close a project to reach,
+and the discovery logins were inside a panel about running a scan.
+**Shipped:** a **Settings** view on the Tools screen (LT-319) holding the
+project's SSH and SNMP logins with Save, Replace and Wipe; the terminal
+preferences, which were already settings with nowhere to be (LT-321–325); and
+the vault itself, because "where are my passwords" and "what is my password"
+are the same question asked twice.
+**"Global" means the project's**, not the machine's — he said "global project
+password", and `credentialDefaults` has been exactly that since LT-286. So this
+is a home for something that existed, not a second store, and `CredentialOverride`
+does both scopes with one form and one set of words.
+
+### LT-328 — **bug** The reveal-password eye was dark on dark, everywhere — 2026-09-19
+**Source:** reported 2026-09-19 with a screenshot — "the passwords revel button
+not visiable because its dark" — and then, correctly: "the revel button is dark
+for other places so make sure addressed globaly".
+**He was right that it was global, and the cause is why.** The eye inside a
+password field is not ours: the engine draws it, as `::-ms-reveal` in WebView2.
+**A page that declares no colour scheme is assumed to be light**, so every
+control the engine draws itself — that eye, the scrollbars, a number field's
+spinners — was drawn for a light page and came out dark on this app's dark
+chrome. No rule on our own elements could have reached it.
+**Fixed with one line**: `color-scheme: dark` on `:root`, with `light` under
+`@media print` because paper is light whatever the screen is doing. Our own
+`.cv-eye` in the vault table also moved off `--text-faint`, which is a token for
+text that is deliberately receding and never right for a control.
+**`nativeControls.test.ts` holds it**, because one line is exactly the kind of
+line that gets deleted by accident — the same reasoning as `groundTokens.test.ts`
+after LT-315, and a different fault that that test could not have caught.
+
+### LT-329 — **bug** "Create vault and save" was refused in silence — 2026-09-19
+**Source:** reported 2026-09-19 — "can't create vault and save" — then, once
+the rule was clear: "can't create vault and save with less than 12 characters
+good keep it that way just fix the revel".
+**The rule was right and has not moved.** Twelve characters is the minimum and
+he confirmed he wants it. The fault was that the button simply went grey: the
+minimum is stated in a paragraph at the top of the form, and nothing at all is
+said at the point where pressing it does nothing.
+**Fixed:** the form now says what it is waiting for, and changes as you type —
+how many more characters, then the confirmation, then that the two do not
+match — on the button's own title and beside it. Four checks in
+`credentials.mjs` walk that sequence.
+
+### LT-330 — The project's login is what everything starts from — 2026-09-19
+**Source:** asked 2026-09-19 — "the discover devices should inherit the global
+project password as first password, admin needs a check box to select it … but
+global should be first but unchecked by default in the discover devices section
+/ same for SNMP please / by default all devices should inherit the global ssh
+and snmp password admin can override".
+**The two defaults read as a contradiction and are not** — they are different
+scopes, and each got the default he asked for:
+- **A device inherits silently.** `planSsh` falls back to the project's
+  credential, the device's own wins where there is one, and **SSH to this
+  device** now works on a device nobody has given a login. One device is not an
+  estate, and nothing is sent until a session is asked for.
+- **The discovery form asks.** The project's login is offered as a **tick**,
+  named, off until it is ticked, and first in the order once it is. It used to
+  be applied silently as soon as the vault opened — a crawl logs into a whole
+  estate, and it must not start doing that because a credential was saved for
+  something else.
+SNMP gets the same tick: a project keeps a list because a scan tries each in
+turn, and the first is what everything falls back to.
+**Which "global" this is:** the project's (`credentialDefaults`), which is what
+he said — "global project password" — and which LT-327 gave a home.
+
+### LT-331 — CI builds the Windows installer only, until told otherwise — 2026-09-19
+**Source:** asked 2026-09-19 — "don't push all installers yet to github only
+windows installer for now please I will tell you when to push the rest of the
+installers later".
+**The same call LT-305 made on 2026-09-12 and LT-311 undid on 2026-09-18**, for
+the same reason both times: five installers on every push is the expensive part
+of the pipeline, and while a feature is in flight only one of them is going to
+be installed.
+**Done:** the Linux leg of the `bundle` matrix is commented out and
+`bundle-macos` and `appimage-smoke` carry `if: false`. Windows NSIS, MSI and
+the offline pair still build. **Nothing is deleted** — each comes back in one
+edit with its comments intact — and the `test` job still runs on Linux *and*
+Windows, so nothing about Linux goes unchecked; only the bundling is paused.
+**Reopen when he says so, and not before.**
+
+### LT-325 — The session stays up until it is closed — 2026-09-19
+**Source:** asked 2026-09-19 — "it must … send keep alive to maintain the
+session until the admin close it, give admin real control please".
+**Shipped:** an SSH-level keepalive every 30 seconds by default, settable from
+0 (off) to an hour, changing every open session and not only the next one, with
+**Last confirmed** in the panel so "is it still up" is answered by looking.
+**It is driven by the session task, not by russh's own timer** — that is the
+"real control" half. russh would send it from inside its own loop where nothing
+can observe it; `Shell::keepalive()` is called on the operator's interval
+instead, and each one that the connection takes is an event the window shows.
+`keepalive_max: 0` leaves russh out of deciding a session is dead.
+**Nothing is ever typed into the session to keep it alive**, and that is said
+in the code and in the guide. A newline sent into somebody's half-finished
+command line is how a keepalive becomes a configuration change.
+**What it cannot do, and the guide says so:** a device with its own
+`exec-timeout` will still close the session on its own schedule. This stops the
+idle timers and the NAT translations in between; it cannot overrule the device.
+
 ### LT-320 — A shell on a device, in a tab, beside the others — 2026-09-19
 **Source:** asked 2026-09-19 with a screenshot of SecureCRT — "the ssh should be
 added to the bottom panel and everytime the admin ssh to device it should open

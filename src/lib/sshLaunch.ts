@@ -13,7 +13,7 @@
 import type { DeviceNodeData } from '../types/domain';
 
 export type SshPlan =
-  | { ok: true; address: string; credentialId: string; label: string }
+  | { ok: true; address: string; credentialId: string; label: string; inherited: boolean }
   | { ok: false; reason: 'noAddress' | 'noCredential' };
 
 /**
@@ -36,11 +36,21 @@ export function sshLabel(d: DeviceNodeData): string {
   return d.hostname?.trim() || d.label?.trim() || sshAddress(d) || 'Device';
 }
 
-/** Everything the command needs, or which half is missing. */
-export function planSsh(d: DeviceNodeData): SshPlan {
+/**
+ * Everything the command needs, or which half is missing.
+ *
+ * **A device with no login of its own inherits the project's** (LT-330): "by
+ * default all devices should inherit the global ssh and snmp password, admin
+ * can override". The device's own credential wins where there is one, which is
+ * what makes it an override rather than a second place to look.
+ *
+ * `projectSsh` is `credentialDefaults.ssh` — a vault id, never a secret.
+ */
+export function planSsh(d: DeviceNodeData, projectSsh?: string): SshPlan {
   const address = sshAddress(d);
   if (!address) return { ok: false, reason: 'noAddress' };
-  const credentialId = d.sshCredentialId?.trim();
+  const own = d.sshCredentialId?.trim();
+  const credentialId = own || projectSsh?.trim();
   if (!credentialId) return { ok: false, reason: 'noCredential' };
-  return { ok: true, address, credentialId, label: sshLabel(d) };
+  return { ok: true, address, credentialId, label: sshLabel(d), inherited: !own };
 }
