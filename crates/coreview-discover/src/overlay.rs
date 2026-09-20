@@ -281,7 +281,21 @@ fn bracketed_number(line: &str) -> Option<u32> {
 /// ```
 pub fn parse_peers(out: &str) -> Vec<Peer> {
     let mut found = Vec::new();
+    // Junos prints this device's own VTEP (`SVTEP-IP`) above the remote ones
+    // (`RVTEP-IP`), so reading every address on the page would list the
+    // device as a peer of itself (LT-352).
+    let remote_only = out.contains("RVTEP-IP");
+    let mut reached_remote = false;
     for line in out.lines() {
+        if remote_only {
+            if line.contains("RVTEP-IP") {
+                reached_remote = true;
+                continue;
+            }
+            if !reached_remote {
+                continue;
+            }
+        }
         let t = line.trim();
         if t.is_empty() {
             continue;
@@ -329,6 +343,16 @@ fn is_ipv4(token: &str) -> bool {
 /// `[5]` is a prefix, and drawing one as the other is the mistake this exists
 /// to avoid.
 pub fn parse_evpn(out: &str) -> Vec<EvpnRoute> {
+    // Three platforms, three ways of writing the same route (LT-352). NX-OS
+    // brackets every field, Arista names the route type in words, and Junos
+    // writes the whole NLRI as one colon-separated string. Told apart by
+    // shape rather than by asking the caller what the platform was.
+    if out.contains("mac-ip") || out.contains("ip-prefix") || out.contains("RD: ") {
+        return parse_evpn_arista(out);
+    }
+    if out.contains(" destinations, ") && out.contains(" routes (") {
+        return parse_evpn_junos(out);
+    }
     let mut found: Vec<EvpnRoute> = Vec::new();
     let mut pending: Option<EvpnRoute> = None;
 
@@ -387,6 +411,172 @@ pub fn parse_evpn(out: &str) -> Vec<EvpnRoute> {
         // it is on the line, take it.
         let vni = parts.iter().filter_map(|p| p.parse::<u32>().ok()).find(|n| *n > 4096);
         pending = Some(EvpnRoute { route_type, vni, mac, address, next_hop: None });
+    }
+    if let Some(route) = pending {
+        found.push(route);
+    }
+    found
+}
+
+/// Arista's EVPN table, which names the route type in words (LT-352).
+///
+/// **Built from Arista's `show bgp evpn` documentation** (D-051), unverified.
+///
+/// ```text
+///           Network                Next Hop        Metric  LocPref Weight Path
+///  * >      RD: 65000:10100 mac-ip 5254.0012.3456 192.0.2.20
+///                                  198.51.100.4    -       100     0      i
+///  * >      RD: 65000:50000 ip-prefix 192.0.2.0/24
+///                                  198.51.100.5    -       100     0      i
+/// ```
+///
+/// `mac-ip` is a type 2 and `ip-prefix` a type 5; `imet` is type 3 and says
+/// nothing about where a host is, so it is skipped the same way NX-OS's
+/// `[3]` is.
+pub fn parse_evpn_arista(out: &str) -> Vec<EvpnRoute> {
+    let mut found: Vec<EvpnRoute> = Vec::new();
+    let mut pending: Option<EvpnRoute> = None;
+
+    for line in out.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        // The next hop for the route above sits on its own line.
+        if !t.contains("RD:") {
+            if let Some(mut route) = pending.take() {
+                route.next_hop = t.split_whitespace().find(|f| is_ipv4(f)).map(str::to_string);
+                found.push(route);
+            }
+            continue;
+        }
+        if let Some(route) = pending.take() {
+            found.push(route);
+        }
+
+        let fields: Vec<&str> = t.split_whitespace().collect();
+        let Some(at) = fields.iter().position(|f| *f == "RD:") else { continue };
+        // The VNI is the right half of the route distinguisher where Arista
+        // put one there; it is a convention, not a guarantee, so a value that
+        // is not a number yields nothing rather than a wrong number.
+        let vni = fields
+            .get(at + 1)
+            .and_then(|rd| rd.split_once(':'))
+            .and_then(|(_, right)| right.parse::<u32>().ok());
+        let kind = fields.get(at + 2).copied().unwrap_or("");
+        let rest = &fields[(at + 3).min(fields.len())..];
+        let route = match kind {
+            "mac-ip" => EvpnRoute {
+                route_type: 2,
+                vni,
+                mac: rest.first().and_then(|m| normalise_mac(m)),
+                address: rest.iter().find(|f| is_ipv4(f)).map(|a| a.to_string()),
+                next_hop: None,
+            },
+            "ip-prefix" => EvpnRoute {
+                route_type: 5,
+                vni,
+                mac: None,
+                address: rest.first().map(|p| p.to_string()),
+                next_hop: None,
+            },
+            // imet, ethernet-segment and the rest place no address anywhere.
+            _ => continue,
+        };
+        pending = Some(route);
+    }
+    if let Some(route) = pending {
+        found.push(route);
+    }
+    found
+}
+
+/// Junos's EVPN table, where the whole NLRI is one string (LT-352).
+///
+/// **Built from Juniper's `show route table bgp.evpn.0` documentation**
+/// (D-051), unverified.
+///
+/// ```text
+/// bgp.evpn.0: 24 destinations, 24 routes (24 active, 0 holddown, 0 hidden)
+///
+/// 2:198.51.100.4:1::0::52:54:00:12:34:56/304 MAC/IP
+///                    *[BGP/170] 00:10:00, localpref 100, from 198.51.100.4
+///                     > to 192.0.2.2 via ge-0/0/0.0
+/// 5:198.51.100.5:1::0::192.0.2.0::24/248
+///                    *[BGP/170] 00:10:00, localpref 100, from 198.51.100.5
+/// ```
+///
+/// The leading number is the route type, and `from <address>` is the VTEP the
+/// route came from — which is the thing the path engine needs. `to … via …`
+/// is the underlay hop and is **not** the VTEP, so it is deliberately not
+/// read as one.
+pub fn parse_evpn_junos(out: &str) -> Vec<EvpnRoute> {
+    let mut found: Vec<EvpnRoute> = Vec::new();
+    let mut pending: Option<EvpnRoute> = None;
+
+    for line in out.lines() {
+        let t = line.trim();
+        if t.is_empty() || t.contains(" destinations, ") || t.starts_with('+') {
+            continue;
+        }
+        // `from 198.51.100.4` on the route's own attribute line names the
+        // VTEP that advertised it.
+        if t.starts_with('*') || t.starts_with('[') || t.contains("localpref") {
+            if let Some(route) = pending.as_mut() {
+                if route.next_hop.is_none() {
+                    route.next_hop = t
+                        .split_whitespace()
+                        .skip_while(|f| *f != "from")
+                        .nth(1)
+                        .map(|a| a.trim_end_matches(','))
+                        .filter(|a| is_ipv4(a))
+                        .map(str::to_string);
+                }
+            }
+            continue;
+        }
+        if t.starts_with("to ") || t.starts_with("> ") || t.starts_with("via ") || t.starts_with("AS path:") {
+            continue;
+        }
+
+        // An NLRI: `<type>:<rd>:<...>/<length>`.
+        let nlri = t.split_whitespace().next().unwrap_or("");
+        let Some((head, _)) = nlri.split_once('/') else { continue };
+        let Some(route_type) = head.split(':').next().and_then(|n| n.parse::<u8>().ok()) else {
+            continue;
+        };
+        if route_type != 2 && route_type != 5 {
+            continue;
+        }
+        if let Some(route) = pending.take() {
+            found.push(route);
+        }
+        // The fields after the `::` separators. A type 2 carries a MAC and
+        // possibly a host address; a type 5 a prefix and its length.
+        let parts: Vec<&str> = head.split("::").collect();
+        let (mac, address) = match route_type {
+            2 => {
+                let tail = parts.last().copied().unwrap_or("");
+                let mac = normalise_mac(tail).or_else(|| {
+                    tail.rsplit_once("::").and_then(|(_, m)| normalise_mac(m))
+                });
+                // A MAC-and-IP route appends the address after the MAC.
+                let address = head.split(':').find(|f| is_ipv4(f) && *f != "0.0.0.0");
+                (mac, address.map(str::to_string))
+            }
+            _ => {
+                // `…::192.0.2.0::24/248` — prefix then length.
+                let network = parts.iter().rev().nth(1).copied().unwrap_or("");
+                let length = parts.last().copied().unwrap_or("");
+                let address = match (is_ipv4(network), length.parse::<u32>().ok()) {
+                    (true, Some(bits)) if bits <= 32 => Some(format!("{network}/{bits}")),
+                    (true, _) => Some(network.to_string()),
+                    _ => None,
+                };
+                (None, address)
+            }
+        };
+        pending = Some(EvpnRoute { route_type, vni: None, mac, address, next_hop: None });
     }
     if let Some(route) = pending {
         found.push(route);
@@ -550,5 +740,110 @@ Route Distinguisher: 65000:10100
         for d in [OverlayDialect::Arista, OverlayDialect::Junos] {
             assert!(!d.verified_against_hardware(), "{d:?} claims hardware it has not met");
         }
+    }
+
+    /// **From Arista's documentation, not captured** (D-051).
+    const ARISTA_VNI: &str = "\
+VNI to VLAN Mapping for Vxlan1\n\
+VNI         VLAN       Source       Interface       802.1Q Tag\n\
+----------- ---------- ------------ --------------- ----------\n\
+10100       100        static       Vxlan1          100\n\
+10200       200        static       Vxlan1          200\n";
+
+    const ARISTA_VTEP: &str = "\
+Remote VTEPS for Vxlan1:\n\
+\n\
+198.51.100.4\n\
+198.51.100.5\n\
+\n\
+Total number of remote VTEPS:  2\n";
+
+    const ARISTA_EVPN: &str = "\
+BGP routing table information for VRF default\n\
+          Network                Next Hop        Metric  LocPref Weight Path\n\
+ * >      RD: 65000:10100 mac-ip 5254.0012.3456 192.0.2.20\n\
+                                 198.51.100.4    -       100     0      i\n\
+ * >      RD: 65000:10100 mac-ip 5254.0012.7890\n\
+                                 198.51.100.4    -       100     0      i\n\
+ * >      RD: 65000:50000 ip-prefix 192.0.2.0/24\n\
+                                 198.51.100.5    -       100     0      i\n\
+ * >      RD: 65000:10100 imet 198.51.100.4\n\
+                                 198.51.100.4    -       100     0      i\n";
+
+    #[test]
+    fn arista_maps_vnis_to_vlans_in_plain_columns() {
+        let s = parse_vni_table(ARISTA_VNI);
+        assert_eq!(s.len(), 2, "{s:?}");
+        assert_eq!(s[0].vni, 10100);
+        assert_eq!(s[0].vlan, Some(100));
+    }
+
+    #[test]
+    fn arista_lists_its_remote_vteps_as_bare_addresses() {
+        let p = parse_peers(ARISTA_VTEP);
+        assert_eq!(p.iter().map(|x| x.address.as_str()).collect::<Vec<_>>(), ["198.51.100.4", "198.51.100.5"]);
+    }
+
+    #[test]
+    fn arista_names_the_route_type_in_words() {
+        let r = parse_evpn(ARISTA_EVPN);
+        // imet is type 3 and says nothing about where a host is.
+        assert_eq!(r.len(), 3, "{r:?}");
+        assert_eq!(r[0].route_type, 2);
+        assert_eq!(r[0].mac.as_deref(), Some("525400123456"));
+        assert_eq!(r[0].address.as_deref(), Some("192.0.2.20"));
+        assert_eq!(r[0].next_hop.as_deref(), Some("198.51.100.4"));
+        assert_eq!(r[0].vni, Some(10100));
+        // A MAC with no address, the same case NX-OS writes as [0.0.0.0].
+        assert_eq!(r[1].address, None);
+        assert_eq!(r[2].route_type, 5);
+        assert_eq!(r[2].address.as_deref(), Some("192.0.2.0/24"));
+    }
+
+    /// **From Juniper's documentation, not captured** (D-051).
+    const JUNOS_VTEP: &str = "\
+Logical System Name       Id  SVTEP-IP         IFL   L3-Idx  SVTEP-Mode\n\
+<default>                 0   198.51.100.1     lo0.0    0\n\
+ RVTEP-IP         L2-RTT           IFL-Name  NH-Id  RVTEP-Mode\n\
+ 198.51.100.4     default-switch   vtep.32770  1234  RNVE\n\
+ 198.51.100.5     default-switch   vtep.32771  1235  RNVE\n";
+
+    const JUNOS_EVPN: &str = "\
+bgp.evpn.0: 3 destinations, 3 routes (3 active, 0 holddown, 0 hidden)\n\
++ = Active Route, - = Last Active, * = Both\n\
+\n\
+2:198.51.100.4:1::0::52:54:00:12:34:56/304 MAC/IP\n\
+                   *[BGP/170] 00:10:00, localpref 100, from 198.51.100.4\n\
+                      AS path: I, validation-state: unverified\n\
+                    > to 192.0.2.2 via ge-0/0/0.0\n\
+5:198.51.100.5:1::0::192.0.2.0::24/248\n\
+                   *[BGP/170] 00:10:00, localpref 100, from 198.51.100.5\n\
+                    > to 192.0.2.6 via ge-0/0/1.0\n";
+
+    #[test]
+    fn a_junos_device_is_not_a_peer_of_itself() {
+        // SVTEP-IP is this device. Reading every address on the page would
+        // list it as its own far end.
+        let p = parse_peers(JUNOS_VTEP);
+        assert_eq!(p.iter().map(|x| x.address.as_str()).collect::<Vec<_>>(), ["198.51.100.4", "198.51.100.5"]);
+    }
+
+    #[test]
+    fn junos_writes_the_whole_nlri_as_one_string() {
+        let r = parse_evpn(JUNOS_EVPN);
+        assert_eq!(r.len(), 2, "{r:?}");
+        assert_eq!(r[0].route_type, 2);
+        assert_eq!(r[0].mac.as_deref(), Some("525400123456"));
+        assert_eq!(r[1].route_type, 5);
+        assert_eq!(r[1].address.as_deref(), Some("192.0.2.0/24"));
+    }
+
+    #[test]
+    fn the_vtep_a_junos_route_came_from_is_from_not_the_underlay_hop() {
+        // `to 192.0.2.2 via ge-0/0/0.0` is how the packet reaches the VTEP,
+        // not the VTEP. Reading it as one draws the tunnel to the wrong end.
+        let r = parse_evpn(JUNOS_EVPN);
+        assert_eq!(r[0].next_hop.as_deref(), Some("198.51.100.4"));
+        assert_eq!(r[1].next_hop.as_deref(), Some("198.51.100.5"));
     }
 }

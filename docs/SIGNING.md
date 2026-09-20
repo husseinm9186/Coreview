@@ -67,7 +67,7 @@ one.
 On Windows:
 
 ```powershell
-Get-AuthenticodeSignature .\Coreview_0.2.0_x64-setup.exe | Format-List
+Get-AuthenticodeSignature .\Coreview_2.4.9_x64-setup.exe | Format-List
 ```
 
 `Status` reads `Valid` on a machine that trusts the root, and

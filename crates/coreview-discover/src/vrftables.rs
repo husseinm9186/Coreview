@@ -67,6 +67,41 @@ impl VrfDialect {
         }
     }
 
+    /// One command that reads **every** VRF's table, where the platform has
+    /// one (LT-351).
+    ///
+    /// A Nexus with six VRFs is six round trips the slow way and one this
+    /// way, and the operator's own capture is what showed the shape: the
+    /// device prints a `IP Route Table for VRF "<name>"` header and then that
+    /// VRF's routes, over and over, **including the empty ones** — which is
+    /// worth having, because a VRF that exists and holds nothing is a
+    /// different answer from a VRF nobody collected.
+    ///
+    /// `None` where a platform has no such command: a FortiOS VDOM is entered
+    /// rather than named, so its tables are read one VDOM at a time.
+    pub fn all_command(&self) -> Option<&'static str> {
+        match self {
+            VrfDialect::Cisco | VrfDialect::Arista => Some("show ip route vrf all"),
+            // Junos prints every instance's table without being asked twice.
+            VrfDialect::Junos => Some("show route"),
+            VrfDialect::FortiOs => None,
+        }
+    }
+
+    /// Whether a VRF's table can be read by naming it on one command
+    /// (LT-352).
+    ///
+    /// **False for FortiOS, and that is not a gap in the parser.** A VDOM is
+    /// *entered* — `config vdom`, `edit CORP`, then the command, then `end` —
+    /// so there is no single line that reads one VDOM's table from outside
+    /// it. The crawl lists the VDOMs and leaves their tables uncollected,
+    /// which the path engine reports as "no table held for that VRF" rather
+    /// than as an empty one. Answering an empty table for a VDOM full of
+    /// routes would be the worse kind of wrong (D-050).
+    pub fn reads_tables_by_name(&self) -> bool {
+        !matches!(self, VrfDialect::FortiOs)
+    }
+
     /// The command that reads one VRF's table.
     pub fn table_command(&self, vrf: &str) -> String {
         match self {
@@ -149,6 +184,11 @@ pub fn is_global(name: &str) -> bool {
 /// whitespace and has no name in the first column, which is how a
 /// multi-interface VRF loses its interfaces to a naive line-per-row parser.
 pub fn parse_vrf_list(out: &str, dialect: VrfDialect) -> Vec<Vrf> {
+    // FortiOS does not print a table: a VDOM is a configuration block, and
+    // its name is the only thing in the listing worth having (LT-352).
+    if dialect == VrfDialect::FortiOs {
+        return parse_vdom_list(out);
+    }
     let mut found: Vec<Vrf> = Vec::new();
     let mut started = false;
     // How far the rows themselves are indented. `show vrf` indents every data
@@ -166,6 +206,10 @@ pub fn parse_vrf_list(out: &str, dialect: VrfDialect) -> Vec<Vrf> {
         // The heading, whichever dialect printed it.
         if !started
             && (lower.contains("vrf-name")
+                // Arista heads the same table `Vrf  RD  Protocols  State
+                // Interfaces` — no "Name" column at all, which is the second
+                // platform in a row that heading rule read as no VRFs.
+                || (lower.starts_with("vrf") && lower.contains("protocols"))
                 || (lower.contains("name") && (lower.contains("rd") || lower.contains("interfaces")))
                 || (lower.contains("instance") && lower.contains("type")))
         {
@@ -225,6 +269,44 @@ pub fn parse_vrf_list(out: &str, dialect: VrfDialect) -> Vec<Vrf> {
     found
 }
 
+/// The VDOMs a FortiGate has (LT-352).
+///
+/// **Built from Fortinet's documentation, not from captured output** (D-051).
+/// A VDOM is the FortiOS answer to a VRF — a separate routing table, its own
+/// interfaces, its own policy — and it is listed as configuration rather than
+/// as a table:
+///
+/// ```text
+/// == [ root ]
+/// name: root
+/// == [ CORP ]
+/// name: CORP
+/// ```
+///
+/// `show system vdom` writes the same thing as `edit "CORP"`, and both are
+/// read, because which command an account may run varies.
+pub fn parse_vdom_list(out: &str) -> Vec<Vrf> {
+    let mut found: Vec<Vrf> = Vec::new();
+    let mut add = |name: &str| {
+        let name = name.trim().trim_matches('"').trim();
+        if name.is_empty() || is_global(name) || found.iter().any(|v: &Vrf| v.name == name) {
+            return;
+        }
+        found.push(Vrf { name: name.to_string(), route_distinguisher: None, interfaces: Vec::new() });
+    };
+    for line in out.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("== [") {
+            if let Some(end) = rest.find(']') {
+                add(&rest[..end]);
+            }
+        } else if let Some(rest) = t.strip_prefix("edit ") {
+            add(rest);
+        }
+    }
+    found
+}
+
 /// `65000:100` or `10.255.0.1:100` — a route distinguisher, not a metric.
 fn looks_like_rd(token: &str) -> bool {
     let Some((left, right)) = token.split_once(':') else { return false };
@@ -238,6 +320,12 @@ fn looks_like_rd(token: &str) -> bool {
 fn looks_like_interface(token: &str) -> bool {
     let t = token.trim();
     if t.len() < 3 || looks_like_rd(t) {
+        return false;
+    }
+    // Arista's Protocols and State columns are `ipv4,ipv6` and `v4:routing`,
+    // which start with a letter and contain a digit and are not ports. No
+    // interface name has a comma or a colon in it (LT-352).
+    if t.contains(',') || t.contains(':') {
         return false;
     }
     // Starts with a letter and contains a digit: `Gi0/1.100`, `Eth1/4`,
@@ -258,6 +346,74 @@ fn looks_like_interface(token: &str) -> bool {
 /// small as it can be.
 pub fn parse_vrf_table(out: &str) -> Vec<Route> {
     parse_routes(out)
+}
+
+/// Every VRF's table out of one answer (LT-351).
+///
+/// **Captured shape**, from a Nexus leaf answering `show ip route vrf all`:
+///
+/// ```text
+/// IP Route Table for VRF "default"
+/// '*' denotes best ucast next-hop
+///
+/// 192.0.2.0/31, ubest/mbest: 1/0
+///     *via 192.0.2.2, Eth1/54, [110/42], 1y29w, ospf-FABRIC, intra
+///
+/// IP Route Table for VRF "CORP"
+/// '*' denotes best ucast next-hop
+///
+/// ```
+///
+/// The last block there is a VRF that exists and holds no routes, and it
+/// comes back as an **empty entry rather than a missing one** — "that VRF has
+/// no route to this address" and "nobody collected that VRF" are different
+/// answers and the path engine gives different ones (D-050).
+///
+/// IOS-XE writes `Routing Table: VRF <name>` and Arista `VRF: <name>` for the
+/// same thing; both are recognised, neither has been seen on hardware.
+pub fn parse_vrf_tables(out: &str) -> std::collections::BTreeMap<String, Vec<Route>> {
+    let mut tables: std::collections::BTreeMap<String, Vec<Route>> = Default::default();
+    let mut current: Option<String> = None;
+    let mut body = String::new();
+
+    let flush = |tables: &mut std::collections::BTreeMap<String, Vec<Route>>,
+                 name: &Option<String>,
+                 body: &str| {
+        if let Some(name) = name {
+            tables.insert(name.clone(), parse_routes(body));
+        }
+    };
+
+    for line in out.lines() {
+        if let Some(name) = table_header(line) {
+            flush(&mut tables, &current, &body);
+            current = Some(name);
+            body.clear();
+            continue;
+        }
+        if current.is_some() {
+            body.push_str(line);
+            body.push('\n');
+        }
+    }
+    flush(&mut tables, &current, &body);
+    tables
+}
+
+/// `IP Route Table for VRF "CORP"` → `CORP`, whichever way the platform
+/// writes it.
+fn table_header(line: &str) -> Option<String> {
+    let t = line.trim();
+    let rest = t
+        .strip_prefix("IP Route Table for VRF")
+        .or_else(|| t.strip_prefix("IPv6 Route Table for VRF"))
+        .or_else(|| t.strip_prefix("Routing Table: VRF"))
+        .or_else(|| t.strip_prefix("VRF:"))?;
+    let name = rest.trim().trim_matches('"').trim();
+    if name.is_empty() {
+        return None;
+    }
+    Some(name.to_string())
 }
 
 #[cfg(test)]
@@ -377,5 +533,106 @@ management                              2 Up      --
         // the rest would put a name on a diagram that no command will match.
         let v = parse_vrf_list(NXOS, VrfDialect::Cisco);
         assert!(v.iter().any(|x| x.name == "egress-loadbalance-resolution-"));
+    }
+
+    /// **From Arista's `show vrf` documentation, not captured** (D-051). A
+    /// third heading in a row with no "Name" column.
+    const ARISTA: &str = "\
+   Vrf          RD            Protocols      State                  Interfaces\n\
+   ------------ ------------- -------------- ---------------------- ----------\n\
+   CORP         65000:100     ipv4,ipv6      v4:routing, v6:routing Ethernet1\n\
+   GUEST        65000:200     ipv4           v4:routing             Vlan200\n";
+
+    #[test]
+    fn reads_the_arista_table_that_heads_its_first_column_vrf() {
+        let v = parse_vrf_list(ARISTA, VrfDialect::Arista);
+        assert_eq!(v.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), ["CORP", "GUEST"]);
+        assert_eq!(v[0].route_distinguisher.as_deref(), Some("65000:100"));
+        assert_eq!(v[0].interfaces, ["Ethernet1"]);
+    }
+
+    /// **From Fortinet's documentation, not captured** (D-051).
+    const VDOMS: &str = "\
+== [ root ]\n\
+name: root\n\
+== [ CORP ]\n\
+name: CORP\n\
+== [ GUEST ]\n\
+name: GUEST\n";
+
+    #[test]
+    fn a_vdom_listing_is_configuration_rather_than_a_table() {
+        let v = parse_vrf_list(VDOMS, VrfDialect::FortiOs);
+        // `root` is FortiOS's global table and is left out the same way
+        // `default` is on a Nexus.
+        assert_eq!(v.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), ["CORP", "GUEST"]);
+    }
+
+    #[test]
+    fn the_other_spelling_of_a_vdom_listing_reads_the_same() {
+        let v = parse_vrf_list("config vdom\n    edit \"CORP\"\n    next\n    edit \"root\"\nend\n", VrfDialect::FortiOs);
+        assert_eq!(v.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), ["CORP"]);
+    }
+
+    /// **The shape a Nexus printed** for `show ip route vrf all` on
+    /// 2026-09-20, retyped (D-027). One command, every table, the empty ones
+    /// included.
+    const ALL: &str = "\
+IP Route Table for VRF \"default\"\n\
+'*' denotes best ucast next-hop\n\
+\n\
+192.0.2.0/31, ubest/mbest: 1/0\n\
+    *via 192.0.2.2, Eth1/54, [110/42], 1y29w, ospf-FABRIC, intra\n\
+\n\
+IP Route Table for VRF \"management\"\n\
+'*' denotes best ucast next-hop\n\
+\n\
+0.0.0.0/0, ubest/mbest: 1/0\n\
+    *via 198.51.100.1, [1/0], 3w1d, static\n\
+\n\
+IP Route Table for VRF \"CORP\"\n\
+'*' denotes best ucast next-hop\n\
+\n\
+203.0.113.0/24, ubest/mbest: 1/0, attached\n\
+    *via 203.0.113.1, Vlan113, [0/0], 1y29w, direct\n\
+\n\
+IP Route Table for VRF \"GUEST\"\n\
+'*' denotes best ucast next-hop\n\
+\n";
+
+    #[test]
+    fn one_command_reads_every_vrfs_table() {
+        let tables = parse_vrf_tables(ALL);
+        assert_eq!(
+            tables.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["CORP", "GUEST", "default", "management"]
+        );
+        assert_eq!(tables["CORP"].len(), 1);
+        assert_eq!(tables["CORP"][0].protocol, "connected");
+    }
+
+    #[test]
+    fn a_vrf_that_holds_nothing_comes_back_empty_rather_than_missing() {
+        // "that VRF has no route to this" and "nobody collected that VRF"
+        // are different answers, and the path engine gives different ones.
+        let tables = parse_vrf_tables(ALL);
+        assert_eq!(tables.get("GUEST").map(Vec::len), Some(0));
+        assert_eq!(tables.get("NOSUCH"), None);
+    }
+
+    #[test]
+    fn a_management_vrf_route_with_no_interface_still_reads() {
+        let tables = parse_vrf_tables(ALL);
+        let mgmt = &tables["management"][0];
+        assert!(mgmt.is_default());
+        assert_eq!(mgmt.protocol, "static");
+        assert_eq!(mgmt.next_hops, ["198.51.100.1"]);
+        assert_eq!(mgmt.interface, None);
+    }
+
+    #[test]
+    fn nothing_at_all_is_no_tables_rather_than_one_called_nothing() {
+        assert!(parse_vrf_tables("").is_empty());
+        assert!(parse_vrf_tables("% Invalid input detected at '^' marker.").is_empty());
     }
 }

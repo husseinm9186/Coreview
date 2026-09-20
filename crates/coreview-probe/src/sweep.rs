@@ -837,7 +837,7 @@ mod tests {
             json(&SweepEvent::Alive(SweepHit {
                 ip: "10.0.0.1".into(),
                 rtt_ms: Some(1.5),
-                hostname: Some("csdc.comsol.root".into()),
+                hostname: Some("sw1.corp.root".into()),
                 name_source: Some(NameSource::Dns),
                 mac: Some("24:5e:be:00:00:9e".into()),
                 vendor: Some("QNAP Systems".into()),
@@ -849,7 +849,7 @@ mod tests {
             })),
             concat!(
                 r#"{"kind":"alive","ip":"10.0.0.1","rttMs":1.5,"#,
-                r#""hostname":"csdc.comsol.root","nameSource":"dns","#,
+                r#""hostname":"sw1.corp.root","nameSource":"dns","#,
                 r#""mac":"24:5e:be:00:00:9e","vendor":"QNAP Systems","#,
                 r#""ports":[{"port":22,"service":"SSH"}],"#,
                 r#""serial":"FOC0000TEST","product":"Fortinet FortiSwitch","#,
@@ -1020,8 +1020,8 @@ mod tests {
     #[test]
     fn a_real_ptr_record_is_a_name() {
         assert_eq!(
-            usable_name("csdc.comsol.root", ip("10.10.10.24")),
-            Some("csdc.comsol.root".to_string())
+            usable_name("sw1.corp.root", ip("10.10.10.24")),
+            Some("sw1.corp.root".to_string())
         );
     }
 

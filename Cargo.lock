@@ -955,7 +955,7 @@ dependencies = [
 
 [[package]]
 name = "coreview"
-version = "0.2.0"
+version = "2.4.9"
 dependencies = [
  "base64 0.22.1",
  "coreview-discover",
@@ -983,7 +983,7 @@ dependencies = [
 
 [[package]]
 name = "coreview-discover"
-version = "0.2.0"
+version = "2.4.9"
 dependencies = [
  "argon2 0.5.3",
  "async-trait",
@@ -1005,7 +1005,7 @@ dependencies = [
 
 [[package]]
 name = "coreview-probe"
-version = "0.2.0"
+version = "2.4.9"
 dependencies = [
  "dns-lookup",
  "proptest",

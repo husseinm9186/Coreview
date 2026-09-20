@@ -1,7 +1,7 @@
 {
   "name": "coreview",
   "private": true,
-  "version": "0.2.0",
+  "version": "2.4.9",
   "description": "Coreview — Network Diagramming & Validation. Local-first topology drawing, live link validation and IP address management.",
   "author": {
     "name": "Mohammed Almoola",

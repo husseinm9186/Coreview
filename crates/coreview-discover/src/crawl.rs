@@ -1521,14 +1521,44 @@ async fn read_details(device: &mut Session, version: &str, wanted: DetailOptions
     if wanted.vrfs {
         let dialect = crate::vrftables::dialect_for(version);
         let listing = device.run(dialect.list_command()).await.unwrap_or_default();
-        for vrf in crate::vrftables::parse_vrf_list(&listing, dialect) {
-            let command = dialect.table_command(&vrf.name);
-            let table = device.run(&command).await.unwrap_or_default();
-            let routes = crate::vrftables::parse_vrf_table(&table);
-            // A VRF that answered with nothing is still a VRF the device has,
-            // and recording it empty is how the path engine can say "that VRF
-            // has no route to this" instead of "no such VRF".
-            details.vrf_routes.insert(vrf.name, routes);
+        let vrfs = crate::vrftables::parse_vrf_list(&listing, dialect);
+
+        // LT-351: one command for every table where the platform has one. A
+        // Nexus with six VRFs is six round trips the other way, and the
+        // answer carries the empty VRFs too.
+        let mut answered = false;
+        if !vrfs.is_empty() {
+            if let Some(command) = dialect.all_command() {
+                let out = device.run(command).await.unwrap_or_default();
+                let tables = crate::vrftables::parse_vrf_tables(&out);
+                if !tables.is_empty() {
+                    for (name, routes) in tables {
+                        // The global table is already collected by `routes`
+                        // above and is not a VRF (`is_global`).
+                        if crate::vrftables::is_global(&name) {
+                            continue;
+                        }
+                        details.vrf_routes.insert(name, routes);
+                    }
+                    answered = true;
+                }
+            }
+        }
+
+        // One at a time: the platform has no all-command, or it refused.
+        // FortiOS is skipped rather than asked: a VDOM is entered, not named
+        // on a command, so the same line would be run once per VDOM and
+        // answer with the current one's table every time.
+        if !answered && dialect.reads_tables_by_name() {
+            for vrf in vrfs {
+                let command = dialect.table_command(&vrf.name);
+                let table = device.run(&command).await.unwrap_or_default();
+                let routes = crate::vrftables::parse_vrf_table(&table);
+                // A VRF that answered with nothing is still a VRF the device
+                // has, and recording it empty is how the path engine can say
+                // "that VRF has no route to this" instead of "no such VRF".
+                details.vrf_routes.insert(vrf.name, routes);
+            }
         }
     }
 

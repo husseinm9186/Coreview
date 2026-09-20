@@ -156,6 +156,11 @@ pub fn parse_routes(output: &str) -> Vec<Route> {
     if output.contains("ubest/mbest:") || output.contains("IP Route Table for VRF") {
         return parse_nxos_routes(output);
     }
+    // Junos prints a table header, then a prefix and its paths on separate
+    // lines with a different vocabulary again (LT-352).
+    if output.contains(" destinations, ") && output.contains(" routes (") {
+        return parse_junos_routes(output);
+    }
     let mut routes: Vec<Route> = Vec::new();
     let mut in_codes = false;
     for raw in output.lines() {
@@ -177,6 +182,12 @@ pub fn parse_routes(output: &str) -> Vec<Route> {
         }
         in_codes = false;
         if trimmed.starts_with("Gateway of last resort") || trimmed.starts_with("IPv6 Routing Table") {
+            continue;
+        }
+        // FortiOS heads each VDOM's table `Routing table for VRF=0`. The
+        // rest of its table is the IOS shape, which is why this is a line to
+        // skip rather than a parser of its own (LT-352).
+        if trimmed.starts_with("Routing table for VRF") {
             continue;
         }
         let words: Vec<&str> = trimmed.split_whitespace().collect();
@@ -422,6 +433,144 @@ fn strip_more(line: &str) -> &str {
     rest
 }
 
+/// Junos's routing table, which shares nothing with the other two (LT-352).
+///
+/// **Built from Juniper's `show route` documentation, not from captured
+/// output** (D-051). Unverified until a device has answered it.
+///
+/// ```text
+/// CORP.inet.0: 12 destinations, 12 routes (12 active, 0 holddown, 0 hidden)
+/// + = Active Route, - = Last Active, * = Both
+///
+/// 192.0.2.0/24       *[OSPF/10] 1d 02:11:33, metric 2
+///                     > to 198.51.100.1 via ge-0/0/0.0
+///                       to 198.51.100.5 via ge-0/0/1.0
+/// 203.0.113.0/24     *[Direct/0] 3w1d
+///                     > via ge-0/0/1.0
+/// ```
+///
+/// `[Protocol/preference]` is Junos's way of writing the code and the
+/// administrative distance together, `metric N` is where the metric lives
+/// when there is one, and `> to X via Y` is a next hop — the `>` marking the
+/// one being used, and a second `to` line under the same prefix being ECMP.
+pub fn parse_junos_routes(output: &str) -> Vec<Route> {
+    let mut routes: Vec<Route> = Vec::new();
+    for raw in output.lines() {
+        let line = raw.trim_end();
+        let t = line.trim();
+        if t.is_empty() || t.starts_with('+') || t.contains(" destinations, ") {
+            continue;
+        }
+
+        // A next hop for the route above: `> to 198.51.100.1 via ge-0/0/0.0`,
+        // `> via ge-0/0/1.0`, or the same without the `>` for a path that is
+        // not the one in use.
+        let hop = t.strip_prefix("> ").unwrap_or(t);
+        if hop.starts_with("to ") || hop.starts_with("via ") {
+            if let Some(route) = routes.last_mut() {
+                read_junos_hop(hop, route);
+            }
+            continue;
+        }
+        // Junos's own annotations under a route, none of which is a path.
+        if hop.starts_with("AS path:") || hop.starts_with("Validation") || hop.starts_with("validation") {
+            continue;
+        }
+
+        // A prefix line, or another route for the prefix above:
+        // `192.0.2.0/24       *[OSPF/10] 1d 02:11:33, metric 2`
+        let Some(open) = t.find('[') else { continue };
+        let Some(close) = t[open..].find(']') else { continue };
+        let inside = &t[open + 1..open + close];
+        let (protocol, preference) = match inside.split_once('/') {
+            Some((p, d)) => (p.trim(), d.trim().parse::<u32>().ok()),
+            None => (inside.trim(), None),
+        };
+        let head = t[..open].trim().trim_end_matches(['*', '+', '-']).trim();
+        // No prefix in front of the bracket means another path for the route
+        // above, which Junos writes with the prefix column left blank.
+        let prefix = if head.is_empty() {
+            match routes.last() {
+                Some(last) => last.prefix.clone(),
+                None => continue,
+            }
+        } else {
+            let Some((network, length)) = head.split_once('/') else { continue };
+            let Ok(addr) = network.parse::<IpAddr>() else { continue };
+            let Ok(bits) = length.parse::<u8>() else { continue };
+            format!("{addr}/{bits}")
+        };
+        let family = if prefix.contains(':') { 6 } else { 4 };
+        // `, metric 2` — the only place a Junos metric appears.
+        let metric = t
+            .split([',', ' '])
+            .skip_while(|f| !f.eq_ignore_ascii_case("metric"))
+            .nth(1)
+            .and_then(|m| m.trim().parse::<u32>().ok());
+        routes.push(Route {
+            family,
+            prefix,
+            protocol: junos_protocol(protocol).to_string(),
+            code: protocol.to_string(),
+            next_hops: Vec::new(),
+            interface: None,
+            distance: preference,
+            metric,
+            next_hop_vrf: None,
+            segment_id: None,
+        });
+    }
+    routes.retain(|r| !r.next_hops.is_empty() || r.interface.is_some() || !r.protocol.is_empty());
+    routes
+}
+
+/// `to 198.51.100.1 via ge-0/0/0.0`, or `via ge-0/0/1.0` for a connected one.
+fn read_junos_hop(hop: &str, route: &mut Route) {
+    let fields: Vec<&str> = hop.split_whitespace().collect();
+    let mut i = 0;
+    while i < fields.len() {
+        match fields[i] {
+            "to" => {
+                if let Some(address) = fields.get(i + 1) {
+                    let address = address.trim_end_matches(',');
+                    if address.parse::<IpAddr>().is_ok()
+                        && !route.next_hops.iter().any(|h| h == address)
+                    {
+                        route.next_hops.push(address.to_string());
+                    }
+                }
+                i += 2;
+            }
+            "via" => {
+                if let Some(iface) = fields.get(i + 1) {
+                    if route.interface.is_none() {
+                        route.interface = Some(iface.trim_end_matches(',').to_string());
+                    }
+                }
+                i += 2;
+            }
+            _ => i += 1,
+        }
+    }
+}
+
+/// `OSPF` → `ospf`; `Direct` is what Junos calls a connected route.
+fn junos_protocol(code: &str) -> &'static str {
+    match code.to_ascii_lowercase().as_str() {
+        "direct" => "connected",
+        "local" => "local",
+        "static" => "static",
+        "ospf" | "ospf3" => "ospf",
+        "bgp" => "bgp",
+        "isis" => "isis",
+        "rip" | "ripng" => "rip",
+        "access" | "access-internal" => "access",
+        "aggregate" => "aggregate",
+        "evpn" => "evpn",
+        _ => "other",
+    }
+}
+
 /// The subnets a device is directly on, from its connected routes.
 pub fn connected_prefixes(routes: &[Route]) -> Vec<String> {
     routes
@@ -603,5 +752,85 @@ IP Route Table for VRF \"CORP\"\n\
         // must not fall into it.
         assert!(!IOS_V4.contains("ubest"));
         assert!(!parse_routes(IOS_V4).is_empty());
+    }
+
+    /// **From Juniper's `show route` documentation, not captured** (D-051).
+    const JUNOS: &str = "\
+CORP.inet.0: 4 destinations, 5 routes (4 active, 0 holddown, 0 hidden)\n\
++ = Active Route, - = Last Active, * = Both\n\
+\n\
+0.0.0.0/0          *[Static/5] 3w1d\n\
+                    > to 192.0.2.1 via ge-0/0/0.0\n\
+192.0.2.0/30       *[Direct/0] 3w1d\n\
+                    > via ge-0/0/0.0\n\
+203.0.113.0/24     *[OSPF/10] 1d 02:11:33, metric 2\n\
+                    > to 192.0.2.2 via ge-0/0/0.0\n\
+                      to 192.0.2.6 via ge-0/0/1.0\n\
+198.51.100.0/24    *[BGP/170] 00:10:00, localpref 100, from 192.0.2.2\n\
+                      AS path: 65000 I, validation-state: unverified\n\
+                    > to 192.0.2.2 via ge-0/0/0.0\n";
+
+    #[test]
+    fn reads_the_junos_table_where_the_paths_are_under_the_prefix() {
+        let r = parse_junos_routes(JUNOS);
+        assert_eq!(r.len(), 4, "{r:?}");
+        assert_eq!(r[0].prefix, "0.0.0.0/0");
+        assert_eq!(r[0].protocol, "static");
+        assert_eq!(r[0].distance, Some(5));
+        assert_eq!(r[0].next_hops, ["192.0.2.1"]);
+        assert_eq!(r[0].interface.as_deref(), Some("ge-0/0/0.0"));
+    }
+
+    #[test]
+    fn junos_calls_a_connected_route_direct() {
+        let r = parse_junos_routes(JUNOS);
+        let direct = r.iter().find(|x| x.prefix == "192.0.2.0/30").unwrap();
+        assert_eq!(direct.protocol, "connected");
+        assert!(direct.next_hops.is_empty(), "a connected route goes nowhere");
+        assert_eq!(direct.interface.as_deref(), Some("ge-0/0/0.0"));
+    }
+
+    #[test]
+    fn junos_ecmp_is_two_to_lines_under_one_prefix() {
+        let r = parse_junos_routes(JUNOS);
+        let ospf = r.iter().find(|x| x.prefix == "203.0.113.0/24").unwrap();
+        assert_eq!(ospf.next_hops, ["192.0.2.2", "192.0.2.6"]);
+        assert_eq!(ospf.metric, Some(2));
+        assert_eq!(ospf.distance, Some(10));
+    }
+
+    #[test]
+    fn a_junos_annotation_is_not_a_next_hop() {
+        // "AS path: 65000 I" has a number in it and is not a route.
+        let r = parse_junos_routes(JUNOS);
+        let bgp = r.iter().find(|x| x.prefix == "198.51.100.0/24").unwrap();
+        assert_eq!(bgp.next_hops, ["192.0.2.2"]);
+    }
+
+    #[test]
+    fn the_junos_table_is_recognised_without_being_told_the_platform() {
+        assert_eq!(parse_routes(JUNOS).len(), 4);
+    }
+
+    /// **From Fortinet's documentation, not captured** (D-051). The rows are
+    /// the IOS shape; only the per-VDOM header is new.
+    const FORTIOS: &str = "\
+Routing table for VRF=0\n\
+Codes: K - kernel, C - connected, S - static, B - BGP, O - OSPF\n\
+\n\
+S*      0.0.0.0/0 [10/0] via 192.0.2.1, port1\n\
+C       192.0.2.0/24 is directly connected, port1\n\
+O       203.0.113.0/24 [110/20] via 192.0.2.2, port1, 00:10:00\n";
+
+    #[test]
+    fn the_fortios_table_is_the_ios_one_under_a_different_header() {
+        let r = parse_routes(FORTIOS);
+        assert_eq!(r.len(), 3, "{r:?}");
+        assert!(r[0].is_default());
+        assert_eq!(r[0].next_hops, ["192.0.2.1"]);
+        assert_eq!(r[1].protocol, "connected");
+        assert_eq!(r[2].distance, Some(110));
+        // The VDOM header is not a route.
+        assert!(!r.iter().any(|x| x.prefix.contains("VRF")));
     }
 }

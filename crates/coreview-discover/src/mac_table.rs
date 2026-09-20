@@ -175,7 +175,7 @@ Vlan    Mac Address       Type        Ports
    1    7456.3c00.0001    DYNAMIC     Gi0/7
    1    74ac.b900.0005    DYNAMIC     Gi0/1
    1    e81c.ba00.0002    DYNAMIC     Gi0/9
-  14    04f7.7829.d450    DYNAMIC     Gi0/1
+  14    04f7.7800.0001    DYNAMIC     Gi0/1
 Total Mac Addresses for this criterion: 7
 "#;
 

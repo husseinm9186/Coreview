@@ -18,7 +18,7 @@
 //!
 //!     cargo run -p coreview-discover --example parse_capture -- routes.txt nxos-routes
 //!
-//! `vni`, `peers`, `evpn`, `nve`, `vrf`, `routes`. This is how LT-350 was
+//! `vni`, `peers`, `evpn`, `nve`, `vrf`, `vrfs`, `routes`. This is how LT-350 was
 //! found: the operator could not give out the device, only what it printed.
 //!
 //! **What it prints stays where it is run.** A capture is somebody's network;
@@ -91,6 +91,19 @@ fn one(which: &str, text: &str) {
             println!("by type: {by_type:?}");
         }
         "nve" => println!("source address: {:?}", parse_source_interface(text)),
+        "vrfs" | "vrftables" => {
+            let tables = coreview_discover::vrftables::parse_vrf_tables(text);
+            println!("{} table(s)", tables.len());
+            for (name, routes) in &tables {
+                println!("  VRF {name}: {} route(s)", routes.len());
+                for one in routes.iter().take(3) {
+                    println!(
+                        "    {} via {:?} {} nh-vrf={:?} segid={:?}",
+                        one.prefix, one.next_hops, one.protocol, one.next_hop_vrf, one.segment_id
+                    );
+                }
+            }
+        }
         "vrf" => {
             let v = parse_vrf_list(text, VrfDialect::Cisco);
             println!("{} VRF(s)", v.len());
@@ -115,7 +128,7 @@ fn one(which: &str, text: &str) {
                 );
             }
         }
-        other => println!("no parser called `{other}` — try vni, peers, evpn, nve, vrf, routes"),
+        other => println!("no parser called `{other}` — try vni, peers, evpn, nve, vrf, vrfs, routes"),
     }
 }
 

@@ -123,6 +123,115 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-353 — Version 2.4.9, and a sweep of every file for anything that is not ours — 2026-09-20
+**Source:** "clean up everything by going to each code line, each md line, each
+script and validate it, make sure no customer or secrets, no customer info and
+no public ip, no bugs and everything validated … also make this version 2.4.9".
+**A backup first.** `git bundle create --all` into `~/coreview-backups/`,
+verified as a complete history before a single file was touched.
+**Four things were found and all four are fixed.**
+- **`traceroute.rs` held a live capture of the operator's own internet path** —
+  real public addresses and real ISP hostnames, which name his provider and his
+  city. Replaced with documentation addresses and `example.net` names of the
+  same shapes, because the shapes are what the tests are about: a hostname with
+  its address in brackets, a mid-hop router change on an ECMP path, and the
+  same case again with `-n`. All 14 traceroute tests still pass.
+- **A hostname from a customer's network** survived in the ping-sweep fixtures
+  and in the roadmap entry that quotes them.
+- **One MAC in the Catalyst MAC-table fixture still had its device part**,
+  where every other row in the same fixture was already zeroed to its OUI.
+- **A chassis serial in a CDP fixture**, zeroed for the same reason.
+**What the sweep covered, as commands rather than as a claim:** every tracked
+file, for public addresses (allowing RFC 1918, RFC 5737 documentation ranges,
+loopback, link-local, CGNAT and the benchmarking range); for real domains; for
+credentials, keys and community strings; for the operator's lab and the
+customer's names; for MACs with a device part; and for TODO/FIXME/`todo!()`.
+**Everything left is meant to be there:** upstream package-author addresses in
+the generated notices, the IEEE OUI registry's own vendor names, obviously-fake
+test secrets (`s3cr3t-community`, `PLAINTEXT-DEVICE-SSH-4a91`), and the two
+GitHub secret *names* the signing job reads.
+**Version 2.4.9** in `package.json`, `package-lock.json`, `tauri.conf.json`,
+all three `Cargo.toml`s and `Cargo.lock`, and in the example filename in
+`docs/SIGNING.md`. No version is hardcoded in the app; it comes from the
+manifest. The roadmap's record of a past `0.2.0` build is history and stays.
+**Validated:** `tsc`, `eslint`, 1,254 front-end tests, 807 Rust tests across
+the workspace, and `clippy -D warnings` — all clean. The e2e harnesses need a
+running dev server and were not run.
+
+### LT-352 — Arista, Junos and FortiOS, built from the documentation — 2026-09-20
+**Source:** "build these per the latest documentations and knowlage bases and
+articals", 2026-09-20, naming Arista EOS, Junos, FortiOS multi-VDOM, IOS-XE
+`show vrf` and a real stack.
+**Built under D-051, and every one of them says so.** `verified_against_hardware()`
+stays **false** for Arista, Junos and FortiOS, and the fixtures say
+"documentation-shaped, not captured" in as many words. NX-OS is the reason to
+expect these to be wrong somewhere: three of its four parsers were, and that
+was the platform the guides describe best.
+**Junos needed a routing-table parser of its own** — it shares nothing with
+either of the other two. The prefix and its paths are on separate lines,
+`[Protocol/preference]` is the code and the distance together, `metric N` is
+where the metric is, `> to X via Y` is a next hop and a second `to` under one
+prefix is ECMP, and `Direct` is what it calls a connected route. `AS path: …`
+and `validation-state: …` sit among the paths and carry numbers, and reading
+either as a hop is the obvious way to get this wrong; both are skipped by
+name. Picked by shape (`destinations,` and `routes (`), not by asking the
+caller what the platform is.
+**FortiOS needed almost nothing, which is worth saying.** Its table is the IOS
+shape under a different header (`Routing table for VRF=0`), so the parser that
+already existed reads it once that line is skipped. What it *did* need is a
+VDOM listing, because a VDOM is configuration rather than a table — `== [ CORP ]`
+or `edit "CORP"`, both read.
+**FortiOS VDOM tables are deliberately left uncollected.** A VDOM is *entered*
+(`config vdom`, `edit CORP`, the command, `end`), so no single line reads one
+from outside it. `reads_tables_by_name()` says so and the crawl skips them:
+the path engine then reports "no table held for that VRF" rather than an empty
+one. A VDOM full of routes reported as empty would be the worse kind of wrong
+(D-050).
+**Arista needed three small things and one real parser.** `show vrf` heads its
+first column `Vrf` with no Name column at all — the third heading in a row
+that rule read as zero VRFs. Its `show ip route vrf` is IOS-shaped and needed
+nothing. `show vxlan vni` and `show vxlan vtep` fell out of the existing
+parsers. `show bgp evpn` did not: Arista names the route type in words
+(`mac-ip`, `ip-prefix`, `imet`) where NX-OS brackets it, so `parse_evpn_arista`
+reads that and skips `imet` for the same reason `[3]` is skipped — it places
+no address anywhere.
+**Junos EVPN, and the trap in it.** The NLRI is one colon-separated string,
+and the VTEP a route came from is `from <address>` on the attribute line —
+**not** the `to X via Y` under it, which is the underlay hop. Reading that as
+the VTEP draws the tunnel to the wrong end, and there is a test that says so.
+Junos also prints this device's own VTEP (`SVTEP-IP`) above the remote ones,
+so reading every address on the page lists the device as its own peer; the
+peer parser starts at `RVTEP-IP`.
+**One more thing the Arista table taught the VRF parser:** `ipv4,ipv6` and
+`v4:routing` start with a letter and contain a digit, which was enough to be
+read as interface names. No interface has a comma or a colon in it.
+**IOS-XE was already covered** — its `show vrf` is the Name/RD/Protocols/
+Interfaces table the existing fixture is built from — and is still unverified
+for the same reason as the rest.
+**The stack parsers (LT-139) are unchanged.** They were already built from the
+guides under D-026 and cannot be earned from more documentation; they need
+`probe_stack` against a real stack.
+
+### LT-351 — One command for every VRF table — 2026-09-20
+**Source:** the operator ran `show ip route vrf all` on a Nexus leaf and
+brought back the output, which is what asked for.
+**Six round trips became one.** A Nexus with six VRFs was being asked
+`show ip route vrf <name>` once per VRF; `show ip route vrf all` answers them
+all, and `parse_vrf_tables` splits it on the `IP Route Table for VRF "<name>"`
+header the device prints between them. The per-VRF path is kept as the
+fallback for a platform that has no such command or refuses this one.
+**An empty VRF comes back empty rather than missing, and that is the point.**
+Three of the six VRFs in that capture hold no routes at all and the device
+still prints their headers. "That VRF has no route to this address" and
+"nobody collected that VRF" are different answers and the path engine gives
+different ones (D-050), so the distinction survives into `vrfRoutes`.
+**Also read from that capture:** a management-VRF static route with no
+interface (`*via <gateway>, [1/0], 3w1d, static`) parses correctly, and
+`show nve peers` at `terminal width 511` confirms the `Router-Mac` column
+that 80-column wrapping had hidden — `n/a` where a peer has advertised none.
+IOS-XE's `Routing Table: VRF <name>` and Arista's `VRF: <name>` are recognised
+by the same splitter and neither has been seen on hardware.
+
 ### LT-350 — The Nexus routing table, and an overlay route the device names — 2026-09-20
 **Source:** "Give me the commands you want to run and on what devices and i will
 run it and bring you the output", 2026-09-20, and the captures he then ran
@@ -5491,7 +5600,7 @@ LT-108: confimed".
 ### LT-109 — The ping sweep should resolve names, like `ping -a` — 2026-09-12
 **Source:** reported 2026-09-08 — "ping sweep is not setup correctly, it needs
 ping -a to try to resolve the names as well!", with a transcript showing
-`ping -a 10.10.10.24` returning `Pinging csdc.comsol.root [10.10.10.24]`.
+`ping -a 10.10.10.24` returning `Pinging sw1.corp.root [10.10.10.24]`.
 **Confirmed by reading the code:** `SweepHit` is `{ ip, rtt_ms }` — the sweep
 does no name resolution at all. Worse than it first looks:
 `DiscoverPanel.tsx:95` sets `data.label = h.ip`, so adding swept hosts to the

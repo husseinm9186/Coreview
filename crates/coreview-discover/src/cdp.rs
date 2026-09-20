@@ -320,7 +320,7 @@ Total cdp entries displayed : 2
     /// ID, "Interface address(es)" and "IPv4 Address".
     const NXOS: &str = r#"
 ----------------------------------------
-Device ID:N9K-SPINE-1(FDO21120U3F)
+Device ID:N9K-SPINE-1(FDO00000000)
 System Name: N9K-SPINE-1
 
 Interface address(es):
@@ -370,7 +370,7 @@ Advertisement Version: 2
     fn parses_nxos_with_its_different_labels() {
         let n = &parse_cdp_detail(NXOS)[0];
         // The serial in brackets is not part of the name.
-        assert_eq!(n.device_id, "N9K-SPINE-1(FDO21120U3F)");
+        assert_eq!(n.device_id, "N9K-SPINE-1(FDO00000000)");
         assert_eq!(n.short_name, "N9K-SPINE-1");
         assert_eq!(n.address(), Some("10.2.2.2"));
         assert_eq!(n.local_interface.as_deref(), Some("Ethernet1/1"));

@@ -239,7 +239,7 @@ pub struct BoundedRun {
 ///
 /// The bug this exists for: stdout used to be read only after the child had
 /// exited, so a traceroute killed at the deadline threw away every hop it had
-/// already found. A traceroute to `aws.com` prints nine real hops and then
+/// already found. A traceroute to a public name prints nine real hops and then
 /// spends two minutes discovering that AWS will not answer — and the nine
 /// hops are the part the operator wanted.
 ///
@@ -376,28 +376,28 @@ mod tests {
         assert!(hops[1].probes.iter().all(|p| p.host.is_none() && p.rtt_ms.is_none()));
     }
 
-    /// Real output, `traceroute 1.1.1.1` — a middle hop (an ECMP path)
+    /// Real output, `traceroute` to a public resolver — a middle hop (an ECMP path)
     /// answers from two *different* routers across its three probes. The
     /// third probe's RTT reuses the second probe's router without
     /// reprinting the name; a naive "one host per hop" parser would drop
     /// this entirely or attach the wrong host to the third probe.
     #[test]
     fn preserves_a_mid_hop_router_change() {
-        let line = " 4  lag-19.hcr01snaxtx40.netops.charter.com (24.27.13.136)  23.859 ms  23.836 ms lag-18.hcr02snaxtx40.netops.charter.com (24.27.13.144)  23.813 ms\n";
+        let line = " 4  lag-19.hcr01.example.net (198.51.100.19)  23.859 ms  23.836 ms lag-18.hcr02.example.net (198.51.100.18)  23.813 ms\n";
         let hops = parse_traceroute_output(line);
         assert_eq!(hops.len(), 1);
         let probes = &hops[0].probes;
         assert_eq!(probes.len(), 3);
         assert_eq!(
             probes[0].host.as_deref(),
-            Some("lag-19.hcr01snaxtx40.netops.charter.com (24.27.13.136)")
+            Some("lag-19.hcr01.example.net (198.51.100.19)")
         );
         assert_eq!(probes[0].rtt_ms, Some(23.859));
         assert_eq!(probes[1].host, probes[0].host, "second probe repeats the same router");
         assert_eq!(probes[1].rtt_ms, Some(23.836));
         assert_eq!(
             probes[2].host.as_deref(),
-            Some("lag-18.hcr02snaxtx40.netops.charter.com (24.27.13.144)"),
+            Some("lag-18.hcr02.example.net (198.51.100.18)"),
             "third probe switched routers on this ECMP path"
         );
         assert_eq!(probes[2].rtt_ms, Some(23.813));
@@ -408,30 +408,30 @@ mod tests {
     /// to the right probe.
     #[test]
     fn preserves_a_mid_hop_router_change_numeric() {
-        let line = " 4  24.27.13.144  17.470 ms 24.27.13.136  16.175 ms  15.767 ms\n";
+        let line = " 4  198.51.100.18  17.470 ms 198.51.100.19  16.175 ms  15.767 ms\n";
         let hops = parse_traceroute_output(line);
         let probes = &hops[0].probes;
         assert_eq!(probes.len(), 3);
-        assert_eq!(probes[0].host.as_deref(), Some("24.27.13.144"));
-        assert_eq!(probes[1].host.as_deref(), Some("24.27.13.136"));
+        assert_eq!(probes[0].host.as_deref(), Some("198.51.100.18"));
+        assert_eq!(probes[1].host.as_deref(), Some("198.51.100.19"));
         assert_eq!(probes[2].host, probes[1].host);
     }
 
-    /// Real output, `traceroute 8.8.8.8` — two consecutive hops lost in
+    /// Real output, `traceroute` to a public resolver — two consecutive hops lost in
     /// the middle of an otherwise-answering path.
     #[test]
     fn a_gap_in_the_middle_of_a_reachable_path_is_still_three_stars() {
-        let out = " 7  lag-23.rcr01hstqtx02.netops.charter.com (24.175.32.156)  24.829 ms  24.358 ms  24.319 ms\n\
+        let out = " 7  lag-23.rcr01.example.net (198.51.100.23)  24.829 ms  24.358 ms  24.319 ms\n\
  8  * * *\n\
  9  * * *\n\
-10  dns.google (8.8.8.8)  30.375 ms  30.015 ms  28.488 ms\n";
+10  resolver.example.net (203.0.113.53)  30.375 ms  30.015 ms  28.488 ms\n";
         let hops = parse_traceroute_output(out);
         assert_eq!(hops.len(), 4);
         assert_eq!(hops[1].hop, 8);
         assert!(hops[1].probes.iter().all(|p| p.rtt_ms.is_none()));
         assert_eq!(hops[2].hop, 9);
         assert_eq!(hops[3].hop, 10);
-        assert_eq!(hops[3].probes[0].host.as_deref(), Some("dns.google (8.8.8.8)"));
+        assert_eq!(hops[3].probes[0].host.as_deref(), Some("resolver.example.net (203.0.113.53)"));
     }
 
     /// LT-129, the regression this was raised for. A run killed at the
@@ -467,20 +467,20 @@ mod tests {
         assert_eq!(hops[0].probes[0].host.as_deref(), Some("a (10.0.0.1)"));
     }
 
-    /// The nine-hop `aws.com` case from the report, as the decision it turns
+    /// The nine-hop `example.com` case from the report, as the decision it turns
     /// into: cut short, but with hops, so it is a result and not an error.
     #[test]
     fn a_partial_path_is_a_result_not_an_error() {
         let cut_short = BoundedRun {
             stdout: " 1  _gateway (192.168.77.1)  0.572 ms  0.523 ms  0.526 ms\n\
- 2  syn-070-121-192-001.res.spectrum.com (70.121.192.1)  16.395 ms  16.391 ms  16.330 ms\n\
+ 2  cpe-203-0-113-1.example.net (203.0.113.1)  16.395 ms  16.391 ms  16.330 ms\n\
  3  * * *\n"
                 .into(),
             stderr: String::new(),
             complete: false,
         };
-        let r = result_from("aws.com", &cut_short, "traceroute").expect("hops beat the deadline");
-        assert_eq!(r.target, "aws.com");
+        let r = result_from("example.com", &cut_short, "traceroute").expect("hops beat the deadline");
+        assert_eq!(r.target, "example.com");
         assert_eq!(r.hops.len(), 3);
         assert!(!r.complete, "it must still say the path was cut short");
         assert_eq!(r.hops[0].probes[0].host.as_deref(), Some("_gateway (192.168.77.1)"));
@@ -492,7 +492,7 @@ mod tests {
     fn cut_short_with_no_hops_still_reports_the_timeout() {
         let nothing =
             BoundedRun { stdout: String::new(), stderr: String::new(), complete: false };
-        let err = result_from("aws.com", &nothing, "traceroute").expect_err("no hops");
+        let err = result_from("example.com", &nothing, "traceroute").expect_err("no hops");
         assert!(err.contains("did not finish"), "{err}");
     }
 
@@ -501,11 +501,11 @@ mod tests {
     #[test]
     fn a_finished_run_is_marked_complete() {
         let done = BoundedRun {
-            stdout: " 1  dns.google (8.8.8.8)  1.0 ms  1.0 ms  1.0 ms\n".into(),
+            stdout: " 1  resolver.example.net (203.0.113.53)  1.0 ms  1.0 ms  1.0 ms\n".into(),
             stderr: String::new(),
             complete: true,
         };
-        let r = result_from("8.8.8.8", &done, "traceroute").expect("hops");
+        let r = result_from("example.com", &done, "traceroute").expect("hops");
         assert!(r.complete);
     }
 

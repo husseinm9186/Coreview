@@ -824,6 +824,20 @@ device; Arista, Junos and FortiOS are not and still say so. **D-051 stands
 unchanged for the rest.** What it bought was a parser that was ready to be
 proved wrong quickly, which is what happened, and the honest field is what made
 the difference legible — nobody had to guess which parsers to distrust.
+**Extended again 2026-09-20, at his instruction:** "build these per the latest
+documentations and knowlage bases and articals" — Arista EOS, Junos, FortiOS
+multi-VDOM. Those three are built the same way and carry the same label, and
+`verified_against_hardware()` stays false for all of them. The NX-OS result
+above is the argument for keeping the label rather than against building from
+guides at all: a documentation-built parser that is marked as one gets proved
+wrong in an afternoon, and one that is not stays wrong quietly.
+**One place the rule bit and the answer was to collect nothing.** A FortiOS
+VDOM is entered rather than named on a command, so there is no single line that
+reads one VDOM's table from outside it. The crawl lists the VDOMs and leaves
+their tables uncollected — `reads_tables_by_name()` — so the path engine says
+"no table held" instead of answering an empty table for a VDOM full of routes.
+That is D-050 applied to a collection gap rather than to a routing one.
+
 **One thing to keep doing:** the captures were a bank's production network and
 none of it is in the repository (D-027). `examples/parse_capture.rs` reads a
 capture through the parsers without a device to log in to, which is how a fix

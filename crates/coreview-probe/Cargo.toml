@@ -1,6 +1,6 @@
 [package]
 name = "coreview-probe"
-version = "0.2.0"
+version = "2.4.9"
 authors = ["Mohammed Almoola <https://www.linkedin.com/in/malmoola>"]
 edition = "2021"
 description = "Probe engine for Coreview: validation, ICMP/TCP/DNS/HTTP(S) checks, threshold state machine, scheduler"
