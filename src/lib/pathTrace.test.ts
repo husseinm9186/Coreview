@@ -190,16 +190,48 @@ describe('VRF isolation', () => {
     }
   });
 
-  it('refuses to answer for a named VRF from the global table', () => {
-    // Discovery collects the global table only. Using it to answer a VRF
-    // question would be confidently wrong, which is the worst kind (D-050).
+  it('refuses to answer for a VRF nothing holds a table for', () => {
+    // Falling back to the global table would be confidently wrong, which is
+    // the worst kind (D-050).
     const out = tracePath({ devices: [only], from: 'R1', to: '10.9.0.9', vrf: 'CUSTOMER-A' });
     expect(out.kind).toBe('insufficient');
     expect(out.paths).toEqual([]);
     if (out.kind === 'insufficient') {
-      expect(out.reason).toMatch(/global table only/);
+      expect(out.reason).toMatch(/holds no routing table for VRF|no device in this data holds a routing table/i);
       expect(out.reason).toMatch(/CUSTOMER-A/);
+      expect(out.reason).toMatch(/does not fall back|falls back/i);
     }
+  });
+
+  it('routes a VRF from that VRF\u2019s own table, not the global one', () => {
+    // The same destination, two answers. A VRF that reaches it and a global
+    // table that does not is exactly the isolation a VRF exists to provide.
+    const r1: PathDevice = {
+      hostname: 'PE1',
+      addresses: [{ ip: '10.0.0.1' }],
+      routes: [route({ prefix: '10.0.0.0/24', protocol: 'connected', interface: 'Gi0/0' })],
+      vrfRoutes: {
+        'CUSTOMER-A': [route({ prefix: '10.9.0.0/16', protocol: 'connected', interface: 'Gi0/1.100' })],
+      },
+    };
+    expect(tracePath({ devices: [r1], from: 'PE1', to: '10.9.0.9', vrf: 'CUSTOMER-A' }).kind).toBe('delivered');
+    // And the global table still cannot reach it.
+    expect(tracePath({ devices: [r1], from: 'PE1', to: '10.9.0.9' }).kind).toBe('unreachable');
+  });
+
+  it('keeps two VRFs apart on the same device', () => {
+    const pe: PathDevice = {
+      hostname: 'PE1',
+      addresses: [{ ip: '10.0.0.1' }],
+      routes: [],
+      vrfRoutes: {
+        RED: [route({ prefix: '10.9.0.0/16', protocol: 'connected', interface: 'Gi0/1.10' })],
+        BLUE: [route({ prefix: '172.16.0.0/16', protocol: 'connected', interface: 'Gi0/1.20' })],
+      },
+    };
+    expect(tracePath({ devices: [pe], from: 'PE1', to: '10.9.0.9', vrf: 'RED' }).kind).toBe('delivered');
+    // RED's prefix is invisible from BLUE, which is the point of a VRF.
+    expect(tracePath({ devices: [pe], from: 'PE1', to: '10.9.0.9', vrf: 'BLUE' }).kind).toBe('unreachable');
   });
 });
 
@@ -324,5 +356,142 @@ describe('simulating a failure', () => {
     const before = JSON.stringify(all);
     tracePath({ devices: all, from: 'A', to: '10.9.0.9', without: { devices: ['LEFT'] } });
     expect(JSON.stringify(all)).toBe(before);
+  });
+});
+
+
+describe('NAT, load balancers and VIPs (LT-348)', () => {
+  const fw: PathDevice = {
+    hostname: 'FW-01',
+    addresses: [{ ip: '203.0.113.1' }],
+    routes: [route({ prefix: '10.20.0.0/16', protocol: 'static', nextHops: ['10.20.0.2'], interface: 'Gi0/1' })],
+    nat: [{ kind: 'destination', matches: '203.0.113.50', becomes: '10.20.0.50', port: 443, description: 'Customer Portal' }],
+    neighbours: [{ localInterface: 'Gi0/1', name: 'LB-01' }],
+  };
+  const lb: PathDevice = {
+    hostname: 'LB-01',
+    addresses: [{ ip: '10.20.0.2' }],
+    routes: [route({ prefix: '10.20.0.0/16', protocol: 'connected', interface: 'Vlan20' })],
+    vips: [{ address: '10.20.0.50', port: 443, members: ['10.20.0.11', '10.20.0.12'], description: 'Portal pool' }],
+  };
+  const web1: PathDevice = { hostname: 'WEB-01', addresses: [{ ip: '10.20.0.11' }], routes: [] };
+  const web2: PathDevice = { hostname: 'WEB-02', addresses: [{ ip: '10.20.0.12' }], routes: [] };
+  const all = [fw, lb, web1, web2];
+
+  it('translates on arrival and routes the new address afterwards', () => {
+    const out = tracePath({ devices: all, from: 'FW-01', to: '203.0.113.50', port: 443 });
+    expect(out.kind).toBe('delivered');
+    const nat = out.paths[0]!.find((h) => h.segment?.kind === 'nat');
+    expect(nat?.segment).toMatchObject({ kind: 'nat', was: '203.0.113.50', now: '10.20.0.50' });
+    expect(nat?.why).toMatch(/Everything after this is routed for 10\.20\.0\.50/);
+  });
+
+  it('leaves the packet alone when the rule is for another port', () => {
+    const out = tracePath({ devices: all, from: 'FW-01', to: '203.0.113.50', port: 80 });
+    expect(out.kind).toBe('unreachable');
+  });
+
+  it('follows every member behind a VIP, because any of them may serve it', () => {
+    const out = tracePath({ devices: all, from: 'FW-01', to: '203.0.113.50', port: 443 });
+    expect(out.paths).toHaveLength(2);
+    const chosen = out.paths.map((p) => p.find((h) => h.segment?.kind === 'vip')!.segment!);
+    expect(chosen.map((c) => (c.kind === 'vip' ? c.member : '')).sort()).toEqual(['10.20.0.11', '10.20.0.12']);
+  });
+
+  it('says which pool member each path took', () => {
+    const out = tracePath({ devices: all, from: 'FW-01', to: '203.0.113.50', port: 443 });
+    expect(out.paths[0]!.find((h) => h.protocol === 'load-balancer')!.why).toMatch(/one of 2 members in the pool/);
+  });
+});
+
+describe('VXLAN overlay and underlay (LT-348)', () => {
+  // Two leaves carrying VNI 10100, two spines between them. The destination
+  // lives on the far leaf's segment.
+  const leaf1: PathDevice = {
+    hostname: 'LEAF-01',
+    addresses: [{ ip: '10.255.0.1' }, { ip: '10.0.1.1' }, { ip: '10.0.2.1' }],
+    vtep: { address: '10.255.0.1', segments: [{ vni: 10100, vlan: 100, prefix: '10.100.0.0/24' }] },
+    routes: [
+      route({ prefix: '10.255.0.4/32', protocol: 'bgp', nextHops: ['10.0.1.2', '10.0.2.2'], distance: 20 }),
+      route({ prefix: '10.0.1.0/30', protocol: 'connected', interface: 'Eth1/1' }),
+      route({ prefix: '10.0.2.0/30', protocol: 'connected', interface: 'Eth1/2' }),
+    ],
+  };
+  const spine1: PathDevice = {
+    hostname: 'SPINE-01',
+    addresses: [{ ip: '10.0.1.2' }],
+    routes: [route({ prefix: '10.255.0.4/32', protocol: 'bgp', nextHops: ['10.0.3.2'], distance: 20 }), route({ prefix: '10.0.3.0/30', protocol: 'connected', interface: 'Eth1/4' })],
+    neighbours: [{ localInterface: 'Eth1/4', name: 'LEAF-04' }],
+  };
+  const spine2: PathDevice = {
+    hostname: 'SPINE-02',
+    addresses: [{ ip: '10.0.2.2' }],
+    routes: [route({ prefix: '10.255.0.4/32', protocol: 'bgp', nextHops: ['10.0.4.2'], distance: 20 }), route({ prefix: '10.0.4.0/30', protocol: 'connected', interface: 'Eth1/4' })],
+    neighbours: [{ localInterface: 'Eth1/4', name: 'LEAF-04' }],
+  };
+  const leaf4: PathDevice = {
+    hostname: 'LEAF-04',
+    addresses: [{ ip: '10.255.0.4' }, { ip: '10.0.3.2' }, { ip: '10.0.4.2' }],
+    vtep: { address: '10.255.0.4', segments: [{ vni: 10100, vlan: 100, prefix: '10.100.0.0/24' }] },
+    routes: [route({ prefix: '10.100.0.0/24', protocol: 'connected', interface: 'Vlan100' })],
+  };
+  const fabric = [leaf1, spine1, spine2, leaf4];
+
+  it('bridges across the overlay rather than calling it an L3 hop', () => {
+    const out = tracePath({ devices: fabric, from: 'LEAF-01', to: '10.100.0.20' });
+    expect(out.kind).toBe('delivered');
+    const overlay = out.paths[0]!.find((h) => h.segment?.kind === 'overlay')!;
+    expect(overlay.protocol).toBe('vxlan');
+    expect(overlay.segment).toMatchObject({ kind: 'overlay', vni: 10100, vlan: 100, localVtep: '10.255.0.1', remoteVtep: '10.255.0.4', remote: 'LEAF-04' });
+    expect(overlay.why).toMatch(/bridged across the overlay/);
+  });
+
+  it('shows the underlay that carries the tunnel, hop by hop', () => {
+    const out = tracePath({ devices: fabric, from: 'LEAF-01', to: '10.100.0.20' });
+    const underlay = out.paths[0]!.filter((h) => h.segment?.kind === 'underlay');
+    expect(underlay.length).toBeGreaterThan(0);
+    // It goes VTEP to VTEP through a spine, which is the whole point of
+    // showing it: the overlay hop alone hides those devices entirely.
+    expect(underlay.map((h) => h.device)).toContain('LEAF-01');
+    expect(underlay.some((h) => h.device.startsWith('SPINE'))).toBe(true);
+    expect(underlay[0]!.why).toMatch(/^Underlay for VNI 10100/);
+  });
+
+  it('takes the packet back out of the overlay at the far end', () => {
+    const out = tracePath({ devices: fabric, from: 'LEAF-01', to: '10.100.0.20' });
+    const last = out.paths[0]![out.paths[0]!.length - 1]!;
+    expect(last.segment).toMatchObject({ kind: 'decapsulate', vni: 10100 });
+    expect(last.device).toBe('LEAF-04');
+  });
+
+  it('reports the overlay as unresolved when the underlay cannot be followed', () => {
+    // A fabric with the spines taken away: the VNI is still shared, but there
+    // is no way to carry the tunnel, and saying "delivered" would be a lie.
+    const out = tracePath({ devices: [leaf1, leaf4], from: 'LEAF-01', to: '10.100.0.20' });
+    expect(out.kind).toBe('unreachable');
+    if (out.kind === 'unreachable') expect(out.reason).toMatch(/overlay between 10\.255\.0\.1 and 10\.255\.0\.4 could not be followed/);
+  });
+
+  it('does not invent a segment for an address no remote VTEP carries', () => {
+    const out = tracePath({ devices: fabric, from: 'LEAF-01', to: '198.51.100.7' });
+    expect(out.paths[0]?.some((h) => h.segment?.kind === 'overlay') ?? false).toBe(false);
+  });
+});
+
+describe('BGP attributes, where the device reported them', () => {
+  it('carries local preference, AS path and MED onto the hop', () => {
+    const r1: PathDevice = {
+      hostname: 'EDGE',
+      addresses: [{ ip: '10.0.0.1' }],
+      routes: [
+        route({
+          prefix: '10.40.0.0/16', protocol: 'bgp', nextHops: ['10.0.0.2'], interface: 'Gi0/0', distance: 20,
+          bgp: { localPreference: 200, asPath: '65001 65010', med: 50, communities: ['65001:100'] },
+        }),
+      ],
+    };
+    const r2: PathDevice = { hostname: 'CORE', addresses: [{ ip: '10.0.0.2' }], routes: [route({ prefix: '10.40.0.0/16', protocol: 'connected', interface: 'Vlan40' })] };
+    const out = tracePath({ devices: [r1, r2], from: 'EDGE', to: '10.40.0.9' });
+    expect(out.paths[0]![0]!.bgp).toEqual({ localPreference: 200, asPath: '65001 65010', med: 50, communities: ['65001:100'] });
   });
 });

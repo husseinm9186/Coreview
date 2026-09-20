@@ -73,6 +73,25 @@ const crawl = {
         { family: 4, prefix: "10.40.50.0/24", code: "C", protocol: "connected", nextHops: [], interface: "Vlan50", distance: 0, metric: 0 },
       ],
     },
+    // A firewall that translates, and a load balancer behind it: the
+    // application shape the generated page exists to draw.
+    {
+      hostname: "FW-01", address: "203.0.113.1",
+      addresses: [{ ip: "203.0.113.1", interface: "port1" }],
+      class: "firewall", hops: 1, reachedBy: "ssh", attached: [],
+      neighbors: [{ deviceId: "LB-01", shortName: "LB-01", localInterface: "port2" }],
+      routes: [{ family: 4, prefix: "10.20.0.0/16", code: "S", protocol: "static", nextHops: ["10.20.0.2"], interface: "port2", distance: 1, metric: 0 }],
+      nat: [{ kind: "destination", matches: "203.0.113.50", becomes: "10.20.0.50", port: 443, description: "Customer Portal" }],
+    },
+    {
+      hostname: "LB-01", address: "10.20.0.2",
+      addresses: [{ ip: "10.20.0.2", interface: "Vlan20" }],
+      class: "server", hops: 2, reachedBy: "ssh", attached: [], neighbors: [],
+      routes: [{ family: 4, prefix: "10.20.0.0/16", code: "C", protocol: "connected", nextHops: [], interface: "Vlan20", distance: 0, metric: 0 }],
+      vips: [{ address: "10.20.0.50", port: 443, members: ["10.20.0.11"], description: "Portal pool" }],
+    },
+    { hostname: "WEB-01", address: "10.20.0.11", addresses: [{ ip: "10.20.0.11", interface: "eth0" }],
+      class: "server", hops: 3, reachedBy: "ssh", attached: [], neighbors: [], routes: [] },
     // Crawled, but without its routing table — a different thing from an
     // empty one, and the engine must say so.
     {
@@ -118,7 +137,7 @@ const field = (label) =>
 const go = panel.locator("button", { hasText: "Trace path" });
 
 check("the panel reads a saved crawl run rather than the network",
-  /4 devices in this run, 3 with a routing table/.test(await panel.textContent()),
+  /7 devices in this run, 6 with a routing table/.test(await panel.textContent()),
   (await panel.textContent()).slice(0, 160));
 
 // ------------------------------------------------ the path it would take
@@ -182,9 +201,10 @@ await page.waitForTimeout(300);
 await field("VRF").fill("CUSTOMER-A");
 await go.click();
 await page.waitForTimeout(500);
-check("a named VRF says the data is not there rather than using the global table",
+check("a VRF nothing holds a table for says so rather than using the global one",
   /Insufficient routing data/.test(await panel.textContent()) &&
-  /global table only/.test(await panel.textContent()), (await panel.textContent()).slice(0, 300));
+  /holds a routing table for VRF/.test(await panel.textContent()) &&
+  /does not fall back|falls back/i.test(await panel.textContent()), (await panel.textContent()).slice(0, 320));
 check("and draws no path at all for it", (await rows().count()) === 0);
 
 await field("VRF").fill("");
@@ -208,6 +228,70 @@ await go.click();
 await page.waitForTimeout(500);
 check("a device this project never crawled is refused by name",
   /not a device this project has crawled/.test(await panel.textContent()), (await panel.textContent()).slice(0, 300));
+
+
+// -------------------------- LT-348 the application page, drawn and separate
+
+const pagesNow = () => page.evaluate(() => window.__cvStore.getState().doc.pages.map((p) => ({
+  id: p.id, name: p.name, nodes: p.nodes.length, edges: p.edges.length,
+})));
+const originalBefore = await page.evaluate(() => JSON.stringify(window.__cvStore.getState().doc.pages[0]));
+
+await page.locator("button", { hasText: /^Clear$/ }).first().click();
+await page.waitForTimeout(300);
+await field("Application").fill("Customer Portal");
+await field("Source").fill("FW-01");
+await field("Destination").fill("203.0.113.50");
+await field("Port").fill("443");
+await go.click();
+await page.waitForTimeout(600);
+
+const appText = await panel.textContent();
+check("a NAT is followed and the lookup after it uses the new address",
+  /FW-01 translates 203\.0\.113\.50 to 10\.20\.0\.50/.test(appText) &&
+  /Everything after this is routed for 10\.20\.0\.50/.test(appText), appText.slice(0, 400));
+check("and the load balancer's VIP picks a real member",
+  /LB-01 answers for 10\.20\.0\.50/.test(appText) && /sends this connection to 10\.20\.0\.11/.test(appText),
+  appText.slice(0, 500));
+
+await panel.locator("button", { hasText: "Create application path page" }).click();
+await page.waitForTimeout(800);
+
+const madePages = await pagesNow();
+check("a new page is created through the existing Pages system", madePages.length === 2, JSON.stringify(madePages));
+check("named after the application", madePages[1].name === "APP - Customer Portal - TCP 443", madePages[1].name);
+check("with the path drawn on it — nodes and lines, not a list",
+  madePages[1].nodes >= 4 && madePages[1].edges >= madePages[1].nodes - 1, JSON.stringify(madePages[1]));
+check("and it is only the path, not a copy of the network",
+  madePages[1].nodes < 20, String(madePages[1].nodes));
+
+if (process.env.SHOT2) await page.screenshot({ path: process.env.SHOT2 });
+check("the original topology page is byte-for-byte what it was",
+  (await page.evaluate(() => JSON.stringify(window.__cvStore.getState().doc.pages[0]))) === originalBefore);
+check("and the generated page is the one in front", 
+  (await page.evaluate(() => window.__cvStore.getState().doc.activePageId)) === madePages[1].id);
+check("nothing is left highlighted on the original",
+  (await page.evaluate(() => window.__cvStore.getState().canvasHighlight)) === null);
+
+// A second application makes a second page rather than editing the first.
+await page.locator(".cv-page-tab, .cv-pages button", { hasText: "Core" }).first().click().catch(() => {});
+await page.waitForTimeout(400);
+await page.locator(".cv-panel .cv-tabs button", { hasText: "Trace path" }).click();
+await page.waitForTimeout(400);
+await field("Application").fill("Reporting");
+await field("Port").fill("8443");
+await go.click();
+await page.waitForTimeout(500);
+await panel.locator("button", { hasText: "Create application path page" }).click();
+await page.waitForTimeout(700);
+
+const three = await pagesNow();
+check("a second application makes a third page, independent of the first two",
+  three.length === 3 && three[2].name.includes("Reporting"), JSON.stringify(three.map((p) => p.name)));
+check("and the first generated page was not touched",
+  JSON.stringify(three[1]) === JSON.stringify(madePages[1]), JSON.stringify(three[1]));
+check("nor was the original, still",
+  (await page.evaluate(() => JSON.stringify(window.__cvStore.getState().doc.pages[0]))) === originalBefore);
 
 await browser.close();
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);

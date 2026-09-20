@@ -329,6 +329,15 @@ export type CrawledDevice = {
   portChannels?: { name: string; protocol: string; members: string[] }[];
   /** LT-200: the IPv4 and IPv6 routing tables. */
   routes?: RouteRow[];
+  /** LT-348: per-VRF routing tables, by VRF name. A device with a table for a
+   *  VRF routes that VRF from it and from nothing else. */
+  vrfRoutes?: Record<string, RouteRow[]>;
+  /** LT-348: this device is a VXLAN tunnel endpoint. */
+  vtep?: { address: string; segments: { vni: number; vlan?: number | null; prefix?: string | null }[] };
+  /** LT-348: address translation it performs. */
+  nat?: { kind: 'destination' | 'source'; matches: string; becomes: string; port?: number | null; description?: string }[];
+  /** LT-348: virtual addresses it answers for, and what is behind them. */
+  vips?: { address: string; port?: number | null; members: string[]; description?: string }[];
   /** LT-202: one entry per spanning-tree instance. */
   spanningTree?: StpInstance[];
   /** LT-203: VLANs, and each port's mode. */

@@ -638,6 +638,18 @@ It will tell you when it cannot answer rather than guessing: a named VRF, a
 device whose routing table was not collected, or anything VXLAN, each say what
 is missing. Routes are collected from the global table only.
 
+**An application on a page of its own.** Name the flow — an application, a
+protocol and a port — and **Create application path page** draws that path as a
+new page beside your topology. The page holds only the path: the devices it
+crosses, the NAT and VIP steps as what they are, the VXLAN overlay and the
+underlay that carries it, and a column for each equal-cost path. **Your
+original topology page is never changed** — not moved, not highlighted, not
+added to. Generate a second application and you get a second page. Rename,
+edit, export or delete either without touching the network diagram.
+**Export report** writes the same thing as Markdown: the flow, the ordered
+device list with interfaces and next hops, the routing decisions, and a section
+saying what could not be resolved.
+
 **Compare.** **Tools ▸ Compare** puts two validation sessions, or two crawls,
 side by side — availability and response times that got worse; firmware, ports,
 neighbours and routes that changed — and saves the comparison as Markdown or CSV.

@@ -1121,6 +1121,8 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-trace-simulate > summary:hover { color: var(--text); }
 .cv-trace-targets { display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 0; }
 .cv-trace-simulating { color: var(--warning); }
+.cv-trace-port .cv-input { width: 7ch; min-width: 0; }
+.cv-trace-made { color: var(--healthy); }
 
 /* LT-336: a deduction, marked as one. */
 .cv-inferred-note { color: var(--text-dim); border-left: 2px solid var(--line-strong); padding-left: 8px; }

@@ -136,6 +136,56 @@ commands per platform, captured from real hardware rather than documentation,
 as every other parser here was.
 **Not started**, and deliberately not faked in the meantime.
 
+### LT-348 — The application path, on a page of its own — 2026-09-20
+**Source:** asked 2026-09-20 — extend Path Intelligence into "the final
+application-flow visualization/reporting capability", with the original
+topology as the source of truth and **non-negotiably unmodified**, the result
+as a separate page through the existing Pages system, drawn with lines rather
+than listed, explained, exported, and working on large networks.
+**Additive throughout. Nothing was redesigned, replaced or removed.** LT-346's
+engine was extended, not rewritten; `withNewPage` gained one optional
+parameter and every existing caller is untouched; the Pages system was reused
+rather than duplicated. All 1,248 existing tests passed before and after.
+**The source page is protected structurally rather than carefully.**
+`buildApplicationPage` takes a `TraceResult` and returns *new* nodes and edges;
+it never receives a page and never returns a mutation. There is a test that
+the original document is byte-for-byte identical after a generation, another
+that generating a second application leaves the first generated page alone, and
+another that no generated id can collide with an existing one.
+**The engine gained the things that change where traffic goes without routing
+it**, each as its own kind of step so a drawing cannot misrepresent one as
+another:
+- **Per-VRF routing tables.** A VRF is answered from that VRF's own table or
+  not at all — two VRFs on one device are properly isolated, with a test that a
+  prefix in RED is invisible from BLUE.
+- **NAT.** A destination translation happens on arrival, *before* the route
+  lookup, and every lookup after it uses the new address.
+- **VIPs.** A virtual address is answered by the balancer and each pool member
+  becomes a path of its own, because any of them may serve the connection.
+- **VXLAN/EVPN.** An address inside a VNI a remote VTEP carries is one bridged
+  hop across a tunnel, not an L3 hop — and the **underlay is traced separately
+  with the same engine** and kept as its own steps, so the spines are visible
+  instead of hidden inside the overlay hop. The underlay trace runs with the
+  overlay switched off; without that a tunnel carries itself and the stack
+  gives out, which is how that was found.
+- **BGP local preference, AS path and MED** carried onto the hop where the
+  device reported them.
+**Drawn, not listed:** a node per step with the kind on its label and the right
+glyph (NAT as a firewall, VIP as a load balancer, VTEP as a switch), a column
+per equal-cost path, the tunnel and its underlay dashed because they are not a
+cable, and the destination drawn as the address the traffic is *really* aimed
+at — a NAT and a VIP both rewrite it, and drawing the original would contradict
+the NAT box above it.
+**Only the path is drawn.** The generated page holds the handful of objects on
+the path; nothing is copied from the source page, so a fabric of a thousand
+devices produces a page of eight.
+**Report** as Markdown beside the project's other exports: what it is, source,
+destination, flow, VRF, the ordered device table, the recursive resolutions,
+the numbered explanation, and a **Not resolved** section that is always present.
+**36 unit tests** across the areas asked for, and `e2e/pathtrace.mjs` drives it
+with 29 checks — including that the original page is unchanged after
+generating two applications.
+
 ### LT-338 — "Where is this?" — one search over everything discovery has found
 **Source:** agreed 2026-09-20 from a plan he asked for — "I love it / lets do
 it all".

@@ -82,6 +82,15 @@ export const en = {
   'trace.simulate': 'Simulate a failure',
   'trace.simulateHint': 'Take a device out of the calculation and work the path out again. Nothing is sent and no device is changed — this filters the copy of the routing tables already held.',
   'trace.simulating': 'Calculated without: {names}',
+  // The application page and its report (LT-348).
+  'trace.app': 'Application',
+  'trace.protocol': 'Protocol',
+  'trace.port': 'Port',
+  'trace.makePage': 'Create application path page',
+  'trace.export': 'Export report',
+  'trace.pageMade': 'Made “{name}”. The original topology page is untouched.',
+  'trace.exported': 'Written to {path}',
+  'trace.nothingToDraw': 'There is no path to draw yet.',
 
   // The terminal's own controls (LT-321–325).
   'ssh.external': 'SSH in an external terminal',

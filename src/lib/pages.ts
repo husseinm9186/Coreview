@@ -127,11 +127,28 @@ function uniqueName(pages: ProjectPage[], name: string): string {
   return candidate;
 }
 
-/** Adds a page, with a name that is not already taken — the same rule
- *  src/lib/layers.ts uses for views. Becomes the active page: a page you
- *  just added is the one you meant to start drawing on. */
-export function withNewPage(doc: ProjectDocument, name: string, id: string): ProjectDocument {
+/**
+ * Adds a page, with a name that is not already taken — the same rule
+ * src/lib/layers.ts uses for views. Becomes the active page: a page you just
+ * added is the one you meant to start drawing on.
+ *
+ * `content` is additive and exists for generated pages (LT-348): Path
+ * Intelligence builds a small diagram of one application's path and needs it
+ * to arrive as a page like any other — named uniquely, inheriting the link
+ * style, made active — rather than through a second page mechanism of its own.
+ * Existing callers pass nothing and get exactly what they got before.
+ */
+export function withNewPage(
+  doc: ProjectDocument,
+  name: string,
+  id: string,
+  content?: { nodes: TopoNode[]; edges: TopoEdge[] },
+): ProjectDocument {
   const page = newPage(uniqueName(doc.pages, name), id);
+  if (content) {
+    page.nodes = content.nodes;
+    page.edges = content.edges;
+  }
   // A new page inherits how this diagram draws links. The style is per page
   // because the canvas is, but "the default look of a link" is a property of
   // the diagram: saving it and then adding a page — which is what an import of

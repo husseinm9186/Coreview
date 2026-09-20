@@ -15,6 +15,13 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { t } from '../i18n';
+import {
+  applicationPageName,
+  applicationReport,
+  buildApplicationPage,
+  type Application,
+} from '../lib/appPath';
+import { saveExport, slug } from '../lib/exports';
 import { ipc, type CrawlResult } from '../lib/ipc';
 import { activePage } from '../lib/pages';
 import { devicesOnPath, tracePath, type PathDevice, type TraceResult } from '../lib/pathTrace';
@@ -44,6 +51,24 @@ function asPathDevices(result: CrawlResult | null): PathDevice[] {
           metric: r.metric,
         }))
       : undefined,
+    // LT-348: per-VRF tables, so a VRF is answered from its own routes.
+    vrfRoutes: d.vrfRoutes
+      ? Object.fromEntries(
+          Object.entries(d.vrfRoutes).map(([name, rows]) => [
+            name,
+            rows.map((r) => ({
+              family: r.family, prefix: r.prefix, protocol: r.protocol,
+              nextHops: r.nextHops ?? [], interface: r.interface,
+              distance: r.distance, metric: r.metric,
+            })),
+          ]),
+        )
+      : undefined,
+    // LT-348: the things that change where traffic goes without routing it —
+    // a translation, a virtual address, an L2 extension across a fabric.
+    vtep: d.vtep,
+    nat: d.nat,
+    vips: d.vips,
     neighbours: (d.neighbors ?? []).map((n) => ({
       localInterface: n.localInterface,
       name: n.shortName || n.deviceId,
@@ -62,6 +87,11 @@ export function PathTracePanel() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [vrf, setVrf] = useState('');
+  // LT-348: what the flow is, for the generated page and the report.
+  const [appName, setAppName] = useState('');
+  const [protocol, setProtocol] = useState('tcp');
+  const [port, setPort] = useState('');
+  const [note, setNote] = useState<string | null>(null);
   const [down, setDown] = useState<Set<string>>(new Set());
   // Everything any trace has gone through since the last fresh one. It only
   // ever grows, for two reasons: a list rebuilt from the current path loses
@@ -111,7 +141,14 @@ export function PathTracePanel() {
 
   const trace = (without: string[] = []) => {
     setProblem(null);
-    const out = tracePath({ devices, from, to, vrf, without: { devices: without } });
+    const out = tracePath({
+      devices,
+      from,
+      to,
+      vrf,
+      port: port.trim() ? Number(port) : undefined,
+      without: { devices: without },
+    });
     setTraced(out);
     const names = devicesOnPath(out);
     setCandidates((was) => [...new Set([...was, ...names])]);
@@ -130,6 +167,59 @@ export function PathTracePanel() {
   useEffect(() => () => setHighlight(null), [setHighlight]);
 
   const hops = traced?.paths ?? [];
+
+  /** What is being traced, as the page and the report describe it. */
+  const application = (): Application => ({
+    name: appName.trim() || undefined,
+    source: from.trim(),
+    destination: to.trim(),
+    protocol: protocol.trim() || undefined,
+    port: port.trim() ? Number(port) : null,
+    vrf: vrf.trim() || undefined,
+  });
+
+  /**
+   * LT-348: the generated diagram, on a page of its own.
+   *
+   * The page the trace was calculated from is not read here and not written:
+   * `buildApplicationPage` makes new nodes and edges from the trace, and
+   * `addGeneratedPage` adds a page beside the others through the Pages
+   * machinery that already exists. Generating a second application makes a
+   * second page.
+   */
+  const createPage = () => {
+    if (!traced) return;
+    const app = application();
+    const built = buildApplicationPage(traced, app);
+    if (built.nodes.length === 0) {
+      setProblem(t('trace.nothingToDraw'));
+      return;
+    }
+    useStore.getState().addGeneratedPage(applicationPageName(app), {
+      nodes: built.nodes,
+      edges: built.edges,
+    });
+    // The new page is now in front; a highlight belonging to the old one is
+    // not about anything there.
+    setHighlight(null);
+    useStore.getState().requestFit();
+    setNote(t('trace.pageMade', { name: applicationPageName(app) }));
+  };
+
+  /** The application report, beside the project's other exports. */
+  const exportReport = () => {
+    if (!traced || !meta) return;
+    const app = application();
+    const body = applicationReport(traced, app, buildApplicationPage(traced, app));
+    void saveExport(
+      `${slug(applicationPageName(app))}.md`,
+      body,
+      'text/markdown',
+      useStore.getState().settings.exportFolder,
+    )
+      .then((path) => setNote(path ? t('trace.exported', { path }) : null))
+      .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)));
+  };
 
   return (
     <div className="cv-pathtrace">
@@ -159,6 +249,25 @@ export function PathTracePanel() {
             onChange={(e) => setTo(e.target.value)} />
         </label>
         <label className="cv-field cv-field-narrow">
+          <span>{t('trace.app')}</span>
+          <input className="cv-input" value={appName} placeholder="Customer Portal"
+            onChange={(e) => setAppName(e.target.value)} />
+        </label>
+        <label className="cv-field cv-field-narrow">
+          <span>{t('trace.protocol')}</span>
+          <select className="cv-input" value={protocol} onChange={(e) => setProtocol(e.target.value)}>
+            <option value="tcp">TCP</option>
+            <option value="udp">UDP</option>
+            <option value="icmp">ICMP</option>
+            <option value="">Any</option>
+          </select>
+        </label>
+        <label className="cv-field cv-field-narrow cv-trace-port">
+          <span>{t('trace.port')}</span>
+          <input className="cv-input cv-mono" value={port} inputMode="numeric" placeholder="443"
+            onChange={(e) => setPort(e.target.value.replace(/[^0-9]/g, ''))} />
+        </label>
+        <label className="cv-field cv-field-narrow">
           <span>{t('trace.vrf')}</span>
           <input className="cv-input cv-mono" value={vrf} spellCheck={false} placeholder={t('trace.vrfDefault')}
             onChange={(e) => setVrf(e.target.value)} />
@@ -168,7 +277,11 @@ export function PathTracePanel() {
           {t('trace.go')}
         </button>
         {traced && (
-          <button type="button" className="cv-btn cv-btn-small" onClick={clear}>{t('trace.clear')}</button>
+          <>
+            <button type="button" className="cv-btn" onClick={createPage}>{t('trace.makePage')}</button>
+            <button type="button" className="cv-btn cv-btn-small" onClick={exportReport}>{t('trace.export')}</button>
+            <button type="button" className="cv-btn cv-btn-small" onClick={clear}>{t('trace.clear')}</button>
+          </>
         )}
       </div>
 
@@ -178,6 +291,7 @@ export function PathTracePanel() {
           : t('trace.source', { devices: devices.length, withRoutes })}
       </p>
       {problem && <p className="cv-problem">{problem}</p>}
+      {!problem && note && <p className="cv-help cv-trace-made">{note}</p>}
 
       {traced && traced.kind === 'insufficient' && (
         <p className="cv-problem cv-trace-insufficient">

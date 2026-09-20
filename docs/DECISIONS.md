@@ -768,3 +768,11 @@ one.
 route in a device's own table, and that is not an exception — the alternate is
 read from the table we hold, and the explanation says so in those words. What
 it will not do is imagine a route the device never advertised.
+**Amended 2026-09-20 (LT-348).** The engine now models per-VRF tables, NAT,
+VIPs and VXLAN/EVPN, so these are answered from data rather than refused *when
+that data is present*. The rule is unchanged and is what makes the difference
+legible: each is driven by a field on the device — `vrfRoutes`, `nat`, `vips`,
+`vtep` — and a device that carries none of them produces no such step. The
+crawler does not yet populate them (LT-347); anything that does, from a
+collector or an import, flows through the same path. What is still refused is
+inventing the field.

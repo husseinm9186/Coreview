@@ -894,6 +894,16 @@ export function Canvas() {
     ];
   }, [fitEverything, zoomToSelection]);
 
+  // LT-348: something asked for the page to be fitted — landing on a
+  // generated application page showing one corner of it is a poor arrival.
+  const fitRequest = useStore((s) => s.fitRequest);
+  useEffect(() => {
+    if (fitRequest === 0) return;
+    // After the page has been laid out, or it fits the one before it.
+    const timer = setTimeout(() => fitEverything(), 60);
+    return () => clearTimeout(timer);
+  }, [fitRequest, fitEverything]);
+
   /** LT-192: remember where the viewport is, as "View N" on this page. */
   const saveViewpoint = useCallback(() => {
     const list = pg.canvas.viewpoints ?? [];

@@ -294,6 +294,10 @@ interface Store {
   /** Devices the panel filter currently matches, lit up on the canvas so the
    *  table and the drawing answer the same question at the same time. */
   canvasHighlight: Set<string> | null;
+  /** LT-348: bumped to ask the canvas to fit what is on the page. A counter
+   *  rather than a flag, so two requests in a row both take effect. Landing on
+   *  a generated page showing one corner of it is a poor way to arrive. */
+  fitRequest: number;
   /** Unsaved work recovered from a previous session that ended badly. */
   recovery: { savedAt: number } | null;
   selectedEdgeId: string | null;
@@ -338,6 +342,11 @@ interface Store {
   // --- pages (LT-094)
   /** Adds a page and makes it the active one. */
   addPage: (name: string) => void;
+  /** LT-348: a page that arrives with a diagram already on it, for Path
+   *  Intelligence. The same Pages machinery as `addPage` — unique name, link
+   *  style inherited, made active — so a generated page renames, saves,
+   *  exports and deletes like any other. Returns its id. */
+  addGeneratedPage: (name: string, content: { nodes: TopoNode[]; edges: TopoEdge[] }) => string;
   /** Removes a page and everything drawn on it, cascading to its probes.
    *  Refuses to remove the last page. */
   removePage: (id: string) => void;
@@ -385,6 +394,7 @@ interface Store {
   selectNone: () => void;
   beginEditing: (id: string | null) => void;
   setCanvasHighlight: (ids: Set<string> | null) => void;
+  requestFit: () => void;
   /** Presentation mode (LT-193): the chrome hidden, the diagram alone. A way
    *  of looking, not part of the project, so never saved. */
   presenting: boolean;
@@ -943,6 +953,7 @@ export const useStore = create<Store>((set, get) => ({
   selectedNodeId: null,
   editingNodeId: null,
   canvasHighlight: null,
+  fitRequest: 0,
   recovery: null,
   selectedEdgeId: null,
   iconLibrary: [],
@@ -1178,6 +1189,15 @@ export const useStore = create<Store>((set, get) => ({
   addPage(name) {
     get().commit('Add a page');
     set((s) => ({ doc: withNewPage(s.doc, name, uid()), dirty: true }));
+  },
+
+  addGeneratedPage(name, content) {
+    const id = uid();
+    // An undo step, like adding a page by hand: generating one is something
+    // somebody did and may want to take back.
+    get().commit('Add an application path page');
+    set((s) => ({ doc: withNewPage(s.doc, name, id, content), dirty: true }));
+    return id;
   },
 
   removePage(id) {
@@ -2317,6 +2337,10 @@ export const useStore = create<Store>((set, get) => ({
       selectedNodeId: null,
       selectedEdgeId: null,
     }));
+  },
+
+  requestFit() {
+    set((s) => ({ fitRequest: s.fitRequest + 1 }));
   },
 
   setCanvasHighlight(ids) {
