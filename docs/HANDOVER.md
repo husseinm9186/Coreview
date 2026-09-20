@@ -331,7 +331,9 @@ xattr -dr com.apple.quarantine /Applications/Coreview.app
 
 Right-click → Open (rather than double-clicking) works on some macOS versions
 and not on others; the `xattr` line works on all of them, which is why it is
-the one written here.
+the one written here. The whole sequence — mount, copy, detach, clear the
+flag, open — is written out in `README.md`, because the operator asked for it
+twice and the second time he had lost it.
 
 The real fix is an Apple Developer Program membership (~$99/year) plus
 signing and notarisation in CI — the same shape as the existing

@@ -210,26 +210,63 @@ the **Actions** tab → a green run → **Artifacts**.
 
 | Platform | Artifact | Contents |
 | --- | --- | --- |
-| Windows | `coreview-windows` | NSIS `.exe` and `.msi` |
-| Windows, no internet at install time | `coreview-windows-offline` | Same, with the WebView2 runtime embedded (~500 MB) |
+| Windows | `coreview-windows` | NSIS `.exe` |
 | macOS | `coreview-macos` | Universal `.dmg` — Apple Silicon and Intel |
 | Linux | `coreview-linux` | `.deb` and AppImage |
 
-### macOS: the "damaged" warning
+Two Windows artifacts are built by the workflow but switched off at the
+operator's request (LT-331): the `.msi`, and `coreview-windows-offline` — the
+same application with the WebView2 runtime embedded, for a machine with no
+internet at install time (~500 MB). Each is one edit away in
+`.github/workflows/build.yml`.
 
-The `.dmg` is unsigned and un-notarised, so macOS quarantines it and reports:
+### macOS: installing it, and the "damaged" warning
+
+The `.dmg` is unsigned and un-notarised — there is no Apple Developer
+certificate configured, the way there is for Windows. macOS quarantines
+anything downloaded and, for an unsigned app, reports that as:
 
 > "Coreview" is damaged and can't be opened. You should move it to the Bin.
 
-**It is not damaged.** That is Gatekeeper refusing an app whose developer it
-cannot verify. After dragging it to Applications:
+**It is not damaged, and there is nothing wrong with the build.** That is
+Gatekeeper refusing an app whose developer it cannot verify. The whole install,
+from the terminal:
 
 ```sh
+# 1. Mount the disk image (adjust the version in the name).
+hdiutil attach ~/Downloads/Coreview_*.dmg
+
+# 2. Copy the app into Applications.
+cp -R "/Volumes/Coreview/Coreview.app" /Applications/
+
+# 3. Eject the image.
+hdiutil detach "/Volumes/Coreview"
+
+# 4. Clear the quarantine flag. This is the line that matters.
 xattr -dr com.apple.quarantine /Applications/Coreview.app
+
+# 5. Start it.
+open /Applications/Coreview.app
 ```
 
-Right-click → Open works on some macOS versions and not others; the `xattr`
-line works on all of them. See `docs/HANDOVER.md` §6.8.
+Step 4 is the one that gets past Gatekeeper. To confirm it worked, this should
+print nothing:
+
+```sh
+xattr -p com.apple.quarantine /Applications/Coreview.app 2>/dev/null
+```
+
+Right-click → Open instead of double-clicking works on some macOS versions and
+not on others; the `xattr` line works on all of them, which is why it is the
+one written here. `sudo` is not needed unless `/Applications` is locked down.
+
+**What clearing the flag actually means:** you are telling macOS you trust this
+copy because you know where it came from. That is a real decision, not a
+formality — do it for a build you fetched from this repository's CI, not for a
+`.dmg` that arrived some other way. The proper fix is an Apple Developer
+Program membership plus signing and notarisation in CI, and it is worth doing
+before the app is handed to anyone who did not build it. See
+`docs/HANDOVER.md` §6.8.
 
 ### Linux
 

@@ -78,6 +78,36 @@ rather than my assumption:**
    layered over a derived view — and that is what Phase 1 builds, but it changes
    D-035 and is recorded as such.
 
+### LT-337 — Every installer builds again
+**Source:** asked 2026-09-19 — "go ahead and build the other OS's".
+**LT-331 paused them on 2026-09-19 at his instruction** — "only windows
+installer for now please I will tell you when to push the rest of the
+installers later", then "Only nsis please". This is him saying so. A new ID
+rather than reopening LT-331, because an ID is never reused (and this is the
+third time the installer set has been narrowed and widened: LT-305, LT-311,
+LT-331).
+**Done 2026-09-19.** The Linux leg of the `bundle` matrix is back with
+`bundles: deb,appimage`, and `bundle-macos` and `appimage-smoke` have lost
+their `if: false`.
+**The Linux leg was built here before pushing**, rather than trusting the YAML
+to parse: `Coreview_0.2.0_amd64.deb`, 8.5 MB, in 12 minutes, carrying
+`LICENSE.txt` and `THIRD-PARTY-NOTICES.md` beside the binary as
+`bundle.resources` promises and declaring `iputils-ping`, `traceroute`,
+`libwebkit2gtk-4.1-0` and `libgtk-3-0`. **macOS cannot be built or checked
+from this machine at all** — Tauri does not cross-compile it and `.dmg`
+creation needs `hdiutil` — so for that leg CI is the only check, and a Mac is
+the only place the result can be opened. That limit is not new (HANDOVER 6.8)
+and is worth restating every time this is turned back on.
+**Windows stays at NSIS only**, and that is deliberate: "the other OS's" is
+about macOS and Linux, and his instruction about Windows was explicit and
+separate. The MSI line and `bundle-windows-offline` are still commented and
+`if: false` respectively, each one edit from returning. Said here so it is a
+recorded decision rather than something overlooked.
+**The macOS `.dmg` is unsigned and un-notarised** and will be refused by
+Gatekeeper as "damaged", which it is not — see HANDOVER 6.8 and the
+`xattr -dr com.apple.quarantine` line. Unchanged by this item; worth doing
+properly before the app reaches anyone who did not build it.
+
 ### LT-334 — `get switch lldp neighbors-detail` is not read
 **Source:** found 2026-09-19 alongside LT-332, in the same capture.
 **`parse_lldp_summary` reads the summary table and there is no reader for the
