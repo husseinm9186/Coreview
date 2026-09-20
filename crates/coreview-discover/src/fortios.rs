@@ -18,7 +18,15 @@ use crate::types::{DeviceAddress, DeviceClass, Neighbor, Protocol};
 /// a false negative costs the whole device.
 pub fn rejected_command(output: &str) -> bool {
     let l = output.to_ascii_lowercase();
-    l.contains("command parse error") || l.contains("command fail. return code")
+    l.contains("command parse error")
+        || l.contains("command fail. return code")
+        // LT-332: what a least-privilege account gets for a `diagnose` it may
+        // not run. Confirmed on a FortiGate-60F: `diagnose user-device-store
+        // device memory list` and `diagnose switch-controller switch-info
+        // mac-table` both answer "Unknown action 0" and nothing else. Without
+        // this the crawl cannot tell "no endpoints here" from "this account
+        // may not ask", and quietly reports the first.
+        || l.contains("unknown action")
 }
 
 /// Identity from `get system status`.
@@ -189,6 +197,16 @@ fn class_from_codes(codes: &[String]) -> DeviceClass {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_diagnose_a_read_only_account_may_not_run_reads_as_refused() {
+        // Verbatim from a FortiGate-60F on a non-super_admin profile, which is
+        // what a discovery account should be (LT-332).
+        assert!(super::rejected_command("Unknown action 0"));
+        assert!(super::rejected_command("command parse error before '^'"));
+        // And output that merely mentions an action is not a refusal.
+        assert!(!super::rejected_command("Action: allow"));
+    }
+
     use super::*;
 
     /// Verbatim from a FortiSwitch 224E running 7.6.1.

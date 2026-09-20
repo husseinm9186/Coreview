@@ -19,6 +19,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use coreview_discover::fortios::{fips_banner_pending, pagination_pending};
 use coreview_discover::hostkeys::HostKeyStore;
 use coreview_discover::sessionlog::SessionLog;
 use coreview_discover::ssh::{Credentials, Secret, Shell, SshOptions};
@@ -131,7 +132,29 @@ async fn main() {
             println!("FAIL  could not send: {e}");
             break;
         }
-        let reply = read_until_quiet(&mut shell, Duration::from_millis(1500), Duration::from_secs(45)).await;
+        let mut reply = read_until_quiet(&mut shell, Duration::from_millis(1500), Duration::from_secs(45)).await;
+        // FortiOS pages long output with a question rather than a pager, and
+        // the same is true of its FIPS banner. `Device` answers both for the
+        // crawl; a shell is raw, so an interactive session answers them the
+        // way a person would — by typing the letter (LT-332).
+        for _ in 0..200 {
+            let so_far = String::from_utf8_lossy(&reply).to_string();
+            let answer: &[u8] = if pagination_pending(&so_far) {
+                b"y"
+            } else if fips_banner_pending(&so_far) {
+                b"a"
+            } else {
+                break;
+            };
+            if shell.send(answer).await.is_err() {
+                break;
+            }
+            let more = read_until_quiet(&mut shell, Duration::from_millis(1200), Duration::from_secs(45)).await;
+            if more.is_empty() {
+                break;
+            }
+            reply.extend_from_slice(&more);
+        }
         transcript.extend_from_slice(&log.feed(&reply));
         let text = String::from_utf8_lossy(&reply);
         let lines: Vec<&str> = text.lines().collect();

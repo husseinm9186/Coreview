@@ -1121,7 +1121,7 @@ async fn visit(
     // What the switch has learned on each port. Discovery protocols only see
     // devices that speak them; a printer or a workstation announces nothing,
     // and on a real diagram those are most of what is plugged in.
-    let learned = crate::mac_table::parse_mac_table(
+    let mut learned = crate::mac_table::parse_mac_table(
         &device.run("show mac address-table").await.unwrap_or_default(),
     );
     // What is aggregated (LT-009). FortiOS rejects the command harmlessly and
@@ -1216,6 +1216,27 @@ async fn visit(
         // A FortiGate's own ARP table, which a FortiSwitch does not have.
         let forti_arp =
             crate::arp::parse_arp_table(&device.run("get system arp").await.unwrap_or_default());
+        // LT-332: and what a FortiSwitch has learned on each port, which is
+        // every endpoint that announces nothing about itself — most of what is
+        // plugged into a switch. Asked only of a FortiSwitch: it is not a
+        // FortiGate command, and a wasted round trip on every firewall in an
+        // estate adds up. `show mac address-table` above is rejected by
+        // FortiOS, so without this a FortiSwitch contributes no endpoints at
+        // all.
+        let forti_learned = if status
+            .model
+            .as_deref()
+            .is_some_and(|m| m.to_ascii_lowercase().contains("fortiswitch"))
+        {
+            crate::mac_table::parse_mac_table(
+                &device
+                    .run("diagnose switch mac-address list")
+                    .await
+                    .unwrap_or_default(),
+            )
+        } else {
+            Vec::new()
+        };
         // Two sources, because which one answers depends on the account. The
         // device store is richer; `diagnose` is refused outright by any admin
         // profile that is not super_admin, which is what a discovery account
@@ -1237,6 +1258,7 @@ async fn visit(
             arp: forti_arp,
             endpoints,
             access_points,
+            learned: forti_learned,
             status,
         })
     } else {
@@ -1248,6 +1270,11 @@ async fn visit(
 
     if let Some(f) = &forti {
         arp.extend(f.arp.iter().map(|(k, v)| (k.clone(), v.clone())));
+        // The IOS command found nothing on this device because FortiOS does
+        // not have it; what the FortiSwitch answered goes into the same list,
+        // so port population, uplink detection and attachment all work on it
+        // without knowing which platform they came from.
+        learned.extend(f.learned.iter().cloned());
     }
 
     let interfaces = parse_ip_interface_brief(&brief);
@@ -1461,6 +1488,10 @@ struct FortiFacts {
     arp: std::collections::HashMap<String, String>,
     endpoints: Vec<crate::fortios::Endpoint>,
     access_points: Vec<crate::fortios::AccessPoint>,
+    /// LT-332: MACs a FortiSwitch has learned on its ports, which is the same
+    /// evidence `show mac address-table` gives on IOS and which FortiOS
+    /// rejects.
+    learned: Vec<crate::mac_table::MacEntry>,
 }
 
 /// How many times to answer the pager before giving up.

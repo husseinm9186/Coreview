@@ -78,6 +78,85 @@ rather than my assumption:**
    layered over a derived view — and that is what Phase 1 builds, but it changes
    D-035 and is recorded as such.
 
+### LT-332 — **bug** A FortiSwitch's MAC table was read as nothing at all — 2026-09-19
+**Source:** found 2026-09-19 while validating against his lab, on his
+instruction to "ssh to the fortinet switch and fortigate and learn the
+commands".
+**Two faults, and the first was invisible.** `parse_mac_table` keeps a line
+containing the word `DYNAMIC`; a FortiSwitch writes two lines per entry and
+puts the flag on the second:
+
+```
+MAC: cc:7f:75:00:00:01   VLAN: 499 Port: port24(port-id 24)
+  Flags: 0x00010441 [ hit dynamic src-hit native ]
+```
+
+so it read **0 entries from 12,499 lines** and said nothing about it. And the
+crawl never asked for it anyway — the FortiOS branch sent no MAC-table command,
+so `show mac address-table` was rejected and that was the end of it. Between
+them, every endpoint a FortiSwitch had learned was invisible.
+**Fixed:** `parse_fortiswitch_mac_table`, chosen automatically by looking at
+the output so no caller has to know which platform answered, and `diagnose
+switch mac-address list` asked of a FortiSwitch — only of a FortiSwitch, since
+a wasted round trip on every firewall in an estate adds up. The result joins
+the same list the IOS path fills, so port population, uplink detection and
+attachment all work on it unchanged.
+**`internal` is dropped**, and it is most of the table: a 224E reports its own
+address on the CPU port once per VLAN — 4,094 of the 4,163 entries on his
+switch, none of them a device.
+**Measured on his 224E, before and after:** 0 entries and 0 distinct MACs →
+**69 entries, 35 distinct MACs**, with port24 showing 27, which is exactly the
+signature the topology code reads an uplink from.
+**Second fault, same session:** `rejected_command` did not recognise
+`Unknown action 0`, which is what a non-super_admin account gets for a
+`diagnose` it may not run — confirmed twice on his FortiGate-60F. The crawl
+could not tell "no endpoints here" from "this account may not ask", and
+reported the first. Now 2 refusals are recognised where 0 were.
+**How it was found, and the tools are committed:**
+`examples/interactive_shell.rs` (now answering the FortiOS pager and the FIPS
+banner the way a person would) captures a real session;
+`examples/parse_capture.rs` runs Coreview's own parsers over the capture and
+says what they understood. A parser that reads none of what it was given is
+exactly the failure that tool exists to make visible.
+
+### LT-334 — `get switch lldp neighbors-detail` is not read
+**Source:** found 2026-09-19 alongside LT-332, in the same capture.
+**`parse_lldp_summary` reads the summary table and there is no reader for the
+detail form**, so the command returns a neighbour and we parse zero. The
+summary already gives the link, so nothing is *missing* from the diagram —
+but the detail output carries what the summary does not: the neighbour's
+**chassis MAC**, its **management IP address**, the full system description
+and the port description. That is the difference between a neighbour we can
+join to a swept host and one we cannot (LT-126).
+**To ship:** a reader for the detail blocks, merged onto the summary's
+neighbours by local port.
+**Not started.**
+
+### LT-333 — Choose what goes on the diagram by what it is
+**Source:** asked 2026-09-19 — "the idea is to educate the discovery tool …
+we get all the devices on the wired and wireless network by collecting the mac
+address from the devices we crawled and build the diagram based on that / ping
+sweep could also help in this case to id the devices / if admin wants to build
+a full topology of the network they select all the devices discovered. if not
+and only wants to build the topology of the routers, switches, access points,
+servers, firewalls then they only select what they want".
+**Half of it exists.** The crawl's review step already lists every change with
+a tick box, and the endpoint side is largely built: `parse_device_store`
+(wired *and* wireless, with the FortiAP name and SSID on each), `parse_wtp_status`,
+`parse_dhcp_leases`, ARP, the OUI lookup, and `endpoint_class` which already
+decides what an endpoint is. The sweep's identification (LT-124/125) feeds the
+same picture.
+**What is missing is choosing in bulk, by role.** Thirty endpoints reviewed one
+tick at a time is not a choice, it is a chore — and the choice he described is
+exactly "infrastructure only" versus "everything".
+**To ship:** the review groups by device class and offers **Infrastructure
+only** (routers, switches, firewalls, access points, servers) against
+**Everything discovered**, with the individual ticks still there underneath.
+**LT-332 is done**, so the endpoints are now there to choose from: his
+FortiSwitch alone contributes 35 distinct MACs, and the FortiGate 46 DHCP
+leases of which 41 are wireless and name their SSID and AP.
+**Not started.**
+
 ### LT-298 — IPAM Phase 2: devices, sites, tenants, bulk operations, reporting
 **Source:** the same specification, Phase 2.
 **Scope:** sites and tenants; devices and interfaces linked to addresses; tags
