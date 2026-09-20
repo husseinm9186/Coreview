@@ -1195,6 +1195,15 @@ async fn visit(
             .run("get switch lldp neighbors-summary")
             .await
             .unwrap_or_default();
+        // LT-334: and the detail form, which carries what the summary cannot —
+        // the neighbour's chassis MAC and management address, the two keys
+        // that join a neighbour to a host a sweep already drew (LT-126).
+        let detail = crate::fortios::parse_lldp_detail(
+            &device
+                .run("get switch lldp neighbors-detail")
+                .await
+                .unwrap_or_default(),
+        );
         // A FortiGate rejects the FortiSwitch LLDP command and, on a
         // non-super_admin account, every `diagnose`. The switches it manages
         // are still in its configuration, and that is a certain link.
@@ -1247,6 +1256,34 @@ async fn visit(
         );
         merge_endpoint_lists(&mut endpoints, leases);
         let mut forti_neighbors = crate::fortios::parse_lldp_summary(&neighbours);
+        // The summary is the list; the detail fills it in. Merged on the local
+        // port, which is the one thing both forms always agree on — a summary
+        // row with no detail keeps exactly what it had.
+        for d in detail {
+            let Some(port) = d.local_interface.as_deref() else { continue };
+            match forti_neighbors
+                .iter_mut()
+                .find(|n| n.local_interface.as_deref() == Some(port))
+            {
+                Some(n) => {
+                    if n.chassis_id.is_none() {
+                        n.chassis_id = d.chassis_id;
+                    }
+                    if n.addresses.is_empty() {
+                        n.addresses = d.addresses;
+                    }
+                    if n.version.is_none() {
+                        n.version = d.version;
+                    }
+                    if n.remote_interface.is_none() {
+                        n.remote_interface = d.remote_interface;
+                    }
+                }
+                // A neighbour the detail form saw and the summary did not is
+                // still a neighbour.
+                None => forti_neighbors.push(d),
+            }
+        }
         for m in managed {
             if !forti_neighbors.iter().any(|n| n.device_id == m.device_id) {
                 forti_neighbors.push(m);

@@ -176,6 +176,96 @@ pub fn parse_lldp_summary(out: &str) -> Vec<Neighbor> {
     neighbors
 }
 
+/// Neighbours from `get switch lldp neighbors-detail` (LT-334).
+///
+/// The summary table gives the link and little else. This form gives what the
+/// summary cannot: the neighbour's **chassis MAC** and its **management
+/// address**, which are the two keys that let a crawled neighbour be joined to
+/// a host a sweep already drew (LT-126). Without them a neighbour that is not
+/// reachable by name stays a separate node beside the one it actually is.
+///
+/// The shape, from a real FortiSwitch 224E:
+///
+/// ```text
+/// _______________________________________________________________
+/// Neighbor learned on port port24 by LLDP protocol
+/// Chassis ID: cc:7f:75:00:00:01 (mac)
+/// System Name: CORE-SW.example.internal
+/// System Description:
+/// Cisco IOS Software, C2960CX Software ...
+/// System Capabilities: BR
+/// Management IP Address: 192.0.2.7
+/// Port ID: Gi0/9 (ifname)
+/// ```
+///
+/// Blocks are separated by the underscore rule, and the fields are
+/// `Label: value` except the description, which runs on to the next label.
+pub fn parse_lldp_detail(out: &str) -> Vec<Neighbor> {
+    let mut found = Vec::new();
+    // Each block starts with this line; the row of underscores before it ends
+    // up harmlessly at the tail of the previous block.
+    for block in out.split("Neighbor learned on").skip(1) {
+        // `Neighbor learned on port port24 by LLDP protocol`
+        let local = block
+            .split_whitespace()
+            .nth(1)
+            .filter(|p| !p.is_empty())
+            .map(str::to_string);
+
+        let field = |label: &str| -> Option<String> {
+            block.lines().find_map(|l| {
+                let t = l.trim();
+                let rest = t.strip_prefix(label)?.strip_prefix(':')?;
+                let v = rest.trim();
+                (!v.is_empty()).then(|| v.to_string())
+            })
+        };
+
+        let Some(name) = field("System Name") else { continue };
+        // `cc:7f:75:00:00:01 (mac)` — the parenthesised subtype is not part of
+        // the identifier.
+        let chassis = field("Chassis ID")
+            .and_then(|v| crate::arp::normalise_mac(v.split_whitespace().next().unwrap_or("")));
+        let management = field("Management IP Address")
+            .filter(|ip| ip.parse::<std::net::Ipv4Addr>().is_ok());
+        let capabilities: Vec<String> = field("Enabled Capabilities")
+            .or_else(|| field("System Capabilities"))
+            .map(|c| c.chars().filter(|c| c.is_ascii_alphabetic()).map(|c| c.to_string()).collect())
+            .unwrap_or_default();
+        // `Gi0/9 (ifname)` — same shape as the chassis id.
+        let remote = field("Port ID").map(|v| v.split_whitespace().next().unwrap_or("").to_string());
+        // The description runs on for several lines; the first is the useful
+        // one and the rest is a copyright notice.
+        let version = block
+            .lines()
+            .skip_while(|l| l.trim() != "System Description:")
+            .nth(1)
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.contains(':'))
+            .map(str::to_string);
+
+        found.push(Neighbor {
+            serial: None,
+            device_id: name.clone(),
+            short_name: name.split('.').next().unwrap_or(&name).to_string(),
+            addresses: management
+                .clone()
+                .map(|ip| vec![DeviceAddress { ip, interface: None, is_management: true }])
+                .unwrap_or_default(),
+            local_interface: local,
+            remote_interface: remote.filter(|r| !r.is_empty()),
+            platform: None,
+            capabilities: capabilities.clone(),
+            version,
+            class: class_from_codes(&capabilities),
+            discovered_by: Protocol::Lldp,
+            chassis_id: chassis,
+            vendor: None,
+        });
+    }
+    found
+}
+
 /// FortiOS abbreviates capabilities to single letters, which the shared
 /// classifier does not know.
 fn class_from_codes(codes: &[String]) -> DeviceClass {
@@ -197,6 +287,73 @@ fn class_from_codes(codes: &[String]) -> DeviceClass {
 
 #[cfg(test)]
 mod tests {
+    /// Verbatim from a FortiSwitch 224E, with the address, hostname and
+    /// chassis MAC replaced (D-027). The trailing TLVs are trimmed.
+    const DETAIL: &str = r#"
+Capability codes:
+        R:Router, B:Bridge, T:Telephone, C:DOCSIS Cable Device
+
+_______________________________________________________________
+Neighbor learned on port port24 by LLDP protocol
+Last change 1182448 seconds ago
+Last packet received 29 seconds ago
+
+Chassis ID: cc:7f:75:00:00:01 (mac)
+System Name: CORE-SW.example.internal
+System Description:
+Cisco IOS Software, C2960CX Software (C2960CX-UNIVERSALK9-M), Version 15.2(7)E, RELEASE SOFTWARE (fc3)
+Technical Support: http://www.cisco.com/techsupport
+
+Time To Live: 120 seconds
+System Capabilities: BR
+Enabled Capabilities: BR
+Management IP Address: 192.0.2.7
+Management IP Interface Subtype: unknown, Index: 0
+
+Port ID: Gi0/9 (ifname)
+Port description: GigabitEthernet0/9
+IEEE802.1, Port VLAN ID: 1
+"#;
+
+    #[test]
+    fn the_detail_form_gives_what_the_summary_cannot() {
+        // The chassis MAC and the management address are the two keys that
+        // join a neighbour to a host a sweep already drew (LT-126, LT-334).
+        let n = super::parse_lldp_detail(DETAIL);
+        assert_eq!(n.len(), 1, "{n:?}");
+        let one = &n[0];
+        assert_eq!(one.chassis_id.as_deref(), Some("cc7f75000001"));
+        assert_eq!(one.addresses.first().map(|a| a.ip.as_str()), Some("192.0.2.7"));
+        assert!(one.addresses[0].is_management);
+    }
+
+    #[test]
+    fn it_reads_both_ends_of_the_cable_and_the_name() {
+        let one = &super::parse_lldp_detail(DETAIL)[0];
+        assert_eq!(one.local_interface.as_deref(), Some("port24"));
+        assert_eq!(one.remote_interface.as_deref(), Some("Gi0/9"));
+        assert_eq!(one.device_id, "CORE-SW.example.internal");
+        // The short name is what a diagram can label a box with.
+        assert_eq!(one.short_name, "CORE-SW");
+    }
+
+    #[test]
+    fn a_bridge_is_classified_as_a_switch_and_described_by_its_first_line() {
+        let one = &super::parse_lldp_detail(DETAIL)[0];
+        assert_eq!(one.class, super::DeviceClass::Switch);
+        assert!(one.version.as_deref().unwrap_or("").starts_with("Cisco IOS Software"));
+        // Not the copyright line that follows it.
+        assert!(!one.version.as_deref().unwrap_or("").contains("Technical Support"));
+    }
+
+    #[test]
+    fn the_header_alone_is_not_a_neighbour() {
+        // Every run prints the capability legend, and a switch with nothing
+        // plugged in prints only that.
+        assert!(super::parse_lldp_detail("Capability codes:\n  R:Router, B:Bridge").is_empty());
+        assert!(super::parse_lldp_detail("").is_empty());
+    }
+
     #[test]
     fn a_diagnose_a_read_only_account_may_not_run_reads_as_refused() {
         // Verbatim from a FortiGate-60F on a non-super_admin profile, which is

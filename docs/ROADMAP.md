@@ -163,19 +163,6 @@ against, and a result that names which half failed. It must count against the
 rate limiter like anything else that reaches the network (LT-260).
 **Not started.**
 
-### LT-334 — `get switch lldp neighbors-detail` is not read
-**Source:** found 2026-09-19 alongside LT-332, in the same capture.
-**`parse_lldp_summary` reads the summary table and there is no reader for the
-detail form**, so the command returns a neighbour and we parse zero. The
-summary already gives the link, so nothing is *missing* from the diagram —
-but the detail output carries what the summary does not: the neighbour's
-**chassis MAC**, its **management IP address**, the full system description
-and the port description. That is the difference between a neighbour we can
-join to a swept host and one we cannot (LT-126).
-**To ship:** a reader for the detail blocks, merged onto the summary's
-neighbours by local port.
-**Not started.**
-
 ### LT-333 — Choose what goes on the diagram by what it is
 **Source:** asked 2026-09-19 — "the idea is to educate the discovery tool …
 we get all the devices on the wired and wireless network by collecting the mac
@@ -476,6 +463,27 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-334 — The LLDP detail form is read, for the two keys the summary lacks — 2026-09-20
+**Source:** found 2026-09-19 in a real capture; agreed 2026-09-20.
+**The summary gives the link and stops there.** `parse_lldp_summary` read the
+fixed-width table and nothing read the detail form, so a command that returned
+a neighbour parsed as zero. Nothing was *missing* from the diagram — the
+summary already carries the cable — but the detail form carries the two things
+that make a neighbour joinable: its **chassis MAC** and its **management
+address**. Without them a neighbour that cannot be matched by name stays a
+separate node beside the host a sweep already drew (LT-126).
+**Shipped:** `parse_lldp_detail`, and the crawl merges it onto the summary's
+neighbours **by local port** — the one field both forms always agree on. A
+summary row with no detail keeps exactly what it had; a neighbour the detail
+form saw and the summary did not is still added.
+**Measured on his 224E, before and after:** 0 neighbours parsed → 1, with
+chassis `cc7f75……` and a management address, which is the Catalyst it is
+cabled to and can now be joined to by MAC rather than by hoping the names
+match.
+**Four tests**, from that capture with the address, hostname and chassis MAC
+replaced (D-027) — including that the capability legend every run prints is
+not mistaken for a neighbour.
 
 ### LT-339 — One MAC, two switches: the quietest port wins — 2026-09-20
 **Source:** his question of 2026-09-19 — "we may get multiple devices to the

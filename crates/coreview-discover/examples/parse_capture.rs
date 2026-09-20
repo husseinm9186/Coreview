@@ -62,10 +62,21 @@ fn main() {
         if out.trim().is_empty() {
             continue;
         }
-        let n = coreview_discover::fortios::parse_lldp_summary(out);
+        let n = if command.ends_with("detail") {
+            coreview_discover::fortios::parse_lldp_detail(out)
+        } else {
+            coreview_discover::fortios::parse_lldp_summary(out)
+        };
         println!("{command:<22} {} neighbour(s)", n.len());
         for one in &n {
-            println!("                       - {} on {}", one.device_id, one.local_interface.as_deref().unwrap_or("?"));
+            println!(
+                "                       - {} on {} -> {} chassis {} mgmt {}",
+                one.device_id,
+                one.local_interface.as_deref().unwrap_or("?"),
+                one.remote_interface.as_deref().unwrap_or("?"),
+                one.chassis_id.as_deref().unwrap_or("-"),
+                one.addresses.first().map(|a| a.ip.as_str()).unwrap_or("-"),
+            );
         }
     }
 
