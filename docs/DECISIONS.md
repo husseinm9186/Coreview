@@ -838,8 +838,8 @@ their tables uncollected — `reads_tables_by_name()` — so the path engine say
 "no table held" instead of answering an empty table for a VDOM full of routes.
 That is D-050 applied to a collection gap rather than to a routing one.
 
-**One thing to keep doing:** the captures were a bank's production network and
-none of it is in the repository (D-027). `examples/parse_capture.rs` reads a
+**One thing to keep doing:** the captures were a production network and none
+of it is in the repository (D-027). `examples/parse_capture.rs` reads a
 capture through the parsers without a device to log in to, which is how a fix
 gets checked against real output that cannot be committed; the fixtures beside
 each parser are retyped with invented names and documentation addresses.

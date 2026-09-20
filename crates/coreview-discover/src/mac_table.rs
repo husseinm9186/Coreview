@@ -171,7 +171,7 @@ Vlan    Mac Address       Type        Ports
 ----    -----------       --------    -----
  All    0100.0ccc.cccc    STATIC      CPU
  All    0180.c200.0000    STATIC      CPU
-   1    000c.2923.0b29    DYNAMIC     Gi0/9
+   1    000c.2900.0001    DYNAMIC     Gi0/9
    1    7456.3c00.0001    DYNAMIC     Gi0/7
    1    74ac.b900.0005    DYNAMIC     Gi0/1
    1    e81c.ba00.0002    DYNAMIC     Gi0/9

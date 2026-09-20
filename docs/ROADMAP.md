@@ -123,6 +123,41 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-354 — A second sweep, before anything goes public — 2026-09-20
+**Source:** "no data from the show comands pushed to the public must be wiped
+… no ip no pass no names nothing related to what I supplied you it was ment for
+validation only so we build something works only". LT-353 swept the tree; this one re-ran the sweep against the three
+commits that have not been pushed, because a push is the moment any of it
+becomes public and nothing had left the machine yet.
+**Three things were found and all three are fixed.**
+- **The provenance line named the source's industry.** `docs/DECISIONS.md` and
+  this file both named the sector the captures came from. The sector is itself
+  customer information; both now say only "a production network".
+- **The LT-129 entry named the operator's ISP and two cities** its backbone
+  runs through — written from a live traceroute on his own machine, and missed
+  by LT-353 because that sweep fixed the *code* fixture and not the prose
+  describing it. Now "the gateway, then the ISP's edge and backbone".
+- **One MAC in the Catalyst MAC-table fixture still had its device part** — a
+  second one, a VMware NIC, in the same verbatim fixture LT-353 had already
+  fixed a row of. Zeroed to its OUI like every other row.
+**What was verified clean, as commands rather than as a claim.** No capture
+file was ever added in any commit on any branch. The three unpushed commits add
+3,045 lines and **no** IPv4 literal outside RFC 1918, RFC 5737, loopback,
+link-local, CGNAT or multicast; the only fully-qualified names they add are
+`example.net`. Every credential-shaped string in the tree is a manifest name,
+an obviously-fake fixture, or prose about credentials. Every device serial is
+zeroed or literal `TEST`. Every e-mail is an upstream package author's in the
+generated notices. The VRF names in the new parsers are `CORP`, `GUEST` and
+`default` — the textbook ones, not anybody's. The three dangling objects in the
+store are the app's own source and an icon, and a push transfers only reachable
+objects in any case.
+**Two things are left deliberately, and both are the operator's own, not a
+customer's:** the code-signing certificate subject in `docs/SIGNING.md` and in
+this file, which ships inside every signed installer by design; and "Texas" and
+"San Antonio" as the example hierarchy in `src/lib/ipam.ts` and its tests,
+which are a folder naming illustration rather than anything observed. Say the
+word and the second becomes two invented region names.
+
 ### LT-353 — Version 2.4.9, and a sweep of every file for anything that is not ours — 2026-09-20
 **Source:** "clean up everything by going to each code line, each md line, each
 script and validate it, make sure no customer or secrets, no customer info and
@@ -273,8 +308,8 @@ carries a VRF rather than a VLAN so there is no prefix to match. The route is
 the only evidence there is. It draws the same three steps the bridged case
 does — into the overlay, the underlay traced on its own, out at the far end —
 and refuses rather than inventing a far end for a VTEP nothing crawled holds.
-**Nothing from the captures is in the repository.** They are a bank's
-production network; they stayed on his machine, were read for shape only, and
+**Nothing from the captures is in the repository.** They are a production
+network; they stayed on his machine, were read for shape only, and
 every fixture here is retyped with invented names, documentation addresses
 (RFC 5737) and VNIs that are not his. `examples/parse_capture.rs` is how a
 capture gets read by the parsers without a device to log in to.
@@ -6111,9 +6146,9 @@ import is still a curve, which is what it meant to test all along.
 **Source:** reported with a screenshot — "Traceroute to `aws.com`" and, in
 red, "traceroute did not finish within the timeout". No hops, no partial path.
 **Reproduced** with the app's own arguments against the same target from a
-machine on his network: nine genuinely useful hops — his gateway, Spectrum,
-Charter's backbone through Dallas and Houston — then AWS drops the probes and
-it runs to the 30-hop limit without ever arriving. 21 dead hops.
+machine on his network: nine genuinely useful hops — the gateway, then the
+ISP's edge and backbone — then the target drops the probes and it runs to the
+30-hop limit without ever arriving. 21 dead hops.
 **Why Windows and not here.** The run gets a 30-second wall clock. Linux
 `traceroute` probes several hops at once and finished this in 10.3s. Windows
 `tracert` is strictly sequential: 21 dead hops x 3 probes x 2s is 126 seconds
