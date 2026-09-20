@@ -31,7 +31,7 @@ import { failureAdvice, failureHeading, reasonWithoutAddress } from '../lib/fail
 import { newProbe } from '../lib/probes';
 import { buildTopology } from '../lib/topology';
 import { ChangeReport } from './ChangeReport';
-import { selectAttached, vendorCounts } from '../lib/attached';
+import { inferredSwitches, selectAttached, vendorCounts } from '../lib/attached';
 import type { DeviceNodeData } from '../types/domain';
 import { activePage } from '../lib/pages';
 
@@ -564,6 +564,10 @@ export function CrawlPanel({
     () => (result ? selectAttached(result.devices, attachedFilter) : []),
     [result, attachedFilter],
   );
+  // LT-336: crowded ports with nothing announcing itself on them. Computed
+  // from what was actually chosen, so a crowd that was filtered away does not
+  // leave a switch behind claiming it is there.
+  const inferred = useMemo(() => inferredSwitches(chosenAttached), [chosenAttached]);
   const makers = useMemo(() => (result ? vendorCounts(result.devices) : []), [result]);
   const attachedTotal = useMemo(
     () => (result ? selectAttached(result.devices, {}).length : 0),
@@ -579,6 +583,7 @@ export function CrawlPanel({
     const topo = buildTopology(result, store.meta.id, {
       origin: { x: 80, y: bottom + 80 },
       attached: showAttached ? chosenAttached : [],
+      inferred: showAttached ? inferred : [],
       // A second crawl updates the diagram rather than drawing another copy
       // of the network beside it, so re-running discovery is something you can
       // do weekly instead of once. Scoped to the active page (LT-094).
@@ -1216,14 +1221,32 @@ export function CrawlPanel({
             Only ports with one device on them
           </label>
           <p className="cv-help">
-            A port carrying several addresses leads to another switch, and what is behind it
-            belongs on that switch's part of the diagram rather than hanging off this one.
+            A port carrying several addresses leads to another switch. Ticked, only what is on a
+            port of its own is drawn. Unticked, a crowded port is drawn as the switch it must be
+            — see below.
           </p>
 
           <p className="cv-help">
             <strong>{chosenAttached.length}</strong> of {attachedTotal} match. They will be added
             with the devices ticked above, each hanging off the port it was learned on.
+            {/* LT-339: and one place each. A device learned by three switches
+                is drawn under the one that sees it on the quietest port. */}
           </p>
+
+          {inferred.length > 0 && (
+            <p className="cv-help cv-inferred-note">
+              <strong>{inferred.length}</strong>{' '}
+              {inferred.length === 1 ? 'port has' : 'ports have'} several devices behind them and
+              nothing on them answered LLDP or CDP, so each will be drawn as an unmanaged switch
+              with its devices hanging off it:{' '}
+              {inferred
+                .slice(0, 4)
+                .map((i) => `${i.host} ${i.port} (${i.macs.length})`)
+                .join(', ')}
+              {inferred.length > 4 ? ', …' : ''}. What they are was not discovered; that they are
+              there was.
+            </p>
+          )}
         </details>
       )}
 

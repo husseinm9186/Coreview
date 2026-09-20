@@ -78,35 +78,90 @@ rather than my assumption:**
    layered over a derived view — and that is what Phase 1 builds, but it changes
    D-035 and is recorded as such.
 
-### LT-337 — Every installer builds again
-**Source:** asked 2026-09-19 — "go ahead and build the other OS's".
-**LT-331 paused them on 2026-09-19 at his instruction** — "only windows
-installer for now please I will tell you when to push the rest of the
-installers later", then "Only nsis please". This is him saying so. A new ID
-rather than reopening LT-331, because an ID is never reused (and this is the
-third time the installer set has been narrowed and widened: LT-305, LT-311,
-LT-331).
-**Done 2026-09-19.** The Linux leg of the `bundle` matrix is back with
-`bundles: deb,appimage`, and `bundle-macos` and `appimage-smoke` have lost
-their `if: false`.
-**The Linux leg was built here before pushing**, rather than trusting the YAML
-to parse: `Coreview_0.2.0_amd64.deb`, 8.5 MB, in 12 minutes, carrying
-`LICENSE.txt` and `THIRD-PARTY-NOTICES.md` beside the binary as
-`bundle.resources` promises and declaring `iputils-ping`, `traceroute`,
-`libwebkit2gtk-4.1-0` and `libgtk-3-0`. **macOS cannot be built or checked
-from this machine at all** — Tauri does not cross-compile it and `.dmg`
-creation needs `hdiutil` — so for that leg CI is the only check, and a Mac is
-the only place the result can be opened. That limit is not new (HANDOVER 6.8)
-and is worth restating every time this is turned back on.
-**Windows stays at NSIS only**, and that is deliberate: "the other OS's" is
-about macOS and Linux, and his instruction about Windows was explicit and
-separate. The MSI line and `bundle-windows-offline` are still commented and
-`if: false` respectively, each one edit from returning. Said here so it is a
-recorded decision rather than something overlooked.
-**The macOS `.dmg` is unsigned and un-notarised** and will be refused by
-Gatekeeper as "damaged", which it is not — see HANDOVER 6.8 and the
-`xattr -dr com.apple.quarantine` line. Unchanged by this item; worth doing
-properly before the app reaches anyone who did not build it.
+### LT-338 — "Where is this?" — one search over everything discovery has found
+**Source:** agreed 2026-09-20 from a plan he asked for — "I love it / lets do
+it all".
+**The question a network engineer actually asks** is "where is this thing
+plugged in", and every piece of the answer is already collected and none of it
+is searchable. A MAC, an address, a hostname or a maker's name should return:
+which switch, which port, which VLAN, which access point and SSID when it is
+wireless, what the OUI registry calls the maker, and when it was last seen.
+**Nothing new is gathered.** It is a query and a result view over `attached`,
+the merged ARP tables, the DHCP leases and the FortiGate device store — all of
+which a crawl already produces.
+**Why it is first among these:** it is the feature that gets the app opened on
+an ordinary Tuesday rather than only during a documentation push.
+**Not started.**
+
+### LT-340 — The port map, and which ports are free
+**Source:** agreed 2026-09-20.
+**An audit deliverable out of data already held.** Per switch: every port, what
+is on it, the VLAN, the maker, the address and hostname where known — and, the
+part people actually want, **which ports have learned nothing at all**. "Find
+me free ports before I order another switch" is a question people pay
+consultants to answer.
+**To ship:** the table, and an export beside the others. `DeviceDetails`
+already carries VLANs and each port's mode, and `attached` carries what was
+learned; a port with no entry is the answer.
+**Not started.**
+
+### LT-341 — Two things claiming one address, or one MAC in two places
+**Source:** agreed 2026-09-20.
+**Classic outage causes, findable from data already merged.** Two MACs claiming
+one address is a duplicate-IP conflict; one MAC learned on two *access* ports
+is either a loop or a device that moved and one switch has not aged it out.
+**To ship:** a pass over the merged ARP tables and the per-switch MAC tables,
+surfaced in the crawl's findings where the other "here is something worth
+knowing" lines already appear. Uplinks and trunks are excluded, or every
+correctly-configured network reports thousands.
+**Not started.**
+
+### LT-342 — Search the terminal's scrollback
+**Source:** agreed 2026-09-20.
+**To ship:** `@xterm/addon-search`, a find box in the SSH tab, next and
+previous, and the match highlighted. Small, and obviously useful the moment a
+`show running-config` has scrolled past.
+**Not started.**
+
+### LT-343 — Send one command to several sessions at once
+**Source:** agreed 2026-09-20.
+**Genuinely useful and genuinely dangerous**, and it ships with the guard rails
+or it does not ship. `show version` across twelve switches is the good case;
+the same mechanism is how somebody shuts an estate down with one keystroke.
+**Non-negotiable, and recorded here so it cannot be quietly dropped:**
+- **Off by default**, and turned on explicitly for a run rather than left on.
+- **The targets are chosen by hand**, never "all sessions" implicitly.
+- **Every target is named in a confirmation** before anything is sent.
+- **Never to a session that is not open and visible** — not to a closed tab, not
+  to one that has dropped.
+- The command is shown as it will be sent, with nothing added to it.
+**Not started.**
+
+### LT-344 — Copy on select and right-click paste, behind a checkbox
+**Source:** agreed 2026-09-20 — "We need a check box to enable and disable".
+**He is right that it needs a switch.** Copy-on-select is muscle memory for
+anyone who came from PuTTY and a nasty surprise for anyone who did not: it
+overwrites the clipboard every time a line is highlighted to read it. Right-click
+paste likewise replaces the context menu people expect.
+**To ship:** both behaviours, one checkbox each in the SSH tab's controls,
+remembered on the machine like the font and the size (LT-323), and **off until
+they are asked for**. Right-click paste asks nothing before pasting into a live
+session, so what it is about to send is worth showing where it can be seen.
+**Not started.**
+
+### LT-345 — Test this login
+**Source:** agreed 2026-09-20.
+**A failed crawl should be an answered question.** Every saved credential gets a
+button that connects, authenticates, disconnects and says what happened —
+reached and authenticated, reached and rejected, or never reached — which are
+three different problems with three different fixes.
+**Why it is worth the round trip:** credential confusion cost two rounds of
+debugging in one week (LT-335), and "is this password right" is currently only
+answerable by running a whole discovery against an estate.
+**To ship:** one command that opens a session and closes it, a target to test
+against, and a result that names which half failed. It must count against the
+rate limiter like anything else that reaches the network (LT-260).
+**Not started.**
 
 ### LT-334 — `get switch lldp neighbors-detail` is not read
 **Source:** found 2026-09-19 alongside LT-332, in the same capture.
@@ -119,39 +174,6 @@ and the port description. That is the difference between a neighbour we can
 join to a swept host and one we cannot (LT-126).
 **To ship:** a reader for the detail blocks, merged onto the summary's
 neighbours by local port.
-**Not started.**
-
-### LT-336 — A port with many MACs and no neighbour is a switch nobody manages
-**Source:** asked 2026-09-19 — "if 1 or 2 switches found then based on the mac
-address table we should be able to link the discovered hosts to the switches /
-we may get multiple devices to the same port that could be coming from another
-switch downstream so not sure how would you get it scoped and configured in the
-topology".
-**He has put his finger on the one genuinely hard case**, and the rule the code
-already half-encodes is the answer. Three kinds of port, told apart by evidence
-rather than by guessing:
-1. **A port with a discovery-protocol neighbour** is an inter-switch link. The
-   link is drawn to that switch and *nothing* behind it is attached here —
-   `crawl.rs` already skips uplinks for exactly this reason, and LT-009 is the
-   scar from when it did not.
-2. **A port with one MAC** is a thing plugged in. Attach it.
-3. **A port with many MACs and no neighbour** is the case he is asking about.
-   It is a switch, hub or virtual bridge that speaks no discovery protocol, and
-   today it is simply *filtered away* by `attached.ts`'s `maxPerPort` — the
-   endpoints behind it are dropped, silently, and the port looks empty.
-**To ship:** draw case 3 as what it is. An inferred node — an unmanaged switch,
-drawn differently from one we logged into, and labelled as inferred — with the
-MACs behind it attached to *it* rather than to the port. That is honest about
-what is known ("these twelve addresses are somewhere behind this port") and
-stops pretending twelve things are plugged into one socket.
-**What makes it safe to infer:** the count is a fact from the MAC table, and
-"no neighbour" is a fact from LLDP/CDP having been asked. Neither is a guess.
-What stays unknown is what the box *is*, and the node says so.
-**Worth noting from his own lab:** the 224E's port24 carries 27 distinct MACs
-and *does* have an LLDP neighbour, so it is case 1 and correctly drawn as a
-link to the Catalyst. port13 has 4 with no neighbour — case 3, and today those
-four are thrown away.
-**Depends on LT-332** (done) for a FortiSwitch to have any of this at all.
 **Not started.**
 
 ### LT-333 — Choose what goes on the diagram by what it is
@@ -454,6 +476,77 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-339 — One MAC, two switches: the quietest port wins — 2026-09-20
+**Source:** his question of 2026-09-19 — "we may get multiple devices to the
+same port that could be coming from another switch downstream" — planned and
+agreed 2026-09-20.
+**`selectAttached` already deduplicated by MAC and said in its own comment what
+was wrong with how:** "the first sighting wins, which is the switch nearest the
+seed". That is a fact about where the crawl started, not about where the device
+is plugged in.
+**The rule now, and it is the one every network management system uses:** the
+switch that sees a MAC on the port with the **fewest** MACs wins. A switch
+seeing it among thirty others is seeing it through something; a switch seeing
+it alone has it in front of it. Ties break towards the sighting that resolved
+an address, then by name, so the answer never depends on crawl order — there is
+a test for exactly that.
+**And it resolves before it filters**, which is the half that is easy to get
+backwards: filtering first lets a filter knock out the true sighting and leave
+a worse one standing, so the device would attach to whichever switch happened
+to survive.
+
+### LT-336 — A crowded port with nobody answering on it is drawn as the switch it must be — 2026-09-20
+**Source:** his question of 2026-09-19, planned and agreed 2026-09-20.
+**What made it safe is that the hard half was already decided.** The crawler
+excludes every port with an LLDP or CDP neighbour from `attached` before the
+front end ever sees it (LT-009), so a crowded port still in that list is one
+where the crawl *asked* and nothing answered. The count is a number the switch
+itself reported. Neither half is a guess.
+**Shipped:** `inferredSwitches` finds them, and `buildTopology` draws one node
+per crowded port — tagged `inferred`, labelled "Unmanaged switch on Gi0/11",
+cabled up to the real port and with the crowd hanging off **it** rather than
+off the socket. Its note says what is known and what is not: "What it is was
+not discovered; that it is there was."
+**Three is the threshold, and the reason is a desk phone.** Two MACs on an
+access port is almost always a phone with a PC behind it — and a phone *is* a
+three-port switch, so the deduction is true and useless. Three is where it
+starts being worth drawing. The number is a parameter with a default.
+**A deduction with nothing behind it is not drawn.** The node is created the
+first time a device behind it is actually placed, so a crowd that was filtered
+out leaves no switch claiming to exist.
+**Counted from what LT-339 resolved**, not from every sighting — otherwise two
+switches seeing one crowd invent two unmanaged switches.
+
+### LT-337 — Every installer builds again
+**Source:** asked 2026-09-19 — "go ahead and build the other OS's".
+**LT-331 paused them on 2026-09-19 at his instruction** — "only windows
+installer for now please I will tell you when to push the rest of the
+installers later", then "Only nsis please". This is him saying so. A new ID
+rather than reopening LT-331, because an ID is never reused (and this is the
+third time the installer set has been narrowed and widened: LT-305, LT-311,
+LT-331).
+**Done 2026-09-19.** The Linux leg of the `bundle` matrix is back with
+`bundles: deb,appimage`, and `bundle-macos` and `appimage-smoke` have lost
+their `if: false`.
+**The Linux leg was built here before pushing**, rather than trusting the YAML
+to parse: `Coreview_0.2.0_amd64.deb`, 8.5 MB, in 12 minutes, carrying
+`LICENSE.txt` and `THIRD-PARTY-NOTICES.md` beside the binary as
+`bundle.resources` promises and declaring `iputils-ping`, `traceroute`,
+`libwebkit2gtk-4.1-0` and `libgtk-3-0`. **macOS cannot be built or checked
+from this machine at all** — Tauri does not cross-compile it and `.dmg`
+creation needs `hdiutil` — so for that leg CI is the only check, and a Mac is
+the only place the result can be opened. That limit is not new (HANDOVER 6.8)
+and is worth restating every time this is turned back on.
+**Windows stays at NSIS only**, and that is deliberate: "the other OS's" is
+about macOS and Linux, and his instruction about Windows was explicit and
+separate. The MSI line and `bundle-windows-offline` are still commented and
+`if: false` respectively, each one edit from returning. Said here so it is a
+recorded decision rather than something overlooked.
+**The macOS `.dmg` is unsigned and un-notarised** and will be refused by
+Gatekeeper as "damaged", which it is not — see HANDOVER 6.8 and the
+`xattr -dr com.apple.quarantine` line. Unchanged by this item; worth doing
+properly before the app reaches anyone who did not build it.
 
 ### LT-335 — **bug** Another project's logins showed, and a wiped one killed a crawl — 2026-09-19
 **Source:** reported 2026-09-19 — "when I switch from one project to another the

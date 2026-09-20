@@ -78,24 +78,64 @@ export function matchesFilter(a: AttachedDevice, filter: AttachedFilter): boolea
 }
 
 /**
- * The devices to draw, deduplicated by MAC.
+ * Which sighting of one MAC to believe (LT-339).
  *
- * A MAC can be learned by more than one switch — through an uplink, or while
- * a device moves — and drawing it once per sighting would put the same
- * printer on the diagram three times. The first sighting wins, which is the
- * switch nearest the seed.
+ * A MAC is learned by every switch between it and the seed, so the same
+ * printer is reported by three of them. Something has to choose, and what this
+ * used to choose was *the first sighting*, meaning the switch nearest the
+ * seed — which is a fact about where the crawl started rather than about where
+ * the printer is plugged in.
+ *
+ * **The rule, and it is the one every network management system uses: the
+ * switch that sees it on the quietest port wins.** A switch seeing a MAC among
+ * thirty others is seeing it through something; a switch seeing it alone on a
+ * port has it in front of it. Port population is a count the switch itself
+ * reported, so this is arithmetic over evidence rather than a guess.
+ *
+ * Ties are broken towards the sighting that knows more — an address resolved
+ * from ARP — and then by host name, so the answer does not depend on the order
+ * devices happened to be crawled in.
+ */
+export function bestSighting(sightings: AttachedOn[]): AttachedOn {
+  return sightings.reduce((best, one) => {
+    if (one.device.portPopulation !== best.device.portPopulation) {
+      return one.device.portPopulation < best.device.portPopulation ? one : best;
+    }
+    const knows = (s: AttachedOn) => (s.device.address ? 1 : 0);
+    if (knows(one) !== knows(best)) return knows(one) > knows(best) ? one : best;
+    return one.host.localeCompare(best.host) < 0 ? one : best;
+  });
+}
+
+/** Every sighting of every MAC, grouped. */
+export function sightingsByMac(devices: CrawledDevice[]): Map<string, AttachedOn[]> {
+  const byMac = new Map<string, AttachedOn[]>();
+  for (const entry of allAttached(devices)) {
+    const list = byMac.get(entry.device.mac);
+    if (list) list.push(entry);
+    else byMac.set(entry.device.mac, [entry]);
+  }
+  return byMac;
+}
+
+/**
+ * The devices to draw, one place each.
+ *
+ * **Resolved before filtered**, which is the order that matters: filtering
+ * first and deduplicating afterwards lets a filter knock out the true sighting
+ * and leave a worse one standing, so a device would attach to the switch that
+ * happened to survive rather than the switch it is on. A MAC that is only ever
+ * seen on crowded ports is genuinely behind something — that is LT-336's
+ * inferred switch, not an endpoint to draw here.
  */
 export function selectAttached(
   devices: CrawledDevice[],
   filter: AttachedFilter,
 ): AttachedOn[] {
-  const seen = new Set<string>();
   const out: AttachedOn[] = [];
-  for (const entry of allAttached(devices)) {
-    if (!matchesFilter(entry.device, filter)) continue;
-    if (seen.has(entry.device.mac)) continue;
-    seen.add(entry.device.mac);
-    out.push(entry);
+  for (const sightings of sightingsByMac(devices).values()) {
+    const best = bestSighting(sightings);
+    if (matchesFilter(best.device, filter)) out.push(best);
   }
   return out;
 }
@@ -115,4 +155,58 @@ export function vendorCounts(devices: CrawledDevice[]): { vendor: string; count:
     // Commonest first: the thing someone wants is usually the thing there is
     // a lot of.
     .sort((a, b) => b.count - a.count || a.vendor.localeCompare(b.vendor));
+}
+
+/**
+ * How many devices behind one port before it is a switch rather than a socket
+ * (LT-336).
+ *
+ * Two is the honest lower bound — two MACs on one access port means something
+ * is bridging — but the commonest cause of exactly two is a desk phone with a
+ * PC plugged into its back, and a phone *is* a three-port switch. Calling that
+ * "an unmanaged switch" is true and useless. Three is where it starts being
+ * worth drawing.
+ */
+export const INFERRED_MINIMUM = 3;
+
+/** A switch nobody manages, deduced from a crowded port (LT-336). */
+export interface InferredSwitch {
+  /** The crawled switch that sees the crowd. */
+  host: string;
+  /** Its port, as the switch writes it. */
+  port: string;
+  /** The MACs behind it, in the order they were learned. */
+  macs: string[];
+}
+
+/**
+ * Ports with several devices behind them and no neighbour that announced
+ * itself (LT-336).
+ *
+ * **The "no neighbour" half is already decided by the time this runs**, and
+ * that is what makes the inference safe: the crawler excludes every port with
+ * an LLDP or CDP neighbour from `attached` before the front end sees it, so a
+ * crowded port still in this list is one where the crawl asked and nothing
+ * answered. The count is a number the switch itself reported. Neither half is
+ * a guess; what stays unknown is what the box *is*, and the drawn node says so.
+ *
+ * Takes the already-resolved sightings, so it agrees with LT-339 about where
+ * each MAC lives rather than counting the same device on three switches.
+ */
+export function inferredSwitches(chosen: AttachedOn[], atLeast = INFERRED_MINIMUM): InferredSwitch[] {
+  const byPort = new Map<string, InferredSwitch>();
+  for (const { device, host } of chosen) {
+    const key = `${host} :: ${device.port}`;
+    const held = byPort.get(key);
+    if (held) held.macs.push(device.mac);
+    else byPort.set(key, { host, port: device.port, macs: [device.mac] });
+  }
+  return [...byPort.values()]
+    .filter((s) => s.macs.length >= atLeast)
+    .sort((a, b) => b.macs.length - a.macs.length || a.host.localeCompare(b.host) || a.port.localeCompare(b.port));
+}
+
+/** Whether this sighting sits behind one of the inferred switches. */
+export function behindInferred(entry: AttachedOn, inferred: InferredSwitch[]): InferredSwitch | undefined {
+  return inferred.find((s) => s.host === entry.host && s.port === entry.device.port);
 }

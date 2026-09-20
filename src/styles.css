@@ -1108,6 +1108,8 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-settings-creds { display: flex; flex-direction: column; gap: 10px; }
 .cv-settings-creds .cv-cred-override { border: 1px solid var(--line); border-radius: var(--radius); }
 .cv-settings-pruned { color: var(--warning); }
+/* LT-336: a deduction, marked as one. */
+.cv-inferred-note { color: var(--text-dim); border-left: 2px solid var(--line-strong); padding-left: 8px; }
 .cv-settings-vault > summary {
   cursor: pointer; padding: 6px 0; font-size: 11px; color: var(--text-dim);
   text-transform: uppercase; letter-spacing: 0.05em;

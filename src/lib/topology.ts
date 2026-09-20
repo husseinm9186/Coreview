@@ -25,6 +25,7 @@ import { inventoryOf } from './inventory';
 import { inferRoles, ROLE_LABEL, ROLE_TYPE, type InferredRole } from './roles';
 import { uid } from './id';
 import { mergeSerials } from './serials';
+import { behindInferred, type InferredSwitch } from './attached';
 
 /** The glyph each discovered class is drawn with. */
 export const CLASS_GLYPH: Record<DeviceClassName, DeviceType> = {
@@ -106,6 +107,11 @@ export interface TopologyOptions {
    *  Nothing is drawn unless it was asked for: a flat /24 can hold two
    *  hundred of these and drawing them all buries the topology. */
   attached?: { device: AttachedDevice; host: string }[];
+  /** LT-336: ports with a crowd behind them and nothing that announced itself.
+   *  Each becomes a node of its own, drawn as inferred, with the crowd hung
+   *  off *it* rather than off the port — which is the honest shape, because
+   *  twelve things are not plugged into one socket. */
+  inferred?: InferredSwitch[];
   /** LT-215: the page's Physical and Logical views, by id. Cabled links go on
    *  the first; layer-3 hops between crawled devices are drawn only when the
    *  second exists, and go on it. */
@@ -809,17 +815,91 @@ export function buildTopology(
   // topology so they sit under the switch that sees them rather than in the
   // layered rows, which are about distance from the seed.
   const attachedRows = new Map<string, number>();
+  // LT-336: one node per crowded port, made the first time something behind it
+  // is actually placed — so a switch is never drawn for a crowd that was
+  // filtered out and is not there.
+  const inferredIds = new Map<string, string>();
   for (const { device: a, host } of opts.attached ?? []) {
-    const parent = endpointFor(identity(host, ''), a.port);
-    if (parent === undefined) continue;
+    const onSwitch = endpointFor(identity(host, ''), a.port);
+    if (onSwitch === undefined) continue;
     // The switch may be a node this run created, or one already on the
     // diagram that the crawl recognised (LT-133). Looking only at the new
     // ones meant that the moment the join started working, the switch a
     // sweep had already drawn anchored nothing and its ports went unlinked.
-    const anchor =
-      nodes.find((n) => n.id === parent) ??
-      (opts.existingNodes ?? []).find((n) => n.id === parent);
-    if (!anchor) continue;
+    const onSwitchNode =
+      nodes.find((n) => n.id === onSwitch) ??
+      (opts.existingNodes ?? []).find((n) => n.id === onSwitch);
+    if (!onSwitchNode) continue;
+
+    // Is this one of the crowds? If so it hangs off the inferred switch, and
+    // the inferred switch hangs off the port.
+    const crowd = behindInferred({ device: a, host }, opts.inferred ?? []);
+    let parent = onSwitch;
+    let anchor = onSwitchNode;
+    let portLabel = shortInterface(a.port);
+    if (crowd) {
+      const key = `${crowd.host} :: ${crowd.port}`;
+      let id = inferredIds.get(key);
+      if (id === undefined) {
+        id = uid();
+        inferredIds.set(key, id);
+        const index = inferredIds.size - 1;
+        const node = {
+          id,
+          type: 'device',
+          position: {
+            x: onSwitchNode.position.x + index * 320 - 160,
+            y: onSwitchNode.position.y + ROW,
+          },
+          width: 176,
+          height: 96,
+          data: {
+            label: `Unmanaged switch on ${shortInterface(crowd.port)}`,
+            deviceType: 'access-switch',
+            // Tagged so it can be filtered out wholesale by anyone who does
+            // not want deductions on their diagram.
+            tags: ['inferred', 'attached'],
+            addresses: [],
+            locked: false,
+            maintenance: false,
+            showDetails: true,
+            switchPort: `${crowd.host} ${shortInterface(crowd.port)}`,
+            discoveredVia: 'Inferred from the MAC table',
+            notes:
+              `${crowd.macs.length} addresses are learned on ${crowd.host} ${shortInterface(crowd.port)} ` +
+              'and nothing on that port answered LLDP or CDP. Something is bridging them — a switch, ' +
+              'a hub or a virtual bridge. What it is was not discovered; that it is there was.',
+          } as DeviceNodeData,
+        } as TopoNode;
+        nodes.push(node);
+        // And cable it to the port the crowd was learned on.
+        const upward = [`${onSwitch}/${shortInterface(crowd.port)}`, `${id}/`].sort().join('::');
+        if (!drawnLinks.has(upward)) {
+          drawnLinks.add(upward);
+          edgesFromAttached.push({
+            id: uid(),
+            source: onSwitch,
+            target: id,
+            sourceHandle: 'b',
+            targetHandle: 't',
+            type: 'live',
+            data: {
+              sourcePortLabel: shortInterface(crowd.port),
+              targetPortLabel: '',
+              label: '',
+              enabled: true,
+              maintenance: false,
+              healthRule: { type: 'follow-source' },
+            } as LinkData,
+          } as TopoEdge);
+        }
+        seenLinks.add(upward);
+      }
+      parent = id;
+      anchor = nodes.find((n) => n.id === id)!;
+      // The inferred switch has no port names — nothing told us any.
+      portLabel = '';
+    }
     const note = `Learned on ${host} ${a.port}, MAC ${a.mac}${a.vlan ? `, VLAN ${a.vlan}` : ''}`;
 
     // LT-126: is this already on the diagram? A ping sweep places hosts it
@@ -899,7 +979,7 @@ export function buildTopology(
     // cable. Without this a re-crawl stacked a fresh link on the old one
     // every time, which is the same fault the discovered links were already
     // guarded against.
-    const cable = [`${parent}/${shortInterface(a.port)}`, `${id}/`].sort().join('::');
+    const cable = [`${parent}/${portLabel}`, `${id}/`].sort().join('::');
     seenLinks.add(cable);
     if (drawnLinks.has(cable)) continue;
     drawnLinks.add(cable);
@@ -912,7 +992,7 @@ export function buildTopology(
       targetHandle: 't',
       type: 'live',
       data: {
-        sourcePortLabel: shortInterface(a.port),
+        sourcePortLabel: portLabel,
         targetPortLabel: '',
         label: '',
         enabled: true,

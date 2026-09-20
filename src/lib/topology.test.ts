@@ -140,6 +140,53 @@ describe('buildTopology', () => {
     expect(again.updated.find((u) => u.id === drawn.id)?.data.role).toBeUndefined();
   });
 
+  it('draws a crowded port as the switch it must be, with the crowd behind it (LT-336)', () => {
+    // Six addresses on one port, and nothing on that port answered LLDP or
+    // CDP — the crawler already excluded every port that did. Hanging six
+    // things off one socket says something untrue about the cabling.
+    const behind = [1, 2, 3, 4, 5, 6].map((i) => ({
+      mac: `0000.5e00.53${i}0`, port: 'Gi0/11', address: null, vendor: null,
+      hostname: null, class: null, portPopulation: 6,
+    }));
+    const attached = behind.map((device) => ({ device, host: 'ACC-SW9' }));
+    const inferred = [{ host: 'ACC-SW9', port: 'Gi0/11', macs: behind.map((b) => b.mac) }];
+    const t = buildTopology(
+      { devices: [device('ACC-SW9', '10.0.0.9', [], { attached: behind })], notVisited: [] },
+      'p',
+      { attached, inferred },
+    );
+
+    const box = t.nodes.find((n) => (n.data as DeviceNodeData).label?.startsWith('Unmanaged switch'));
+    expect(box, 'an inferred switch should be drawn').toBeTruthy();
+    const data = box!.data as DeviceNodeData;
+    expect(data.tags).toContain('inferred');
+    expect(data.discoveredVia).toBe('Inferred from the MAC table');
+    // It says what is known and what is not.
+    expect(data.notes).toMatch(/6 addresses/);
+    expect(data.notes).toMatch(/What it is was not discovered/);
+
+    // One cable up to the real port, and six down to the crowd.
+    const up = t.edges.filter((e) => e.target === box!.id);
+    expect(up).toHaveLength(1);
+    expect((up[0]!.data as LinkData).sourcePortLabel).toBe('Gi0/11');
+    expect(t.edges.filter((e) => e.source === box!.id)).toHaveLength(6);
+    // And nothing hangs off the switch's own port any more.
+    const onSwitch = t.nodes.find((n) => (n.data as DeviceNodeData).label === 'ACC-SW9')!;
+    expect(t.edges.filter((e) => e.source === onSwitch.id && e.target !== box!.id)).toHaveLength(0);
+  });
+
+  it('draws no inferred switch when the crowd was not placed (LT-336)', () => {
+    // Deduced but filtered out: a node for an empty deduction is a claim
+    // about a network nobody is looking at.
+    const inferred = [{ host: 'ACC-SW9', port: 'Gi0/11', macs: ['0000.5e00.5310'] }];
+    const t = buildTopology(
+      { devices: [device('ACC-SW9', '10.0.0.9', [], { attached: [] })], notVisited: [] },
+      'p',
+      { attached: [], inferred },
+    );
+    expect(t.nodes.some((n) => (n.data as DeviceNodeData).label?.startsWith('Unmanaged switch'))).toBe(false);
+  });
+
   it('puts what a crawl read about a device on its node, new or already drawn (LT-200–204)', () => {
     const read = device('CORE-SW', '10.0.0.1', [], {
       uptimeSeconds: 600,
