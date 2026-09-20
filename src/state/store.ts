@@ -2039,9 +2039,14 @@ export const useStore = create<Store>((set, get) => ({
   onNodesChange(changes) {
     const structural = changes.some((c) => c.type === 'remove' || c.type === 'add');
     if (structural) get().commit();
+    // LT-356: which device is selected is view state, not document state.
+    // Marking the project dirty for it made a click look like unsaved work,
+    // had autosave rewrite a document identical to the stored one, and let
+    // closing ask about changes nobody made. Anything else still dirties.
+    const substantive = changes.some((c) => c.type !== 'select');
     set((s) => ({
       doc: withPage(s.doc, { nodes: moveGroups(changes, activePage(s.doc).nodes) }),
-      dirty: true,
+      ...(substantive ? { dirty: true } : {}),
     }));
   },
 

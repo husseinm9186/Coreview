@@ -123,6 +123,76 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-355 — **bug** Clicking a device re-fits the page, which reads as zooming out — 2026-09-20
+**Source:** "when I click a device it zooms out", 2026-09-20, with a screenshot
+showing the diagram as a speck in the corner of the sheet and the inspector
+open on the device just clicked.
+**Reproduced by reading, not yet by a test.** `Canvas.tsx:899-905` is the
+LT-348 effect that fits the page when something asks for it:
+
+    const fitRequest = useStore((s) => s.fitRequest);
+    useEffect(() => {
+      if (fitRequest === 0) return;
+      const timer = setTimeout(() => fitEverything(), 60);
+      return () => clearTimeout(timer);
+    }, [fitRequest, fitEverything]);
+
+`fitEverything` is a `useCallback` over `[pg.canvas.sheet, pg.canvas.sheetRect,
+pg.nodes, rf]`. Clicking a node makes React Flow send a `select` change, which
+`onNodesChange` (`store.ts:2039`) turns into a **new nodes array**. So `pg.nodes`
+changes identity, `fitEverything` changes identity, and the effect runs again —
+but the only guard is `fitRequest === 0`, which stops being true the moment
+anything has ever asked for a fit. Nothing re-checks *whether the request is a
+new one*.
+**Why it looks like it started recently:** `requestFit()` has exactly one caller,
+`PathTracePanel.tsx:235`, the LT-348 "make an application page" button. Before
+that button is pressed in a session the effect is inert and clicking is fine;
+after it, every click on a device re-fits the whole sheet 60 ms later. That
+matches the report arriving alongside the path-trace work.
+**Acceptance:** an e2e check in `e2e/canvasfix.mjs` that requests a fit, pans or
+zooms somewhere deliberate, clicks a device, and asserts the viewport is where
+it was left. It must fail before the fix. The fix is to drive the effect from
+the request alone — the fit function read through a ref, or the last-served
+request number remembered — not to remove the fit.
+**Reproduced, then fixed.** The check failed first, exactly as described: the
+viewport read `268,130` after a deliberate pan and `178,70` after a click on a
+device, the fitted position. `fitEverything` now lives in a ref and the effect
+depends on `fitRequest` alone. Four checks cover it: a click moves nothing
+before a fit is ever requested, a click moves nothing after one is, the
+selection does not dirty the document, and a *move* still does — so the fix
+cannot have gone too far. `canvasfix` is 42 checks green.
+
+### LT-356 — **bug** Selecting a device marks the project unsaved — 2026-09-20
+**Source:** found while reading LT-355; not reported.
+**`store.ts:2039` sets `dirty: true` for every node change**, and a selection is
+a node change. Clicking a device with nothing else done makes the document
+dirty, so the title shows unsaved work, autosave writes a document that is
+byte-for-byte what was already stored, and closing can prompt about changes
+nobody made.
+**Acceptance:** a check that clicking a device does not set `dirty`, and that
+moving one still does. Selection is view state, not document state.
+**Reproduced, then fixed.** `onNodesChange` now dirties the document only when
+some change is not a `select`. Both halves are checked in `e2e/canvasfix.mjs`.
+
+### LT-357 — The trace panel's run picker says too little — open
+**Source:** "what is routing from and where did that come from?", 2026-09-20 —
+the control was not self-explanatory to the person who asked for the feature.
+**Three things, none of them a crash.**
+- **The label collides with the field beside it.** "Routing from" sits to the
+  left of "Source"; both read as where the packet starts. It actually chooses
+  *which saved crawl to read routing tables out of*.
+- **The options end in a bare number** — `{takenAt} — {devices}` at
+  `PathTracePanel.tsx:261` — with nothing saying it counts devices, and it
+  counts devices *reached*, not devices that returned a routing table. A run can
+  read "— 6" while two of them hold a table. The panel prints the honest pair
+  lower down, so the dropdown is the only misleading surface.
+- **`seed` is fetched and discarded.** `ipc.listCrawlRuns` returns
+  `{ id, takenAt, seed, devices }`; the panel's state type keeps three of the
+  four. With two runs 42 seconds apart the date cannot say which part of the
+  network each covered, and the thing that would is already in hand.
+**Acceptance:** the label names the crawl, the option says what the number
+counts, and the seed appears. No engine change.
+
 ### LT-354 — A second sweep, before anything goes public — 2026-09-20
 **Source:** "no data from the show comands pushed to the public must be wiped
 … no ip no pass no names nothing related to what I supplied you it was ment for
@@ -659,7 +729,10 @@ picture of it. Text output of `show vsx status`, `sh vsf topology` and
 - Where a bug cannot be fixed, it says why in plain words rather than being
   quietly closed.
 
-**Known bugs, open:** none, as of 2026-09-16 (LT-273 found and fixed that day).
+**Known bugs, open:** none, as of 2026-09-20. LT-355 (clicking a device re-fits
+the page) was reported that day and LT-356 (selecting a device marks the project
+unsaved) was found while reading it; both were reproduced in `e2e/canvasfix.mjs`
+before either was touched, and both are fixed.
 **LT-137 is now closed outright** rather than accepted: the credentials were
 gone from the working tree long ago, and on 2026-09-18 the published history was
 replaced by a single commit (LT-314), so they are gone from that too.

@@ -896,13 +896,22 @@ export function Canvas() {
 
   // LT-348: something asked for the page to be fitted — landing on a
   // generated application page showing one corner of it is a poor arrival.
+  //
+  // LT-355: the fit runs when the *request number* changes, and nothing else.
+  // `fitEverything` is rebuilt whenever `pg.nodes` changes identity, and a
+  // selection does exactly that — so listing it here re-fitted the sheet on
+  // every click on a device, throwing away wherever the person had put the
+  // canvas. It is read through a ref so the effect always calls the current
+  // one without depending on it.
+  const fitEverythingRef = useRef(fitEverything);
+  fitEverythingRef.current = fitEverything;
   const fitRequest = useStore((s) => s.fitRequest);
   useEffect(() => {
     if (fitRequest === 0) return;
     // After the page has been laid out, or it fits the one before it.
-    const timer = setTimeout(() => fitEverything(), 60);
+    const timer = setTimeout(() => fitEverythingRef.current(), 60);
     return () => clearTimeout(timer);
-  }, [fitRequest, fitEverything]);
+  }, [fitRequest]);
 
   /** LT-192: remember where the viewport is, as "View N" on this page. */
   const saveViewpoint = useCallback(() => {

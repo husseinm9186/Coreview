@@ -429,6 +429,63 @@ if (onLine) {
   check("and panning with it held does not trace again", !refaded);
 }
 
+// LT-355 — "when I click a device it zooms out". The LT-348 fit effect lists
+// `fitEverything` in its dependencies, and that callback is rebuilt whenever
+// `pg.nodes` changes identity — which a selection does. So once anything has
+// asked for a fit, every later click on a device re-fits the whole sheet,
+// throwing away wherever the person had put the canvas.
+// LT-356 — and the same selection marks the document dirty, though nothing
+// about the document changed.
+const viewTransform = () => page.locator(".react-flow__viewport").evaluate((el) => {
+  const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
+  return `${Math.round(m.e)},${Math.round(m.f)},${m.a.toFixed(3)}`;
+});
+const dirty = () => page.evaluate(() => window.__cvStore.getState().dirty === true);
+/** Middle-button drag: moves the canvas without moving anything on it. */
+const panBy = async (dx, dy) => {
+  await page.mouse.move(760, 430);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(760 + dx, 430 + dy, { steps: 10 });
+  await page.mouse.up({ button: "middle" });
+  await page.waitForTimeout(350);
+};
+const clickNode = async (n) => {
+  const b = await page.locator(".react-flow__node").nth(n).boundingBox();
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+  await page.waitForTimeout(450);
+};
+
+// Nothing has asked for a fit yet: a click must not move the canvas.
+await panBy(-70, -50);
+const beforeQuiet = await viewTransform();
+await clickNode(0);
+check("with no fit requested, clicking a device leaves the canvas alone",
+  (await viewTransform()) === beforeQuiet, `was ${beforeQuiet} now ${await viewTransform()}`);
+
+// Now ask for one, the way the "make an application page" button does.
+await page.evaluate(() => window.__cvStore.getState().requestFit());
+await page.waitForTimeout(600);
+
+// Put the canvas somewhere deliberate again, and clear dirty so the next
+// click is measured on its own.
+await panBy(90, 60);
+await page.evaluate(() => window.__cvStore.setState({ dirty: false }));
+const settled = await viewTransform();
+
+await clickNode(1);
+check("after a fit has been requested, clicking a device still leaves it alone (LT-355)",
+  (await viewTransform()) === settled, `was ${settled} now ${await viewTransform()}`);
+check("and selecting a device does not mark the project unsaved (LT-356)", !(await dirty()));
+
+// Moving one still does, or the fix has gone too far.
+const nb = await page.locator(".react-flow__node").nth(1).boundingBox();
+await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2);
+await page.mouse.down();
+await page.mouse.move(nb.x + nb.width / 2 + 60, nb.y + nb.height / 2 + 40, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(400);
+check("but moving a device still does", await dirty());
+
 await browser.close();
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);
