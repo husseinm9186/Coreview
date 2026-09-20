@@ -642,6 +642,9 @@ export type StoredSettings = Partial<{
   sshOpenWith: string;
   /** The command that opens a session elsewhere, with {user} {host} {port}. */
   sshExternalCommand: string;
+  /** LT-344: clipboard manners in the terminal, both off until asked for. */
+  sshCopyOnSelect: string;
+  sshPasteOnRight: string;
 }>;
 
 export const ipc = {

@@ -1310,6 +1310,28 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-ssh-size .cv-input { width: 5.5em; min-width: 0; }
 .cv-ssh-state { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; align-items: baseline; }
 .cv-ssh-logging { color: var(--healthy); }
+/* LT-342: find in the scrollback. */
+.cv-ssh-find {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px 6px; border-bottom: 1px solid var(--line);
+}
+.cv-ssh-find .cv-input { max-width: 30ch; }
+/* LT-343: sending to several. Deliberately not a one-click control. */
+.cv-ssh-send {
+  flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px;
+  padding: 10px; margin: 6px 8px; border: 1px solid var(--line-strong);
+  border-radius: var(--radius); background: var(--bg-raised);
+}
+.cv-ssh-send > strong { font-size: 12px; color: var(--text); }
+.cv-ssh-send .cv-help { margin: 0; max-width: 70ch; }
+.cv-ssh-targets {
+  display: flex; flex-wrap: wrap; gap: 10px; margin: 0;
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 8px;
+}
+.cv-ssh-targets > legend {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-dim); padding: 0 4px;
+}
 .cv-ssh-screens { flex: 1; min-height: 0; padding: 6px 8px 8px; }
 .cv-ssh-screen { height: 100%; min-height: 0; }
 /* xterm sizes itself to this box, so the box has to have a size of its own. */

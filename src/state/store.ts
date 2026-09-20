@@ -225,6 +225,8 @@ export function terminalFromStored(stored: StoredSettings, current: TerminalSett
     logByDefault: flag(stored.sshLogByDefault, current.logByDefault),
     openWith: stored.sshOpenWith === 'external' ? 'external' : 'panel',
     externalCommand: stored.sshExternalCommand ?? current.externalCommand,
+    copyOnSelect: flag(stored.sshCopyOnSelect, current.copyOnSelect),
+    pasteOnRight: flag(stored.sshPasteOnRight, current.pasteOnRight),
   };
 }
 
@@ -243,6 +245,13 @@ export interface TerminalSettings {
   /** The command that opens somebody else's terminal, with {user}, {host} and
    *  {port}. Empty means the sensible one for this platform. */
   externalCommand: string;
+  /** LT-344: highlighting text copies it, the way PuTTY does. Off until it is
+   *  asked for — it replaces the clipboard every time a line is highlighted
+   *  to read it, which is a nasty surprise for anyone who did not expect it. */
+  copyOnSelect: boolean;
+  /** LT-344: right-click pastes into the session instead of opening the menu.
+   *  Off until asked for: it types into a live device with no confirmation. */
+  pasteOnRight: boolean;
 }
 
 /** What the terminal does before anyone has said otherwise. */
@@ -256,6 +265,8 @@ export const TERMINAL_DEFAULTS: TerminalSettings = {
   logByDefault: false,
   openWith: 'panel',
   externalCommand: '',
+  copyOnSelect: false,
+  pasteOnRight: false,
 };
 
 export interface HistoryEntry {
@@ -2857,6 +2868,8 @@ export const useStore = create<Store>((set, get) => ({
       logByDefault: 'sshLogByDefault',
       openWith: 'sshOpenWith',
       externalCommand: 'sshExternalCommand',
+      copyOnSelect: 'sshCopyOnSelect',
+      pasteOnRight: 'sshPasteOnRight',
     };
     for (const [key, value] of Object.entries(patch)) {
       const stored = keys[key as keyof TerminalSettings];

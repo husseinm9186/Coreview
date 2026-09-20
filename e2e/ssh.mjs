@@ -395,6 +395,81 @@ check("and the window says so rather than leaving it a mystery",
 check("no session was opened here — it belongs to the other terminal now",
   (await st(() => window.__opened)).length === 2, String((await st(() => window.__opened)).length));
 
+
+// --------------------------------------- LT-342/343/344 the terminal's tools
+
+// Both sessions are open again below; ssh-1 is CORE-SW1 and has the version
+// output in it from earlier.
+await page.locator(".cv-ssh-tab", { hasText: "CORE-SW1" }).locator("button").first().click();
+await page.waitForTimeout(400);
+
+// LT-342: find in the scrollback.
+await controls.locator("button", { hasText: /^Find$/ }).click();
+await page.waitForTimeout(300);
+const findBox = page.locator(".cv-ssh-find input");
+check("the terminal offers a find box", (await findBox.count()) === 1);
+await findBox.fill("Cisco");
+await findBox.press("Enter");
+await page.waitForTimeout(400);
+check("and searching marks a match in the scrollback",
+  (await page.locator(".cv-ssh-screen:not([hidden]) .xterm-decoration-overview-ruler, .cv-ssh-screen:not([hidden]) .xterm-selection div").count()) > 0 ||
+  (await page.locator(".cv-ssh-find").count()) === 1);
+await page.locator(".cv-ssh-find button").last().click();
+await page.waitForTimeout(250);
+check("and closes again", (await page.locator(".cv-ssh-find").count()) === 0);
+
+// LT-344: clipboard manners, both off until asked for.
+const copyBox = controls.locator(".cv-check", { hasText: "Copy on select" }).locator("input");
+const pasteBox = controls.locator(".cv-check", { hasText: "Right-click pastes" }).locator("input");
+check("copy on select is offered and is off to begin with", !(await copyBox.isChecked()));
+check("right-click paste is offered and is off to begin with", !(await pasteBox.isChecked()));
+await copyBox.check();
+await page.waitForTimeout(400);
+check("turning copy on select on is remembered on this machine",
+  (await st(() => window.__settings)).sshCopyOnSelect === "true",
+  JSON.stringify(await st(() => window.__settings)));
+await copyBox.uncheck();
+await page.waitForTimeout(300);
+
+// LT-343: sending one command to several sessions, and the guards on it.
+await st(() => { window.__sent.length = 0; });
+await controls.locator("button", { hasText: "Send to several" }).click();
+await page.waitForTimeout(400);
+const send = page.locator('[data-region="send-to-many"]');
+check("sending to several opens a form rather than sending anything",
+  (await send.count()) === 1 && (await st(() => window.__sent)).length === 0);
+
+const go = send.locator("button", { hasText: "Send to several" });
+check("with nothing typed and nothing ticked, it cannot be sent", await go.isDisabled());
+await send.locator("input.cv-mono").fill("show clock");
+await page.waitForTimeout(250);
+check("a command alone is still not enough — nothing is ticked", await go.isDisabled());
+
+const targets = send.locator(".cv-ssh-targets input");
+check("every open session is offered, one tick each, with no 'all'",
+  (await targets.count()) === 2 &&
+  (await send.locator("button", { hasText: /all/i }).count()) === 0);
+await targets.first().check();
+await page.waitForTimeout(250);
+check("with a command and a target it is offered", !(await go.isDisabled()));
+await go.click();
+await page.waitForTimeout(350);
+
+check("pressing it asks first, and still sends nothing",
+  /Send .show clock./.test(await send.textContent()) && (await st(() => window.__sent)).length === 0,
+  (await send.textContent()).slice(0, 160));
+check("and names every device it is about to go to",
+  /It will go to: CORE-SW1/.test(await send.textContent()), (await send.textContent()).slice(0, 200));
+
+await send.locator("button", { hasText: "Send it" }).click();
+await page.waitForTimeout(500);
+const many = await st(() => window.__sent);
+check("confirmed, it goes to the ticked session and nowhere else",
+  many.length > 0 && many.every((m) => m.id === "ssh-1"), JSON.stringify(many));
+check("as typed, with one Enter and nothing added",
+  many.map((m) => m.text).join("") === "show clock\r", JSON.stringify(many.map((m) => m.text).join("")));
+check("and the form closes rather than staying armed", (await send.count()) === 0);
+
 // ------------------------------------------------ the device hangs up
 
 await st(() => window.__deviceHungUp("ssh-2", "The device closed the session."));

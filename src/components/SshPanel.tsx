@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
+import { SearchAddon } from '@xterm/addon-search';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
@@ -32,7 +33,7 @@ import { useStore, type SshTab } from '../state/store';
  * inactive ones are hidden, and the instances are kept in the module-level map
  * below, which is also where the event listener finds them.
  */
-const terminals = new Map<string, { term: Terminal; fit: FitAddon; colour: Colouriser }>();
+const terminals = new Map<string, { term: Terminal; fit: FitAddon; search: SearchAddon; colour: Colouriser }>();
 
 /** Drops a terminal and everything it was holding. */
 function dispose(id: string) {
@@ -70,6 +71,14 @@ function themeFromChrome(): Record<string, string> {
   };
 }
 
+/** Text to the device, encoded the way the backend wants it. */
+function sendText(id: string, text: string): Promise<void> {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return ipc.sshSend(id, btoa(binary)).catch(() => undefined) as Promise<void>;
+}
+
 /** Base64 from the backend, as the bytes it stands for. */
 function decode(base64: string): Uint8Array {
   const binary = atob(base64);
@@ -87,8 +96,49 @@ export function SshPanel() {
   const backupFolder = useStore((s) => s.settings.backupFolder);
   const timeFormat = useStore((s) => s.settings.timeFormat);
   const [problem, setProblem] = useState<string | null>(null);
+  const [finding, setFinding] = useState('');
+  const [findOpen, setFindOpen] = useState(false);
+  // LT-343: sending one command to several sessions. Closed, empty and with
+  // nothing ticked every time it is opened — see the guard rails below.
+  const [sending, setSending] = useState(false);
+  const [command, setCommand] = useState('');
+  const [targets, setTargets] = useState<Set<string>>(new Set());
+  const [confirming, setConfirming] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
 
   const current = tabs.find((tab) => tab.id === active);
+  const open = tabs.filter((tab) => tab.status === 'open');
+  const chosen = open.filter((tab) => targets.has(tab.id));
+
+  /** Find in the session in front of you (LT-342). */
+  const find = (forward: boolean) => {
+    const held = active ? terminals.get(active) : undefined;
+    if (!held || !finding) return;
+    if (forward) held.search.findNext(finding);
+    else held.search.findPrevious(finding);
+  };
+
+  /**
+   * Send the command to every ticked session (LT-343).
+   *
+   * Only to sessions that are **open**, and only to ones still on screen —
+   * both re-checked here rather than trusted from when the box was ticked,
+   * because a session can drop between ticking and confirming and the whole
+   * point of this dialog is that nothing is sent anywhere unexpected.
+   */
+  const sendToMany = () => {
+    const live = tabs.filter((tab) => tab.status === 'open' && targets.has(tab.id));
+    if (live.length === 0) {
+      setProblem(t('ssh.sendPickSome'));
+      return;
+    }
+    for (const tab of live) void sendText(tab.id, `${command}\r`);
+    setNote(t('ssh.sendSent', { count: t('ssh.sessions', { count: live.length }) }));
+    setConfirming(false);
+    setSending(false);
+    setCommand('');
+    setTargets(new Set());
+  };
 
   // One listener for every session: the event carries the id, and the map
   // above says which terminal it belongs to.
@@ -231,6 +281,17 @@ export function SshPanel() {
           onChange={(e) => setTerminal({ colourise: e.target.checked })} />
         {t('ssh.colour')}
       </label>
+      {/* LT-344: both off until asked for, and each says why in its tooltip. */}
+      <label className="cv-check cv-check-inline" title={t('ssh.copyOnSelectHint')}>
+        <input type="checkbox" checked={terminal.copyOnSelect}
+          onChange={(e) => setTerminal({ copyOnSelect: e.target.checked })} />
+        {t('ssh.copyOnSelect')}
+      </label>
+      <label className="cv-check cv-check-inline" title={t('ssh.pasteOnRightHint')}>
+        <input type="checkbox" checked={terminal.pasteOnRight}
+          onChange={(e) => setTerminal({ pasteOnRight: e.target.checked })} />
+        {t('ssh.pasteOnRight')}
+      </label>
       <label className="cv-check cv-check-inline" title={t('ssh.logHint')}>
         <input type="checkbox" checked={Boolean(current?.logPath)} disabled={!current}
           onChange={() => current && toggleLog(current)} />
@@ -248,6 +309,17 @@ export function SshPanel() {
             }
           }} />
       </label>
+      <button type="button" className="cv-btn cv-btn-small" onClick={() => setFindOpen((was) => !was)}
+        disabled={!current} aria-expanded={findOpen}>
+        {t('ssh.find')}
+      </button>
+      {/* LT-343: sending to several. The button opens a form; the form does
+          not send. */}
+      <button type="button" className="cv-btn cv-btn-small" disabled={open.length === 0}
+        title={open.length === 0 ? t('ssh.sendNoneOpen') : t('ssh.sendToManyHint')}
+        onClick={() => { setSending(true); setTargets(new Set()); setConfirming(false); setNote(null); }}>
+        {t('ssh.sendToMany')}
+      </button>
       <span className="cv-help cv-ssh-state">
         {current?.logPath && <span className="cv-ssh-logging">{t('ssh.logTo', { path: current.logPath })}</span>}
         {current?.lastAlive !== undefined && (
@@ -291,7 +363,88 @@ export function SshPanel() {
         ))}
       </div>
       {controls}
+      {findOpen && (
+        <div className="cv-ssh-find">
+          <input className="cv-input" value={finding} autoFocus
+            aria-label={t('ssh.findPlaceholder')} placeholder={t('ssh.findPlaceholder')}
+            onChange={(e) => setFinding(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') find(!e.shiftKey);
+              if (e.key === 'Escape') setFindOpen(false);
+            }} />
+          <button type="button" className="cv-btn cv-btn-small" onClick={() => find(false)}
+            aria-label={t('ssh.findPrev')}>‹</button>
+          <button type="button" className="cv-btn cv-btn-small" onClick={() => find(true)}
+            aria-label={t('ssh.findNext')}>›</button>
+          <button type="button" className="cv-btn cv-btn-small" onClick={() => setFindOpen(false)}
+            aria-label={t('ssh.findClose')}>×</button>
+        </div>
+      )}
+      {sending && (
+        <div className="cv-ssh-send" data-region="send-to-many">
+          <strong>{t('ssh.sendToManyTitle')}</strong>
+          <p className="cv-help">{t('ssh.sendToManyHint')}</p>
+          <label className="cv-field">
+            <span>{t('ssh.sendCommand')}</span>
+            <input className="cv-input cv-mono" value={command} spellCheck={false}
+              onChange={(e) => { setCommand(e.target.value); setConfirming(false); }} />
+          </label>
+          <fieldset className="cv-ssh-targets">
+            <legend>{t('ssh.sendTargets')}</legend>
+            {/* Ticked by hand, one at a time. There is deliberately no
+                "all" — choosing every device in an estate should take as
+                long as it deserves. */}
+            {open.map((tab) => (
+              <label key={tab.id} className="cv-check cv-check-inline">
+                <input type="checkbox" checked={targets.has(tab.id)}
+                  onChange={(e) => {
+                    setConfirming(false);
+                    setTargets((was) => {
+                      const next = new Set(was);
+                      if (e.target.checked) next.add(tab.id);
+                      else next.delete(tab.id);
+                      return next;
+                    });
+                  }} />
+                {tab.label}
+              </label>
+            ))}
+          </fieldset>
+          {confirming ? (
+            <>
+              <p className="cv-problem">
+                {t('ssh.sendConfirm', {
+                  command,
+                  count: t('ssh.sessions', { count: chosen.length }),
+                })}
+              </p>
+              <p className="cv-help">{t('ssh.sendNames', { names: chosen.map((c) => c.label).join(', ') })}</p>
+              <div className="cv-keep-cred-held">
+                <button type="button" className="cv-btn cv-btn-small cv-btn-danger" onClick={sendToMany}>
+                  {t('ssh.sendGo')}
+                </button>
+                <button type="button" className="cv-btn cv-btn-small" onClick={() => setConfirming(false)}>
+                  {t('ssh.sendCancel')}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="cv-keep-cred-held">
+              <button type="button" className="cv-btn cv-btn-small cv-btn-start"
+                disabled={!command.trim() || chosen.length === 0}
+                onClick={() => setConfirming(true)}>
+                {t('ssh.sendToMany')}
+              </button>
+              <button type="button" className="cv-btn cv-btn-small"
+                onClick={() => { setSending(false); setConfirming(false); }}>
+                {t('ssh.sendCancel')}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {problem && <p className="cv-problem">{problem}</p>}
+      {!problem && note && <p className="cv-help">{note}</p>}
       <div className="cv-ssh-screens">
         {tabs.map((tab) => (
           <SshTerminal key={tab.id} tab={tab} visible={tab.id === active} />
@@ -323,16 +476,24 @@ function SshTerminal({ tab, visible }: { tab: SshTab; visible: boolean }) {
       });
       const fit = new FitAddon();
       term.loadAddon(fit);
-      held = { term, fit, colour: new Colouriser() };
+      // LT-342: a `show running-config` scrolls past long before it can be
+      // read, and scrollback nobody can search is scrollback nobody uses.
+      const search = new SearchAddon();
+      term.loadAddon(search);
+      held = { term, fit, search, colour: new Colouriser() };
       terminals.set(tab.id, held);
+
+      // LT-344: clipboard manners, both off until asked for. Read from the
+      // store when the event happens rather than closed over, so a checkbox
+      // takes effect on the next click instead of the next session.
+      term.onSelectionChange(() => {
+        if (!useStore.getState().settings.terminal.copyOnSelect) return;
+        const picked = term.getSelection();
+        if (picked) void navigator.clipboard?.writeText(picked).catch(() => undefined);
+      });
       // Keystrokes as typed. Nothing is added, not even a newline: Enter is
       // already a carriage return in the data xterm hands over.
-      term.onData((data) => {
-        const bytes = new TextEncoder().encode(data);
-        let binary = '';
-        for (const b of bytes) binary += String.fromCharCode(b);
-        void ipc.sshSend(tab.id, btoa(binary)).catch(() => undefined);
-      });
+      term.onData((data) => void sendText(tab.id, data));
     }
     if (held.term.element?.parentElement !== mount) held.term.open(mount);
     return () => undefined;
@@ -362,5 +523,22 @@ function SshTerminal({ tab, visible }: { tab: SshTab; visible: boolean }) {
     return () => observer.disconnect();
   }, [tab.id, tab.status, visible]);
 
-  return <div ref={host} className="cv-ssh-screen" hidden={!visible} />;
+  return (
+    <div
+      ref={host}
+      className="cv-ssh-screen"
+      hidden={!visible}
+      // LT-344: right-click pastes, when it has been asked for. It types into
+      // a live device with nothing to confirm, which is why it is off by
+      // default and why what it sent is said out loud afterwards.
+      onContextMenu={(e) => {
+        if (!useStore.getState().settings.terminal.pasteOnRight) return;
+        e.preventDefault();
+        void navigator.clipboard
+          ?.readText()
+          .then((text) => (text ? sendText(tab.id, text) : undefined))
+          .catch(() => undefined);
+      }}
+    />
+  );
 }

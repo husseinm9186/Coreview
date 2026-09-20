@@ -767,7 +767,7 @@ pub fn set_setting(
     // This table is plain text in the same database as the projects, and the
     // operator asked in as many words that nothing he types is ever written
     // where it could leave the machine.
-    const ALLOWED: [&str; 23] = [
+    const ALLOWED: [&str; 25] = [
         "backupFolder",
         "exportFolder",
         "iconLibraryDir",
@@ -814,6 +814,9 @@ pub fn set_setting(
         "sshLogByDefault",
         "sshOpenWith",
         "sshExternalCommand",
+        // LT-344: clipboard manners in the terminal.
+        "sshCopyOnSelect",
+        "sshPasteOnRight",
     ];
     if !ALLOWED.contains(&key.as_str()) {
         return Err(format!("{key} is not a setting Coreview stores"));

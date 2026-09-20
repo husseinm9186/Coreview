@@ -93,39 +93,6 @@ which a crawl already produces.
 an ordinary Tuesday rather than only during a documentation push.
 **Not started.**
 
-### LT-342 — Search the terminal's scrollback
-**Source:** agreed 2026-09-20.
-**To ship:** `@xterm/addon-search`, a find box in the SSH tab, next and
-previous, and the match highlighted. Small, and obviously useful the moment a
-`show running-config` has scrolled past.
-**Not started.**
-
-### LT-343 — Send one command to several sessions at once
-**Source:** agreed 2026-09-20.
-**Genuinely useful and genuinely dangerous**, and it ships with the guard rails
-or it does not ship. `show version` across twelve switches is the good case;
-the same mechanism is how somebody shuts an estate down with one keystroke.
-**Non-negotiable, and recorded here so it cannot be quietly dropped:**
-- **Off by default**, and turned on explicitly for a run rather than left on.
-- **The targets are chosen by hand**, never "all sessions" implicitly.
-- **Every target is named in a confirmation** before anything is sent.
-- **Never to a session that is not open and visible** — not to a closed tab, not
-  to one that has dropped.
-- The command is shown as it will be sent, with nothing added to it.
-**Not started.**
-
-### LT-344 — Copy on select and right-click paste, behind a checkbox
-**Source:** agreed 2026-09-20 — "We need a check box to enable and disable".
-**He is right that it needs a switch.** Copy-on-select is muscle memory for
-anyone who came from PuTTY and a nasty surprise for anyone who did not: it
-overwrites the clipboard every time a line is highlighted to read it. Right-click
-paste likewise replaces the context menu people expect.
-**To ship:** both behaviours, one checkbox each in the SSH tab's controls,
-remembered on the machine like the font and the size (LT-323), and **off until
-they are asked for**. Right-click paste asks nothing before pasting into a live
-session, so what it is about to send is worth showing where it can be seen.
-**Not started.**
-
 ### LT-345 — Test this login
 **Source:** agreed 2026-09-20.
 **A failed crawl should be an answered question.** Every saved credential gets a
@@ -440,6 +407,42 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-342 — Search the terminal's scrollback — 2026-09-20
+**Source:** agreed 2026-09-20.
+**Shipped:** `@xterm/addon-search` (MIT, in the notices), a find box in the SSH
+tab with next and previous, Enter for next and Shift+Enter for previous, Escape
+to close. Scrollback nobody can search is scrollback nobody uses, and a `show
+running-config` has gone past long before it can be read.
+
+### LT-343 — Send one command to several sessions — 2026-09-20
+**Source:** agreed 2026-09-20.
+**Useful and dangerous in the same mechanism**, so it shipped with every guard
+rail the roadmap entry demanded, and each one has a check in `e2e/ssh.mjs`:
+- **The button opens a form; the form does not send.** Nothing leaves until a
+  second, separate confirmation.
+- **Targets are ticked one at a time and there is no "all".** Choosing every
+  device in an estate should take as long as it deserves.
+- **The confirmation names every device** it is about to reach, and quotes the
+  command as it will be sent.
+- **Only open sessions**, re-checked at the moment of sending rather than
+  trusted from when the box was ticked — a session can drop in between, and
+  the whole point of the dialog is that nothing goes anywhere unexpected.
+- **Nothing is added** to the command but the Enter that runs it.
+- The form closes afterwards rather than staying armed.
+
+### LT-344 — Copy on select and right-click paste, behind a checkbox — 2026-09-20
+**Source:** agreed 2026-09-20 — "We need a check box to enable and disable".
+**He was right that it needs a switch, and both default to off.** Copy-on-select
+is muscle memory for anyone who came from PuTTY and a nasty surprise for
+everyone else, because it replaces the clipboard every time a line is
+highlighted to read it. Right-click paste types into a live device with nothing
+to confirm.
+**Shipped:** one checkbox each in the SSH tab, each saying in its tooltip what
+it does and why it is off, remembered on the machine like the font and the size
+(LT-323). Both read the setting at the moment of the event rather than when the
+session opened, so a checkbox takes effect on the next click instead of the
+next session.
 
 ### LT-340 — The port map, and which ports are free — 2026-09-20
 **Source:** agreed 2026-09-20.
