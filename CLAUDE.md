@@ -49,7 +49,8 @@ the **Now** and **Blocked** sections back in three lines or fewer.
   what earned LT-320–325 the right to say they have met hardware.
   **One exception, and it is recorded:**
   the stacking parsers were built from vendor guides at the operator's
-  instruction (D-026). Each says so in its own doc comment and reports
+  instruction (D-026), and the VRF and VXLAN/EVPN parsers the same way
+  (D-051) — `examples/probe_overlay.rs` is what earns those. Each says so in its own doc comment and reports
   `verified_against_hardware() == false` until it has met a device;
   `examples/probe_stack.rs` is how that gets earned.
 - **A test fixture is never a plausible credential.** Obviously fake strings

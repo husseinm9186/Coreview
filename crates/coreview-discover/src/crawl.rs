@@ -205,6 +205,12 @@ pub struct DeviceDetails {
     pub uptime_seconds: Option<u64>,
     /// LT-235: each port's error counters.
     pub counters: Vec<crate::counters::PortCounters>,
+    /// LT-347: each VRF's own routing table, by VRF name. Empty unless the run
+    /// asked for it. The global table stays in `routes` and is unaffected.
+    pub vrf_routes: std::collections::BTreeMap<String, Vec<crate::routes::Route>>,
+    /// LT-347: this device as a VXLAN tunnel endpoint. `None` when the run did
+    /// not ask, or when the device does not speak it.
+    pub overlay: Option<crate::overlay::Overlay>,
 }
 
 /// Which of the extra tables a crawl collects (LT-200–204). Each costs a
@@ -215,11 +221,22 @@ pub struct DetailOptions {
     pub routes: bool,
     pub spanning_tree: bool,
     pub vlans: bool,
+    /// LT-347: each VRF's own routing table, so the path engine can answer a
+    /// question about one instead of refusing it (LT-346).
+    pub vrfs: bool,
+    /// LT-347: VTEPs, VNIs and EVPN routes, so an overlay path is drawn as the
+    /// layer 2 extension it is rather than as a routed hop (LT-348).
+    pub overlay: bool,
 }
 
 impl Default for DetailOptions {
     fn default() -> Self {
-        Self { routes: true, spanning_tree: true, vlans: true }
+        // The two new ones are **off** by default, and not out of caution about
+        // the network — they are read-only like everything else. They are off
+        // because their parsers were built from documentation (D-051) and have
+        // met no hardware, so a run should not start asking for them until
+        // somebody chooses to.
+        Self { routes: true, spanning_tree: true, vlans: true, vrfs: false, overlay: false }
     }
 }
 
@@ -1499,6 +1516,49 @@ async fn read_details(device: &mut Session, version: &str, wanted: DetailOptions
             details.routes.extend(crate::routes::parse_routes(&out));
         }
     }
+    // LT-347: each VRF's own table. Read after the global one so a device
+    // that does not know the command has already answered everything else.
+    if wanted.vrfs {
+        let dialect = crate::vrftables::dialect_for(version);
+        let listing = device.run(dialect.list_command()).await.unwrap_or_default();
+        for vrf in crate::vrftables::parse_vrf_list(&listing, dialect) {
+            let command = dialect.table_command(&vrf.name);
+            let table = device.run(&command).await.unwrap_or_default();
+            let routes = crate::vrftables::parse_vrf_table(&table);
+            // A VRF that answered with nothing is still a VRF the device has,
+            // and recording it empty is how the path engine can say "that VRF
+            // has no route to this" instead of "no such VRF".
+            details.vrf_routes.insert(vrf.name, routes);
+        }
+    }
+
+    // LT-347: VTEPs, VNIs and the EVPN routes that say what is behind each.
+    if wanted.overlay {
+        let dialect = crate::overlay::dialect_for(version);
+        let mut found = crate::overlay::Overlay::default();
+        for command in dialect.commands() {
+            let out = device.run(command).await.unwrap_or_default();
+            if crate::fortios::rejected_command(&out) || out.contains("Invalid input") {
+                continue;
+            }
+            if command.contains("vni") {
+                found.segments = crate::overlay::parse_vni_table(&out);
+            } else if command.contains("peer") || command.contains("vtep") || command.contains("end-point") {
+                found.peers = crate::overlay::parse_peers(&out);
+            } else if command.contains("evpn") {
+                found.learned = crate::overlay::parse_evpn(&out);
+            }
+        }
+        // The source address the fabric tunnels to. Taken from the interface
+        // the device itself calls its NVE source, which is the only place it
+        // is stated rather than inferred.
+        if !found.segments.is_empty() || !found.peers.is_empty() {
+            let out = device.run(crate::overlay::SOURCE_COMMAND).await.unwrap_or_default();
+            found.vtep = crate::overlay::parse_source_interface(&out);
+            details.overlay = Some(found);
+        }
+    }
+
     if wanted.spanning_tree {
         let out = device.run(crate::stp::COMMAND).await.unwrap_or_default();
         details.spanning_tree = crate::stp::parse_spanning_tree(&out);

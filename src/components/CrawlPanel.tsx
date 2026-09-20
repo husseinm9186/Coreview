@@ -213,7 +213,12 @@ export function CrawlPanel({
   // The seed as it was when the run started, for the stored crawl (LT-227).
   const seedRef = useRef('');
   // LT-200–204: the tables beyond neighbours, each a command or two a device.
-  const [details, setDetails] = useState<CrawlDetails>({ routes: true, spanningTree: true, vlans: true });
+  const [details, setDetails] = useState<CrawlDetails>({
+    routes: true, spanningTree: true, vlans: true,
+    // LT-347: off until asked for. Read-only like everything else, but their
+    // parsers are documentation-built and unproven (D-051).
+    vrfs: false, overlay: false,
+  });
   // LT-206.
   const [reverseDns, setReverseDns] = useState(true);
   // LT-210: where each device is, live.
@@ -940,6 +945,12 @@ export function CrawlPanel({
           ['vlans', 'Ports and VLANs', 'show interfaces status, show vlan brief, show interfaces trunk'],
           ['spanningTree', 'Spanning tree', 'show spanning-tree'],
           ['routes', 'Routing table', 'show ip route, show ipv6 route'],
+          // LT-347: two more read-only commands, off until asked for. Their
+          // parsers were built from vendor documentation and have met no
+          // hardware (D-051), so the tooltip says so rather than leaving
+          // somebody to find out from an empty result.
+          ['vrfs', 'Per-VRF routing tables', 'show vrf, then show ip route vrf <name>. Not yet tested against a device with VRFs.'],
+          ['overlay', 'VXLAN and EVPN', 'show nve vni, show nve peers, show bgp l2vpn evpn. Not yet tested against a fabric.'],
         ] as const).map(([key, label, commands]) => (
           <label key={key} className="cv-check cv-check-inline" title={commands}>
             <input type="checkbox" checked={details[key]}

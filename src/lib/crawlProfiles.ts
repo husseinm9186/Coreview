@@ -22,7 +22,15 @@ export interface CrawlProfile {
   credentialId: string | null;
   /** The SNMP rows' shape, without secrets (see `snmpRowsShape`). */
   snmp: string | null;
-  details: { routes: boolean; spanningTree: boolean; vlans: boolean };
+  details: {
+    routes: boolean;
+    spanningTree: boolean;
+    vlans: boolean;
+    /** LT-347: both default to off when a profile predates them, which is what
+     *  an older saved profile should mean — not "ask for everything new". */
+    vrfs: boolean;
+    overlay: boolean;
+  };
   reverseDns: boolean;
   concurrency: number;
   perHostTimeoutSecs: number;
@@ -54,7 +62,13 @@ export function readProfile(raw: unknown): CrawlProfile | null {
     transport: r.transport === 'telnet' || r.transport === 'sshThenTelnet' ? r.transport : 'ssh',
     credentialId: typeof r.credentialId === 'string' && r.credentialId ? r.credentialId : null,
     snmp,
-    details: { routes: bool(d.routes, true), spanningTree: bool(d.spanningTree, true), vlans: bool(d.vlans, true) },
+    details: {
+      routes: bool(d.routes, true),
+      spanningTree: bool(d.spanningTree, true),
+      vlans: bool(d.vlans, true),
+      vrfs: bool(d.vrfs, false),
+      overlay: bool(d.overlay, false),
+    },
     reverseDns: bool(r.reverseDns, true),
     concurrency: num(r.concurrency, 4, 1, 32),
     perHostTimeoutSecs: num(r.perHostTimeoutSecs, 300, 30, 1800),

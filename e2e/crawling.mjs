@@ -140,9 +140,19 @@ check("rules are kept with the project", await page.evaluate(() => window.__cvSt
 
 // --------------------------------------------------- LT-200–204 what is read
 const tables = panel.locator(".cv-crawl-details input[type=checkbox]");
-check("the crawl offers ports and VLANs, spanning tree, routes and reverse DNS, all on", (await tables.count()) === 4 &&
-  (await tables.evaluateAll((els) => els.every((e) => e.checked))));
-await panel.locator(".cv-crawl-details label", { hasText: "Routing table" }).locator("input").uncheck();
+// LT-347 added two more: per-VRF tables and VXLAN/EVPN. Both are deliberately
+// **off** — their parsers were built from documentation and have met no
+// hardware (D-051), so a run does not start asking for them uninvited.
+check("the crawl offers six tables to read", (await tables.count()) === 6, String(await tables.count()));
+// In order: ports and VLANs, spanning tree, routes, per-VRF, VXLAN, reverse DNS.
+check("the proven ones are on and the two unproven ones are not",
+  await tables.evaluateAll((els) => {
+    const on = [0, 1, 2, 5].every((i) => els[i].checked);
+    const off = [3, 4].every((i) => !els[i].checked);
+    return on && off;
+  }));
+// Exact, or it also matches "Per-VRF routing tables" (LT-347).
+await panel.locator(".cv-crawl-details label").filter({ hasText: /^Routing table$/ }).locator("input").uncheck();
 await panel.locator("label", { hasText: "Seed devices" }).locator("input").first().fill("192.0.2.10");
 // LT-207: more seeds from a CSV, added to what is typed.
 await panel.locator(".cv-seed-csv input").setInputFiles({
@@ -180,13 +190,13 @@ check("with no password in it", !JSON.stringify(savedProfiles).includes("not-a-r
 // Change things, then load the profile back.
 await panel.locator("label", { hasText: "At once" }).locator("select").selectOption("1");
 await panel.locator("label", { hasText: "Seed devices" }).locator("input").first().fill("203.0.113.9");
-await panel.locator(".cv-crawl-details label", { hasText: "Routing table" }).locator("input").check();
+await panel.locator(".cv-crawl-details label").filter({ hasText: /^Routing table$/ }).locator("input").check();
 await panel.locator("label", { hasText: /^Profile/ }).locator("select").selectOption({ label: "Branch sites" });
 await page.waitForTimeout(200);
 check("choosing a profile puts its settings back",
   (await panel.locator("label", { hasText: "At once" }).locator("select").inputValue()) === "8" &&
   (await panel.locator("label", { hasText: "Seed devices" }).locator("input").first().inputValue()) === "192.0.2.10, 192.0.2.11, 198.51.100.0/30" &&
-  !(await panel.locator(".cv-crawl-details label", { hasText: "Routing table" }).locator("input").isChecked()));
+  !(await panel.locator(".cv-crawl-details label").filter({ hasText: /^Routing table$/ }).locator("input").isChecked()));
 await panel.getByLabel("Profile name").fill("Core");
 await panel.locator("button", { hasText: /^Save profile$/ }).click();
 await panel.getByLabel("Profile name").fill("core");

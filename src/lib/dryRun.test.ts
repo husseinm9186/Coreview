@@ -35,7 +35,7 @@ describe('a crawl dry run (LT-211)', () => {
   });
 
   it('lists the limits and only the commands the run asks for', () => {
-    const plan = dryRun({ ...base, details: { routes: false, spanningTree: true, vlans: false }, secondFactor: true }, label, 'x');
+    const plan = dryRun({ ...base, details: { routes: false, spanningTree: true, vlans: false, vrfs: false, overlay: false }, secondFactor: true }, label, 'x');
     expect(plan.limits).toContain('8 at once, logging in one at a time for the push factor');
     expect(plan.limits).toContain('Give up on a device after 5 min; retry one that does not answer 2 times');
     expect(plan.commands).toContain('show spanning-tree');

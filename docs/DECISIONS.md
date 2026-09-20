@@ -776,3 +776,34 @@ legible: each is driven by a field on the device — `vrfRoutes`, `nat`, `vips`,
 crawler does not yet populate them (LT-347); anything that does, from a
 collector or an import, flows through the same path. What is still refused is
 inventing the field.
+
+### D-051 — VRF and VXLAN parsers may be built from vendor documentation — 2026-09-20
+**Decision:** the per-VRF and VXLAN/EVPN parsers (LT-347) are written against
+vendor guides rather than against captured device output, and every one is
+marked unverified until it has met real hardware.
+**Extends:** D-026, which made exactly this exception for the stacking parsers,
+and for the same reason. The standing rule in `CLAUDE.md` still holds for
+everything else.
+**Why (the operator's):** "I don't have multi vdom yet / And no vxlan ready /
+Can you build it and i test it." He has a Catalyst 2960CX with no VRFs, a
+FortiGate with one VDOM and a FortiSwitch — nothing that speaks either. The
+alternative to building from the guides is building nothing and leaving the
+path engine permanently refusing every VRF and overlay question.
+**Cost accepted, and it is the same one:** each parser is a hypothesis. So each
+carries the command it expects and the documented shape it was built from in
+its own doc comment; `verified_against_hardware()` on each dialect says plainly
+that none has met a device; the test fixtures say in as many words that they
+are documentation-shaped rather than captured; and
+`examples/probe_overlay.rs` points the app at a real device and prints what it
+answered beside what the parser made of it.
+**Two things make it safer than D-026 was.** Both tick-boxes are **off by
+default**, so no run asks for them until somebody chooses to — an unproven
+parser that nobody invokes cannot mislead anybody. And the probe distinguishes
+three outcomes rather than two: the device rejected the command, the device
+answered nothing, or **the device answered with content and the parser read
+none of it**, which is the failure a documentation-built parser actually has
+and the one that otherwise looks like an empty network.
+**What does not change:** a parser that has met hardware gets
+`verified_against_hardware` flipped and the device named in the commit. That is
+how the two are told apart later, and it is never flipped because the tests
+pass — the tests are built from the same documentation the parser is.

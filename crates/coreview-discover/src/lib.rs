@@ -50,6 +50,8 @@ pub mod ptr;
 pub mod routes;
 pub mod seeds;
 pub mod sessionlog;
+pub mod overlay;
+pub mod vrftables;
 pub mod stp;
 pub mod uptime;
 pub mod vlans;

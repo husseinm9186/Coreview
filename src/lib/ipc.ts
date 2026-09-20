@@ -332,8 +332,18 @@ export type CrawledDevice = {
   /** LT-348: per-VRF routing tables, by VRF name. A device with a table for a
    *  VRF routes that VRF from it and from nothing else. */
   vrfRoutes?: Record<string, RouteRow[]>;
-  /** LT-348: this device is a VXLAN tunnel endpoint. */
+  /** LT-348: this device is a VXLAN tunnel endpoint. Filled from `overlay`
+   *  below where a crawl collected it, or by an import. */
   vtep?: { address: string; segments: { vni: number; vlan?: number | null; prefix?: string | null }[] };
+  /** LT-347: what a crawl read about this device's overlay, as the fabric
+   *  printed it. Shaped by the device rather than by the path engine, so it is
+   *  mapped onto `vtep` where it is used. */
+  overlay?: {
+    vtep?: string | null;
+    segments: { vni: number; vlan?: number | null; kind?: string | null }[];
+    peers: { address: string; state?: string | null; vnis: number[] }[];
+    learned: { routeType: number; vni?: number | null; mac?: string | null; address?: string | null; nextHop?: string | null }[];
+  };
   /** LT-348: address translation it performs. */
   nat?: { kind: 'destination' | 'source'; matches: string; becomes: string; port?: number | null; description?: string }[];
   /** LT-348: virtual addresses it answers for, and what is behind them. */
@@ -434,7 +444,16 @@ export type CrawlInput = {
   bindings?: { scope: 'device' | 'subnet' | 'vendor'; value: string; credentialId: string }[];
 };
 
-export type CrawlDetails = { routes: boolean; spanningTree: boolean; vlans: boolean };
+export type CrawlDetails = {
+  routes: boolean;
+  spanningTree: boolean;
+  vlans: boolean;
+  /** LT-347: each VRF's own routing table. Off by default — the parsers were
+   *  built from documentation and have met no hardware (D-051). */
+  vrfs: boolean;
+  /** LT-347: VTEPs, VNIs and EVPN routes. Off by default, same reason. */
+  overlay: boolean;
+};
 
 export type SshProgress =
   | { kind: 'connecting'; host: string }

@@ -5,7 +5,7 @@ import { readProfile, withProfile, type CrawlProfile } from './crawlProfiles';
 const profile = (over: Partial<CrawlProfile> = {}): CrawlProfile => ({
   id: 'p1', name: 'Branch sites', seed: '192.0.2.1, 198.51.100.0/28', subnets: ['192.0.2.0/24'], maxHops: 3,
   preference: 'management', port: 22, transport: 'ssh', credentialId: 'cred-core', snmp: null,
-  details: { routes: false, spanningTree: true, vlans: true }, reverseDns: true, concurrency: 8,
+  details: { routes: false, spanningTree: true, vlans: true, vrfs: false, overlay: false }, reverseDns: true, concurrency: 8,
   perHostTimeoutSecs: 120, retries: 2, secondFactor: false, ...over,
 });
 
@@ -42,5 +42,18 @@ describe('crawl profiles (LT-212)', () => {
     expect(again[0]!.id).toBe('p1');
     expect(again[0]!.retries).toBe(0);
     expect(withProfile(list, profile({ id: 'p2', name: 'Core' }))).toHaveLength(2);
+  });
+});
+
+describe('a profile saved before the new tables existed (LT-347)', () => {
+  it('means "do not ask", not "ask for everything new"', () => {
+    // An older saved profile has no `vrfs` or `overlay` key at all. Defaulting
+    // them on would silently start running commands somebody never chose.
+    const older = JSON.parse('{"id":"p1","name":"Old","seed":"10.0.0.1","details":{"routes":true}}');
+    const restored = readProfile(older);
+    expect(restored?.details.vrfs).toBe(false);
+    expect(restored?.details.overlay).toBe(false);
+    // And what it did say is still honoured.
+    expect(restored?.details.routes).toBe(true);
   });
 });

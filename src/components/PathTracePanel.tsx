@@ -22,11 +22,30 @@ import {
   type Application,
 } from '../lib/appPath';
 import { saveExport, slug } from '../lib/exports';
-import { ipc, type CrawlResult } from '../lib/ipc';
+import { ipc, type CrawledDevice, type CrawlResult } from '../lib/ipc';
 import { activePage } from '../lib/pages';
 import { devicesOnPath, tracePath, type PathDevice, type TraceResult } from '../lib/pathTrace';
 import { useStore } from '../state/store';
 import type { DeviceNodeData } from '../types/domain';
+
+/**
+ * A crawled device's overlay, as the path engine wants it (LT-347).
+ *
+ * `undefined` when the device is not a tunnel endpoint or the run did not ask
+ * — which is different from a VTEP with no segments, and the engine treats it
+ * as such.
+ */
+function vtepFrom(overlay: CrawledDevice['overlay']): PathDevice['vtep'] {
+  if (!overlay?.vtep || overlay.segments.length === 0) return undefined;
+  // A type-5 route names a prefix behind a VTEP; a type-2 names one host. The
+  // prefix is what lets the engine decide an address is in this segment.
+  const prefixFor = (vni: number) =>
+    overlay.learned.find((r) => r.routeType === 5 && r.vni === vni && r.address)?.address ?? null;
+  return {
+    address: overlay.vtep,
+    segments: overlay.segments.map((s) => ({ vni: s.vni, vlan: s.vlan, prefix: prefixFor(s.vni) })),
+  };
+}
 
 /** A crawl's devices, as the engine wants them. */
 function asPathDevices(result: CrawlResult | null): PathDevice[] {
@@ -66,7 +85,13 @@ function asPathDevices(result: CrawlResult | null): PathDevice[] {
       : undefined,
     // LT-348: the things that change where traffic goes without routing it —
     // a translation, a virtual address, an L2 extension across a fabric.
-    vtep: d.vtep,
+    //
+    // LT-347: a crawl fills `overlay` in the shape the fabric printed; the
+    // engine wants a VTEP address and the segments behind it. The prefix on
+    // each segment comes from the EVPN type-5 routes learned for that VNI —
+    // which is what says *which addresses* are behind a remote VTEP rather
+    // than only that the VNI is shared.
+    vtep: d.vtep ?? vtepFrom(d.overlay),
     nat: d.nat,
     vips: d.vips,
     neighbours: (d.neighbors ?? []).map((n) => ({

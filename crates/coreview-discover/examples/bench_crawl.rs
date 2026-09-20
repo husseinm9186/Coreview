@@ -114,7 +114,7 @@ async fn main() {
             max_hops: 64,
             max_devices: total + 10,
             concurrency,
-            details: coreview_discover::crawl::DetailOptions { routes: false, spanning_tree: false, vlans: false },
+            details: coreview_discover::crawl::DetailOptions { routes: false, spanning_tree: false, vlans: false, vrfs: false, overlay: false },
             ..Default::default()
         };
         let creds = Credentials { username: "bench".into(), password: Secret::new("not-a-real-password"), enable_password: None };
