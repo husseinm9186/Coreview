@@ -211,14 +211,12 @@ the **Actions** tab → a green run → **Artifacts**.
 | Platform | Artifact | Contents |
 | --- | --- | --- |
 | Windows | `coreview-windows` | NSIS `.exe` |
-| macOS | `coreview-macos` | Universal `.dmg` — Apple Silicon and Intel |
-| Linux | `coreview-linux` | `.deb` and AppImage |
 
-Two Windows artifacts are built by the workflow but switched off at the
-operator's request (LT-331): the `.msi`, and `coreview-windows-offline` — the
-same application with the WebView2 runtime embedded, for a machine with no
-internet at install time (~500 MB). Each is one edit away in
-`.github/workflows/build.yml`.
+macOS, Linux, the Windows `.msi` and the offline installer are all built by the
+workflow but switched off at the operator's request (LT-349): a push produces
+one installer. Each is one edit away in `.github/workflows/build.yml`, and the
+`test` job still runs on Linux and Windows both, so nothing goes unchecked —
+only the bundling is paused.
 
 ### macOS: installing it, and the "damaged" warning
 

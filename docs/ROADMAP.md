@@ -136,6 +136,19 @@ commands per platform, captured from real hardware rather than documentation,
 as every other parser here was.
 **Not started**, and deliberately not faked in the meantime.
 
+### LT-349 — Back to the Windows installer only — 2026-09-20
+**Source:** asked 2026-09-20 — "Push and only Build windows installer just like
+last time / No msi or offline installer".
+**The fourth time this set has been narrowed or widened** — LT-305 narrowed,
+LT-311 widened, LT-331 narrowed, LT-337 widened — which is why none of it is
+ever deleted. The Linux leg is commented, `bundle-macos` and `appimage-smoke`
+carry `if: false`, `bundle-windows-offline` stays off, and Windows builds NSIS
+only through `--bundles nsis`, so the MSI is not built at all rather than built
+and thrown away. Each comes back in one edit.
+**`test` still runs on Linux and Windows both**, so nothing about Linux goes
+unchecked; only the bundling is paused.
+**One artifact from a push: `coreview-windows`, the NSIS `.exe`.**
+
 ### LT-348 — The application path, on a page of its own — 2026-09-20
 **Source:** asked 2026-09-20 — extend Path Intelligence into "the final
 application-flow visualization/reporting capability", with the original
