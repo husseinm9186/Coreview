@@ -187,6 +187,7 @@ fn main() {
             terminal::ssh_log_stop,
             terminal::ssh_keepalive,
             terminal::ssh_external,
+            terminal::ssh_test_credential,
             vault_commands::list_credential_use,
             vault_commands::clear_credential_use,
             vault_commands::remember_vault_key,

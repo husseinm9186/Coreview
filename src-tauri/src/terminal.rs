@@ -646,3 +646,79 @@ mod tests {
         assert_eq!(civil_from_days(20_715), (2026, 9, 19));
     }
 }
+
+// ------------------------------------------------ LT-345 does this login work
+
+/// What happened when a saved credential was tried against one device.
+///
+/// Three outcomes and not two, because they are three different problems with
+/// three different fixes: the device never answered, it answered and refused
+/// the credential, or it let us in. Collapsing the first two into "failed" is
+/// what makes a bad password and an unreachable host look the same, which is
+/// most of why "is this password right" is hard to answer today.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CredentialTest {
+    /// `reached`, `refused` or `unreachable`.
+    pub outcome: String,
+    /// What to tell the operator, in one sentence.
+    pub detail: String,
+    /// How long it took, so a slow success reads as slow rather than broken.
+    pub millis: u64,
+}
+
+/// Tries a saved credential against one device and says what happened (LT-345).
+///
+/// It opens a shell and closes it again immediately — nothing is typed, no
+/// command is run, and no transcript is written. The point is the handshake
+/// and the authentication, which is the part that is in doubt.
+#[tauri::command]
+pub async fn ssh_test_credential(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    address: String,
+    credential_id: String,
+    port: Option<u16>,
+) -> CmdResult<CredentialTest> {
+    state.limiter.allow(crate::ratelimit::Job::CredentialTest)?;
+    let address = address.trim().to_string();
+    if address.is_empty() {
+        return Err("Give an address to test the login against.".into());
+    }
+    let credentials = crate::vault_commands::ssh_credentials(&state, &credential_id)?;
+    crate::vault_commands::note_use(&state, &credential_id, "Credential test", &address);
+    let store = crate::discovery::load_host_keys(&state)?;
+    let options = SshOptions {
+        port: port.unwrap_or(22),
+        ..SshOptions::default()
+    };
+
+    let started = std::time::Instant::now();
+    let outcome = Shell::open(&address, &credentials, options, Arc::clone(&store), 80, 24, None).await;
+    let millis = started.elapsed().as_millis() as u64;
+    crate::discovery::persist_host_keys(&app, &store);
+
+    Ok(match outcome {
+        Ok(shell) => {
+            shell.close().await;
+            CredentialTest {
+                outcome: "reached".into(),
+                detail: format!("{address} accepted this login."),
+                millis,
+            }
+        }
+        // The device answered and said no. That is a credential problem.
+        Err(e @ SshError::AuthFailed { .. }) | Err(e @ SshError::AuthTimeout { .. }) => CredentialTest {
+            outcome: "refused".into(),
+            detail: describe(e),
+            millis,
+        },
+        // Everything else is about getting there at all — the host key, the
+        // timeout, the network. The login was never tested.
+        Err(e) => CredentialTest {
+            outcome: "unreachable".into(),
+            detail: format!("{} The login itself was not tested.", describe(e)),
+            millis,
+        },
+    })
+}

@@ -24,6 +24,8 @@ pub enum Job {
     DevicePing,
     /// LT-320: opening an interactive terminal on a device.
     SshSession,
+    /// LT-345: checking one saved credential against one device.
+    CredentialTest,
 }
 
 impl Job {
@@ -39,6 +41,9 @@ impl Job {
             Job::DevicePing => (30, "A ping from a device"),
             // A person opens a handful of tabs; a loop would open thousands.
             Job::SshSession => (30, "An SSH session"),
+            // Checking a password is cheap and people do it in bursts while
+            // they get it right; it still reaches a device, so it is counted.
+            Job::CredentialTest => (40, "A credential test"),
         }
     }
 }

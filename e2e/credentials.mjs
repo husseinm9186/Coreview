@@ -69,6 +69,7 @@ await page.addInitScript(({ p, o }) => {
   window.__saved = [];        // every save_credential payload
   window.__deleted = [];      // every delete_credential id
   window.__documents = [];    // every document written back to the backend
+  window.__tested = [];       // every ssh_test_credential payload
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
   // A vault that behaves like the real one: locked until made, and only then
   // does it list anything.
@@ -114,6 +115,16 @@ await page.addInitScript(({ p, o }) => {
         vault.creds.push({ id, label: c.label, kind: c.kind, username: c.username,
           detail: c.detail ?? "", hasSecondSecret: Boolean(c.secondSecret), secret: c.secret });
         return Promise.resolve(id);
+      }
+      if (cmd === "ssh_test_credential") {
+        window.__tested.push(args);
+        if (args.address === "192.0.2.10") {
+          return Promise.resolve({ outcome: "reached", detail: `${args.address} accepted this login.`, millis: 412 });
+        }
+        if (args.address === "192.0.2.99") {
+          return Promise.resolve({ outcome: "refused", detail: `${args.address} rejected the credentials`, millis: 380 });
+        }
+        return Promise.resolve({ outcome: "unreachable", detail: "did not answer within 8s. The login itself was not tested.", millis: 8000 });
       }
       if (cmd === "delete_credential") {
         window.__deleted.push(args.id);
@@ -262,6 +273,7 @@ check("the device no longer points at it",
   !JSON.parse(after[after.length - 1]).pages[0].nodes[0].data.sshCredentialId,
   String(JSON.parse(after[after.length - 1]).pages[0].nodes[0].data.sshCredentialId));
 
+
 // ------------------------- LT-335 another project does not see these logins
 
 // The SSH credential was wiped above; put one back so there is something that
@@ -273,6 +285,45 @@ await ssh.locator("button", { hasText: /^Save$/ }).first().click();
 await page.waitForTimeout(700);
 await page.evaluate(() => window.__cvStore.getState().rememberCredential("ssh", "cred-3"));
 await page.waitForTimeout(300);
+
+// ------------------------------------------- LT-345 does this login work?
+
+// A credential has just been saved above, so there is one to test. The device
+// knows its own address, so the box is filled in without being typed.
+const testAt = ssh.locator('.cv-cred-test-at input');
+check("a saved SSH login offers to be tested", (await testAt.count()) === 1);
+check("against the device's own address, without it being typed",
+  (await testAt.inputValue()) === "192.0.2.10", await testAt.inputValue());
+
+const testBtn = ssh.locator("button", { hasText: /^Test it$/ });
+await testBtn.click();
+await page.waitForTimeout(600);
+check("testing asks the backend, by address and credential id",
+  (await page.evaluate(() => window.__tested)).length === 1 &&
+  (await page.evaluate(() => window.__tested))[0].address === "192.0.2.10",
+  JSON.stringify(await page.evaluate(() => window.__tested)));
+check("and says it worked, with how long it took",
+  /accepted this login/.test(await ssh.textContent()) && /412 ms/.test(await ssh.textContent()),
+  (await ssh.textContent()).slice(-160));
+
+// A wrong password and an unreachable host are different problems.
+await testAt.fill("192.0.2.99");
+await page.waitForTimeout(200);
+await testBtn.click();
+await page.waitForTimeout(600);
+check("a device that answered and said no reads as a credential problem",
+  /rejected the credentials/.test(await ssh.textContent()), (await ssh.textContent()).slice(-160));
+
+await testAt.fill("192.0.2.123");
+await page.waitForTimeout(200);
+await testBtn.click();
+await page.waitForTimeout(600);
+check("and one that never answered says the login was not tested at all",
+  /login itself was not tested/.test(await ssh.textContent()), (await ssh.textContent()).slice(-160));
+
+check("SNMP is not offered a login test, because a shell cannot check one",
+  (await snmp.locator("button", { hasText: /^Test it$/ }).count()) === 0);
+
 
 const settings = async () => {
   if (!(await page.locator(".cv-tools").count())) {

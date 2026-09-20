@@ -1407,6 +1407,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
       <details className="cv-cred-overrides">
         <summary>Its own username and password</summary>
         <CredentialOverride kind="ssh" device={deviceLabel} credentialId={d.sshCredentialId}
+          testAddress={d.addresses?.find((a) => a.isPrimary)?.address ?? d.addresses?.[0]?.address}
           onChange={(id) => update(nodeId, { sshCredentialId: id })} />
         <CredentialOverride kind="snmp" device={deviceLabel} credentialId={d.snmpCredentialId}
           onChange={(id) => update(nodeId, { snmpCredentialId: id })} />

@@ -139,6 +139,15 @@ export const en = {
   'cred.sshProject': 'SSH login for this project',
   'cred.snmpProject': 'SNMP for this project',
   'cred.projectHint': 'Used by every device that has not been given one of its own.',
+  // Does this login actually work? (LT-345)
+  'cred.test': 'Test it',
+  'cred.testing': 'Testing…',
+  'cred.testAgainst': 'Test it against',
+  'cred.testHint': 'Logs in and disconnects. Nothing is typed and no command is run.',
+  'cred.testNoAddress': 'Give an address to test against.',
+  'cred.testReached': '✓ {detail} ({millis} ms)',
+  'cred.testRefused': '✗ {detail}',
+  'cred.testUnreachable': '? {detail}',
 
   // The address register (LT-285, LT-288, LT-289).
   'ipam.summary': '{subnets} · {known} · {free} free',

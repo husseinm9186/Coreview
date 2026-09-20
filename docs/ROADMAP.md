@@ -93,20 +93,6 @@ which a crawl already produces.
 an ordinary Tuesday rather than only during a documentation push.
 **Not started.**
 
-### LT-345 — Test this login
-**Source:** agreed 2026-09-20.
-**A failed crawl should be an answered question.** Every saved credential gets a
-button that connects, authenticates, disconnects and says what happened —
-reached and authenticated, reached and rejected, or never reached — which are
-three different problems with three different fixes.
-**Why it is worth the round trip:** credential confusion cost two rounds of
-debugging in one week (LT-335), and "is this password right" is currently only
-answerable by running a whole discovery against an estate.
-**To ship:** one command that opens a session and closes it, a target to test
-against, and a result that names which half failed. It must count against the
-rate limiter like anything else that reaches the network (LT-260).
-**Not started.**
-
 ### LT-333 — Choose what goes on the diagram by what it is
 **Source:** asked 2026-09-19 — "the idea is to educate the discovery tool …
 we get all the devices on the wired and wireless network by collecting the mac
@@ -407,6 +393,29 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-345 — Test this login — 2026-09-20
+**Source:** agreed 2026-09-20.
+**Shipped:** a **Test it** button on every saved SSH credential, with the
+address to try it against filled in from the device itself where there is one.
+It opens a shell and closes it — nothing is typed, no command is run, no
+transcript is written. The handshake and the authentication are the parts in
+doubt.
+**Three outcomes, not two**, and that is the whole value: `reached`, `refused`
+and `unreachable` are three different problems with three different fixes.
+Collapsing the last two into "failed" is what makes a wrong password and an
+unplugged switch look identical, which is most of why "is this password right"
+was hard to answer.
+**Verified against real hardware — 2026-09-20**, all three: the lab FortiSwitch
+with the right password opened in 400 ms (`reached`); the same switch with a
+wrong one answered "rejected the credentials" (`refused`); an address with
+nothing on it gave "No route to host", reported as `unreachable` with "The
+login itself was not tested" appended, because it was not.
+**SNMP is deliberately not offered one** — a shell cannot authenticate an SNMP
+credential, and a button that cannot mean anything is worse than no button.
+**Rate limited** like everything else that reaches the network (LT-260), at 40
+a minute: checking a password is cheap and people do it in bursts while they
+get it right.
 
 ### LT-342 — Search the terminal's scrollback — 2026-09-20
 **Source:** agreed 2026-09-20.

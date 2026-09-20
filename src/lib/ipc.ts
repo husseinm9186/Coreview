@@ -435,6 +435,15 @@ export type SshProgress =
   | { kind: 'ready'; host: string; hostname: string }
   | { kind: 'running'; host: string; command: string };
 
+/** LT-345: what happened when a saved credential was tried on one device.
+ *  Three outcomes, not two: `refused` is a password problem, `unreachable`
+ *  means the login was never tested at all. */
+export interface CredentialTestResult {
+  outcome: 'reached' | 'refused' | 'unreachable';
+  detail: string;
+  millis: number;
+}
+
 /** LT-320: a live SSH session, as the backend lists it. */
 export interface SshSession {
   id: string;
@@ -999,6 +1008,12 @@ export const ipc = {
    *  turns it off. */
   sshKeepalive(id: string, seconds: number | undefined) {
     return invoke<void>('ssh_keepalive', { id, seconds });
+  },
+  /** LT-345: try a saved credential against one device and say what happened.
+   *  Opens a shell and closes it — nothing is typed and no command is run. */
+  sshTestCredential(address: string, credentialId: string, port?: number) {
+    if (!isDesktop) throw new BackendUnavailable('Testing a login');
+    return invoke<CredentialTestResult>('ssh_test_credential', { address, credentialId, port });
   },
   /** LT-321: hand the connection to the terminal the machine already has.
    *  The password is deliberately not passed — the client asks for it.

@@ -93,6 +93,7 @@
     ssh_resize: ["id", "cols", "rows"],
     ssh_send: ["id", "bytes"],
     ssh_sessions: [],
+    ssh_test_credential: ["address", "credentialId", "port"],
     start_backup: ["input", "credentials", "stamp"],
     start_crawl: ["input", "credentials", "fallbackCredentials"],
     start_sweep: ["subnets", "options"],

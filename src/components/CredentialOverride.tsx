@@ -9,7 +9,7 @@ import {
   type SnmpOverride,
   type SshOverride,
 } from '../lib/credentialOverride';
-import { ipc, isDesktop, type CredentialSummary } from '../lib/ipc';
+import { ipc, isDesktop, type CredentialSummary, type CredentialTestResult } from '../lib/ipc';
 import { useStore } from '../state/store';
 import { useVaultState, VaultPassphraseForm } from './VaultGate';
 
@@ -32,6 +32,7 @@ import { useVaultState, VaultPassphraseForm } from './VaultGate';
 export function CredentialOverride({
   kind,
   device,
+  testAddress,
   credentialId,
   onChange,
   disabled = false,
@@ -40,6 +41,9 @@ export function CredentialOverride({
   kind: 'ssh' | 'snmp';
   /** What the device is called, which is what the saved credential is named after. */
   device: string;
+  /** LT-345: where to try the login. A device knows its own; the project's
+   *  settings do not, so it is typed there. */
+  testAddress?: string;
   credentialId: string | undefined;
   onChange: (id: string | undefined) => void;
   disabled?: boolean;
@@ -56,6 +60,11 @@ export function CredentialOverride({
   const [confirmClear, setConfirmClear] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // LT-345: does this login actually work? The address to try it against —
+  // the device's own where there is one, and typed where there is not.
+  const [testAt, setTestAt] = useState(testAddress ?? '');
+  const [testing, setTesting] = useState(false);
+  const [tested, setTested] = useState<CredentialTestResult | null>(null);
 
   const [ssh, setSsh] = useState<SshOverride>({ username: '', password: '', enable: '' });
   const [snmp, setSnmp] = useState<SnmpOverride>({
@@ -115,6 +124,23 @@ export function CredentialOverride({
       if (v.exists && v.unlocked) save();
       else setGate(true);
     });
+  };
+
+  /** Try it, and say which of the three things happened (LT-345). */
+  const test = () => {
+    const at = testAt.trim();
+    if (!at) {
+      setProblem(t('cred.testNoAddress'));
+      return;
+    }
+    setTesting(true);
+    setProblem(null);
+    setTested(null);
+    void ipc
+      .sshTestCredential(at, credentialId!)
+      .then(setTested)
+      .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)))
+      .finally(() => setTesting(false));
   };
 
   const clear = () => {
@@ -250,6 +276,23 @@ export function CredentialOverride({
                 onClick={() => { setConfirmClear(true); setNote(null); setProblem(null); }}>
                 {t('cred.clear')}
               </button>
+              {/* LT-345: only for SSH — an SNMP credential is not something a
+                  shell can authenticate, and offering a button that cannot
+                  mean anything is worse than not offering one. */}
+              {kind === 'ssh' && (
+                <>
+                  <label className="cv-field cv-field-narrow cv-cred-test-at">
+                    <span>{t('cred.testAgainst')}</span>
+                    <input className="cv-input cv-mono" value={testAt} spellCheck={false}
+                      disabled={disabled || testing} placeholder="192.0.2.10"
+                      onChange={(e) => { setTestAt(e.target.value); setTested(null); }} />
+                  </label>
+                  <button type="button" className="cv-btn cv-btn-small" title={t('cred.testHint')}
+                    disabled={disabled || testing || !testAt.trim()} onClick={test}>
+                    {testing ? t('cred.testing') : t('cred.test')}
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -278,6 +321,18 @@ export function CredentialOverride({
             </div>
           )}
         </>
+      )}
+      {tested && (
+        <p className={tested.outcome === 'reached' ? 'cv-help cv-cred-reached' : 'cv-problem'}>
+          {t(
+            tested.outcome === 'reached'
+              ? 'cred.testReached'
+              : tested.outcome === 'refused'
+                ? 'cred.testRefused'
+                : 'cred.testUnreachable',
+            { detail: tested.detail, millis: tested.millis },
+          )}
+        </p>
       )}
       {problem && <p className="cv-problem">{problem}</p>}
       {!problem && note && <p className="cv-help">{note}</p>}
