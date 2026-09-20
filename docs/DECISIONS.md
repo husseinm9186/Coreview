@@ -807,3 +807,25 @@ and the one that otherwise looks like an empty network.
 `verified_against_hardware` flipped and the device named in the commit. That is
 how the two are told apart later, and it is never flipped because the tests
 pass — the tests are built from the same documentation the parser is.
+
+**Settled 2026-09-20, the same day, and it settled the argument for the rule
+rather than against it.** He ran the commands on a live VXLAN/EVPN fabric — a
+Nexus leaf and a Nexus spine — and brought back the output. **Three of the four
+NX-OS parsers were wrong**, in ways the documentation gave no hint of:
+`show vrf` on a Nexus has a heading and columns the guides do not show, so six
+VRFs read as none; an L3 VNI's bracket holds a VRF name where the guide's
+example holds a VLAN; and a MAC-only EVPN host is written `[0]:[0.0.0.0]`,
+which the parser repeated back as an address. A fourth, `show ip route`, read
+zero routes on NX-OS and had done since LT-200 — the one place nobody thought
+to doubt, because that parser *was* built from captured output, just not from
+this platform's. All four are LT-350.
+So: `OverlayDialect::NxOs` and `VrfDialect::Cisco` are verified and name the
+device; Arista, Junos and FortiOS are not and still say so. **D-051 stands
+unchanged for the rest.** What it bought was a parser that was ready to be
+proved wrong quickly, which is what happened, and the honest field is what made
+the difference legible — nobody had to guess which parsers to distrust.
+**One thing to keep doing:** the captures were a bank's production network and
+none of it is in the repository (D-027). `examples/parse_capture.rs` reads a
+capture through the parsers without a device to log in to, which is how a fix
+gets checked against real output that cannot be committed; the fixtures beside
+each parser are retyped with invented names and documentation addresses.

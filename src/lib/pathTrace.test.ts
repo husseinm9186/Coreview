@@ -495,3 +495,99 @@ describe('BGP attributes, where the device reported them', () => {
     expect(out.paths[0]![0]!.bgp).toEqual({ localPreference: 200, asPath: '65001 65010', med: 50, communities: ['65001:100'] });
   });
 });
+
+describe('a route the device says crosses the overlay (LT-347)', () => {
+  // A tenant VRF on two leaves, joined by an L3 VNI. This is the shape a
+  // Nexus leaf printed on 2026-09-20: the tenant route points at a VTEP,
+  // says the VTEP address is resolved in the global table, and says which
+  // segment carries it.
+  //
+  // Nothing here is visible to `segmentFor`: an L3 VNI carries a VRF, not a
+  // VLAN, so neither leaf has a segment prefix for the destination to fall
+  // inside. The route is the only evidence there is.
+  const leafA: PathDevice = {
+    hostname: 'LEAF-A',
+    addresses: [{ ip: '198.51.100.1' }, { ip: '192.0.2.1' }],
+    vtep: { address: '198.51.100.1', segments: [{ vni: 50000 }] },
+    routes: [
+      route({ prefix: '198.51.100.4/32', protocol: 'ospf', nextHops: ['192.0.2.2'], distance: 110 }),
+      route({ prefix: '192.0.2.0/30', protocol: 'connected', interface: 'Eth1/1' }),
+    ],
+    vrfRoutes: {
+      CORP: [
+        route({
+          prefix: '203.0.113.0/24',
+          protocol: 'bgp',
+          nextHops: ['198.51.100.4'],
+          distance: 200,
+          metric: 2000,
+          nextHopVrf: 'default',
+          segmentId: 50000,
+        }),
+      ],
+    },
+  };
+  const spine: PathDevice = {
+    hostname: 'SPINE-A',
+    addresses: [{ ip: '192.0.2.2' }, { ip: '192.0.2.5' }],
+    routes: [
+      route({ prefix: '198.51.100.4/32', protocol: 'ospf', nextHops: ['192.0.2.6'], distance: 110 }),
+      route({ prefix: '192.0.2.4/30', protocol: 'connected', interface: 'Eth1/2' }),
+    ],
+    neighbours: [{ localInterface: 'Eth1/2', name: 'LEAF-B' }],
+  };
+  const leafB: PathDevice = {
+    hostname: 'LEAF-B',
+    addresses: [{ ip: '198.51.100.4' }, { ip: '192.0.2.6' }],
+    vtep: { address: '198.51.100.4', segments: [{ vni: 50000 }] },
+    routes: [route({ prefix: '192.0.2.4/30', protocol: 'connected', interface: 'Eth1/2' })],
+    vrfRoutes: {
+      CORP: [route({ prefix: '203.0.113.0/24', protocol: 'connected', interface: 'Vlan113' })],
+    },
+  };
+  const fabric = [leafA, spine, leafB];
+
+  it('resolves a next hop in the table the device said it lives in', () => {
+    // Without this, `198.51.100.4` is looked up in VRF CORP — which does not
+    // hold it — and a path the device is perfectly happy with is reported as
+    // unresolvable.
+    const result = tracePath({ devices: fabric, from: 'LEAF-A', to: '203.0.113.9', vrf: 'CORP' });
+    expect(result.kind).toBe('delivered');
+  });
+
+  it('draws it as a tunnel, with the underlay kept as its own hops', () => {
+    const result = tracePath({ devices: fabric, from: 'LEAF-A', to: '203.0.113.9', vrf: 'CORP' });
+    const kinds = result.paths[0]!.map((h) => h.segment?.kind ?? 'routed');
+    expect(kinds).toContain('overlay');
+    expect(kinds).toContain('underlay');
+    expect(kinds).toContain('decapsulate');
+    // The spine is on the path, as an underlay hop — a fabric drawn without
+    // its spines is not the network.
+    const underlay = result.paths[0]!.filter((h) => h.segment?.kind === 'underlay');
+    expect(underlay.map((h) => h.device)).toContain('LEAF-A');
+  });
+
+  it('says why, in the device own words', () => {
+    const result = tracePath({ devices: fabric, from: 'LEAF-A', to: '203.0.113.9', vrf: 'CORP' });
+    const overlay = result.paths[0]!.find((h) => h.segment?.kind === 'overlay')!;
+    expect(overlay.why).toContain('VNI 50000');
+    expect(overlay.why).toContain('198.51.100.4');
+    expect(overlay.why).toContain('global table');
+  });
+
+  it('keeps the VRF on every hop it made the decision in', () => {
+    const result = tracePath({ devices: fabric, from: 'LEAF-A', to: '203.0.113.9', vrf: 'CORP' });
+    const overlay = result.paths[0]!.find((h) => h.segment?.kind === 'overlay')!;
+    expect(overlay.vrf).toBe('CORP');
+  });
+
+  it('will not invent a far end for a VTEP nothing crawled holds', () => {
+    // The route says the overlay goes to a VTEP. If no crawled device holds
+    // that address, the honest answer is that the path stops, not a guess.
+    const alone = [
+      { ...leafA, routes: leafA.routes!.filter((r) => r.protocol === 'connected') },
+    ];
+    const result = tracePath({ devices: alone, from: 'LEAF-A', to: '203.0.113.9', vrf: 'CORP' });
+    expect(result.kind).not.toBe('delivered');
+  });
+});

@@ -48,10 +48,13 @@ impl VrfDialect {
     /// work on a device, and name the device in the commit.
     pub fn verified_against_hardware(&self) -> bool {
         match self {
-            // Nothing yet. The lab has a 2960CX with no VRFs, a FortiGate with
-            // one VDOM and a FortiSwitch, so none of these has been answered
-            // by a device that actually has more than one table.
-            VrfDialect::Cisco | VrfDialect::FortiOs | VrfDialect::Junos | VrfDialect::Arista => false,
+            // A Nexus leaf with six VRFs answered `show vrf` and
+            // `show ip route vrf <name>` on 2026-09-20, and read nothing at
+            // all until this was fixed for it. **NX-OS only** — the same
+            // arm covers IOS-XE, whose `show vrf` is a different table with
+            // different columns and has still not been seen.
+            VrfDialect::Cisco => true,
+            VrfDialect::FortiOs | VrfDialect::Junos | VrfDialect::Arista => false,
         }
     }
 
@@ -123,11 +126,19 @@ pub fn is_global(name: &str) -> bool {
 /// **Shape, from the vendor guides** (D-051):
 ///
 /// ```text
-/// Cisco IOS-XE / NX-OS / Arista EOS — `show vrf`
+/// Cisco IOS-XE / Arista EOS — `show vrf`
 ///   Name                             Default RD          Protocols   Interfaces
 ///   CORP                             65000:100           ipv4        Gi0/1.100
 ///                                                                    Gi0/2.100
 ///   MGMT                             <not set>           ipv4        Gi0/0
+///
+/// Cisco NX-OS — `show vrf` (captured, 2026-09-20). A different table with a
+/// different heading and no RD or interface columns at all, which is why
+/// "Name plus RD or Interfaces" read nothing on a Nexus:
+///   VRF-Name                           VRF-ID State   Reason
+///   CORP                                    6 Up      --
+///   default                                 1 Up      --
+///   management                              2 Up      --
 ///
 /// Junos — `show route instance`
 ///   Instance             Type         Primary RIB     Active/holddown/hidden
@@ -154,7 +165,8 @@ pub fn parse_vrf_list(out: &str, dialect: VrfDialect) -> Vec<Vrf> {
 
         // The heading, whichever dialect printed it.
         if !started
-            && ((lower.contains("name") && (lower.contains("rd") || lower.contains("interfaces")))
+            && (lower.contains("vrf-name")
+                || (lower.contains("name") && (lower.contains("rd") || lower.contains("interfaces")))
                 || (lower.contains("instance") && lower.contains("type")))
         {
             started = true;
@@ -325,12 +337,45 @@ GUEST                vrf          GUEST.inet.0      3/0/0
     }
 
     #[test]
-    fn every_dialect_is_still_a_hypothesis() {
-        // This is the honest field. When one of these has answered on real
-        // hardware, flip it there and name the device in the commit — not
-        // here, and not because the tests pass.
-        for d in [VrfDialect::Cisco, VrfDialect::FortiOs, VrfDialect::Junos, VrfDialect::Arista] {
+    fn only_the_dialect_a_device_answered_claims_hardware() {
+        // A Nexus leaf with six VRFs, 2026-09-20. The rest are hypotheses.
+        assert!(VrfDialect::Cisco.verified_against_hardware());
+        for d in [VrfDialect::FortiOs, VrfDialect::Junos, VrfDialect::Arista] {
             assert!(!d.verified_against_hardware(), "{d:?} claims hardware it has not met");
         }
+    }
+
+    /// **The shape a Nexus leaf printed** on 2026-09-20, retyped with
+    /// invented VRF names (D-027). Nothing like the IOS-XE table above: a
+    /// different heading, and no route distinguisher or interface columns at
+    /// all. "Name, plus RD or Interfaces" was the heading rule, so a Nexus
+    /// read as zero VRFs and every VRF question the path engine could have
+    /// answered was refused.
+    const NXOS: &str = r#"
+VRF-Name                           VRF-ID State   Reason
+CORP                                    4 Up      --
+GUEST                                   5 Up      --
+default                                 1 Up      --
+egress-loadbalance-resolution-          3 Up      --
+management                              2 Up      --
+"#;
+
+    #[test]
+    fn reads_the_nexus_table_that_has_no_rd_column() {
+        let v = parse_vrf_list(NXOS, VrfDialect::Cisco);
+        assert_eq!(
+            v.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(),
+            ["CORP", "GUEST", "egress-loadbalance-resolution-", "management"]
+        );
+        assert_eq!(v[0].route_distinguisher, None);
+        assert!(v[0].interfaces.is_empty());
+    }
+
+    #[test]
+    fn a_name_the_device_truncated_is_kept_as_the_device_wrote_it() {
+        // NX-OS cuts a VRF name at thirty characters in this table. Guessing
+        // the rest would put a name on a diagram that no command will match.
+        let v = parse_vrf_list(NXOS, VrfDialect::Cisco);
+        assert!(v.iter().any(|x| x.name == "egress-loadbalance-resolution-"));
     }
 }

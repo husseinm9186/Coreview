@@ -50,8 +50,13 @@ impl OverlayDialect {
     /// because the tests are built from the same documentation the parser is.
     pub fn verified_against_hardware(&self) -> bool {
         match self {
-            // Nothing yet. The lab has no fabric that speaks VXLAN.
-            OverlayDialect::NxOs | OverlayDialect::Arista | OverlayDialect::Junos => false,
+            // A Nexus leaf and a Nexus spine in a live VXLAN/EVPN fabric,
+            // 2026-09-20, answered `show nve vni`, `show nve peers`,
+            // `show nve interface nve1 detail` and `show bgp l2vpn evpn`.
+            // Three of the four parsers were wrong before they did.
+            OverlayDialect::NxOs => true,
+            // Still hypotheses: nothing has answered these.
+            OverlayDialect::Arista | OverlayDialect::Junos => false,
         }
     }
 
@@ -133,6 +138,12 @@ pub struct Segment {
     pub vlan: Option<u32>,
     /// `L2` or `L3` — a bridged segment or a routed one.
     pub kind: Option<String>,
+    /// The VRF a routed segment carries, from `L3 [CORP]`.
+    ///
+    /// This is the join between the two halves of the overlay: a tenant route
+    /// whose next hop crosses `segid: 50000` is in whichever VRF the L3 VNI
+    /// 50000 belongs to. Without it that number is just a number.
+    pub vrf: Option<String>,
 }
 
 /// What this device is, as a tunnel endpoint.
@@ -176,10 +187,15 @@ pub struct EvpnRoute {
 /// **Shape, from the vendor guides** (D-051):
 ///
 /// ```text
-/// NX-OS — `show nve vni`
+/// NX-OS — `show nve vni` (captured from a Nexus leaf, 2026-09-20)
 /// Interface VNI      Multicast-group   State Mode Type [BD/VRF]      Flags
-/// nve1      10100    n/a               Up    CP   L2 [100]
+/// --------- -------- ----------------- ----- ---- ------------------ -----
+/// nve1      10100    UnicastBGP        Up    CP   L2 [100]
 /// nve1      50000    n/a               Up    CP   L3 [CORP]
+///
+/// A legend of flag codes is printed above the heading, a row of dashes below
+/// it, and a pager may glue `--More--` to the front of a row. None of the
+/// three carries a standalone number, so none of them becomes a segment.
 ///
 /// Arista — `show vxlan vni`
 /// VNI to VLAN Mapping for Vxlan1
@@ -189,8 +205,13 @@ pub struct EvpnRoute {
 pub fn parse_vni_table(out: &str) -> Vec<Segment> {
     let mut found = Vec::new();
     for line in out.lines() {
-        let t = line.trim();
+        let t = strip_more(line).trim();
         if t.is_empty() || t.to_ascii_lowercase().starts_with("interface vni") {
+            continue;
+        }
+        // `...skipping 1 line` is the pager talking, and the 1 in it would
+        // otherwise be read as VNI 1.
+        if t.starts_with("...") || t.contains("skipping") {
             continue;
         }
         let fields: Vec<&str> = t.split_whitespace().collect();
@@ -212,9 +233,30 @@ pub fn parse_vni_table(out: &str) -> Vec<Segment> {
                 .nth(1)
                 .filter(|v| *v > 0 && *v < 4096)
         });
-        found.push(Segment { vni, vlan, kind });
+        let vrf = kind
+            .as_deref()
+            .filter(|k| *k == "L3")
+            .and_then(|_| bracketed(t))
+            .filter(|v| v.parse::<u32>().is_err());
+        found.push(Segment { vni, vlan, kind, vrf });
     }
     found
+}
+
+/// Removes a `--More--` a pager glued to the front of a row.
+fn strip_more(line: &str) -> &str {
+    let mut rest = line;
+    while let Some(after) = rest.trim_start().strip_prefix("--More--") {
+        rest = after;
+    }
+    rest
+}
+
+/// `L3 [CORP]` → `CORP`.
+fn bracketed(line: &str) -> Option<String> {
+    let start = line.find('[')?;
+    let end = line[start..].find(']')? + start;
+    Some(line[start + 1..end].trim().to_string())
 }
 
 /// `L2 [100]` → 100. `[CORP]` is a VRF name, not a VLAN, and yields nothing.
@@ -335,7 +377,11 @@ pub fn parse_evpn(out: &str) -> Vec<EvpnRoute> {
                     .unwrap_or(32);
                 addresses.first().map(|a| format!("{a}/{mask}"))
             }
-            _ => addresses.last().map(|a| a.to_string()),
+            // A MAC-only type 2 is written `…:[0]:[0.0.0.0]/216` — the
+            // length is 0 and the address is the placeholder that means
+            // "none". Reporting 0.0.0.0 as where a host lives is worse than
+            // reporting nothing, because it looks like an answer.
+            _ => addresses.last().map(|a| a.to_string()).filter(|a| a != "0.0.0.0"),
         };
         // Some platforms print the VNI in the route distinguisher above; where
         // it is on the line, take it.
@@ -364,35 +410,60 @@ fn bracket_parts(body: &str) -> Vec<String> {
 mod tests {
     use super::*;
 
-    /// **Documentation-shaped, not captured** (D-051). From Cisco's NX-OS
-    /// VXLAN configuration guide.
+    /// **The shape a Nexus leaf printed** on 2026-09-20, retyped: invented
+    /// VNIs, VLANs and VRF names, documentation addresses (D-027). The
+    /// operator's capture never left his machine and nothing in it is
+    /// reproduced — what is kept is the layout, which is the part the parser
+    /// has to survive: a legend above the heading, a row of dashes below it,
+    /// `UnicastBGP` where the guide shows `n/a`, a pager glued to the front
+    /// of a row, and a routed VNI whose bracket holds a VRF.
     const NVE_VNI: &str = r#"
+Codes: CP - Control Plane        DP - Data Plane
+       UC - Unconfigured         SA - Suppress ARP
+       MS-IR - Multisite Ingress Replication
+
 Interface VNI      Multicast-group   State Mode Type [BD/VRF]      Flags
-nve1      10100    n/a               Up    CP   L2 [100]
-nve1      10200    n/a               Up    CP   L2 [200]
+--------- -------- ----------------- ----- ---- ------------------ -----
+nve1      10100    UnicastBGP        Up    CP   L2 [100]
+--More--nve1      10200    UnicastBGP        Up    CP   L2 [200]
 nve1      50000    n/a               Up    CP   L3 [CORP]
 "#;
 
+    /// The shape a Nexus leaf printed, retyped the same way. A peer that has
+    /// not advertised a router MAC prints `n/a` there.
     const NVE_PEERS: &str = r#"
-Interface Peer-IP          State LearnType Uptime   Router-Mac
-nve1      10.255.0.4       Up    CP        01:02:03 5254.0012.3456
-nve1      10.255.0.5       Up    CP        00:10:00 5254.0012.7890
+Interface Peer-IP                                 State LearnType Uptime   Router-Mac
+--------- --------------------------------------  ----- --------- -------- ----------
+nve1      198.51.100.4                            Up    CP        1y29w    5254.0012.3456
+nve1      198.51.100.5                            Up    CP        1y29w    n/a
 "#;
 
+    /// The shape a Nexus leaf printed, retyped. Two things here are not in
+    /// the guide and both were wrong until a device showed them: a type 2
+    /// that carries only a MAC writes its address as `[0]:[0.0.0.0]`, and a
+    /// type 5 written without the `[0.0.0.0]` tail still has its mask in the
+    /// field before the prefix.
     const EVPN: &str = r#"
    Network            Next Hop            Metric     LocPrf     Weight Path
 Route Distinguisher: 65000:10100
-*>i[2]:[0]:[0]:[48]:[5254.0012.3456]:[32]:[10.100.0.20]/272
-                      10.255.0.4                        100          0 i
-*>i[5]:[0]:[0]:[24]:[10.40.50.0]:[0.0.0.0]/224
-                      10.255.0.5                        100          0 i
+*>i[2]:[0]:[0]:[48]:[5254.0012.3456]:[32]:[192.0.2.20]/272
+                      198.51.100.4          2000        100          0 65000 i
+*>i[2]:[0]:[0]:[48]:[5254.0012.7890]:[0]:[0.0.0.0]/216
+                      198.51.100.4          2000        100          0 65000 i
+* i[5]:[0]:[0]:[24]:[192.0.2.0]/224
+                      198.51.100.5             1        100          0 65000 ?
 "#;
 
     #[test]
     fn reads_the_vnis_and_the_vlan_each_maps_to() {
         let s = parse_vni_table(NVE_VNI);
         assert_eq!(s.len(), 3, "{s:?}");
-        assert_eq!(s[0], Segment { vni: 10100, vlan: Some(100), kind: Some("L2".into()) });
+        assert_eq!(
+            s[0],
+            Segment { vni: 10100, vlan: Some(100), kind: Some("L2".into()), vrf: None }
+        );
+        // The legend above the heading and the row of dashes below it are not
+        // segments, and neither is the row a pager stuck `--More--` on to.
         assert_eq!(s[1].vni, 10200);
     }
 
@@ -404,13 +475,16 @@ Route Distinguisher: 65000:10100
         let l3 = s.iter().find(|x| x.vni == 50000).unwrap();
         assert_eq!(l3.vlan, None);
         assert_eq!(l3.kind.as_deref(), Some("L3"));
+        // It is not nothing, though: it is the VRF, and it is what joins a
+        // tenant route's `segid` back to a table with a name.
+        assert_eq!(l3.vrf.as_deref(), Some("CORP"));
     }
 
     #[test]
     fn reads_the_remote_vteps_and_their_state() {
         let p = parse_peers(NVE_PEERS);
         assert_eq!(p.len(), 2, "{p:?}");
-        assert_eq!(p[0].address, "10.255.0.4");
+        assert_eq!(p[0].address, "198.51.100.4");
         assert_eq!(p[0].state.as_deref(), Some("Up"));
     }
 
@@ -425,13 +499,22 @@ Route Distinguisher: 65000:10100
         // Type 2 is a MAC and an address in a segment; type 5 is a prefix.
         // Drawing one as the other is the mistake this exists to avoid.
         let r = parse_evpn(EVPN);
-        assert_eq!(r.len(), 2, "{r:?}");
+        assert_eq!(r.len(), 3, "{r:?}");
         assert_eq!(r[0].route_type, 2);
         assert_eq!(r[0].mac.as_deref(), Some("525400123456"));
-        assert_eq!(r[0].address.as_deref(), Some("10.100.0.20"));
-        assert_eq!(r[1].route_type, 5);
-        assert_eq!(r[1].address.as_deref(), Some("10.40.50.0/24"));
-        assert_eq!(r[1].mac, None);
+        assert_eq!(r[0].address.as_deref(), Some("192.0.2.20"));
+        assert_eq!(r[2].route_type, 5);
+        assert_eq!(r[2].address.as_deref(), Some("192.0.2.0/24"));
+        assert_eq!(r[2].mac, None);
+    }
+
+    #[test]
+    fn a_mac_only_host_has_no_address_rather_than_the_placeholder_one() {
+        // `[0]:[0.0.0.0]` is the device saying it knows the MAC and not the
+        // address. Repeating 0.0.0.0 back looks like an answer.
+        let r = parse_evpn(EVPN);
+        assert_eq!(r[1].mac.as_deref(), Some("525400127890"));
+        assert_eq!(r[1].address, None);
     }
 
     #[test]
@@ -439,15 +522,15 @@ Route Distinguisher: 65000:10100
         // The VTEP an address is behind is on the *next* line, which is what a
         // line-at-a-time parser gets wrong.
         let r = parse_evpn(EVPN);
-        assert_eq!(r[0].next_hop.as_deref(), Some("10.255.0.4"));
-        assert_eq!(r[1].next_hop.as_deref(), Some("10.255.0.5"));
+        assert_eq!(r[0].next_hop.as_deref(), Some("198.51.100.4"));
+        assert_eq!(r[2].next_hop.as_deref(), Some("198.51.100.5"));
     }
 
     #[test]
     fn ignores_route_types_that_say_nothing_about_where_a_host_is() {
         // Type 3 is inclusive multicast and type 4 is an ethernet segment;
         // neither places an address behind a VTEP.
-        let other = "*>i[3]:[0]:[32]:[10.255.0.4]/88\n                      10.255.0.4\n";
+        let other = "*>i[3]:[0]:[32]:[198.51.100.4]/88\n                      198.51.100.4\n";
         assert!(parse_evpn(other).is_empty());
     }
 
@@ -459,12 +542,12 @@ Route Distinguisher: 65000:10100
     }
 
     #[test]
-    fn every_dialect_is_still_a_hypothesis() {
-        // The honest field. When a fabric has answered, flip it in
-        // `verified_against_hardware` and name the device in the commit —
-        // never because these tests pass, since they are built from the same
-        // documentation the parser is.
-        for d in [OverlayDialect::NxOs, OverlayDialect::Arista, OverlayDialect::Junos] {
+    fn only_the_dialect_a_fabric_answered_claims_hardware() {
+        // NX-OS has met a device: a Nexus leaf and a Nexus spine in a live
+        // VXLAN/EVPN fabric, 2026-09-20, and three of these parsers were
+        // wrong until they did. The other two are still hypotheses.
+        assert!(OverlayDialect::NxOs.verified_against_hardware());
+        for d in [OverlayDialect::Arista, OverlayDialect::Junos] {
             assert!(!d.verified_against_hardware(), "{d:?} claims hardware it has not met");
         }
     }

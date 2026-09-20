@@ -68,6 +68,10 @@ function asPathDevices(result: CrawlResult | null): PathDevice[] {
           interface: r.interface,
           distance: r.distance,
           metric: r.metric,
+          // LT-347: where the next hop is resolved, and whether the route
+          // crosses the overlay. Both are the device's own words.
+          nextHopVrf: r.nextHopVrf,
+          segmentId: r.segmentId,
         }))
       : undefined,
     // LT-348: per-VRF tables, so a VRF is answered from its own routes.
@@ -79,6 +83,7 @@ function asPathDevices(result: CrawlResult | null): PathDevice[] {
               family: r.family, prefix: r.prefix, protocol: r.protocol,
               nextHops: r.nextHops ?? [], interface: r.interface,
               distance: r.distance, metric: r.metric,
+              nextHopVrf: r.nextHopVrf, segmentId: r.segmentId,
             })),
           ]),
         )

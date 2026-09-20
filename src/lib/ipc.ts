@@ -371,6 +371,12 @@ export type RouteRow = {
   interface: string | null;
   distance: number | null;
   metric: number | null;
+  /** LT-347: the table the next hop is resolved in, where the device named
+   *  one — NX-OS's `*via 203.0.113.4%default` in a tenant VRF. */
+  nextHopVrf?: string | null;
+  /** LT-347: the VXLAN segment this route crosses, from `segid: … encap:
+   *  VXLAN`. Absent on a route that stays on a wire. */
+  segmentId?: number | null;
 };
 
 export type StpInstance = {

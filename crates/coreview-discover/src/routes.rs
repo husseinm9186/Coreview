@@ -34,6 +34,20 @@ pub struct Route {
     /// Administrative distance and metric, from `[1/0]`.
     pub distance: Option<u32>,
     pub metric: Option<u32>,
+    /// The table the *next hop* is resolved in, where the device said so.
+    ///
+    /// NX-OS writes `*via 203.0.113.4%default` for a route in a tenant VRF
+    /// whose next hop is a VTEP address in the underlay table. Resolving that
+    /// next hop in the tenant's own table finds nothing, which is how an
+    /// overlay path silently becomes "no route".
+    pub next_hop_vrf: Option<String>,
+    /// The VXLAN segment this route is carried over, from
+    /// `segid: 50000 tunnelid: 0x… encap: VXLAN`.
+    ///
+    /// Its presence is the device saying, in its own routing table, that this
+    /// prefix is reached across the overlay — which is the evidence the path
+    /// engine needs to draw a tunnel hop rather than a wire.
+    pub segment_id: Option<u32>,
 }
 
 impl Route {
@@ -135,6 +149,13 @@ fn read_path(words: &[&str], route: &mut Route) {
 /// Never fails: a platform that rejects the command gives an error line, which
 /// has no route in it.
 pub fn parse_routes(output: &str) -> Vec<Route> {
+    // NX-OS prints a different table entirely, not a variation on this one —
+    // the prefix is on its own line and the paths are indented under it. Told
+    // apart by shape rather than by asking the caller what the platform was,
+    // the same way the FortiSwitch MAC table is (LT-333).
+    if output.contains("ubest/mbest:") || output.contains("IP Route Table for VRF") {
+        return parse_nxos_routes(output);
+    }
     let mut routes: Vec<Route> = Vec::new();
     let mut in_codes = false;
     for raw in output.lines() {
@@ -209,6 +230,8 @@ pub fn parse_routes(output: &str) -> Vec<Route> {
             interface: None,
             distance: None,
             metric: None,
+            next_hop_vrf: None,
+            segment_id: None,
         };
         if let Some(dm) = words.get(i).filter(|w| w.starts_with('[')) {
             let (d, m) = distance_metric(dm);
@@ -220,6 +243,183 @@ pub fn parse_routes(output: &str) -> Vec<Route> {
         routes.push(route);
     }
     routes
+}
+
+/// Cisco NX-OS's routing table, which is not a dialect of the IOS one.
+///
+/// **Written against captured output**: `show ip route vrf default`,
+/// `show ip route vrf <tenant>` and `show ip route vrf all` from a Nexus leaf
+/// and a Nexus spine in a live VXLAN/EVPN fabric, 2026-09-20. The capture
+/// stayed on the operator's machine (D-027); what is reproduced here is the
+/// shape.
+///
+/// ```text
+/// IP Route Table for VRF "default"
+/// '*' denotes best ucast next-hop
+///
+/// 10.0.1.10/31, ubest/mbest: 1/0
+///     *via 192.0.2.68, Eth1/39, [110/42], 1y29w, ospf-FABRIC, intra
+/// 192.0.2.68/31, ubest/mbest: 1/0, attached
+///     *via 10.0.1.69, Eth1/39, [0/0], 12w0d, direct
+/// 198.51.100.0/24, ubest/mbest: 1/0
+///     *via 203.0.113.4%default, [200/2000], 41w0d, bgp-65000, internal,
+///          tag 65000, segid: 50000 tunnelid: 0x… encap: VXLAN
+/// ```
+///
+/// Three things here exist nowhere in the IOS table and all three matter:
+/// the prefix and its paths are on separate lines, `%default` says the next
+/// hop lives in a *different* table from the route, and `segid … encap: VXLAN`
+/// says the path crosses the overlay.
+pub fn parse_nxos_routes(output: &str) -> Vec<Route> {
+    let mut routes: Vec<Route> = Vec::new();
+    for raw in output.lines() {
+        let line = strip_more(raw.trim_end());
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('\'') || trimmed.starts_with("IP Route Table") {
+            continue;
+        }
+
+        // A path under the prefix above.
+        let path = trimmed
+            .strip_prefix("**via ")
+            .or_else(|| trimmed.strip_prefix("*via "))
+            .or_else(|| trimmed.strip_prefix("via "));
+        if let Some(path) = path {
+            if let Some(route) = routes.last_mut() {
+                read_nxos_path(path, trimmed, route);
+            }
+            continue;
+        }
+
+        // A prefix line: `192.0.2.68/31, ubest/mbest: 1/0, attached`.
+        let Some((prefix_word, rest)) = trimmed.split_once(',') else { continue };
+        if !rest.contains("ubest") {
+            continue;
+        }
+        let Some((network, length)) = prefix_word.trim().split_once('/') else { continue };
+        let Ok(addr) = network.parse::<IpAddr>() else { continue };
+        let Ok(bits) = length.parse::<u8>() else { continue };
+        routes.push(Route {
+            family: if addr.is_ipv4() { 4 } else { 6 },
+            prefix: format!("{addr}/{bits}"),
+            // Filled in from the path line: NX-OS names the protocol there,
+            // not in a code column.
+            code: String::new(),
+            protocol: String::new(),
+            next_hops: Vec::new(),
+            interface: None,
+            distance: None,
+            metric: None,
+            next_hop_vrf: None,
+            segment_id: None,
+        });
+    }
+    routes.retain(|r| !r.next_hops.is_empty() || r.interface.is_some() || !r.protocol.is_empty());
+    routes
+}
+
+/// One `*via …` line, added to the route it belongs to.
+///
+/// The fields are positional and the device is consistent about them, so they
+/// are read by position: address, then an interface *unless* the next field is
+/// the `[distance/metric]` bracket, then the age, then what put the route
+/// there. Guessing an interface by "starts with a letter and has a digit in
+/// it" claims `bgp-65000` and `type-1`, which is why this does not.
+fn read_nxos_path(path: &str, whole: &str, route: &mut Route) {
+    let fields: Vec<&str> = path.split(',').map(str::trim).collect();
+    let Some(first) = fields.first() else { return };
+
+    // `203.0.113.4%default` — the next hop, and the table it is resolved in.
+    let (hop, vrf) = match first.split_once('%') {
+        Some((hop, vrf)) => (hop, Some(vrf.to_string())),
+        None => (*first, None),
+    };
+    if hop.parse::<IpAddr>().is_ok() {
+        if !route.next_hops.iter().any(|h| h == hop) {
+            route.next_hops.push(hop.to_string());
+        }
+        if route.next_hop_vrf.is_none() {
+            route.next_hop_vrf = vrf;
+        }
+    } else if route.interface.is_none() && !hop.is_empty() {
+        // A connected route on some platforms prints the interface here.
+        route.interface = Some(hop.to_string());
+    }
+
+    let mut i = 1;
+    if let Some(next) = fields.get(i) {
+        if !next.starts_with('[') {
+            if route.interface.is_none() {
+                route.interface = Some(next.to_string());
+            }
+            i += 1;
+        }
+    }
+    if let Some(bracket) = fields.get(i).filter(|f| f.starts_with('[')) {
+        let (d, m) = distance_metric(bracket);
+        if route.distance.is_none() {
+            route.distance = d;
+            route.metric = m;
+        }
+        i += 1;
+    }
+    // The age, then the source.
+    i += 1;
+    if let Some(source) = fields.get(i) {
+        if route.code.is_empty() && !source.is_empty() {
+            route.code = source.to_string();
+            route.protocol = nxos_protocol(source).to_string();
+        }
+    }
+
+    // `segid: 50000 tunnelid: 0xcb007104 encap: VXLAN`, which can be on this
+    // field or a later one, so the whole line is searched.
+    if route.segment_id.is_none() {
+        if let Some(at) = whole.find("segid:") {
+            route.segment_id = whole[at + "segid:".len()..]
+                .split_whitespace()
+                .next()
+                .and_then(|n| n.parse::<u32>().ok());
+        }
+    }
+}
+
+/// `ospf-FABRIC` → `ospf`; `direct` → `connected`.
+///
+/// NX-OS appends the process or AS to the protocol, so the name has to be
+/// taken from in front of the hyphen — and `direct` is what it calls a
+/// connected route, which every other part of this crate spells `connected`.
+fn nxos_protocol(source: &str) -> &'static str {
+    match source.split('-').next().unwrap_or("").to_ascii_lowercase().as_str() {
+        "direct" | "connected" => "connected",
+        "local" => "local",
+        "static" => "static",
+        "ospf" | "ospfv3" => "ospf",
+        "bgp" => "bgp",
+        "eigrp" => "eigrp",
+        "rip" => "rip",
+        "isis" => "isis",
+        "am" => "am",
+        "hmm" => "hmm",
+        "broadcast" => "broadcast",
+        "discard" | "null" => "discard",
+        _ => "other",
+    }
+}
+
+/// Removes a `--More--` that a pager glued to the front of a line.
+///
+/// The app's own sessions ask for a 200-column terminal and send
+/// `terminal length 0`, so it does not normally see one. An operator's own
+/// capture, pasted in from an 80-column window, is full of them — and a
+/// prefix line that begins `--More--10.0.1.28/31` is a route that silently
+/// goes missing.
+fn strip_more(line: &str) -> &str {
+    let mut rest = line;
+    while let Some(after) = rest.trim_start().strip_prefix("--More--") {
+        rest = after;
+    }
+    rest
 }
 
 /// The subnets a device is directly on, from its connected routes.
@@ -317,5 +517,91 @@ O IA     198.51.100.0/24 [110/3] via 192.0.2.2, 00:04:10, GigabitEthernet0/1
     fn a_rejected_command_is_no_routes() {
         assert!(parse_routes("% Invalid input detected at '^' marker.").is_empty());
         assert!(parse_routes("").is_empty());
+    }
+
+    /// **The shape a Nexus leaf printed** on 2026-09-20 for
+    /// `show ip route vrf <tenant>`, retyped with documentation addresses and
+    /// an invented VRF name (D-027). Not a variation on the IOS table: the
+    /// prefix is on its own line, the paths are indented under it, and the
+    /// protocol is named on the path rather than coded in the first column.
+    const NXOS_V4: &str = "\
+IP Route Table for VRF \"CORP\"\n\
+'*' denotes best ucast next-hop\n\
+'[x/y]' denotes [preference/metric]\n\
+'%<string>' in via output denotes VRF <string>\n\
+\n\
+0.0.0.0/0, ubest/mbest: 2/0\n\
+    *via 192.0.2.68, Eth1/39, [110/144], 10w6d, ospf-CORP, type-1, tag 2\n\
+    *via 192.0.2.72, Eth1/40, [110/144], 10w6d, ospf-CORP, type-1, tag 2\n\
+192.0.2.68/31, ubest/mbest: 1/0, attached\n\
+    *via 192.0.2.69, Eth1/39, [0/0], 12w0d, direct\n\
+--More--192.0.2.69/32, ubest/mbest: 1/0, attached\n\
+    *via 192.0.2.69, Eth1/39, [0/0], 12w0d, local\n\
+198.51.100.52/32, ubest/mbest: 1/0\n\
+    *via 203.0.113.4%default, [200/2000], 41w0d, bgp-65000, internal, tag 65000, segid: 50000 tunnelid: 0xcb007104 encap: VXLAN\n";
+
+    #[test]
+    fn reads_the_nexus_table_where_the_prefix_is_on_its_own_line() {
+        let r = parse_nxos_routes(NXOS_V4);
+        assert_eq!(r.len(), 4, "{r:?}");
+        assert_eq!(r[0].prefix, "0.0.0.0/0");
+        assert!(r[0].is_default());
+        assert_eq!(r[0].protocol, "ospf");
+        assert_eq!(r[0].code, "ospf-CORP");
+        assert_eq!(r[0].distance, Some(110));
+        assert_eq!(r[0].metric, Some(144));
+    }
+
+    #[test]
+    fn the_nexus_table_is_recognised_without_being_told_the_platform() {
+        // `parse_routes` is what every caller already uses; a Nexus answering
+        // it read as zero routes until this.
+        assert_eq!(parse_routes(NXOS_V4).len(), 4);
+    }
+
+    #[test]
+    fn both_paths_of_an_equal_cost_pair_are_kept() {
+        // Two `*via` lines under one prefix are ECMP, and dropping one of
+        // them is how the path engine stops seeing a second way round.
+        let r = parse_nxos_routes(NXOS_V4);
+        assert_eq!(r[0].next_hops, ["192.0.2.68", "192.0.2.72"]);
+    }
+
+    #[test]
+    fn direct_is_what_the_nexus_calls_connected() {
+        let r = parse_nxos_routes(NXOS_V4);
+        let attached = r.iter().find(|x| x.prefix == "192.0.2.68/31").unwrap();
+        assert_eq!(attached.protocol, "connected");
+        assert_eq!(attached.interface.as_deref(), Some("Eth1/39"));
+        assert_eq!(connected_prefixes(&r), ["192.0.2.68/31"]);
+    }
+
+    #[test]
+    fn a_row_the_pager_stuck_more_on_to_is_still_a_route() {
+        let r = parse_nxos_routes(NXOS_V4);
+        assert!(r.iter().any(|x| x.prefix == "192.0.2.69/32"), "{r:?}");
+    }
+
+    #[test]
+    fn an_overlay_route_says_which_table_its_next_hop_lives_in() {
+        // The whole point of reading this table at all. `%default` means the
+        // VTEP address is in the underlay, not in this tenant's table —
+        // resolving it here finds nothing — and `segid` says the path crosses
+        // VNI 50000, which `show nve vni` maps back to a VRF.
+        let r = parse_nxos_routes(NXOS_V4);
+        let overlay = r.iter().find(|x| x.prefix == "198.51.100.52/32").unwrap();
+        assert_eq!(overlay.next_hops, ["203.0.113.4"]);
+        assert_eq!(overlay.next_hop_vrf.as_deref(), Some("default"));
+        assert_eq!(overlay.segment_id, Some(50000));
+        assert_eq!(overlay.protocol, "bgp");
+        assert_eq!(overlay.interface, None);
+    }
+
+    #[test]
+    fn an_ios_table_is_still_read_the_ios_way() {
+        // The Nexus branch is picked by shape, so the captured IOS output
+        // must not fall into it.
+        assert!(!IOS_V4.contains("ubest"));
+        assert!(!parse_routes(IOS_V4).is_empty());
     }
 }

@@ -92,6 +92,15 @@ export interface PathRoute {
   /** LT-348: BGP's tie-breakers, when this is a BGP route and the device
    *  reported them. */
   bgp?: BgpAttributes;
+  /** LT-347: the table the *next hop* is resolved in, when the device said it
+   *  is not this one. NX-OS writes `*via 203.0.113.4%default` for a tenant
+   *  route whose next hop is a VTEP address in the underlay. Looking that
+   *  address up in the tenant's own table finds nothing. */
+  nextHopVrf?: string | null;
+  /** LT-347: the VXLAN segment this route crosses, from
+   *  `segid: 50000 … encap: VXLAN`. The device stating, in its own routing
+   *  table, that this prefix is reached over the overlay. */
+  segmentId?: number | null;
 }
 
 /** One routing decision, on one device. */
@@ -366,6 +375,25 @@ const isDefaultVrf = (vrf: string | undefined) =>
   !vrf || ['', 'default', 'global', 'inet.0', 'main'].includes(vrf.trim().toLowerCase());
 
 /**
+ * The table a next hop is resolved in (LT-347).
+ *
+ * Usually the one the route came from. NX-OS names another when it is not —
+ * `*via 203.0.113.4%default` in a tenant VRF means the VTEP address lives in
+ * the underlay — and honouring that is the difference between following an
+ * overlay path and reporting it unresolvable. A table the device does not
+ * hold falls back to the route's own rather than answering from nothing.
+ */
+export function resolutionTable(
+  device: PathDevice,
+  table: readonly PathRoute[],
+  nextHopVrf: string | null | undefined,
+): readonly PathRoute[] {
+  if (nextHopVrf === undefined || nextHopVrf === null) return table;
+  if (isDefaultVrf(nextHopVrf)) return device.routes ?? table;
+  return device.vrfRoutes?.[nextHopVrf.trim()] ?? table;
+}
+
+/**
  * Follow the routing decisions from one device to an address.
  *
  * Every branch of an ECMP route is followed, up to `MAX_PATHS`. A path that
@@ -418,6 +446,76 @@ export function tracePath(request: TraceRequest): TraceResult {
     failure: { at: string; reason: string; path: Hop[] } | null;
     looped: { at: string; path: Hop[] } | null;
   } = { failure: null, looped: null };
+
+  /** A routed hop across an L3 VNI, as three steps: into the overlay, the
+   *  underlay that carries it, and out at the far end (LT-347).
+   *
+   *  The same three the bridged case builds. What differs is where the
+   *  evidence comes from — a `segid` on a route rather than two devices
+   *  sharing a VLAN-backed segment — and that the VRF travels with it, which
+   *  is the whole reason an L3 VNI exists. */
+  const crossOverlay = (a: {
+    device: PathDevice;
+    remote: PathDevice;
+    vni: number;
+    localVtep: string;
+    remoteVtep: string;
+    route: PathRoute;
+    target: string;
+    why: string;
+  }) => {
+    const overlay: Hop = {
+      device: a.device.hostname,
+      prefix: a.route.prefix,
+      protocol: a.route.protocol,
+      nextHop: a.remoteVtep,
+      outInterface: null,
+      distance: a.route.distance ?? null,
+      metric: a.route.metric ?? null,
+      why:
+        `${a.why} ${a.device.hostname} carries it across VNI ${a.vni} to VTEP ${a.remoteVtep} ` +
+        `(${a.remote.hostname}) — its own table says so: the next hop is resolved in ` +
+        `${isDefaultVrf(a.route.nextHopVrf ?? undefined) ? 'the global table' : `VRF ${a.route.nextHopVrf}`}, ` +
+        'and the route is encapsulated, not forwarded on a wire.',
+      via: [],
+      segment: {
+        kind: 'overlay',
+        vni: a.vni,
+        localVtep: a.localVtep,
+        remoteVtep: a.remoteVtep,
+        remote: a.remote.hostname,
+      },
+      ...(named ? { vrf: vrf!.trim() } : {}),
+    };
+    // The underlay runs in the global table, which is where a VXLAN underlay
+    // lives, and is traced with the same engine rather than assumed.
+    const underlay = tracePath({
+      devices: up,
+      from: a.device.hostname,
+      to: a.remoteVtep,
+      without: request.without,
+      underlayOnly: true,
+    });
+    const carried: Hop[] = (underlay.paths[0] ?? []).map((h) => ({
+      ...h,
+      segment: { kind: 'underlay' as const, vni: a.vni, localVtep: a.localVtep, remoteVtep: a.remoteVtep },
+      why: `Underlay for VNI ${a.vni}: ${h.why}`,
+    }));
+    const decap: Hop = {
+      device: a.remote.hostname,
+      prefix: `VNI ${a.vni}`,
+      protocol: 'vxlan',
+      nextHop: null,
+      outInterface: null,
+      distance: null,
+      metric: null,
+      why: `${a.remote.hostname} takes the packet out of VNI ${a.vni} and routes ${a.target} on from there.`,
+      via: [],
+      segment: { kind: 'decapsulate', vni: a.vni, localVtep: a.remoteVtep },
+      ...(named ? { vrf: vrf!.trim() } : {}),
+    };
+    return { overlay, underlay, carried, decap };
+  };
 
   /** One branch of the walk. `seen` is per-branch: two ECMP legs may
    *  legitimately pass through the same device without that being a loop.
@@ -628,7 +726,57 @@ export function tracePath(request: TraceRequest): TraceResult {
       // A next hop on a removed device is skipped when the same route offers
       // another; if it is the only one, it falls through to the report below.
       if (onRemovedDevice(nextHop) && route.nextHops.some((h) => !onRemovedDevice(h))) continue;
-      const { interface: out, via, resolved } = resolveNextHop(table, nextHop);
+
+      // LT-347: the device's own table says this prefix is reached across the
+      // overlay — `segid: 50000 tunnelid: 0x… encap: VXLAN`, with the next
+      // hop a VTEP resolved in the underlay. That is a **routed** L3 VNI, and
+      // `segmentFor` above cannot see it: an L3 VNI carries a VRF rather than
+      // a VLAN, so there is no segment prefix for an address to fall inside.
+      // The route is the evidence, which is why it is read here.
+      const carriedVni = route.segmentId ?? null;
+      const remoteEnd =
+        carriedVni && device.vtep
+          ? up.find((d) => d.vtep?.address.trim() === nextHop.trim())
+          : undefined;
+      if (
+        carriedVni &&
+        device.vtep &&
+        remoteEnd &&
+        !path.some((h) => h.segment?.kind === 'overlay' && h.segment.vni === carriedVni)
+      ) {
+        const localVtep = device.vtep.address;
+        const routed = crossOverlay({
+          device,
+          remote: remoteEnd,
+          vni: carriedVni,
+          localVtep,
+          remoteVtep: nextHop,
+          route,
+          target,
+          why,
+        });
+        if (routed.underlay.kind !== 'delivered') {
+          first.failure ??= {
+            at: device.hostname,
+            reason: `${device.hostname} reaches ${route.prefix} over VNI ${carriedVni} to VTEP ${nextHop}, and the underlay between ${localVtep} and ${nextHop} could not be followed: ${
+              routed.underlay.kind === 'unreachable' || routed.underlay.kind === 'insufficient'
+                ? routed.underlay.reason
+                : 'it loops'
+            }`,
+            path: [...path, routed.overlay],
+          };
+          continue;
+        }
+        walk(remoteEnd, [...path, routed.overlay, ...routed.carried, routed.decap], new Set([...seen, key]), target);
+        continue;
+      }
+      // LT-347: the next hop may not live in the table the route does.
+      // NX-OS writes `*via 203.0.113.4%default` for a tenant route pointing at
+      // a VTEP, and resolving that address in the tenant's table finds
+      // nothing — so a path the device is perfectly happy with was reported
+      // as "no route resolves this next hop".
+      const hopTable = resolutionTable(device, table, route.nextHopVrf);
+      const { interface: out, via, resolved } = resolveNextHop(hopTable, nextHop);
       const hop: Hop = {
         device: device.hostname,
         prefix: route.prefix,

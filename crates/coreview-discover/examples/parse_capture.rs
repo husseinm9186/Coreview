@@ -10,6 +10,21 @@
 //! parser without going near the network again.
 //!
 //!     cargo run -p coreview-discover --example parse_capture -- /path/to/capture.log
+//!
+//! A second argument narrows it to one parser, for a capture whose command
+//! echoes this cannot find — an operator's own session log, a backup, a paste
+//! from somewhere else. Then the *whole file* is fed to that parser and
+//! nothing else is tried:
+//!
+//!     cargo run -p coreview-discover --example parse_capture -- routes.txt nxos-routes
+//!
+//! `vni`, `peers`, `evpn`, `nve`, `vrf`, `routes`. This is how LT-350 was
+//! found: the operator could not give out the device, only what it printed.
+//!
+//! **What it prints stays where it is run.** A capture is somebody's network;
+//! nothing it shows belongs in a commit, a fixture or a commit message
+//! (D-027). What belongs in a fixture is the *shape*, retyped with invented
+//! names and documentation addresses.
 
 use std::collections::BTreeSet;
 
@@ -35,10 +50,85 @@ fn section<'a>(text: &'a str, command: &str) -> &'a str {
     &rest[..end.min(rest.len())]
 }
 
+/// One parser, over the whole file.
+///
+/// The sweep below finds a command's output by its echo, which needs a
+/// transcript. A capture that is only the output of one command has no echo to
+/// find, and naming the parser is how that is read at all.
+fn one(which: &str, text: &str) {
+    use coreview_discover::overlay::{parse_evpn, parse_peers, parse_source_interface, parse_vni_table};
+    use coreview_discover::routes::parse_routes;
+    use coreview_discover::vrftables::{parse_vrf_list, VrfDialect};
+
+    match which {
+        "vni" => {
+            let s = parse_vni_table(text);
+            println!("{} segment(s)", s.len());
+            for one in &s {
+                println!("  VNI {} vlan={:?} kind={:?} vrf={:?}", one.vni, one.vlan, one.kind, one.vrf);
+            }
+        }
+        "peers" => {
+            let p = parse_peers(text);
+            println!("{} peer(s)", p.len());
+            for one in &p {
+                println!("  {} {:?}", one.address, one.state);
+            }
+        }
+        "evpn" => {
+            let r = parse_evpn(text);
+            println!("{} route(s)", r.len());
+            for one in r.iter().take(40) {
+                println!(
+                    "  type {} vni={:?} mac={:?} address={:?} behind {:?}",
+                    one.route_type, one.vni, one.mac, one.address, one.next_hop
+                );
+            }
+            let mut by_type: std::collections::BTreeMap<u8, usize> = Default::default();
+            for one in &r {
+                *by_type.entry(one.route_type).or_default() += 1;
+            }
+            println!("by type: {by_type:?}");
+        }
+        "nve" => println!("source address: {:?}", parse_source_interface(text)),
+        "vrf" => {
+            let v = parse_vrf_list(text, VrfDialect::Cisco);
+            println!("{} VRF(s)", v.len());
+            for one in &v {
+                println!("  {} rd={:?} interfaces={:?}", one.name, one.route_distinguisher, one.interfaces);
+            }
+        }
+        "routes" => {
+            let r = parse_routes(text);
+            println!("{} route(s)", r.len());
+            for one in r.iter().take(20) {
+                println!(
+                    "  {} via {:?} {} [{}/{}] iface={:?} nh-vrf={:?} segid={:?}",
+                    one.prefix,
+                    one.next_hops,
+                    one.protocol,
+                    one.distance.unwrap_or(0),
+                    one.metric.unwrap_or(0),
+                    one.interface,
+                    one.next_hop_vrf,
+                    one.segment_id
+                );
+            }
+        }
+        other => println!("no parser called `{other}` — try vni, peers, evpn, nve, vrf, routes"),
+    }
+}
+
 fn main() {
     let path = std::env::args().nth(1).expect("give a capture file");
     let text = std::fs::read_to_string(&path).expect("could not read it");
     println!("== {path}  ({} bytes)", text.len());
+
+    if let Some(which) = std::env::args().nth(2) {
+        println!("== {} lines, parser `{which}`", text.lines().count());
+        one(&which, &text);
+        return;
+    }
 
     let status = coreview_discover::fortios::parse_system_status(section(&text, "get system status"));
     if status.hostname.is_some() || status.model.is_some() {
