@@ -620,6 +620,24 @@ from this machine on ICMP, a TCP port or a UDP port, or from a device using its
 own ping over SSH. It shows the path the diagram draws between them, hop by hop,
 and names the first one that is down.
 
+**Trace path.** **Trace path** in the bottom panel answers a different question
+from Path check beside it: not *can* A reach B, but *which way would it go*.
+Pick a source device, a destination address, and it reads the routing tables a
+crawl collected — nothing is sent. You get the hop-by-hop decisions with the
+prefix, protocol, next hop, outgoing interface and metric; **Why this path?**
+explaining which route won and why, including a BGP next hop resolved through
+the IGP down to a real cable; every equal-cost path where there is more than
+one; and the path lit up on the diagram with everything else dimmed.
+
+**Simulate a failure** takes a device out of the calculation and works the path
+out again. **Nothing is sent and no device is changed** — it filters the copy
+of the routing tables already held, and any alternate it finds is one that
+device's own table already contains, which it says.
+
+It will tell you when it cannot answer rather than guessing: a named VRF, a
+device whose routing table was not collected, or anything VXLAN, each say what
+is missing. Routes are collected from the global table only.
+
 **Compare.** **Tools ▸ Compare** puts two validation sessions, or two crawls,
 side by side — availability and response times that got worse; firmware, ports,
 neighbours and routes that changed — and saves the comparison as Markdown or CSV.

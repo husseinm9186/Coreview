@@ -78,6 +78,64 @@ rather than my assumption:**
    layered over a derived view — and that is what Phase 1 builds, but it changes
    D-035 and is recorded as such.
 
+### LT-346 — Trace Path: where a packet would actually go — 2026-09-20
+**Source:** asked 2026-09-20 — "Implement a new Path Intelligence feature …
+select a source and destination and visualize the actual routing/forwarding
+path on the existing React Flow topology — not just the physical topology",
+with explicit instructions not to restructure anything, to reuse the existing
+discovery, topology, session and persistence infrastructure, and — twice — not
+to invent data.
+**Nothing was restructured and nothing new was collected.** No Rust, no new
+Tauri command, no schema change: `CrawledDevice.routes` (LT-200) already
+carries prefix, protocol, **next hops as a list**, interface, distance and
+metric, and crawl runs already persist and read back. The engine is pure
+TypeScript over data already held, and tracing sends nothing.
+**Shipped:** `src/lib/pathTrace.ts` — longest-prefix match (mask first, then
+administrative distance, then metric, in that order because routers do not
+treat them as interchangeable), recursive next-hop resolution, ECMP as
+branches, loop detection, and a **Trace path** tab beside Path check with the
+hop table, a **Why this path?** panel in sentences, the path highlighted on the
+existing React Flow topology through `canvasHighlight`, and failure simulation.
+**The recursive case from the brief works and is tested:** `10.40.50.0/24` via
+BGP next hop `10.255.2.1`, resolved through OSPF to `192.168.12.2`, resolved
+through a connected route to `Gi0/0`.
+**Failure simulation takes an alternate the device already holds.** Removing a
+device makes the trace fall to the next-best route *in that device's own
+table*, labelled as such — "the preferred route's next hop is on a device this
+simulation removed; it is already in EDGE's table". It does not model
+reconvergence, because that would be inventing routing. Nothing is sent and no
+device is touched: it is a filter over the copy already held.
+**What it refuses, and why that is the feature (D-050):**
+- **A named VRF** reports insufficient. Routes are collected from the global
+  table only; answering a VRF question from it would be confidently wrong.
+- **VXLAN and EVPN** report insufficient. Nothing in the crawler collects
+  VTEPs, VNIs or EVPN route types, so overlay and underlay were not built at
+  all rather than faked — **LT-347** is the discovery work that would earn it.
+- **A device whose routing table was never collected** stops the trace and says
+  so by name, rather than guessing the next hop from the diagram's cables.
+- A device never crawled, and a destination that is not an IPv4 address, are
+  each refused with the reason.
+**29 unit tests** over exactly the areas asked for — longest-prefix match,
+recursive resolution, VRF isolation, ECMP, unreachable, missing data, failure
+simulation — and `e2e/pathtrace.mjs` drives the panel end to end with 17
+checks, including that a named VRF draws no path at all.
+**One bug found by the harness and fixed:** ticking a device in the failure
+simulation removed it from the path, so its own checkbox unmounted and could
+never be unticked. The candidate list now only grows.
+
+### LT-347 — VXLAN, EVPN and per-VRF routing are not collected
+**Source:** the same request of 2026-09-20, which asked for overlay and underlay
+paths "where discovery already provides the required data" — and it does not.
+**What is missing, precisely:** no VTEP addresses, no VNI-to-VLAN mapping, no
+EVPN route types (2 or 5), and `show ip route` is collected from the global
+table only with no `vrf` field on `RouteRow`. LT-346 reports insufficient for
+all of it rather than guessing (D-050).
+**To ship:** per-VRF route collection (`show ip route vrf <name>`, `get router
+info routing-table all`) with a `vrf` on the route row; and the EVPN/VXLAN
+commands per platform, captured from real hardware rather than documentation,
+as every other parser here was.
+**Not started**, and deliberately not faked in the meantime.
+
 ### LT-338 — "Where is this?" — one search over everything discovery has found
 **Source:** agreed 2026-09-20 from a plan he asked for — "I love it / lets do
 it all".

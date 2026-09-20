@@ -9,6 +9,7 @@ import { DiscoverPanel } from './DiscoverPanel';
 import { CrawlPanel } from './CrawlPanel';
 import { BackupPanel } from './BackupPanel';
 import { PathCheckPanel } from './PathCheckPanel';
+import { PathTracePanel } from './PathTracePanel';
 import { SshPanel } from './SshPanel';
 import { STATUS_COLOR } from './edges/LiveEdge';
 import { linkStatus } from '../health/evaluate';
@@ -113,7 +114,7 @@ export function StatusPanel() {
 
   // LT-319: Compare, Racks and the two imports left for a screen of their own.
   // What is here is what reports on the diagram while it is being worked on.
-  const [tab, setTab] = useState<'objects' | 'events' | 'discover' | 'crawl' | 'backup' | 'path' | 'ssh'>('objects');
+  const [tab, setTab] = useState<'objects' | 'events' | 'discover' | 'crawl' | 'backup' | 'path' | 'trace' | 'ssh'>('objects');
   useEffect(() => {
     if (!panelRequest) return;
     // LT-300: the register moved to a screen of its own. Anything that still
@@ -293,7 +294,7 @@ export function StatusPanel() {
   }
 
   return (
-    <div className={`cv-panel${tab === 'crawl' || tab === 'discover' || tab === 'backup' || tab === 'ssh' ? ' is-tall' : ''}`}>
+    <div className={`cv-panel${tab === 'crawl' || tab === 'discover' || tab === 'backup' || tab === 'ssh' || tab === 'trace' ? ' is-tall' : ''}`}>
       <div className="cv-panel-head">
         <div
           className="cv-tabs"
@@ -370,6 +371,18 @@ export function StatusPanel() {
           >
             Path check
           </button>
+          {/* LT-346: where a packet would go, from the routing tables already
+              collected. Beside Path check, which asks whether it gets there. */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'trace'}
+            tabIndex={tab === 'trace' ? 0 : -1}
+            className={tab === 'trace' ? 'is-active' : ''}
+            onClick={() => setTab('trace')}
+          >
+            Trace path
+          </button>
           {/* LT-320: open shells. It is about the diagram in front of you —
               these are its devices — so this one belongs in the panel. */}
           <button
@@ -384,7 +397,7 @@ export function StatusPanel() {
           </button>
         </div>
 
-        {tab !== 'discover' && tab !== 'crawl' && tab !== 'backup' && tab !== 'path' && tab !== 'ssh' && (
+        {tab !== 'discover' && tab !== 'crawl' && tab !== 'backup' && tab !== 'path' && tab !== 'trace' && tab !== 'ssh' && (
           <>
             <input
               className="cv-input cv-panel-search"
@@ -430,6 +443,8 @@ export function StatusPanel() {
           <BackupPanel fromCrawl={handedOver} onConsumed={() => setHandedOver([])} />
         ) : tab === 'path' ? (
           <PathCheckPanel />
+        ) : tab === 'trace' ? (
+          <PathTracePanel />
         ) : tab === 'ssh' ? (
           <SshPanel />
         ) : tab === 'objects' ? (

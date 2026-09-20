@@ -1108,6 +1108,20 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-settings-creds { display: flex; flex-direction: column; gap: 10px; }
 .cv-settings-creds .cv-cred-override { border: 1px solid var(--line); border-radius: var(--radius); }
 .cv-settings-pruned { color: var(--warning); }
+/* LT-346: Trace path. */
+.cv-pathtrace { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; }
+.cv-trace-path { display: flex; flex-direction: column; gap: 6px; }
+.cv-trace-ecmp { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.cv-trace-why > summary { cursor: pointer; font-size: 11px; color: var(--text-dim); padding: 4px 0; }
+.cv-trace-why > summary:hover { color: var(--text); }
+.cv-trace-reasons { margin: 4px 0 0; padding-left: 20px; font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+.cv-trace-reasons .cv-help { margin: 2px 0 0; }
+.cv-trace-insufficient { border-left: 2px solid var(--warning); padding-left: 8px; }
+.cv-trace-simulate > summary { cursor: pointer; font-size: 11px; color: var(--text-dim); padding: 4px 0; }
+.cv-trace-simulate > summary:hover { color: var(--text); }
+.cv-trace-targets { display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 0; }
+.cv-trace-simulating { color: var(--warning); }
+
 /* LT-336: a deduction, marked as one. */
 .cv-inferred-note { color: var(--text-dim); border-left: 2px solid var(--line-strong); padding-left: 8px; }
 .cv-settings-vault > summary {

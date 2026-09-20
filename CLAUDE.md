@@ -152,6 +152,7 @@ node e2e/ipam.mjs          # the address register: subnets, ranges, records, edi
 node e2e/ipamlab.mjs      # the register's screen: hierarchy, allocation, split/merge, history (LT-297, LT-300)
 node e2e/credentials.mjs  # a device's own login: saved encrypted, never in the document (LT-318)
 node e2e/ssh.mjs          # shells in the panel: tabs, colour, font, log, keepalive (LT-320–325)
+node e2e/pathtrace.mjs    # where a packet would go, and what it refuses to guess (LT-346)
 node e2e/checks.mjs       # pass/fail checks against a run's captures (LT-153)
 node e2e/groups.mjs       # ordered collection groups, pauses and stops (LT-154)
 ```

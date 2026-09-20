@@ -745,3 +745,26 @@ halves of his message only look contradictory: "by default all devices should
 inherit the global ssh and snmp password" and "global should be first but
 unchecked by default in the discover devices section" are about different
 scopes, and both are implemented as written.
+
+### D-050 — A path is calculated from evidence or it is not calculated — 2026-09-20
+**Decision:** the path engine (LT-346) reports **"Insufficient routing data"**,
+naming what is missing, rather than producing a path from data it does not
+hold. Specifically: a named VRF, anything VXLAN or EVPN, and any device whose
+routing table was not collected.
+**Rejected:** falling back to the global routing table for a VRF question;
+inferring a next hop from the diagram's cables when a device's table is
+missing; modelling reconvergence during failure simulation.
+**Why:** a wrong path does not look wrong. Every other kind of gap in this
+application announces itself — a device that could not be reached is listed as
+unreachable, a parser that read nothing returns nothing — but a topology
+picture with a line drawn across it looks exactly as authoritative whether the
+line is right or not. Somebody will change a firewall rule because of it.
+**The cost, accepted:** the feature answers fewer questions than the request
+asked for. Overlay and underlay paths were asked for and are not built,
+because the crawler collects no VTEPs and no EVPN routes; LT-347 is the
+discovery work that would earn them. That is a smaller feature and an honest
+one.
+**Where the line is:** the failure simulation *does* fall to the next-best
+route in a device's own table, and that is not an exception — the alternate is
+read from the table we hold, and the explanation says so in those words. What
+it will not do is imagine a route the device never advertised.
