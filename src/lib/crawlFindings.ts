@@ -15,6 +15,11 @@
  * - **Orphans** — a device reached with no link to anything.
  * - **Duplicate MACs** — one MAC learned as the only device on two different
  *   switch ports: a cloned VM, a MAC someone typed, or a bridge loop.
+ * - **Duplicate addresses** (LT-341) — one address claimed by two different
+ *   MACs. A static address typed onto a second machine, a DHCP pool
+ *   overlapping something reserved, or a device that came back with a new
+ *   network card and the old ARP entry has not aged out. It is a classic
+ *   cause of "it works intermittently", and it is invisible on a diagram.
  *
  * Observation only. Nothing here is inferred from names or port numbers; each
  * finding says which devices and ports it is about.
@@ -22,7 +27,9 @@
 import type { CrawledDevice, CrawlResult } from './ipc';
 import { macKey, shortInterface } from './topology';
 
-export type FindingKind = 'one-way' | 'not-seen' | 'unidentified' | 'loop' | 'blocked' | 'orphan' | 'duplicate-mac';
+export type FindingKind =
+  | 'one-way' | 'not-seen' | 'unidentified' | 'loop' | 'blocked' | 'orphan'
+  | 'duplicate-mac' | 'duplicate-ip';
 
 export interface Finding {
   kind: FindingKind;
@@ -45,6 +52,7 @@ export const FINDING_LABEL: Record<FindingKind, string> = {
   blocked: 'Blocked by spanning tree',
   orphan: 'Orphan',
   'duplicate-mac': 'Duplicate MAC',
+  'duplicate-ip': 'Duplicate address',
 };
 
 const key = (name: string) => name.trim().toLowerCase();
@@ -221,7 +229,35 @@ export function crawlFindings(result: Pick<CrawlResult, 'devices'>, drawn: reado
     });
   }
 
-  const order: FindingKind[] = ['loop', 'duplicate-mac', 'one-way', 'not-seen', 'blocked', 'unidentified', 'orphan'];
+  // LT-341: two MACs claiming one address. Grouped by address and counted by
+  // *distinct* MAC, because one device learned by three switches is one
+  // device — that is LT-339's problem and it has already been solved.
+  const claimedBy = new Map<string, Map<string, { device: string; port: string }>>();
+  for (const d of result.devices) {
+    for (const a of d.attached ?? []) {
+      const mac = macKey(a.mac);
+      const address = a.address?.trim();
+      if (!mac || !address) continue;
+      const macs = claimedBy.get(address) ?? new Map();
+      // First sighting of this MAC is enough to name where it was seen.
+      if (!macs.has(mac)) macs.set(mac, { device: d.hostname, port: a.port });
+      claimedBy.set(address, macs);
+    }
+  }
+  for (const [address, macs] of claimedBy) {
+    if (macs.size < 2) continue;
+    const where = [...macs.entries()].map(
+      ([mac, w]) => `${mac.match(/../g)!.join(':')} on ${w.device} ${shortInterface(w.port)}`,
+    );
+    findings.push({
+      kind: 'duplicate-ip',
+      severity: 'warning',
+      message: `${address} is claimed by ${macs.size} different MACs: ${where.join(', ')}.`,
+      devices: [...new Set([...macs.values()].map((w) => w.device))],
+    });
+  }
+
+  const order: FindingKind[] = ['loop', 'duplicate-ip', 'duplicate-mac', 'one-way', 'not-seen', 'blocked', 'unidentified', 'orphan'];
   return findings.sort((x, y) => order.indexOf(x.kind) - order.indexOf(y.kind));
 }
 

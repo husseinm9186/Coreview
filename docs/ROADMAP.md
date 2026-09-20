@@ -93,29 +93,6 @@ which a crawl already produces.
 an ordinary Tuesday rather than only during a documentation push.
 **Not started.**
 
-### LT-340 — The port map, and which ports are free
-**Source:** agreed 2026-09-20.
-**An audit deliverable out of data already held.** Per switch: every port, what
-is on it, the VLAN, the maker, the address and hostname where known — and, the
-part people actually want, **which ports have learned nothing at all**. "Find
-me free ports before I order another switch" is a question people pay
-consultants to answer.
-**To ship:** the table, and an export beside the others. `DeviceDetails`
-already carries VLANs and each port's mode, and `attached` carries what was
-learned; a port with no entry is the answer.
-**Not started.**
-
-### LT-341 — Two things claiming one address, or one MAC in two places
-**Source:** agreed 2026-09-20.
-**Classic outage causes, findable from data already merged.** Two MACs claiming
-one address is a duplicate-IP conflict; one MAC learned on two *access* ports
-is either a loop or a device that moved and one switch has not aged it out.
-**To ship:** a pass over the merged ARP tables and the per-switch MAC tables,
-surfaced in the crawl's findings where the other "here is something worth
-knowing" lines already appear. Uplinks and trunks are excluded, or every
-correctly-configured network reports thousands.
-**Not started.**
-
 ### LT-342 — Search the terminal's scrollback
 **Source:** agreed 2026-09-20.
 **To ship:** `@xterm/addon-search`, a find box in the SSH tab, next and
@@ -463,6 +440,40 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-340 — The port map, and which ports are free — 2026-09-20
+**Source:** agreed 2026-09-20.
+**Shipped:** `portMap` gives one row per port of every crawled device that
+reported its ports — port, description, status, VLAN, speed, duplex, what the
+MAC table learned on it and who announced themselves on it. `portTotals` counts
+free, shut and in use per device, emptiest first. `portMapCsv` is the sheet
+somebody has to hand over, free ports included, quoted properly.
+**"Free" is three conditions, not one**, and that is the part worth getting
+right: the switch says nothing is connected, **and** nothing is learned on it,
+**and** no neighbour announced itself. Any one alone is wrong often enough to
+matter — a port reads `notconnect` for a machine that is asleep, and a port
+that has aged its table out has learned nothing without being spare.
+**A shut port is counted apart from a free one.** Both are capacity, but a port
+was probably shut on purpose and reclaiming it is somebody's decision; a count
+that merges them overstates what is available.
+**A device that was not asked for its ports contributes nothing**, rather than
+having rows invented from its MAC table — that would list only the busy ports,
+which is the opposite of the question being asked.
+
+### LT-341 — Two MACs claiming one address — 2026-09-20
+**Source:** agreed 2026-09-20.
+**Half of it already existed:** duplicate MACs — one MAC alone on two ports —
+have been a finding since LT-213. The missing half was the address.
+**Shipped:** a `duplicate-ip` finding beside the others, from the addresses the
+crawl already resolved per learned MAC. Two different MACs claiming one address
+is a static address typed onto a second machine, a DHCP pool overlapping
+something reserved, or a device that came back with a new network card while
+the old ARP entry is still alive. It is a classic cause of "it works
+intermittently" and it is invisible on a diagram.
+**Counted by distinct MAC, deliberately.** One device learned by three switches
+has one MAC and one address; counting sightings would report every correctly
+working host as a conflict. That distinction is LT-339's, already made, and
+there is a test that it holds here.
 
 ### LT-334 — The LLDP detail form is read, for the two keys the summary lacks — 2026-09-20
 **Source:** found 2026-09-19 in a real capture; agreed 2026-09-20.

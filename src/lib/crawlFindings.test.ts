@@ -74,6 +74,43 @@ describe('crawl findings (LT-213)', () => {
     expect(f[1]!.message).toBe('CORE Gi0/9 is an up trunk with no neighbour reporting on it.');
   });
 
+  it('flags one address claimed by two different MACs (LT-341)', () => {
+    // A static address typed onto a second machine, or a DHCP pool handing out
+    // something already reserved. Intermittent, and invisible on a diagram.
+    const at = (mac: string, port: string, address: string | null) =>
+      ({ mac, port, address, vendor: null, hostname: null, class: null, portPopulation: 1 });
+    const f = crawlFindings({ devices: [
+      dev('SW1', [], { attached: [at('0000.5e00.5301', 'Gi0/3', '192.168.77.50')] }),
+      dev('SW2', [], { attached: [at('0000.5e00.53ff', 'Gi0/7', '192.168.77.50')] }),
+    ] });
+    expect(kinds(f)).toEqual(['duplicate-ip']);
+    expect(f[0]!.message).toMatch(/192\.168\.77\.50 is claimed by 2 different MACs/);
+    expect(f[0]!.message).toMatch(/00:00:5e:00:53:01 on SW1 Gi0\/3/);
+    expect(f[0]!.devices.sort()).toEqual(['SW1', 'SW2']);
+  });
+
+  it('does not call one device seen by two switches a duplicate address (LT-341)', () => {
+    // The same MAC and the same address, learned by everything between it and
+    // the seed. That is one device, which is LT-339's business.
+    const at = (mac: string, port: string, address: string | null, portPopulation = 1) =>
+      ({ mac, port, address, vendor: null, hostname: null, class: null, portPopulation });
+    const f = crawlFindings({ devices: [
+      dev('CORE', [], { attached: [at('0000.5e00.5301', 'Gi0/24', '192.168.77.50', 30)] }),
+      dev('ACC', [], { attached: [at('0000.5e00.5301', 'Gi0/3', '192.168.77.50')] }),
+    ] });
+    expect(kinds(f)).not.toContain('duplicate-ip');
+  });
+
+  it('ignores devices whose address was never resolved', () => {
+    const at = (mac: string, port: string) =>
+      ({ mac, port, address: null, vendor: null, hostname: null, class: null, portPopulation: 1 });
+    const f = crawlFindings({ devices: [
+      dev('SW1', [], { attached: [at('0000.5e00.5301', 'Gi0/3')] }),
+      dev('SW2', [], { attached: [at('0000.5e00.53ff', 'Gi0/7')] }),
+    ] });
+    expect(kinds(f)).not.toContain('duplicate-ip');
+  });
+
   it('flags one MAC alone on two ports, but not one behind an uplink', () => {
     const at = (mac: string, port: string, portPopulation: number) => ({ mac, port, address: null, vendor: null, hostname: null, class: null, portPopulation });
     const f = crawlFindings({ devices: [
