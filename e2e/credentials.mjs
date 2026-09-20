@@ -48,10 +48,22 @@ const project = {
   },
 };
 
+// LT-335: a second project on the same machine. The vault is shared — it is
+// one encrypted store per computer — but what each project *shows* must not be.
+const other = {
+  meta: { id: "other", name: "Other", customer: "", site: "", ticket: "", engineer: "",
+    description: "", createdAt: NOW, updatedAt: NOW, archived: false },
+  documentVersion: 1,
+  document: { activePageId: "p1", probes: [],
+    pages: [{ id: "p1", name: "Core",
+      canvas: { gridEnabled: true, snapEnabled: true, minimap: false, nodeStyle: "glyph" },
+      edges: [], nodes: [] }] },
+};
+
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1700, height: 1100 } });
 
-await page.addInitScript(({ p }) => {
+await page.addInitScript(({ p, o }) => {
   const listeners = {}, callbacks = {};
   let next = 1;
   window.__saved = [];        // every save_credential payload
@@ -69,9 +81,13 @@ await page.addInitScript(({ p }) => {
       const meta = { id: p.meta.id, name: p.meta.name, customer: "", site: "", ticket: "",
         engineer: "", description: "", created_at: p.meta.createdAt,
         updated_at: p.meta.updatedAt, archived: false };
-      if (cmd === "list_projects") return Promise.resolve([meta]);
+      const otherMeta = { id: o.meta.id, name: o.meta.name, customer: "", site: "", ticket: "",
+        engineer: "", description: "", created_at: o.meta.createdAt, updated_at: o.meta.updatedAt, archived: false };
+      if (cmd === "list_projects") return Promise.resolve([meta, otherMeta]);
       if (cmd === "load_project")
-        return Promise.resolve({ meta, document_version: p.documentVersion, document: p.document });
+        return args.id === o.meta.id
+          ? Promise.resolve({ meta: otherMeta, document_version: o.documentVersion, document: o.document })
+          : Promise.resolve({ meta, document_version: p.documentVersion, document: p.document });
       if (cmd === "save_project") {
         window.__documents.push(JSON.stringify(args.package.document));
         return Promise.resolve();
@@ -108,11 +124,11 @@ await page.addInitScript(({ p }) => {
       return Promise.resolve([]);
     },
   };
-}, { p: project });
+}, { p: project, o: other });
 
 page.on("pageerror", (e) => console.log("PAGE EXCEPTION:", String(e).slice(0, 300)));
 await page.goto(URL, { waitUntil: "networkidle" });
-await page.locator(".cv-project-open").first().click();
+await page.locator(".cv-project-open", { hasText: "Creds" }).first().click();
 await page.waitForTimeout(800);
 
 // ------------------------------------------------------- find the override
@@ -245,6 +261,52 @@ const after = await page.evaluate(() => window.__documents);
 check("the device no longer points at it",
   !JSON.parse(after[after.length - 1]).pages[0].nodes[0].data.sshCredentialId,
   String(JSON.parse(after[after.length - 1]).pages[0].nodes[0].data.sshCredentialId));
+
+// ------------------------- LT-335 another project does not see these logins
+
+// The SSH credential was wiped above; put one back so there is something that
+// could leak, and make it the project's own.
+await field(ssh, "Username").fill("netadmin");
+await field(ssh, "Password").fill(SECRETS.password);
+await page.waitForTimeout(250);
+await ssh.locator("button", { hasText: /^Save$/ }).first().click();
+await page.waitForTimeout(700);
+await page.evaluate(() => window.__cvStore.getState().rememberCredential("ssh", "cred-3"));
+await page.waitForTimeout(300);
+
+const settings = async () => {
+  if (!(await page.locator(".cv-tools").count())) {
+    await page.locator(".cv-btn-tools").first().click();
+    await page.waitForTimeout(300);
+  }
+  await page.locator(".cv-tools .cv-tabs button", { hasText: "Settings" }).first().click();
+  await page.waitForTimeout(500);
+};
+
+await settings();
+const mine = page.locator('[data-region="project-credentials"]');
+check("this project's Settings lists the login it uses",
+  /CORE-SW1|netadmin/.test(await mine.textContent()), (await mine.textContent()).slice(0, 200));
+
+// Now the other project on the same machine and the same vault.
+await page.locator(".cv-tools .cv-register-back").first().click();
+await page.waitForTimeout(300);
+await page.locator("button", { hasText: "Close project" }).first().click();
+await page.waitForTimeout(900);
+await page.locator(".cv-project-open", { hasText: "Other" }).first().click();
+await page.waitForTimeout(900);
+await settings();
+
+const theirs = await page.locator('[data-region="project-credentials"]').textContent();
+check("another project does not show the first one's logins",
+  !/netadmin/.test(theirs ?? ""), (theirs ?? "").slice(0, 200));
+check("it says it refers to none of its own instead",
+  /refers to no saved login/.test(theirs ?? ""), (theirs ?? "").slice(0, 200));
+check("and the machine-wide vault is offered, clearly labelled, but shut",
+  (await page.locator(".cv-settings-vault > summary").count()) === 1 &&
+  (await page.locator(".cv-settings-vault .cv-vault-table").count()) === 0);
+check("the SSH and SNMP boxes are empty for it, not carrying the other project's",
+  !/Saved as/.test(await page.locator('.cv-cred-override[data-kind="ssh"]').textContent()));
 
 await browser.close();
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);

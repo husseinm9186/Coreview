@@ -53,7 +53,7 @@ export const en = {
   // Settings, on the Tools screen (LT-327).
   'settings.title': 'Settings',
   'settings.globalLogins': 'This project’s logins',
-  'settings.globalHint': 'What every device in this project uses unless it has been given a login of its own. Saved encrypted in the vault; the project holds only a reference to it.',
+  'settings.globalHint': 'What every device in this project uses unless it has been given a login of its own. Global to this project and to nothing else — another project never sees it. Saved encrypted in the vault; the project holds only a reference.',
   'settings.thisProject': 'This project',
   'settings.inUse': 'SSH: {ssh} · SNMP: {snmp}',
   'settings.none': 'none',
@@ -67,6 +67,15 @@ export const en = {
   'settings.externalHint': '{user}, {host} and {port} are filled in. The password is never passed — the client asks for it, because a command line is readable by everyone on this computer.',
   'settings.logByDefault': 'Start every session logging',
   'settings.vault': 'The credential vault',
+  'settings.pruned': { one: '{count} saved login this project pointed at is no longer in the vault, and has been forgotten.', other: '{count} saved logins this project pointed at are no longer in the vault, and have been forgotten.' },
+  'settings.projectCredentials': 'What this project uses',
+  'settings.projectCredentialsHint': 'Only the logins this project refers to — its own, its rules, and its devices. Another project’s do not appear here.',
+  'settings.noneForProject': 'This project refers to no saved login yet.',
+  'settings.colName': 'Name',
+  'settings.colFor': 'For',
+  'settings.colUser': 'User',
+  'settings.everything': { one: 'Every credential on this computer ({count} more)', other: 'Every credential on this computer ({count} more)' },
+  'settings.everythingHint': 'The vault is one encrypted store for this computer, shared by every project on it. This is all of it, not just this project’s.',
 
   // The tools that are not about the diagram in front of you (LT-319).
   'tools.title': 'Tools',

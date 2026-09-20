@@ -178,6 +178,16 @@ fn resolve_bindings(state: &AppState, inputs: &[BindingInput]) -> CmdResult<Vec<
     let mut out = Vec::new();
     for b in inputs {
         let Some(scope) = Scope::parse(b.scope.trim(), &b.value) else { continue };
+        // LT-335: a binding names a credential by id, and an id can go stale —
+        // the credential was wiped, or this project was opened on a machine
+        // whose vault never had it. **One stale binding used to fail the whole
+        // crawl**, because a device somewhere on the diagram still pointed at
+        // a deleted credential and `?` took the run down with it. A binding is
+        // "try this one here" and is best-effort by construction, so one that
+        // cannot be resolved is skipped and the run goes on.
+        if !crate::vault_commands::credential_exists(state, &b.credential_id) {
+            continue;
+        }
         let kind = crate::vault_commands::credential_kind(state, &b.credential_id)?;
         out.push(match kind.as_str() {
             "snmp" => Binding { scope, ssh: None, snmp: Some(crate::vault_commands::snmp_credentials(state, &b.credential_id)?) },
@@ -378,6 +388,14 @@ pub async fn start_crawl(
         snmp: {
             let mut all = Vec::new();
             for id in &input.snmp_credential_ids {
+                // LT-335: "every one that resolves is kept" is what the comment
+                // above has always said, and what the code did not do — a `?`
+                // here meant one wiped credential in the list stopped the whole
+                // scan. Trying several is the point; one that has gone is one
+                // fewer to try.
+                if !crate::vault_commands::credential_exists(&state, id) {
+                    continue;
+                }
                 all.push(crate::vault_commands::snmp_credentials(&state, id)?);
             }
             all.extend(input.snmp.into_iter().filter_map(SnmpInput::into_auth));

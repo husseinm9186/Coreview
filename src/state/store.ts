@@ -3,6 +3,7 @@ import type { Edge, Node } from '@xyflow/react';
 import { applyEdgeChanges, applyNodeChanges, type EdgeChange, type NodeChange } from '@xyflow/react';
 
 import { ipc, isDesktop, type ProbeResultDto, type IconLibEntry, type StoredSettings } from '../lib/ipc';
+import { staleCredentials, withoutStaleCredentials } from '../lib/credentialScope';
 import { uid } from '../lib/id';
 import { newProbe } from '../lib/probes';
 import { migrateDocument } from '../lib/migrate';
@@ -399,6 +400,9 @@ interface Store {
   endSshTab: (id: string, reason: string) => void;
   /** Takes the tab away. The backend is told separately. */
   forgetSshTab: (id: string) => void;
+  /** LT-335: drops references to credentials the vault no longer holds.
+   *  Returns how many went, so the caller can say so. */
+  pruneStaleCredentials: (inVault: { id: string }[]) => number;
   /** LT-324: the transcript started, moved or stopped. */
   setSshLog: (id: string, path: string | null) => void;
   /** LT-325: a keepalive went out and the connection took it. */
@@ -1247,6 +1251,18 @@ export const useStore = create<Store>((set, get) => ({
         sshActive: s.sshActive === id ? (left[left.length - 1]?.id ?? null) : s.sshActive,
       };
     });
+  },
+
+  pruneStaleCredentials(inVault) {
+    const { doc } = get();
+    const stale = staleCredentials(doc, inVault);
+    if (stale.length === 0) return 0;
+    const cleaned = withoutStaleCredentials(doc, inVault);
+    if (!cleaned) return 0;
+    // Not an undo step: nothing the operator did caused it, and a credential
+    // that is gone from the vault cannot be brought back by undoing a diagram.
+    set({ doc: cleaned, dirty: true });
+    return stale.length;
   },
 
   setSshLog(id, path) {

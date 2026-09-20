@@ -495,6 +495,17 @@ pub fn clear_credential_use(state: State<'_, AppState>) -> CmdResult<usize> {
     db::clear_credential_use(&conn).map_err(db_err)
 }
 
+/// Whether the vault still holds this credential.
+///
+/// A project stores credential *ids*, and the vault is machine-wide and
+/// outlives any one project (D-006). So an id can go stale — the credential
+/// was wiped, or the project was opened on a machine whose vault never had it
+/// — and a stale id must never be fatal to anything (LT-335).
+pub fn credential_exists(state: &AppState, id: &str) -> bool {
+    let Ok(conn) = state.db.lock() else { return false };
+    matches!(db::credential(&conn, id), Ok(Some(_)))
+}
+
 /// What kind a saved credential is — `ssh` or `snmp` — without opening it.
 pub fn credential_kind(state: &AppState, id: &str) -> CmdResult<String> {
     let conn = state.db.lock().map_err(db_err)?;

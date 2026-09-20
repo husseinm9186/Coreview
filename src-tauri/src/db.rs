@@ -1027,6 +1027,21 @@ mod tests {
     }
 
     #[test]
+    fn asking_for_a_credential_that_was_wiped_is_an_answer_not_a_failure() {
+        // LT-335: a project stores ids, the vault is machine-wide and outlives
+        // any one project, so an id goes stale whenever a credential is wiped
+        // or the project travels to another machine. `credential_exists` is
+        // built on this returning `None` rather than erroring, and a whole
+        // crawl used to die on the `?` that followed.
+        let conn = mem();
+        save_credential(&conn, &cred("a", "Core"), 1).unwrap();
+        assert!(credential(&conn, "a").unwrap().is_some());
+        assert!(credential(&conn, "never-existed").unwrap().is_none());
+        delete_credential(&conn, "a").unwrap();
+        assert!(credential(&conn, "a").unwrap().is_none());
+    }
+
+    #[test]
     fn a_credential_round_trips_with_both_secrets() {
         let conn = mem();
         save_credential(&conn, &cred("a", "Core"), 1).unwrap();

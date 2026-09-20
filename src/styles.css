@@ -1107,6 +1107,12 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-settings-block > .cv-help { margin: 0; max-width: 78ch; }
 .cv-settings-creds { display: flex; flex-direction: column; gap: 10px; }
 .cv-settings-creds .cv-cred-override { border: 1px solid var(--line); border-radius: var(--radius); }
+.cv-settings-pruned { color: var(--warning); }
+.cv-settings-vault > summary {
+  cursor: pointer; padding: 6px 0; font-size: 11px; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.cv-settings-vault > summary:hover { color: var(--text); }
 
 /* LT-319: the same screen, holding Compare, Racks and the two imports. These
    were panels, so their own padding is already right; the screen does not add

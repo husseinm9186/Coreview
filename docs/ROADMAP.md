@@ -78,47 +78,6 @@ rather than my assumption:**
    layered over a derived view — and that is what Phase 1 builds, but it changes
    D-035 and is recorded as such.
 
-### LT-332 — **bug** A FortiSwitch's MAC table was read as nothing at all — 2026-09-19
-**Source:** found 2026-09-19 while validating against his lab, on his
-instruction to "ssh to the fortinet switch and fortigate and learn the
-commands".
-**Two faults, and the first was invisible.** `parse_mac_table` keeps a line
-containing the word `DYNAMIC`; a FortiSwitch writes two lines per entry and
-puts the flag on the second:
-
-```
-MAC: cc:7f:75:00:00:01   VLAN: 499 Port: port24(port-id 24)
-  Flags: 0x00010441 [ hit dynamic src-hit native ]
-```
-
-so it read **0 entries from 12,499 lines** and said nothing about it. And the
-crawl never asked for it anyway — the FortiOS branch sent no MAC-table command,
-so `show mac address-table` was rejected and that was the end of it. Between
-them, every endpoint a FortiSwitch had learned was invisible.
-**Fixed:** `parse_fortiswitch_mac_table`, chosen automatically by looking at
-the output so no caller has to know which platform answered, and `diagnose
-switch mac-address list` asked of a FortiSwitch — only of a FortiSwitch, since
-a wasted round trip on every firewall in an estate adds up. The result joins
-the same list the IOS path fills, so port population, uplink detection and
-attachment all work on it unchanged.
-**`internal` is dropped**, and it is most of the table: a 224E reports its own
-address on the CPU port once per VLAN — 4,094 of the 4,163 entries on his
-switch, none of them a device.
-**Measured on his 224E, before and after:** 0 entries and 0 distinct MACs →
-**69 entries, 35 distinct MACs**, with port24 showing 27, which is exactly the
-signature the topology code reads an uplink from.
-**Second fault, same session:** `rejected_command` did not recognise
-`Unknown action 0`, which is what a non-super_admin account gets for a
-`diagnose` it may not run — confirmed twice on his FortiGate-60F. The crawl
-could not tell "no endpoints here" from "this account may not ask", and
-reported the first. Now 2 refusals are recognised where 0 were.
-**How it was found, and the tools are committed:**
-`examples/interactive_shell.rs` (now answering the FortiOS pager and the FIPS
-banner the way a person would) captures a real session;
-`examples/parse_capture.rs` runs Coreview's own parsers over the capture and
-says what they understood. A parser that reads none of what it was given is
-exactly the failure that tool exists to make visible.
-
 ### LT-334 — `get switch lldp neighbors-detail` is not read
 **Source:** found 2026-09-19 alongside LT-332, in the same capture.
 **`parse_lldp_summary` reads the summary table and there is no reader for the
@@ -130,6 +89,39 @@ and the port description. That is the difference between a neighbour we can
 join to a swept host and one we cannot (LT-126).
 **To ship:** a reader for the detail blocks, merged onto the summary's
 neighbours by local port.
+**Not started.**
+
+### LT-336 — A port with many MACs and no neighbour is a switch nobody manages
+**Source:** asked 2026-09-19 — "if 1 or 2 switches found then based on the mac
+address table we should be able to link the discovered hosts to the switches /
+we may get multiple devices to the same port that could be coming from another
+switch downstream so not sure how would you get it scoped and configured in the
+topology".
+**He has put his finger on the one genuinely hard case**, and the rule the code
+already half-encodes is the answer. Three kinds of port, told apart by evidence
+rather than by guessing:
+1. **A port with a discovery-protocol neighbour** is an inter-switch link. The
+   link is drawn to that switch and *nothing* behind it is attached here —
+   `crawl.rs` already skips uplinks for exactly this reason, and LT-009 is the
+   scar from when it did not.
+2. **A port with one MAC** is a thing plugged in. Attach it.
+3. **A port with many MACs and no neighbour** is the case he is asking about.
+   It is a switch, hub or virtual bridge that speaks no discovery protocol, and
+   today it is simply *filtered away* by `attached.ts`'s `maxPerPort` — the
+   endpoints behind it are dropped, silently, and the port looks empty.
+**To ship:** draw case 3 as what it is. An inferred node — an unmanaged switch,
+drawn differently from one we logged into, and labelled as inferred — with the
+MACs behind it attached to *it* rather than to the port. That is honest about
+what is known ("these twelve addresses are somewhere behind this port") and
+stops pretending twelve things are plugged into one socket.
+**What makes it safe to infer:** the count is a fact from the MAC table, and
+"no neighbour" is a fact from LLDP/CDP having been asked. Neither is a guess.
+What stays unknown is what the box *is*, and the node says so.
+**Worth noting from his own lab:** the 224E's port24 carries 27 distinct MACs
+and *does* have an LLDP neighbour, so it is case 1 and correctly drawn as a
+link to the Catalyst. port13 has 4 with no neighbour — case 3, and today those
+four are thrown away.
+**Depends on LT-332** (done) for a FortiSwitch to have any of this at all.
 **Not started.**
 
 ### LT-333 — Choose what goes on the diagram by what it is
@@ -432,6 +424,81 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-335 — **bug** Another project's logins showed, and a wiped one killed a crawl — 2026-09-19
+**Source:** reported 2026-09-19 — "when I switch from one project to another the
+passwords in tools settings showing! these passwords should be per project not
+real global for all projects … must be separate from one project to another and
+they don't leak, but global for within the project they belong to. also I keep
+getting this msg That saved credential no longer exists."
+**Two faults, and they share a cause**: a project stores credential *ids*, and
+the vault they point into is one encrypted store per machine that outlives any
+one project.
+**The leak.** `credentialDefaults` has been per-project since LT-286 and
+`openProject` replaces it correctly — but the Settings screen rendered the
+vault's *whole contents* underneath, so opening a second project listed the
+first one's credentials by label and username. The secrets never moved; the
+fact of them did, and that is a leak. **Fixed:** the screen shows what *this
+project refers to*, derived with no new storage — its own logins, its rules and
+its devices (`credentialScope.ts`, seven tests). The machine-wide vault is one
+disclosure away and says plainly that it is the whole computer.
+**The failure.** An id goes stale whenever a credential is wiped, or a project
+is opened on a machine whose vault never had it. Three places resolved one with
+`?`: the SNMP list, and both halves of `resolve_bindings`. **One device
+anywhere on the diagram still pointing at a wiped credential failed the entire
+crawl**, with a message that named nothing and appeared wherever the run
+happened to touch it. That is why typing fresh credentials did not help — the
+stale reference was somewhere else.
+**Fixed:** `credential_exists` is checked first and a missing one is skipped,
+which is what the comment above the SNMP list had always claimed ("every one
+that resolves is kept"). A binding is best-effort by construction. And the
+front end prunes stale references once, on the Settings screen, where it can be
+explained, rather than failing later somewhere unrelated.
+**Checked:** a second project in `credentials.mjs` proves the first one's
+logins do not appear, that the empty project says so, and that the vault
+disclosure is shut; `db.rs` pins that asking for a wiped credential is an
+answer rather than an error.
+
+### LT-332 — **bug** A FortiSwitch's MAC table was read as nothing at all — 2026-09-19
+**Source:** found 2026-09-19 while validating against his lab, on his
+instruction to "ssh to the fortinet switch and fortigate and learn the
+commands".
+**Two faults, and the first was invisible.** `parse_mac_table` keeps a line
+containing the word `DYNAMIC`; a FortiSwitch writes two lines per entry and
+puts the flag on the second:
+
+```
+MAC: cc:7f:75:00:00:01   VLAN: 499 Port: port24(port-id 24)
+  Flags: 0x00010441 [ hit dynamic src-hit native ]
+```
+
+so it read **0 entries from 12,499 lines** and said nothing about it. And the
+crawl never asked for it anyway — the FortiOS branch sent no MAC-table command,
+so `show mac address-table` was rejected and that was the end of it. Between
+them, every endpoint a FortiSwitch had learned was invisible.
+**Fixed:** `parse_fortiswitch_mac_table`, chosen automatically by looking at
+the output so no caller has to know which platform answered, and `diagnose
+switch mac-address list` asked of a FortiSwitch — only of a FortiSwitch, since
+a wasted round trip on every firewall in an estate adds up. The result joins
+the same list the IOS path fills, so port population, uplink detection and
+attachment all work on it unchanged.
+**`internal` is dropped**, and it is most of the table: a 224E reports its own
+address on the CPU port once per VLAN — 4,094 of the 4,163 entries on his
+switch, none of them a device.
+**Measured on his 224E, before and after:** 0 entries and 0 distinct MACs →
+**69 entries, 35 distinct MACs**, with port24 showing 27, which is exactly the
+signature the topology code reads an uplink from.
+**Second fault, same session:** `rejected_command` did not recognise
+`Unknown action 0`, which is what a non-super_admin account gets for a
+`diagnose` it may not run — confirmed twice on his FortiGate-60F. The crawl
+could not tell "no endpoints here" from "this account may not ask", and
+reported the first. Now 2 refusals are recognised where 0 were.
+**How it was found, and the tools are committed:**
+`examples/interactive_shell.rs` (now answering the FortiOS pager and the FIPS
+banner the way a person would) captures a real session;
+`examples/parse_capture.rs` runs Coreview's own parsers over the capture and
+says what they understood. A parser that reads none of what it was given is
+exactly the failure that tool exists to make visible.
 
 ### LT-321 — A choice of terminal: the panel, or the one already on the machine — 2026-09-19
 **Source:** asked 2026-09-19 — "is it possible to let the admin select if they
