@@ -995,10 +995,29 @@ rather than retyping.
   forgotten from the same bar.
 **Checked:** 5 checks in `e2e/ipam` — save, clear the box, reopen it, confirm
 what was stored, and forget it.
+**Fifth part shipped, 2026-09-21: the utilisation view.** "So I know in the
+future that this subnet is used and that subnet is not used" is the sentence
+this register was asked for, and the list answered it one subnet at a time.
+**Utilisation** is a sixth view in the register's bar that answers it for the
+estate at once.
+- **Fullest first**, because that is the end that needs acting on. Ties break
+  by size and then by name, so the same data always reads the same way.
+- **Four bands rather than one sorted column**: nearly full, busy, lightly
+  used, and *nothing in them*. A sorted list makes you read all of it to find
+  the two that matter. Empty is its own band because 0% is not "very light" —
+  it is reclaimable, and it is the other end an operator acts on.
+- **The reclaimable ones are named in a sentence**, not left to be spotted.
+- **A subnet holding only excluded addresses or a DHCP pool is not
+  "untouched"**: a server owns those, and offering them back would be wrong.
+- **Nothing is stored.** Every number is derived from the same `buildIpam` the
+  list beneath it uses, so the two cannot disagree and the view cannot go
+  stale.
+**Checked:** 10 unit tests — including that a /31 or /32 is not divided by
+zero — and 4 in `e2e/ipamlab` which assert the view agrees with the register
+rather than merely rendering.
 **Still to do in this phase:** sites and tenants; devices and interfaces linked
-to addresses; custom fields; the column chooser; JSON import and export; the
-utilisation dashboard and its history; split and merge with an explicit
-review.
+to addresses; custom fields; the column chooser; JSON import and export;
+utilisation *history*; split and merge with an explicit review.
 
 ### LT-299 — Discovery ingestion: the register learns what is actually in use — 2026-09-21
 **Source:** the same specification, Phase 3.

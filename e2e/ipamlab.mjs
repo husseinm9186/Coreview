@@ -108,13 +108,37 @@ check("the register takes the screen", (await page.locator(".cv-register").count
 check("the diagram and the bottom panel give way to it",
   (await page.locator(".cv-panel").count()) === 0 &&
   (await page.locator(".cv-main.is-behind").count()) === 1);
-check("five views, in one bar",
+check("six views, in one bar",
   (await page.locator(".cv-register-tabs button").allInnerTexts()).join("|") ===
-    "Addresses|Hierarchy|Allocate|Split & merge|History",
+    "Addresses|Utilisation|Hierarchy|Allocate|Split & merge|History",
   (await page.locator(".cv-register-tabs button").allInnerTexts()).join("|"));
 check("and it opens on the addresses", (await page.locator(".cv-ipam-table").count()) === 1);
 
 const view = (name) => page.locator(".cv-register-tabs button", { hasText: name }).first();
+
+// ------------------------------------------- LT-298 the utilisation view
+// The question this whole register exists to answer: which subnets are in use
+// and which are not. Every number is derived from the same buildIpam the list
+// uses, so the check is that the view agrees with the register rather than
+// that it renders.
+await view("Utilisation").click();
+await page.waitForTimeout(400);
+const dashRows = await page.locator(".cv-dash-table tbody tr").count();
+check("the utilisation view lists every subnet the register holds",
+  dashRows === (await page.evaluate(() => window.__cvStore.getState().doc.ipam?.subnets?.length ?? 0)),
+  `${dashRows} rows`);
+const first = await page.locator(".cv-dash-table tbody tr").first().innerText();
+check("and shows how full each one is", /%/.test(first), first);
+const bands = await page.locator(".cv-dash-table tbody tr").evaluateAll((rows) =>
+  rows.map((r) => r.getAttribute("data-band")));
+check("each row is banded", bands.every((b) => ["empty", "light", "busy", "full"].includes(b)),
+  bands.join(","));
+// Fullest first is the whole ordering decision: the end that needs acting on.
+const percents = await page.locator(".cv-dash-table tbody tr .cv-bar-value").allInnerTexts();
+const nums = percents.map((p) => Number(p.replace("%", "")));
+check("fullest first", nums.every((n, i) => i === 0 || nums[i - 1] >= n), percents.join(" "));
+await view("Addresses").click();
+await page.waitForTimeout(300);
 await view("Hierarchy").click();
 await page.waitForTimeout(400);
 check("switching to the hierarchy shows the containers",

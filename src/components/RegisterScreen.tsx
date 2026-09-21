@@ -18,15 +18,17 @@
 import { useState } from 'react';
 
 import { t } from '../i18n';
+import { IpamDashboard } from './IpamDashboard';
 import { IpamPanel } from './IpamPanel';
 import { IpamWorkbench, type WorkbenchView } from './IpamWorkbench';
 import { useStore } from '../state/store';
 
 /** One bar of five, not a bar of two with another inside it. */
-type View = 'addresses' | WorkbenchView;
+type View = 'addresses' | 'dashboard' | WorkbenchView;
 
 const VIEWS: { id: View; label: () => string }[] = [
   { id: 'addresses', label: () => t('register.addresses') },
+  { id: 'dashboard', label: () => t('dash.title') },
   { id: 'hierarchy', label: () => t('lab.hierarchy') },
   { id: 'allocate', label: () => t('lab.allocate') },
   { id: 'split', label: () => t('lab.splitMerge') },
@@ -60,7 +62,13 @@ export function RegisterScreen() {
       </div>
 
       <div className="cv-register-body">
-        {view === 'addresses' ? <IpamPanel /> : <IpamWorkbench view={view} />}
+        {view === 'addresses' ? (
+          <IpamPanel />
+        ) : view === 'dashboard' ? (
+          <IpamDashboard />
+        ) : (
+          <IpamWorkbench view={view} />
+        )}
       </div>
     </div>
   );

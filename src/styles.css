@@ -2592,3 +2592,30 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-tour li.is-done .cv-tour-title { text-decoration: line-through; }
 .cv-tour-mark { width: 1em; color: var(--healthy); }
 .cv-tour-detail { display: block; margin-top: 2px; color: var(--text-dim); line-height: 1.45; }
+
+/* LT-298: which subnets are in use, and which are not.
+   The bands are the app's existing status colours rather than a new palette,
+   because "nearly full" here means the same kind of thing "down" means on the
+   canvas: the row you act on first. Chrome tokens only — the ground tokens
+   belong to the canvas (see groundTokens.test.ts). */
+.cv-dash-table td { font-variant-numeric: tabular-nums; vertical-align: middle; }
+.cv-dash-table .cv-num { text-align: right; }
+.cv-bar {
+  display: inline-block; width: 120px; height: 8px; border-radius: 4px;
+  background: var(--surface-2); margin-right: 8px; overflow: hidden; vertical-align: middle;
+}
+.cv-bar-fill { display: block; height: 100%; border-radius: 4px; }
+.cv-bar-value { font-size: 11px; color: var(--text-dim); }
+/* Filled bars and the summary pills share one set of colours, so the two
+   always agree about what "busy" looks like. */
+.cv-bar-fill.cv-band-full { background: var(--down); }
+.cv-bar-fill.cv-band-busy { background: var(--warning); }
+.cv-bar-fill.cv-band-light { background: var(--healthy); }
+.cv-bar-fill.cv-band-empty { background: var(--text-dim); }
+.cv-dash .cv-pill {
+  display: inline-block; font-size: 10px; padding: 0 6px; border-radius: 9px;
+  border: 1px solid; color: var(--text-dim); border-color: var(--line);
+}
+.cv-dash .cv-pill.cv-band-full { color: var(--down); border-color: var(--down); }
+.cv-dash .cv-pill.cv-band-busy { color: var(--warning); border-color: var(--warning); }
+.cv-dash .cv-pill.cv-band-light { color: var(--healthy); border-color: var(--healthy); }
