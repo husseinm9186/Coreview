@@ -843,3 +843,43 @@ of it is in the repository (D-027). `examples/parse_capture.rs` reads a
 capture through the parsers without a device to log in to, which is how a fix
 gets checked against real output that cannot be committed; the fixtures beside
 each parser are retyped with invented names and documentation addresses.
+
+### D-052 — Coreview reads DHCP and DNS. It never serves or manages them — 2026-09-21
+**Asked for, and bounded in the same breath:** "I do want it to read and ingest
+then but not become dhcp/dns management tool i just want to have visibility and
+tracking so i know in the future that this subnet is used and that subnet is
+not used" — after "its job is in its name (core) the network, and (view) what
+is the network."
+
+**The line, in one sentence each.**
+- **Reading** is asking a device what it already knows. `get system dhcp lease`
+  on a FortiGate is a `show` command like any other, and a DNS lookup is what
+  `nslookup` does. Coreview already does both: a wireless client gets its name
+  and SSID from a lease the crawl read.
+- **Serving** is answering DHCP or DNS for other machines. Coreview will never
+  do this.
+- **Managing** is holding scopes and records as objects the app maintains, and
+  writing changes back. **Coreview will never do this either**, and that is the
+  part this decision adds.
+
+**Why the boundary is here and not further out.** A lease is evidence about
+what is on the network, exactly like an ARP entry or a MAC-table row, and
+evidence is what this app collects. A *scope* is a statement of intent about
+how addresses will be handed out — that belongs to the DHCP server, and a
+second copy of it in Coreview is a second thing to keep right. The moment the
+app stores records it is asked to fix the mismatches it finds, and fixing is
+management. So: **ingest observations, never hold the server's configuration.**
+
+**What this narrows.** LT-299 was specified as DNS record and DHCP scope models
+and screens, a reconciliation queue with rules, conflict reporting and
+connectors to Infoblox and Microsoft DHCP. That is an IPAM product. The part
+that survives is **ingestion** — what a crawl and a sweep already saw, written
+into the register so that "which subnets are in use" is answered from
+observation rather than from memory. The rest moves to Icebox with this
+decision as the reason, per the standing rule that an item is never deleted.
+
+**What is still true afterwards.** Nothing is written to any DHCP or DNS
+server. Nothing is auto-released: an address nobody has seen for a month is
+reported as unseen, never recycled, which is the same refusal D-050 makes about
+paths. And an ingested address says it was observed, not that it was intended —
+the register keeps knowing the difference.

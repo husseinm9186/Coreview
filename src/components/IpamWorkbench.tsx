@@ -20,6 +20,7 @@ import {
   DEFAULT_VRF,
   ENTRY_KINDS,
   buildIpam,
+  entriesOf,
   utilisation,
   type AssignmentType,
   type EntryKind,
@@ -29,6 +30,9 @@ import {
 import { auditSentence } from '../lib/ipamAudit';
 import type { CsvImportResult } from '../lib/ipamImport';
 import { parseIpamCsv } from '../lib/ipamImport';
+import type { IngestPlan } from '../lib/ipamIngest';
+import { asEntry, planIngest } from '../lib/ipamIngest';
+import { ipc } from '../lib/ipc';
 import { allocationProblems, freeBlocks, planMerge, planSplit } from '../lib/ipamPlan';
 import { allNodes } from '../lib/pages';
 import { formatTime } from '../lib/timeFormat';
@@ -232,6 +236,33 @@ function Hierarchy({
   // that half-worked is worse than one that did not run, so the file is
   // summarised first and nothing touches the register until Apply.
   const [imported, setImported] = useState<CsvImportResult | null>(null);
+  // LT-299 / D-052: what a crawl already saw, offered to the register. Read
+  // only — nothing is ever written to a DHCP or DNS server, and an ingested
+  // address says it was observed, not that anyone allocated it.
+  const [ingest, setIngest] = useState<IngestPlan | null>(null);
+  const loadIngest = () => {
+    const meta = useStore.getState().meta;
+    if (!meta) return;
+    void ipc
+      .listCrawlRuns(meta.id)
+      .then((runs) => (runs[0] ? ipc.crawlRunResult(runs[0].id) : null))
+      .then((result) => {
+        setIngest(planIngest(result, entriesOf(store.doc.ipam)));
+        say(null);
+      })
+      .catch((e: unknown) => say(e instanceof Error ? e.message : String(e)));
+  };
+  const applyIngest = () => {
+    if (!ingest) return;
+    let added = 0;
+    let refused = 0;
+    for (const c of ingest.candidates) {
+      if (store.addIpamEntry(asEntry(c))) refused += 1;
+      else added += 1;
+    }
+    setIngest(null);
+    say(refused ? t('ipam.importedSome', { added, refused }) : t('ipam.ingestedAll', { count: added }));
+  };
   const applyImport = () => {
     if (!imported) return;
     let added = 0;
@@ -265,6 +296,10 @@ function Hierarchy({
             }}
           />
         </label>
+        {/* LT-299 */}
+        <button type="button" className="cv-btn cv-btn-small" onClick={loadIngest}>
+          {t('ipam.ingest')}
+        </button>
         <button type="button" className="cv-btn cv-btn-small"
           onClick={() => { setAddingContainer((a) => !a); say(null); }}>
           {addingContainer ? t('ipam.cancel') : t('lab.addContainer')}
@@ -299,6 +334,32 @@ function Hierarchy({
             {t('ipam.importApply')}
           </button>
           <button type="button" className="cv-btn cv-btn-small" onClick={() => setImported(null)}>
+            {t('ipam.importDiscard')}
+          </button>
+        </div>
+      )}
+
+      {ingest && (
+        <div className="cv-lab-panel">
+          <p>{t('ipam.ingestReady', { count: ingest.candidates.length })}</p>
+          {ingest.alreadyHeld > 0 && (
+            <p className="cv-help">{t('ipam.ingestHeld', { count: ingest.alreadyHeld })}</p>
+          )}
+          {ingest.skipped.length > 0 && (
+            <p className="cv-help">
+              {t('ipam.ingestSkipped', { list: ingest.skipped.map((s) => `${s.value} (${s.why})`).join(', ') })}
+            </p>
+          )}
+          <ul className="cv-help">
+            {ingest.candidates.slice(0, 8).map((c) => (
+              <li key={c.address}>{c.address} — {c.label} ({c.seenOn})</li>
+            ))}
+          </ul>
+          <button type="button" className="cv-btn cv-btn-start" onClick={applyIngest}
+            disabled={ingest.candidates.length === 0}>
+            {t('ipam.ingestApply')}
+          </button>
+          <button type="button" className="cv-btn cv-btn-small" onClick={() => setIngest(null)}>
             {t('ipam.importDiscard')}
           </button>
         </div>

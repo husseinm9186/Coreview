@@ -56,6 +56,23 @@ export const en = {
   'ssh.sessions': { one: '{count} session', other: '{count} sessions' },
 
   // Trace Path (LT-346).
+  // LT-299 / D-052: what a crawl already saw, offered to the register. Read
+  // only — Coreview never serves or manages DHCP or DNS.
+  'ipam.ingest': 'From the last crawl',
+  'ipam.ingestReady': {
+    one: '{count} address seen on the network that the register does not hold.',
+    other: '{count} addresses seen on the network that the register does not hold.',
+  },
+  'ipam.ingestHeld': {
+    one: '{count} was already in the register and is left as it is.',
+    other: '{count} were already in the register and are left as they are.',
+  },
+  'ipam.ingestSkipped': 'Not held by this register: {list}',
+  'ipam.ingestApply': 'Add what was seen',
+  'ipam.ingestedAll': {
+    one: 'Added {count} address the crawl saw.',
+    other: 'Added {count} addresses the crawl saw.',
+  },
   // LT-298: reading the register back from a spreadsheet.
   'ipam.importCsv': 'Import CSV',
   'ipam.importReady': {

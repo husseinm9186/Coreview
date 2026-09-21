@@ -902,7 +902,7 @@ to addresses; tags and custom fields; filtering, saved views, the column
 chooser and bulk actions; JSON import and export; the utilisation dashboard
 and its history; split and merge with an explicit review.
 
-### LT-299 — IPAM Phase 3: DNS, DHCP, discovery and reconciliation
+### LT-299 — Discovery ingestion: the register learns what is actually in use
 **Source:** the same specification, Phase 3.
 **Scope:** DNS record and DHCP scope/lease models and screens; a discovery
 ingestion path that feeds the existing crawl and sweep into the register; the
@@ -911,10 +911,51 @@ known MAC at a new address, DNS mismatch, lease against a static assignment,
 stale records that are flagged and never auto-released; conflict reporting; and
 the DNS/DHCP comparison reports. **Includes LT-296** (the discovery form filling
 itself in).
-**Adapters, not fabrications:** connectors that cannot be tested here are
-interfaces with demo providers behind them, per his own instruction and the
-standing rule against stubs pretending to work.
-**Not started.**
+**Narrowed by D-052, 2026-09-21, and the reason is recorded there.** The scope
+above is an IPAM product: scope and record models, a reconciliation queue,
+conflict reporting, connectors to Infoblox and Microsoft DHCP. The operator
+drew the line himself — "not become dhcp/dns management tool i just want to
+have visibility and tracking so i know in the future that this subnet is used
+and that subnet is not used."
+**What this item is now:** the crawl and the sweep already see far more than
+ever reaches the register. `buildIpam` reads addresses off **drawn devices**,
+so a device nobody drew contributes nothing — and one FortiSwitch alone
+contributed thirty-five MACs and one FortiGate forty-six DHCP leases, none of
+it drawn. Ingestion writes what was *observed* into the register, so
+"which subnets are in use" is answered from the network rather than from
+memory.
+**What it must keep straight.** An observed address says it was seen; it does
+not say it was intended. The register already distinguishes `drawn`, `crawled`
+and `typed`, and an ingested address is evidence, not an allocation. Nothing is
+auto-released: an address unseen for a month is reported as unseen, never
+recycled.
+**Moved to Icebox with D-052 as the reason, not deleted:** DNS record and DHCP
+scope models and screens, the reconciliation queue and its rules, conflict
+reporting, the DNS/DHCP comparison reports, and the third-party connectors.
+**Shipped, 2026-09-21 — "From the last crawl" in the register's bar.**
+It reads the newest saved crawl and offers every address it saw that the
+register does not already hold: each device's own addresses first, then
+everything those devices learned on their ports — which is where the ARP
+tables, MAC tables and FortiGate DHCP leases were already merged (LT-134,
+LT-332). A wireless client arrives with the SSID it was on, because that is
+what its "port" is.
+**It plans rather than applies**, like the CSV import: it says how many were
+seen, how many the register already holds, and lists the first of them with
+where each was seen, and only then offers **Add what was seen**.
+**Four rules, and each is a refusal to overstate.**
+- **An address the register already holds is left exactly as it is.**
+  Re-ingesting a crawl must never overwrite what somebody typed; a test asserts
+  the hand-typed label survives.
+- **A device's own claim beats something that merely learned of it.** Devices
+  are walked first, so `CORE` naming its own loopback wins over a neighbour's
+  guess about the same address.
+- **One address is counted once**, however many switches saw it.
+- **IPv6 is reported, not silently dropped** — once, not once per sighting —
+  because this register holds IPv4 and saying so is better than saying nothing.
+**Every ingested entry says where it came from:** `Seen by a crawl on SW1
+Gi0/7, VLAN 14`. Observed is not intended (D-052), and the note is what keeps
+the two apart when somebody reads the register a year later.
+**Checked:** 10 unit tests; `e2e/ipam` and `e2e/ipamlab` stay green.
 
 ### LT-139 — Stacks and virtual chassis, built from the vendor guides
 **Source:** asked 2026-09-12 — "for teh stacking build it based on the guides
