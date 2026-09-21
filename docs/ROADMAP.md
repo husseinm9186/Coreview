@@ -123,6 +123,56 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-365 — **bug** An IPv6 route to the router's own address is filed as `other` — 2026-09-20
+**Source:** the lab, on an IOS 15.7 router carrying OSPFv3 over an MPLS core.
+Every loopback row in `show ipv6 route` came back with protocol `other`:
+
+    LC  2001:DB8:255::41/128 [0/0]
+         via Loopback0, receive
+
+**`protocol_of` knows `C` and `L` but not `LC`**, the code IPv6 uses for a
+*local connected* address — the device's own address on its own interface — so
+the row fell through to the word the parser reaches for when it recognised
+nothing. `RL`, the redistributed form, was missing for the same reason. Both
+now read as `local`, which is what `L` already meant in IPv4.
+**Found only because the lab had IPv6 at all.** The one captured IPv6 table in
+the repository came from a switch with a single static route and no loopbacks,
+so no fixture had ever contained an `LC` row.
+
+### LT-366 — A lab that exists to argue with the parsers — 2026-09-20
+**Source:** "build more labs and configure more large labs to get valide trace
+path", and "make one giga lab". Three labs on the operator's EVE-NG, all kept:
+- **`Coreview VXLAN EVPN`** — a Nexus 9000v spine and two leaves with an OSPF
+  underlay, iBGP EVPN with the spine as route reflector, an L2 VNI and an L3
+  VNI carrying a VRF, and two hosts generating real type-2 routes.
+- **`Coreview Path Lab`** — five IOL routers as an MPLS core: OSPF and LDP
+  everywhere, MPBGP VPNv4 between the two PEs, a VRF whose table is filled by
+  the far PE, IPv6 with OSPFv3 alongside, and **two equal-cost paths** from one
+  end to the other so ECMP is exercised rather than assumed.
+- **`Coreview IOL Validation`** — the smaller IOS VRF lab that found LT-361,
+  LT-362 and LT-363.
+
+**Every device config is stored in the lab file itself**, through EVE-NG's
+config API, so each lab reloads as it was. The Nexus refused
+`copy running-config startup-config` — a known quirk of that image — so the
+configs were read over SSH and written into the lab instead, which works
+regardless.
+**What the labs proved.** The route parser reads both equal-cost next hops from
+a real ECMP row; the IPv6 parser reads a 13-route OSPFv3 table including IPv6
+ECMP over link-local next hops; the per-VRF parser reads an MPLS L3VPN table
+whose routes arrived by BGP; and `probe_overlay` reads a live VXLAN fabric —
+two VNIs with the L3 one carrying its VRF, the NVE peer, and nine EVPN type-2
+routes.
+**What they cannot prove, and why it is written here rather than implied.**
+Coreview has **no MPLS, LDP or segment-routing parser at all**, so building
+those validates nothing directly — they are in the lab because an MPLS L3VPN
+produces the realistic BGP-filled VRF tables that the parsers *do* read.
+**Unfinished, honestly:** the Aruba CX node boots but its console stayed silent,
+so no AOS-CX parser has met hardware and LT-136 stays blocked; and the ASAv
+enforces an enable-password dialog that defeated the console driver, so its
+route format is still uncaptured. Both are in the lab and both are worth
+another attempt; neither is claimed as done.
+
 ### LT-364 — **bug** NX-OS reports no uptime, because it brackets its plurals — 2026-09-20
 **Source:** crawling the lab fabric. All three Nexus printed `uptime Nones`
 while `show version` on each plainly said otherwise:

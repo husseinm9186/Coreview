@@ -17,11 +17,14 @@
  * - A device that was never crawled, or was crawled without its routing table,
  *   stops the trace with `insufficient` and names the device. It does not
  *   guess the next hop from the diagram's cables.
- * - A VRF other than the default reports `insufficient`. Routes are collected
- *   from the global table only; using them to answer a question about a VRF
- *   would be confidently wrong, which is the worst kind (D-050).
- * - VXLAN and EVPN report `insufficient`. Nothing in the crawler collects
- *   VTEPs, VNIs or EVPN routes, so an overlay path would be invented.
+ * - A VRF is answered **from that VRF's own table** (LT-347), or not at all.
+ *   A device holding no table for the VRF asked about reports `insufficient`
+ *   rather than falling back to the global table — answering one tenant's
+ *   question out of another's table is the worst kind of wrong (D-050).
+ * - An overlay hop is drawn only where the device's own route said it crossed
+ *   one (LT-347): `segid: N … encap: VXLAN` in the table, and a VTEP the crawl
+ *   actually holds. Where the far end is unknown the trace refuses rather than
+ *   inventing a remote leaf.
  *
  * Protocol support is whatever the device itself printed in its routing table
  * — `connected`, `static`, `ospf`, `bgp`, `eigrp` — because that is the word

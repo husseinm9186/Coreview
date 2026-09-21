@@ -86,7 +86,12 @@ fn protocol_of(code: &str) -> &'static str {
         "H" => "nhrp",
         "l" => "lisp",
         "a" => "application",
-        "ND" | "NDp" => "nd",
+        "ND" | "NDp" | "NDr" => "nd",
+        // LT-365: IPv6 writes the device's own address on an interface as
+        // `LC`, local connected — seen on a real IOS table where every
+        // loopback came back as `other`. `RL` is the redistributed form of
+        // the same thing.
+        "LC" | "RL" => "local",
         _ => "other",
     }
 }
@@ -632,6 +637,25 @@ L   FF00::/8 [0/0]
         assert_eq!(routes[2].prefix, "192.168.77.7/32");
         assert_eq!(routes[2].protocol, "local");
         assert_eq!(connected_prefixes(&routes), vec!["192.168.77.0/24"]);
+    }
+
+    /// LT-365, from the lab on 2026-09-20: an IOS IPv6 table where the
+    /// router's own loopback is written `LC`. Every such row was reported as
+    /// protocol `other`, which is the word the parser reaches for when it did
+    /// not recognise the code at all.
+    #[test]
+    fn the_ipv6_local_connected_code_is_not_a_mystery() {
+        let out = "\
+IPv6 Routing Table - default - 3 entries
+LC  2001:DB8:255::41/128 [0/0]
+     via Loopback0, receive
+O   2001:DB8:255::42/128 [110/10]
+     via FE80::A8BB:CCFF:FE00:2010, Ethernet0/1
+";
+        let r = parse_routes(out);
+        assert_eq!(r.len(), 2, "{r:?}");
+        assert_eq!(r[0].protocol, "local", "{:?}", r[0]);
+        assert_eq!(r[1].protocol, "ospf");
     }
 
     #[test]
