@@ -104,6 +104,52 @@ const ports = (t: ReturnType<typeof buildTopology>) =>
 
 describe('buildTopology', () => {
   /**
+   * LT-371: a discovered diagram arrives arranged, and nothing already drawn
+   * moves. D-023 stands — what it protects is a drawing somebody made, and a
+   * device arriving for the first time was never placed by anyone.
+   */
+  it('arranges what it adds and never moves what is already there', () => {
+    const src = {
+      devices: [
+        device('CORE', '10.0.0.1', [neighbor('A', 'Gi1/0/1', 'Gi0/1'), neighbor('B', 'Gi1/0/2', 'Gi0/1')], { hops: 0 }),
+        device('A', '10.0.0.2', [], { hops: 1 }),
+        device('B', '10.0.0.3', [], { hops: 1 }),
+      ],
+      notVisited: [],
+    };
+    // Something the operator placed by hand, well away from the origin.
+    const placed = {
+      id: 'mine',
+      type: 'device',
+      position: { x: 4000, y: 5000 },
+      width: 176,
+      height: 96,
+      data: { label: 'HAND-PLACED', deviceType: 'router', tags: [] },
+    };
+
+    const t = buildTopology(src, 'p', { existingNodes: [placed as never] });
+    // Untouched, to the pixel.
+    expect(placed.position).toEqual({ x: 4000, y: 5000 });
+    // The new devices are tiered by distance from the seed, not stacked.
+    const y = (label: string) =>
+      t.nodes.find((n) => (n.data as DeviceNodeData).label === label)!.position.y;
+    expect(y('CORE')).toBeLessThan(y('A'));
+    expect(y('A')).toBe(y('B'));
+    // And they land clear of the drawing that was already there, rather than
+    // on top of it.
+    expect(Math.min(...t.nodes.map((n) => n.position.y))).toBeGreaterThan(5000);
+  });
+
+  it('a single discovered device needs no arranging and gets none', () => {
+    const t = buildTopology(
+      { devices: [device('ONLY', '10.0.0.1', [], { hops: 0 })], notVisited: [] },
+      'p',
+    );
+    expect(t.nodes).toHaveLength(1);
+    expect(t.nodes[0]!.position).toEqual({ x: 80, y: 80 });
+  });
+
+  /**
    * LT-369: a role is for layout, a class is what the device said it is. Where
    * both have an opinion the more specific one draws the glyph.
    */

@@ -156,8 +156,113 @@ fn from_capabilities(caps: &[String]) -> Option<DeviceClass> {
     None
 }
 
+/// What the maker of a network card implies about the device it is in
+/// (LT-370).
+///
+/// **The last resort, and deliberately the weakest signal.** A crawl that logs
+/// in learns the platform, the capabilities and the banner. A device it merely
+/// *saw* — a MAC on a switch port, an ARP entry, a DHCP lease, a swept host —
+/// arrives with a vendor name from the OUI registry and nothing else, and was
+/// therefore drawn as `Unknown`. On a real estate that is most of the picture.
+///
+/// **An OUI names the maker, not the kind**, and that is the whole difficulty.
+/// The rule here is to map only where the maker genuinely implies the kind:
+///
+/// * Apple builds no access switches, so an Apple card on a port is an
+///   endpoint and saying so is safe.
+/// * **Hewlett Packard builds printers *and* switches**, so it says nothing,
+///   and must keep saying nothing however tempting the printer guess is.
+/// * A hypervisor's OUI — VMware, Proxmox, Xen, KVM — is a virtual machine,
+///   which is a server.
+///
+/// Everything unmatched returns `None`, which leaves the device Unknown. That
+/// is the honest answer and the same refusal D-050 makes elsewhere: a wrong
+/// class is worse than an absent one, because a wrong one is believed.
+pub fn class_from_vendor(vendor: &str) -> Option<DeviceClass> {
+    let v = vendor.to_ascii_uppercase();
+    let has = |needles: &[&str]| needles.iter().any(|n| v.contains(n));
+
+    // Hypervisors: the card belongs to a virtual machine.
+    if has(&["VMWARE", "PROXMOX", "XENSOURCE", "QEMU", "PARALLELS", "NUTANIX", "ORACLE VIRTUALBOX", "VIRTUALBOX"]) {
+        return Some(DeviceClass::Server);
+    }
+    // Cameras. Each of these makes cameras and essentially nothing else that
+    // turns up on an access port.
+    if has(&["AXIS COMMUNICATION", "HIKVISION", "DAHUA", "VIVOTEK", "MOBOTIX", "ARLO", "WYZE"]) {
+        return Some(DeviceClass::Camera);
+    }
+    // Printers. Note the absence of Hewlett Packard, Canon and Epson, which
+    // all make other things that appear on networks.
+    if has(&["LEXMARK", "KYOCERA", "ZEBRA TECHNOLOGIES", "BROTHER INDUSTRIES", "RICOH", "SATO CORPORATION"]) {
+        return Some(DeviceClass::Printer);
+    }
+    // Desk phones.
+    if has(&["POLYCOM", "YEALINK", "GRANDSTREAM", "SNOM", "AVAYA", "MITEL"]) {
+        return Some(DeviceClass::Phone);
+    }
+    // Personal computers, phones, consoles and the vast middle of the internet
+    // of things. None of these makes infrastructure.
+    if has(&[
+        "APPLE", "SAMSUNG", "GOOGLE", "AMAZON", "MICROSOFT", "SONY", "LG ELECTRONICS",
+        "NINTENDO", "ROKU", "SONOS", "RING", "NEST LABS", "ESPRESSIF", "RASPBERRY PI",
+        "TUYA", "SHENZHEN BILIAN", "AZUREWAVE", "LITEON", "LITE-ON", "MURATA",
+        "TEXAS INSTRUMENTS", "GIGA-BYTE", "ASUSTEK", "MSI", "HUAWEI DEVICE",
+        "XIAOMI", "ONEPLUS", "MOTOROLA MOBILITY", "FITBIT", "GARMIN", "BOSE",
+    ]) {
+        return Some(DeviceClass::Endpoint);
+    }
+    // Everything else — including every maker that builds more than one kind
+    // of thing — stays unknown on purpose.
+    None
+}
+
 #[cfg(test)]
 mod tests {
+
+    /// LT-370: the last-resort classifier, and the makers it must refuse.
+    #[test]
+    fn a_hypervisor_oui_is_a_server() {
+        for v in ["VMware, Inc.", "Proxmox Server Solutions GmbH", "XenSource, Inc."] {
+            assert_eq!(class_from_vendor(v), Some(DeviceClass::Server), "{v}");
+        }
+    }
+
+    #[test]
+    fn makers_of_one_kind_of_thing_name_that_kind() {
+        assert_eq!(class_from_vendor("AXIS COMMUNICATIONS AB"), Some(DeviceClass::Camera));
+        assert_eq!(class_from_vendor("Lexmark International"), Some(DeviceClass::Printer));
+        assert_eq!(class_from_vendor("Polycom"), Some(DeviceClass::Phone));
+        assert_eq!(class_from_vendor("Apple, Inc."), Some(DeviceClass::Endpoint));
+        assert_eq!(class_from_vendor("Raspberry Pi Foundation"), Some(DeviceClass::Endpoint));
+    }
+
+    /// The point of the whole exercise: a maker that builds more than one kind
+    /// of thing must stay silent. Guessing "printer" from Hewlett Packard puts
+    /// a printer glyph on somebody's core switch.
+    #[test]
+    fn a_maker_of_several_kinds_of_thing_says_nothing() {
+        for v in [
+            "Hewlett Packard", "Hewlett Packard Enterprise", "Cisco Systems, Inc",
+            "Canon Inc.", "Seiko Epson Corporation", "Ubiquiti Inc", "Netgear",
+            "Fortinet, Inc.", "Juniper Networks", "Dell Inc.", "Intel Corporate",
+        ] {
+            assert_eq!(class_from_vendor(v), None, "{v} must stay unknown");
+        }
+    }
+
+    #[test]
+    fn an_unknown_or_empty_maker_is_not_a_guess() {
+        assert_eq!(class_from_vendor(""), None);
+        assert_eq!(class_from_vendor("unknown maker"), None);
+        assert_eq!(class_from_vendor("Some Company Nobody Has Heard Of"), None);
+    }
+
+    #[test]
+    fn matching_ignores_case_and_punctuation_around_the_name() {
+        assert_eq!(class_from_vendor("apple, inc."), Some(DeviceClass::Endpoint));
+        assert_eq!(class_from_vendor("VMWARE, INC."), Some(DeviceClass::Server));
+    }
+
     use super::*;
 
     fn caps(words: &str) -> Vec<String> {

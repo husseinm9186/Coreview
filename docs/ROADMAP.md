@@ -123,6 +123,88 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-371 — A discovered diagram arrives arranged, without moving anything already drawn — 2026-09-21
+**Source:** the same screenshot as LT-370 — a grid of boxes with links crossing
+the whole canvas — and "help me with a way to organize the diagrams
+automatically right after we discover the network".
+**This conflicts with D-023 and D-029 as written**, and those are the
+operator's own decisions of 2026-09-12: *"discovery never moves anything on its
+own — a layout runs only when the operator presses the button"*. Said so rather
+than reversed quietly.
+**What the decision protects is a drawing somebody made.** The fear is a
+re-crawl rearranging an hour's work. A device the crawl is adding **for the
+first time** was never placed by anyone, and `buildTopology` currently drops it
+at `origin + index * COL` — a grid by hop distance, which is the screenshot.
+**Agreed with him, 2026-09-21:** arrange **only the nodes being added**, at the
+moment they are added; never touch a node that already exists. D-023 stands
+untouched — nothing anyone placed is moved — and a first crawl of a network
+arrives shaped like a network instead of a grid. On a re-crawl the handful of
+new devices are placed clear of the existing drawing rather than stacked on the
+origin.
+**Reuses `hierarchicalLayout`**, which is already what the **Arrange top to
+bottom** button runs, rather than a second layout engine.
+**He also asked** that an explicit re-arrange work on a selection as well as
+the page. `autoLayout` already does exactly that for radial, force-directed and
+orthogonal (LT-177); only the hierarchical `flowLayout` was page-only, so it is
+made to match rather than designed anew.
+**Acceptance:** new nodes are arranged by tier; an existing node is never
+moved; a re-crawl's additions land clear of what is already there; and
+`flowLayout` honours a selection of two or more.
+**Shipped, and one thing had to change shape on the way.** The first attempt
+handed the whole job to `hierarchicalLayout` and a test caught it: that layout
+tiers by *what a device is*, so a chain of three switches flattened into one
+row of peers and the hop distance — the one thing the crawl actually
+measured — was thrown away. **The test was right and was not weakened.**
+What ships takes **the x only**: rows stay the distance from the seed, and what
+is taken from the layout is the ordering within a row, which is where the
+crossing reduction lives. Nodes already on the page are never read for position
+and never written; new ones land below the lowest of them.
+`flowLayout` now matches `autoLayout`: the selection when two or more devices
+are selected, otherwise the page.
+
+### LT-370 — Everything a crawl did not log into is drawn as "Unknown" — 2026-09-21
+**Source:** a screenshot of a real discovered diagram, 2026-09-21: twenty-odd
+devices, every one of them labelled **Unknown**, in a grid with links crossing
+the whole canvas. Two separate faults; this is the first.
+**`classify()` only ever sees three things** — the platform string, the
+advertised capabilities and the version banner (`classify.rs:26`). A device the
+crawl logged into has all three. **A device it merely saw has none of them**:
+a MAC on a switch port, an ARP entry, a DHCP lease or a swept host arrives with
+a vendor name from the OUI registry and nothing else, and
+`snmp_topology.rs:400` duly sets `class: None`.
+**So the estate divides into the handful that answered SSH and the great
+majority that did not**, and the majority is drawn as anonymous boxes. On the
+operator's own network that is most of the picture.
+**There is no OUI classifier**, although `fortios.rs:887` says "the OUI
+classifier keeps its turn" — it was described in a comment and never written.
+**What an OUI can and cannot say, because this is where the honesty is.** It
+names the *maker*, not the *kind*. Apple makes no access switches, so an Apple
+OUI on an access port is an endpoint and saying so is safe. Hewlett Packard
+makes printers *and* switches, so "Hewlett Packard" alone says nothing and must
+keep saying nothing. A VMware or Proxmox OUI is a virtual machine, which is a
+server. The rule is therefore: **map only where the maker implies the kind, and
+return `None` everywhere else** (D-050).
+**Acceptance:** a vendor classifier used only as a last resort, after platform,
+capabilities and the FortiGate's own words; unambiguous makers mapped;
+ambiguous ones explicitly left unknown, with a test that names them.
+**Shipped.** `class_from_vendor` is the last resort, used where the crawl
+learned nothing better: on every MAC a switch reported (`snmp_topology.rs`) and
+on a FortiGate endpoint whose own `hardware_type` said nothing — which is the
+turn `endpoint_class`'s doc comment promised and nothing had ever taken.
+**Mapped:** hypervisors to servers (VMware, Proxmox, Xen, QEMU); camera makers;
+printer makers; desk-phone makers; and the wide middle of personal and IoT
+kit — Apple, Samsung, Google, Amazon, Ring, Nest, Espressif, Raspberry Pi and
+the rest — to endpoints.
+**Refused, by name and with a test:** Hewlett Packard, Cisco, Canon, Epson,
+Ubiquiti, Netgear, Fortinet, Juniper, Dell and Intel. Each builds more than one
+kind of thing, so each stays Unknown. Guessing "printer" from Hewlett Packard
+puts a printer glyph on somebody's core switch.
+**Measured on the operator's own network**, not only on fixtures: MACs that
+came back `None` for every row now classify where the maker is unambiguous —
+Intel, Nest Labs, Ring and Texas Instruments among them. The rows still showing
+nothing are **randomised privacy MACs**, which have no OUI to look up and are
+genuinely unknowable from a MAC alone.
+
 ### LT-369 — **bug** Every access point is drawn as a wireless controller — 2026-09-21
 **Source:** found while writing the reproduction for LT-360, 2026-09-21.
 **`roles.ts:69` puts a controller and an access point in the same role:**

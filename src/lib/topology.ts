@@ -22,6 +22,7 @@ import { chooseHandles } from './routeLinks';
 import type { TopoEdge, TopoNode } from '../state/store';
 import type { DeviceInventory, DeviceNodeData, DeviceType, LinkData } from '../types/domain';
 import { inventoryOf } from './inventory';
+import { hierarchicalLayout } from './hierarchyLayout';
 import { inferRoles, ROLE_LABEL, ROLE_TYPE, type InferredRole, type Role } from './roles';
 import { uid } from './id';
 import { mergeSerials } from './serials';
@@ -402,6 +403,9 @@ export function buildTopology(
   const include = opts.include?.length ? new Set(opts.include) : null;
   const origin = opts.origin ?? { x: 80, y: 80 };
 
+  // LT-371: how far each new node was from the seed, kept so the layout can
+  // use the crawl's own evidence for the rows rather than a glyph's tier.
+  const depthOf = new Map<string, number>();
   const entries = new Map<string, Entry>();
   const note = (e: Entry) => {
     const seen = entries.get(e.key);
@@ -729,6 +733,7 @@ export function buildTopology(
         // again is not reported as a change (LT-216).
         ...(e.name && !looksLikeAddress(e.name) && !looksLikeMac(e.name) ? { hostname: e.name } : {}),
       };
+      depthOf.set(id, depth);
       nodes.push({
         id,
         type: 'device',
@@ -1164,11 +1169,56 @@ export function buildTopology(
     }
   }
 
+  // LT-371: arrange the devices being added — and only those.
+  //
+  // D-023 and D-029 say discovery never moves anything on its own, and they
+  // stand: what they protect is a drawing somebody made. A device arriving for
+  // the first time was never placed by anyone, and the alternative is the grid
+  // by hop distance this used to produce, with links crossing the whole page.
+  // So new nodes are tiered, every existing node is left exactly where it is,
+  // and a re-crawl's additions land clear of the drawing rather than on top of
+  // it. The layout is the same one the "Arrange top to bottom" button runs.
+  const existingNodes = opts.existingNodes ?? [];
+  if (nodes.length > 1) {
+    const fresh = new Set(nodes.map((n) => n.id));
+    const layoutEdges = [...edges, ...edgesFromAttached]
+      .filter((e) => fresh.has(e.source) && fresh.has(e.target))
+      .map((e) => ({ source: e.source, target: e.target }));
+    const below = existingNodes.length
+      ? Math.max(...existingNodes.map((n) => n.position.y + (n.height ?? 96))) + 160
+      : origin.y;
+    const leftOf = existingNodes.length
+      ? Math.min(...existingNodes.map((n) => n.position.x))
+      : origin.x;
+    const { moved } = hierarchicalLayout(
+      nodes.map((n) => ({
+        id: n.id,
+        deviceType: (n.data as DeviceNodeData).deviceType,
+        width: n.width ?? 176,
+        height: n.height ?? 96,
+      })),
+      layoutEdges,
+      { originX: leftOf, originY: below },
+    );
+    // **The x only.** `hierarchicalLayout` tiers by what a device *is*, which
+    // is right for a drawing and wrong for a crawl: a chain of three switches
+    // is three hops, not one row of peers, and flattening it would throw away
+    // the one thing the crawl actually measured (LT-114). So the rows stay the
+    // distance from the seed, and what is taken from the layout is the
+    // ordering within a row — which is where the crossing reduction lives.
+    for (const n of nodes) {
+      const at = moved.get(n.id);
+      if (!at) continue;
+      const depth = depthOf.get(n.id) ?? 0;
+      n.position = { x: at.x, y: below + depth * ROW };
+    }
+  }
+
   // Every link above was written bottom-to-top, which is right for a tier
   // above a tier and wrong for two devices placed side by side. Now that the
   // positions are settled, each one leaves the nearer side.
   const positioned = new Map<string, TopoNode>(
-    [...nodes, ...(opts.existingNodes ?? [])].map((n) => [n.id, n]),
+    [...nodes, ...existingNodes].map((n) => [n.id, n]),
   );
   const routed = [...edges, ...edgesFromAttached].map((e) => {
     const source = positioned.get(e.source);

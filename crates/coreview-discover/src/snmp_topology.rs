@@ -390,15 +390,22 @@ pub fn attached_devices(neighbors: &[Neighbor], entries: &[MacEntry], arp: &Hash
     entries
         .iter()
         .filter(|e| !uplinks.iter().any(|u| crate::crawl::same_interface(u, &e.port)))
-        .map(|e| AttachedDevice {
-            address: arp.get(&e.mac).cloned(),
-            vendor: crate::oui::vendor(&e.mac).map(str::to_string),
-            port_population: population.get(&e.port).copied().unwrap_or(1),
-            mac: e.mac.clone(),
-            port: e.port.clone(),
-            hostname: None,
-            class: None,
-            vlan: e.vlan.clone(),
+        .map(|e| {
+            let vendor = crate::oui::vendor(&e.mac).map(str::to_string);
+            AttachedDevice {
+                address: arp.get(&e.mac).cloned(),
+                // LT-370: nothing here logged in, so the OUI is the only
+                // evidence there is. It names a class only where the maker
+                // implies one and stays `None` otherwise — a wrong class is
+                // worse than an absent one, because a wrong one is believed.
+                class: vendor.as_deref().and_then(crate::classify::class_from_vendor),
+                vendor,
+                port_population: population.get(&e.port).copied().unwrap_or(1),
+                mac: e.mac.clone(),
+                port: e.port.clone(),
+                hostname: None,
+                vlan: e.vlan.clone(),
+            }
         })
         .collect()
 }

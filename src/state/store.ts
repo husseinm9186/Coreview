@@ -2262,7 +2262,14 @@ export const useStore = create<Store>((set, get) => ({
     // Devices only. A note is an annotation about a place on the diagram, and
     // sweeping notes into the hierarchy would file each one under a tier it
     // has no business being in.
-    const devices = page.nodes.filter((n) => n.type === 'device');
+    const allDevices = page.nodes.filter((n) => n.type === 'device');
+    // LT-371: on the selection when two or more devices are selected,
+    // otherwise the page — the same rule `autoLayout` has had since LT-177.
+    // Arranging a chosen corner of a large diagram is a different and equally
+    // reasonable request from arranging all of it, and it was only the
+    // hierarchical layout that could not do it.
+    const selected = allDevices.filter((n) => n.selected);
+    const devices = selected.length >= 2 ? selected : allDevices;
     const { moved, tiers, locked } = hierarchicalLayout(
       devices.map((n) => ({
         id: n.id,

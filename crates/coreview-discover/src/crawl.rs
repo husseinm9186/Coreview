@@ -1758,7 +1758,19 @@ fn merge_endpoint_lists(into: &mut Vec<crate::fortios::Endpoint>, extra: Vec<cra
 /// class win because it actually knows, where the switch only inferred.
 fn merge_endpoints(attached: &mut Vec<AttachedDevice>, endpoints: &[crate::fortios::Endpoint]) {
     for e in endpoints {
-        let class = crate::fortios::endpoint_class(e);
+        // LT-370: the FortiGate's own words first — "Printer" is a fact about
+        // the device where an OUI is a fact about who made the chip in it —
+        // and the vendor only where it said nothing. This is the turn that
+        // `endpoint_class`'s own doc comment promised and nothing took.
+        let vendor_now = e
+            .hardware_vendor
+            .clone()
+            .or_else(|| crate::oui::vendor(&e.mac).map(str::to_string));
+        let class = crate::fortios::endpoint_class(e).or_else(|| {
+            vendor_now
+                .as_deref()
+                .and_then(crate::classify::class_from_vendor)
+        });
         if let Some(existing) = attached.iter_mut().find(|a| a.mac == e.mac) {
             if existing.address.is_none() {
                 existing.address.clone_from(&e.address);
@@ -1781,10 +1793,7 @@ fn merge_endpoints(attached: &mut Vec<AttachedDevice>, endpoints: &[crate::forti
                 .or_else(|| e.fortiap_ssid.clone())
                 .unwrap_or_default(),
             address: e.address.clone(),
-            vendor: e
-                .hardware_vendor
-                .clone()
-                .or_else(|| crate::oui::vendor(&e.mac).map(str::to_string)),
+            vendor: vendor_now,
             hostname: e.hostname.clone(),
             class,
             // A FortiGate interface carries a whole network, so this is not a
