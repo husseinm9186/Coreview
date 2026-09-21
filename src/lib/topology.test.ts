@@ -9,10 +9,12 @@ import {
   stackFields,
   shortInterface,
   CLASS_GLYPH,
+  glyphFor,
 } from './topology';
 import type { CrawledDevice, DeviceClassName, Neighbor } from './ipc';
 import type { DeviceNodeData, LinkData } from '../types/domain';
 import { drawsStacked } from './stacked';
+import { ROLE_TYPE } from './roles';
 
 const neighbor = (
   name: string,
@@ -101,6 +103,66 @@ const ports = (t: ReturnType<typeof buildTopology>) =>
   });
 
 describe('buildTopology', () => {
+  /**
+   * LT-369: a role is for layout, a class is what the device said it is. Where
+   * both have an opinion the more specific one draws the glyph.
+   */
+  it('draws each class with its own glyph, and lets a role refine only what it can', () => {
+    expect(glyphFor('access-point', 'wireless')).toBe('access-point');
+    expect(glyphFor('wireless-controller', 'wireless')).toBe('wireless-controller');
+    expect(glyphFor('firewall', 'firewall')).toBe('firewall');
+    expect(glyphFor('printer', undefined)).toBe('printer');
+    // A role genuinely refines these: a switch becomes a core, distribution or
+    // access switch, and a box nothing identified becomes what its position
+    // argues for.
+    expect(glyphFor('switch', 'core')).toBe(ROLE_TYPE.core);
+    expect(glyphFor('switch', 'access')).toBe(ROLE_TYPE.access);
+    expect(glyphFor('unknown', 'distribution')).toBe(ROLE_TYPE.distribution);
+    expect(glyphFor('router', 'edge')).toBe(ROLE_TYPE.edge);
+    // With no role at all the class still decides.
+    expect(glyphFor('switch', undefined)).toBe('core-switch');
+    expect(glyphFor('unknown', undefined)).toBe('generic');
+  });
+
+  /**
+   * LT-360, reported from a real crawl: an access point appeared twice — once
+   * reached at the address its controller gave, and once as a switch's LLDP
+   * neighbour at an address it had since moved off, where ARP now fails.
+   *
+   * It turns out the diagram was never wrong. `identity` folds on the short
+   * name (LT-126, LT-132) exactly so that CDP's `SW1.example.com`, LLDP's
+   * `SW1` and a prompt's `sw1` are one device, and a reached sighting beats a
+   * neighbour's report of the same name. What showed two of them was the
+   * console example, which prints reached devices and each device's
+   * neighbours as two separate lists — by design.
+   *
+   * This pins the behaviour so a future change to `identity` cannot quietly
+   * bring the duplicate back.
+   */
+  it('folds an access point reached at one address and reported at another (LT-360)', () => {
+    const src = {
+      devices: [
+        device('LAB-ACCESS-SW1', '192.0.2.11', [
+          // The switch's neighbour table still advertises the old address.
+          neighbor('LAB-AP-1', 'Gi0/8', 'lan1', {
+            addresses: [{ ip: '192.0.2.114', interface: null, isManagement: false }],
+          }),
+        ]),
+        // The controller reports the same access point where it actually is.
+        device('LAB-AP-1', '192.0.2.23', [], { hops: 1, class: 'access-point' }),
+      ],
+      notVisited: [],
+    };
+    const t = buildTopology(src, 'p');
+    expect(labels(t)).toEqual(['LAB-ACCESS-SW1', 'LAB-AP-1']);
+    const ap = t.nodes.find((n) => (n.data as DeviceNodeData).label === 'LAB-AP-1')!;
+    // The reached sighting wins: the address drawn is the one that answered.
+    expect((ap.data as DeviceNodeData).addresses?.[0]?.address).toBe('192.0.2.23');
+    expect((ap.data as DeviceNodeData).deviceType).toBe('access-point');
+    // And the cable the switch reported is still drawn to it.
+    expect(t.edges).toHaveLength(1);
+  });
+
   it('draws cables on the physical view and layer-3 hops on the logical one (LT-215)', () => {
     const route = (prefix: string, hop: string) => ({ family: 4 as const, prefix, code: 'O', protocol: 'ospf', nextHops: [hop], interface: null, distance: 110, metric: 2 });
     const src = {

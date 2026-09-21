@@ -22,10 +22,34 @@ import { chooseHandles } from './routeLinks';
 import type { TopoEdge, TopoNode } from '../state/store';
 import type { DeviceInventory, DeviceNodeData, DeviceType, LinkData } from '../types/domain';
 import { inventoryOf } from './inventory';
-import { inferRoles, ROLE_LABEL, ROLE_TYPE, type InferredRole } from './roles';
+import { inferRoles, ROLE_LABEL, ROLE_TYPE, type InferredRole, type Role } from './roles';
 import { uid } from './id';
 import { mergeSerials } from './serials';
 import { behindInferred, type InferredSwitch } from './attached';
+
+/**
+ * Which glyph a device draws with, given what it is and the part it plays
+ * (LT-369).
+ *
+ * A role is for layout: `inferRoles` groups a network into core, distribution,
+ * access, edge, firewall, load balancer and wireless so a diagram can be
+ * arranged top to bottom. Several classes legitimately share one role — a
+ * wireless controller and an access point are both `wireless` — so taking the
+ * glyph from the role throws away what the class already knew.
+ *
+ * The class wins wherever it names something the role cannot: it is what the
+ * device said about itself. The role still wins for the classes it genuinely
+ * refines, which is the whole point of inferring one — a `switch` becomes a
+ * core, distribution or access switch, and an unidentified box becomes
+ * whatever its position argues for.
+ */
+export function glyphFor(klass: DeviceClassName, role: Role | undefined): DeviceType {
+  const byClass = CLASS_GLYPH[klass] ?? 'generic';
+  if (!role) return byClass;
+  // Exactly the classes a role refines rather than replaces.
+  const roleRefines = klass === 'switch' || klass === 'router' || klass === 'unknown';
+  return roleRefines ? ROLE_TYPE[role] : byClass;
+}
 
 /** The glyph each discovered class is drawn with. */
 export const CLASS_GLYPH: Record<DeviceClassName, DeviceType> = {
@@ -677,7 +701,14 @@ export function buildTopology(
         label,
         // LT-214: a role, where the evidence decided one, draws with its own
         // glyph, so arranging top to bottom (LT-145) puts it on its row.
-        deviceType: e.role ? ROLE_TYPE[e.role.role] : (CLASS_GLYPH[e.klass] ?? 'generic'),
+        //
+        // LT-369: **unless the class is more specific than the role.** A
+        // controller and an access point share the `wireless` role, which is
+        // right for layout and wrong for the picture — one role maps to one
+        // glyph, so every AP was drawn as a controller while `CLASS_GLYPH`
+        // held the correct answer and was never asked. The role is kept; only
+        // the glyph defers to the class.
+        deviceType: glyphFor(e.klass, e.role?.role),
         tags: [e.reached ? 'discovered' : 'seen-only'],
         ...(e.role ? { role: ROLE_LABEL[e.role.role], roleEvidence: e.role.reasons.join('; ') } : {}),
         addresses: e.address

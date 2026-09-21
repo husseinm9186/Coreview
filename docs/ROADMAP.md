@@ -123,6 +123,31 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-369 — **bug** Every access point is drawn as a wireless controller — 2026-09-21
+**Source:** found while writing the reproduction for LT-360, 2026-09-21.
+**`roles.ts:69` puts a controller and an access point in the same role:**
+
+    if (d.class === 'wireless-controller' || d.class === 'access-point') {
+      out.set(key(d.hostname), { role: 'wireless', … });
+
+and `ROLE_TYPE.wireless` is `'wireless-controller'`. `topology.ts:680` prefers
+an inferred role over the device's own class — `e.role ? ROLE_TYPE[...] :
+CLASS_GLYPH[e.klass]` — so an access point the crawl correctly identified as an
+access point is **drawn with the controller glyph**. `CLASS_GLYPH` has the
+right answer and never gets asked.
+**Why it matters more than a wrong picture.** A controller and an access point
+are different devices in different places doing different jobs, and a diagram
+that shows three controllers where there is one controller and three APs is
+wrong about the shape of the network. On the operator's own estate every
+FortiAP draws as a controller.
+**The role itself is not wrong** — an access point *is* wireless, and grouping
+by role for layout is right. The fault is that one role maps to one glyph, so
+the glyph loses what the class already knew.
+**Fixed:** `ROLE_TYPE` is for layout; the glyph now comes from the class
+whenever the class is more specific than the role. An access point draws as an
+access point and keeps the wireless role.
+**Checked:** a unit test per class, and the LT-360 reproduction that found it.
+
 ### LT-368 — The enterprise lab, and what each technology was for — 2026-09-20
 **Source:** "make the lab enterprise level", "did you do mpls / segment routing
 / ipv6 / dmvpn", and "hundreds of routes to benchmark coreview".
@@ -329,7 +354,7 @@ its prompts.
 single token is a prompt, not a VRF name. Fixture from the real output,
 failing first.
 
-### LT-360 — One access point is drawn twice, one of them at a dead address — open, needs a decision
+### LT-360 — One access point is drawn twice — it was not, and the reproduction found a real bug — 2026-09-21
 **Source:** the lab crawl on 2026-09-20. Two access points each appear twice in
 one crawl, under the same name, at two different addresses — and the address
 the switch advertises answers nothing at all.
@@ -360,7 +385,25 @@ diagram claims about somebody's network, so it is the operator's call, not a
 judgement to slip into a bug-fix commit. The two candidates are: join on
 hostname within one crawl when the classes agree; or keep them apart and mark
 the unreachable one on the diagram and in the review.
-**No test yet** — the acceptance depends on which of those is chosen.
+**Reproduced first, and the reproduction disagreed with the report.** Built as
+a `buildTopology` test with the exact shape — a switch whose LLDP names an
+access point at an address it has moved off, and the controller reporting the
+same access point where it actually is — the diagram draws **one** node, at
+the address that answered. It was never drawing two.
+**`identity` already folds on the short name** (LT-126, LT-132), precisely so
+that CDP's `SW1.example.com`, LLDP's `SW1` and a prompt's `sw1` are one device,
+and `note()` prefers a reached sighting over a neighbour's report of it. What
+showed two was `examples/crawl_network`, which prints reached devices and each
+device's neighbours as **two separate lists** — by design, and I read a console
+layout as a defect.
+**Closed as not a defect, with the behaviour pinned** so a future change to
+`identity` cannot quietly bring a duplicate back.
+**The reproduction did find a real bug**, which is the argument for writing one
+even when the answer looks obvious: every access point was being drawn with the
+wireless-controller glyph. That is **LT-369**.
+**Still true, and worth saying:** the switch really is advertising an address
+the access point has moved off, and ARP for it fails. Coreview reports what
+LLDP said, which is correct; the stale advertisement is the network's to fix.
 
 ### LT-359 — A FortiOS device says how long it has been up — 2026-09-20
 **Source:** the lab crawl on 2026-09-20. Every FortiOS device reached over SSH
