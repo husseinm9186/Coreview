@@ -29,8 +29,14 @@ use crate::routes::{parse_routes, Route};
 /// with a parse error rather than silence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VrfDialect {
-    /// IOS, IOS-XE, NX-OS: `show vrf`, then `show ip route vrf <name>`.
+    /// IOS and IOS-XE: `show vrf`, then `show ip route vrf <name>`, and
+    /// `show ip route vrf *` for the whole set.
     Cisco,
+    /// NX-OS. The same `show vrf` and per-VRF command as IOS, but **not** the
+    /// same command for every table at once: a Nexus answers
+    /// `show ip route vrf all` and rejects `*`, while IOS does the exact
+    /// opposite (LT-361). Both were asked, on hardware, before this split.
+    NxOs,
     /// FortiOS with VDOMs: `get router info routing-table all` inside a VDOM.
     FortiOs,
     /// Junos: `show route instance`, then `show route table <name>.inet.0`.
@@ -53,6 +59,14 @@ impl VrfDialect {
             // all until this was fixed for it. **NX-OS only** — the same
             // arm covers IOS-XE, whose `show vrf` is a different table with
             // different columns and has still not been seen.
+            // A Nexus 9000v answered every command here in the lab on
+            // 2026-09-20, and a real Nexus leaf with six VRFs before it.
+            VrfDialect::NxOs => true,
+            // IOS 15.7 answered `show vrf`, `show ip route vrf <name>` and
+            // `show ip route vrf *` in the lab on 2026-09-20 — and found two
+            // bugs doing it (LT-362, LT-363). IOS-XE 16.x has still not been
+            // seen; its `show vrf` is the same table, but that is a claim no
+            // device has confirmed yet.
             VrfDialect::Cisco => true,
             VrfDialect::FortiOs | VrfDialect::Junos | VrfDialect::Arista => false,
         }
@@ -61,7 +75,7 @@ impl VrfDialect {
     /// The command that lists the VRFs.
     pub fn list_command(&self) -> &'static str {
         match self {
-            VrfDialect::Cisco | VrfDialect::Arista => "show vrf",
+            VrfDialect::Cisco | VrfDialect::NxOs | VrfDialect::Arista => "show vrf",
             VrfDialect::FortiOs => "get system vdom-property",
             VrfDialect::Junos => "show route instance",
         }
@@ -81,7 +95,15 @@ impl VrfDialect {
     /// rather than named, so its tables are read one VDOM at a time.
     pub fn all_command(&self) -> Option<&'static str> {
         match self {
-            VrfDialect::Cisco | VrfDialect::Arista => Some("show ip route vrf all"),
+            // LT-361, settled by asking both platforms rather than by
+            // reading. A Nexus prints every table for `vrf all` and answers
+            // `No IP Route Table for VRF "*"` to the other spelling; IOS
+            // prints every table for `vrf *` and answers
+            // `% IP routing table vrf all does not exist` to this one. There
+            // is no single command that serves both, which is why they are
+            // separate dialects at all.
+            VrfDialect::NxOs => Some("show ip route vrf all"),
+            VrfDialect::Cisco | VrfDialect::Arista => Some("show ip route vrf *"),
             // Junos prints every instance's table without being asked twice.
             VrfDialect::Junos => Some("show route"),
             VrfDialect::FortiOs => None,
@@ -105,7 +127,9 @@ impl VrfDialect {
     /// The command that reads one VRF's table.
     pub fn table_command(&self, vrf: &str) -> String {
         match self {
-            VrfDialect::Cisco | VrfDialect::Arista => format!("show ip route vrf {vrf}"),
+            VrfDialect::Cisco | VrfDialect::NxOs | VrfDialect::Arista => {
+                format!("show ip route vrf {vrf}")
+            }
             // A VDOM is entered rather than named on the command; the caller
             // does that, and then asks for the whole table.
             VrfDialect::FortiOs => "get router info routing-table all".to_string(),
@@ -127,6 +151,8 @@ pub fn dialect_for(version: &str) -> VrfDialect {
         VrfDialect::Junos
     } else if v.contains("arista") || v.contains(" eos") {
         VrfDialect::Arista
+    } else if v.contains("nx-os") || v.contains("nexus") {
+        VrfDialect::NxOs
     } else {
         VrfDialect::Cisco
     }
@@ -237,6 +263,15 @@ pub fn parse_vrf_list(out: &str, dialect: VrfDialect) -> Vec<Vrf> {
                     }
                 }
             }
+            continue;
+        }
+
+        // LT-363: a capture someone pasted carries the prompt the device
+        // printed after the table, and `PE1#` alone on a line was coming back
+        // as a VRF — which would have the crawl ask for
+        // `show ip route vrf PE1#`. A prompt is one token that ends the way a
+        // prompt ends; no VRF name may contain either character.
+        if looks_like_prompt(raw) {
             continue;
         }
 
@@ -402,13 +437,28 @@ pub fn parse_vrf_tables(out: &str) -> std::collections::BTreeMap<String, Vec<Rou
 
 /// `IP Route Table for VRF "CORP"` → `CORP`, whichever way the platform
 /// writes it.
+/// A device prompt rather than a row of a table: one token on the line, ending
+/// the way a prompt ends — `PE1#`, `switch>`, `LEAF1(config)#` (LT-363).
+fn looks_like_prompt(line: &str) -> bool {
+    let mut tokens = line.split_whitespace();
+    let Some(only) = tokens.next() else { return false };
+    tokens.next().is_none() && (only.ends_with('#') || only.ends_with('>'))
+}
+
 fn table_header(line: &str) -> Option<String> {
     let t = line.trim();
     let rest = t
         .strip_prefix("IP Route Table for VRF")
         .or_else(|| t.strip_prefix("IPv6 Route Table for VRF"))
-        .or_else(|| t.strip_prefix("Routing Table: VRF"))
+        // LT-362: IOS writes `Routing Table: CORP` — the name, with no `VRF`
+        // between the colon and it. This was built from a documented shape
+        // that had the word there, so on a real IOS router every per-VRF
+        // table in `show ip route vrf *` was invisible. Strip the colon
+        // first and the optional `VRF` after it, so both spellings read.
+        .or_else(|| t.strip_prefix("Routing Table:"))
         .or_else(|| t.strip_prefix("VRF:"))?;
+    let rest = rest.trim();
+    let rest = rest.strip_prefix("VRF ").unwrap_or(rest);
     let name = rest.trim().trim_matches('"').trim();
     if name.is_empty() {
         return None;
@@ -419,6 +469,107 @@ fn table_header(line: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// LT-361, from asking both platforms in the lab on 2026-09-20 rather
+    /// than from reading. Neither spelling works on both.
+    #[test]
+    fn each_cisco_platform_gets_the_command_it_actually_answers() {
+        // `% IP routing table vrf all does not exist` on IOS 15.7.
+        assert_eq!(VrfDialect::Cisco.all_command(), Some("show ip route vrf *"));
+        // `No IP Route Table for VRF "*"` on a Nexus 9000v.
+        assert_eq!(VrfDialect::NxOs.all_command(), Some("show ip route vrf all"));
+        // Everything else about the two is the same.
+        assert_eq!(VrfDialect::NxOs.list_command(), VrfDialect::Cisco.list_command());
+        assert_eq!(
+            VrfDialect::NxOs.table_command("CORP"),
+            VrfDialect::Cisco.table_command("CORP")
+        );
+    }
+
+    #[test]
+    fn a_nexus_banner_is_not_read_as_ios() {
+        assert_eq!(
+            dialect_for("Cisco Nexus Operating System (NX-OS) Software"),
+            VrfDialect::NxOs
+        );
+        assert_eq!(
+            dialect_for("Cisco IOS Software, Linux Software (I86BI_LINUXL3-ADVENTERPRISEK9-M)"),
+            VrfDialect::Cisco
+        );
+        // The banner test must not swallow the others.
+        assert_eq!(dialect_for("Arista Networks EOS version 4.31"), VrfDialect::Arista);
+        assert_eq!(dialect_for("FortiGate-60F v7.6.7"), VrfDialect::FortiOs);
+    }
+
+    /// LT-362: a real per-VRF table from IOS 15.7, in the lab, 2026-09-20.
+    /// **IOS writes the name with no `VRF` before it** — `Routing Table: CORP`
+    /// — and the documented shape this was built from said otherwise, so every
+    /// VRF table in the output was invisible. The global table comes first,
+    /// with no header of its own.
+    const IOS_VRF_STAR: &str = r#"
+Gateway of last resort is not set
+
+      172.16.0.0/16 is variably subnetted, 6 subnets, 3 masks
+C        172.16.1.0/24 is directly connected, Ethernet0/0
+L        172.16.1.11/32 is directly connected, Ethernet0/0
+S        172.16.255.12/32 [1/0] via 172.16.10.2
+
+Routing Table: CORP
+Gateway of last resort is not set
+
+      172.16.0.0/16 is variably subnetted, 2 subnets, 2 masks
+C        172.16.100.0/24 is directly connected, Loopback100
+L        172.16.100.11/32 is directly connected, Loopback100
+
+Routing Table: GUEST
+Gateway of last resort is not set
+
+      172.16.0.0/16 is variably subnetted, 2 subnets, 2 masks
+C        172.16.200.0/24 is directly connected, Loopback200
+"#;
+
+    #[test]
+    fn a_real_ios_per_vrf_table_is_read() {
+        let tables = parse_vrf_tables(IOS_VRF_STAR);
+        assert!(tables.contains_key("CORP"), "no CORP table: {:?}", tables.keys().collect::<Vec<_>>());
+        assert!(tables.contains_key("GUEST"), "no GUEST table");
+        let corp = &tables["CORP"];
+        assert_eq!(corp.len(), 2, "{corp:?}");
+        assert!(corp.iter().any(|r| r.prefix == "172.16.100.0/24"));
+        // The rows above the first header belong to the global table, not to
+        // the first VRF that happens to follow them.
+        assert!(
+            !corp.iter().any(|r| r.prefix == "172.16.1.0/24"),
+            "a global route was filed under the first VRF: {corp:?}"
+        );
+    }
+
+    /// The NX-OS heading still works — it was captured from a real Nexus and
+    /// must not be traded away for the IOS one.
+    #[test]
+    fn the_nexus_heading_still_reads() {
+        let out = "IP Route Table for VRF \"CORP\"\n\
+172.16.100.0/24, ubest/mbest: 1/0\n    *via 172.16.10.2, [1/0], 00:01:00, static\n";
+        let tables = parse_vrf_tables(out);
+        assert!(tables.contains_key("CORP"), "{:?}", tables.keys().collect::<Vec<_>>());
+    }
+
+    /// LT-363: `show vrf` on IOS 15.7 in the lab, with the prompt the device
+    /// printed after it. A pasted capture always carries its prompts, and
+    /// `PE1#` was being returned as a third VRF — which would have the crawl
+    /// ask for `show ip route vrf PE1#`.
+    #[test]
+    fn the_prompt_after_a_capture_is_not_a_vrf() {
+        let out = "\
+  Name                             Default RD            Protocols   Interfaces
+  CORP                             65000:100             ipv4        Lo100
+  GUEST                            65000:200             ipv4        Lo200
+PE1#
+";
+        let v = parse_vrf_list(out, VrfDialect::Cisco);
+        let names: Vec<&str> = v.iter().map(|x| x.name.as_str()).collect();
+        assert_eq!(names, vec!["CORP", "GUEST"], "{names:?}");
+    }
 
     /// **Documentation-shaped, not captured** (D-051). From Cisco's IOS-XE and
     /// Arista EOS command references for `show vrf`.

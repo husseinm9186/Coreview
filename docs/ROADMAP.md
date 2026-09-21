@@ -123,6 +123,86 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-364 — **bug** NX-OS reports no uptime, because it brackets its plurals — 2026-09-20
+**Source:** crawling the lab fabric. All three Nexus printed `uptime Nones`
+while `show version` on each plainly said otherwise:
+
+    Kernel uptime is 0 day(s), 0 hour(s), 23 minute(s), 42 second(s)
+
+**`parse_uptime` reduced a unit with `trim_end_matches('s')`**, so `day(s)`
+became `day(` and matched nothing — every unit failed, and the whole line was
+discarded as unreadable. The bracket has to come off before the `s` does.
+**This is the third platform family in a row whose uptime was silently
+dropped**, after LT-358 (anything reached over SNMP) and LT-359 (all of
+FortiOS). Each had a different cause — a discarded field, an unasked command,
+and now a plural spelling — and each was invisible to the test suite because
+every fixture used the one shape that worked.
+**Fixed and confirmed on the devices that found it:** the same crawl now reads
+about 24 minutes for all three, matching what they printed.
+
+### LT-361 — **bug** The one-command-per-VRF-set command is rejected by IOS — 2026-09-20
+**Source:** the EVE-NG lab, 2026-09-20, on IOL `i86bi_LinuxL3-AdvEnterpriseK9-M2`
+running IOS 15.7(3), configured with two VRFs.
+
+    PE1#show ip route vrf all
+    % IP routing table vrf all does not exist
+    PE1#show ip route vrf *
+    <the global table, then Routing Table: CORP, then Routing Table: GUEST>
+
+**`all_command()` returns `show ip route vrf all` for `VrfDialect::Cisco`**
+(`vrftables.rs:84`), and `dialect_for` puts IOS, IOS-XE **and** NX-OS in that
+one variant (`vrftables.rs:122`). The command was verified against a real
+Nexus, where it is right. On IOS it is simply refused, so LT-351's whole
+point — one command instead of one per VRF — never happens on the platform
+most people point this at.
+**It degrades rather than breaks**, which is why no test caught it: the error
+text yields no tables, `answered` stays false, and the crawl falls back to a
+command per VRF. The cost is a wasted round trip and a claim in the docs that
+is not true of IOS.
+**Deliberately not fixed until NX-OS had answered**, rather than guessed at.
+It answered the same evening, on a Nexus 9000v 9.3.3 in the lab:
+
+    SPINE1# show ip route vrf *
+    No IP Route Table for VRF "*"
+
+So neither spelling works on both, and there is no single command that serves
+them. `VrfDialect` gained an `NxOs` variant: `dialect_for` reads `nx-os` or
+`nexus` in the banner, `all_command` gives `vrf all` to NX-OS and `vrf *` to
+IOS, and everything else about the two — the list command, the per-VRF
+command — stays shared, because those are genuinely the same.
+**Both halves are now verified on hardware**, which is why `Cisco` may claim it
+too: IOS 15.7 answered every command in the lab, and a Nexus answered every
+command twice — once as a real leaf on 2026-09-20 and once here. IOS-XE 16.x
+is still unseen and the source says so.
+
+### LT-362 — **bug** A real IOS per-VRF route table is not recognised at all — 2026-09-20
+**Source:** the same capture. `parse_vrf_tables` read **0 tables** from 53
+lines of real `show ip route vrf *` output holding a global table and two VRFs.
+**`table_header` (`vrftables.rs:405`) expects the literal word `VRF`:**
+
+    .or_else(|| t.strip_prefix("Routing Table: VRF"))
+
+IOS prints `Routing Table: CORP` — the name, with no `VRF` before it. The
+prefix never matches, so every VRF table in the output is invisible. This was
+written from documentation (D-051) and the documented shape was wrong, the same
+way three of four NX-OS parsers were wrong when a Nexus first answered.
+**Acceptance:** a fixture of the real IOS shape, failing before the fix; the
+NX-OS `IP Route Table for VRF "x"` form still read; and the global table that
+precedes the first header still attributed to the global table rather than to
+the first VRF.
+
+### LT-363 — **bug** A device prompt is read as a VRF — 2026-09-20
+**Source:** the same session. `parse_vrf_list` on real `show vrf` output
+returned three VRFs: `CORP`, `GUEST`, and **`PE1#`**.
+**Any line with a first token becomes a VRF**, so a prompt left on the end of a
+capture becomes a phantom VRF, and the crawl would then run
+`show ip route vrf PE1#` against the device. `examples/parse_capture.rs` exists
+precisely because people paste captures, and a pasted capture always carries
+its prompts.
+**Acceptance:** a VRF row must look like one — a trailing `#` or `>` on a
+single token is a prompt, not a VRF name. Fixture from the real output,
+failing first.
+
 ### LT-360 — One access point is drawn twice, one of them at a dead address — open, needs a decision
 **Source:** the lab crawl on 2026-09-20. Two access points each appear twice in
 one crawl, under the same name, at two different addresses — and the address
@@ -823,10 +903,14 @@ picture of it. Text output of `show vsx status`, `sh vsf topology` and
 - Where a bug cannot be fixed, it says why in plain words rather than being
   quietly closed.
 
-**Known bugs, open:** none, as of 2026-09-20. LT-355 (clicking a device re-fits
-the page) was reported that day and LT-356 (selecting a device marks the project
-unsaved) was found while reading it; both were reproduced in `e2e/canvasfix.mjs`
-before either was touched, and both are fixed.
+**Known bugs, open:** none, as of 2026-09-20 — but the count that day is worth
+recording. Seven were found and fixed: LT-355 and LT-356 from a report and from
+reading; LT-358, LT-359 and LT-364 from three different platforms silently
+dropping their uptime; and LT-361, LT-362 and LT-363 from pointing the VRF
+parsers at a real IOS router and a real Nexus for the first time. **Five of the
+seven were found by hardware, not by reading**, and none of them could have
+been: every fixture in the repository used the one shape that already worked.
+LT-357 and LT-360 remain open by choice and are described where they sit.
 **LT-137 is now closed outright** rather than accepted: the credentials were
 gone from the working tree long ago, and on 2026-09-18 the published history was
 replaced by a single commit (LT-314), so they are gone from that too.

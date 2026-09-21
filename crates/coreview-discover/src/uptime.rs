@@ -6,9 +6,10 @@
 //! is the first thing an engineer looks at.
 //!
 //! **Written against captured output**: the uptime line of `show version` from
-//! a WS-C2960CX on IOS 15.2(7)E, 2026-09-16, and (LT-359) the
+//! a WS-C2960CX on IOS 15.2(7)E, 2026-09-16; (LT-359) the
 //! `get system performance status` line of a FortiGate-60F on 7.6.7 and a
-//! FortiSwitch-224E on 7.6.1, both 2026-09-20.
+//! FortiSwitch-224E on 7.6.1, both 2026-09-20; and (LT-364) `show version` on
+//! a Nexus 9000v 9.3.3 in the lab, the same day.
 
 /// The uptime in seconds, from either shape a device states it in:
 ///
@@ -33,6 +34,10 @@ pub fn parse_uptime(version: &str) -> Option<u64> {
         let mut words = part.split_whitespace();
         let (Some(n), Some(unit)) = (words.next(), words.next()) else { continue };
         let Ok(n) = n.parse::<u64>() else { continue };
+        // NX-OS writes the plural as `day(s)`, so the bracket has to come off
+        // before the `s` does (LT-364). `days` and `day` still reduce to the
+        // same word.
+        let unit = unit.trim_end_matches("(s)");
         let seconds = match unit.trim_end_matches('s') {
             "year" => 365 * 86_400,
             "week" => 7 * 86_400,
@@ -68,6 +73,17 @@ mod tests {
         assert_eq!(parse_uptime(g), Some(8 * 86_400 + 22 * 3_600 + 55 * 60));
         let s = "Uptime: 22 days,  18 hours,  56 minutes\n";
         assert_eq!(parse_uptime(s), Some(22 * 86_400 + 18 * 3_600 + 56 * 60));
+    }
+
+    /// LT-364: NX-OS brackets its plurals. Found by crawling a Nexus 9000v
+    /// that reported no uptime while `show version` plainly stated one — the
+    /// third platform family in a row whose uptime was silently dropped.
+    #[test]
+    fn reads_the_nexus_line_with_its_bracketed_plurals() {
+        let v = "Kernel uptime is 0 day(s), 0 hour(s), 23 minute(s), 42 second(s)\n";
+        assert_eq!(parse_uptime(v), Some(23 * 60 + 42));
+        let long = "Kernel uptime is 12 day(s), 3 hour(s), 4 minute(s), 5 second(s)\n";
+        assert_eq!(parse_uptime(long), Some(12 * 86_400 + 3 * 3_600 + 4 * 60 + 5));
     }
 
     #[test]
