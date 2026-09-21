@@ -1194,6 +1194,7 @@ async fn visit(
     } else {
         read_details(&mut device, &version, options.details).await
     };
+    let mut details = details;
 
     // FortiSwitch and FortiGate answer SSH and then reject all of the above
     // with a parse error. Without this the crawl logs in, takes the hostname
@@ -1209,6 +1210,14 @@ async fn visit(
         }
         let status = device.run("get system status").await.unwrap_or_default();
         let status = crate::fortios::parse_system_status(&status);
+        // LT-359: the one detail FortiOS states plainly. `get system status`
+        // carries the version and the serial and no uptime at all; the uptime
+        // is on `get system performance status`, which is why every FortiOS
+        // device in the lab reported none. Nothing else about FortiOS details
+        // is claimed here — that decision stands, above.
+        details.uptime_seconds = crate::uptime::parse_uptime(
+            &device.run("get system performance status").await.unwrap_or_default(),
+        );
         // On a VDOM-enabled FortiGate the interesting tables live inside a
         // VDOM, and asking outside one answers for the wrong network.
         if status.vdoms_enabled {

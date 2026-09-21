@@ -123,6 +123,71 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-360 — One access point is drawn twice, one of them at a dead address — open, needs a decision
+**Source:** the lab crawl on 2026-09-20. Two access points each appear twice in
+one crawl, under the same name, at two different addresses — and the address
+the switch advertises answers nothing at all.
+**The evidence, gathered rather than reasoned.**
+- The Catalyst's LLDP says the AP is at one address, with a chassis id ending
+  `…b7a2`, on Gi0/8.
+- The FortiGate that manages the same AP, by the same name, reports it at a
+  different address.
+- Only the FortiGate's address answers: ICMP replies and ARP resolves to a MAC
+  ending `…b7a0`. The LLDP-advertised address leaves ARP `FAILED` — nothing is
+  there. The AP moved, by DHCP, and is still advertising its old management
+  address over LLDP.
+- The two MACs differ in the last octet: the AP's wired port and the interface
+  it advertises are not the same interface, so **a join on MAC cannot work.**
+**Neither reading is wrong, which is why this needs a decision.** LLDP really
+does say that address; the FortiGate really does say the other; Coreview
+reports both faithfully. The fault is that nothing reconciles them, so an
+engineer sees two access points where the rack holds one, and one of the two
+can never be reached.
+**What joins them is the hostname**, which matches exactly, together with the
+device class and the vendor. That is weaker evidence than LT-126's existing
+joins (a MAC, or an address a sweep already drew), and merging two records on a
+name alone is the kind of guess D-050 exists to refuse. The alternative is to
+keep both and *say* that one address answered nothing — which is honest, and
+which the crawl already knows, but which still draws two glyphs.
+**Deliberately not fixed on the spot.** Merging devices changes what the
+diagram claims about somebody's network, so it is the operator's call, not a
+judgement to slip into a bug-fix commit. The two candidates are: join on
+hostname within one crawl when the classes agree; or keep them apart and mark
+the unreachable one on the diagram and in the review.
+**No test yet** — the acceptance depends on which of those is chosen.
+
+### LT-359 — A FortiOS device says how long it has been up — 2026-09-20
+**Source:** the lab crawl on 2026-09-20. Every FortiOS device reached over SSH
+— a FortiGate-60F, a FortiSwitch-224E and three FortiAPs — printed
+`uptime Nones`, while the one Catalyst in the same run reported 62 days.
+**This is not the same fault as LT-358, and the difference matters.**
+`crawl.rs:1193` gives FortiOS `DeviceDetails::default()` **on purpose** — "a
+platform whose output has been captured and parsed — FortiOS is not one yet,
+and gets nothing rather than a misreading". That is D-050 applied to a
+collection gap, the same call taken for FortiOS VDOM route tables at D-051, and
+it stays. Nothing here claims routes, VLANs, ports or spanning tree for FortiOS.
+**Uptime is the one field the device states plainly**, and both platforms in
+the lab answered the same documented command:
+
+    Uptime: 8 days,  22 hours,  55 minutes      (FortiGate-60F, 7.6.7)
+    Uptime: 22 days,  18 hours,  56 minutes     (FortiSwitch-224E, 7.6.1)
+
+It is `get system performance status`, not `get system status` — which is why
+the crawl never saw it; `get system status` carries the version and serial and
+no uptime at all.
+**Two small things, and no more than that.** `uptime::parse_uptime` reads only
+the IOS shape, `HOST uptime is 8 weeks, 2 days`, so it must also read the
+`Uptime:` form; and the FortiOS branch must ask the question. Everything else
+about FortiOS details stays exactly as it is.
+**Acceptance:** `parse_uptime` reads both shapes, including the doubled spaces
+FortiOS prints; a test fails before the fix; and the lab crawl shows a real
+uptime for the FortiGate and the FortiSwitch afterwards.
+**Shipped, and checked on the two devices that found it.** The same crawl now
+reads the FortiGate at about 9 days and the FortiSwitch at about 22.8 days,
+both matching what the devices printed minutes earlier. The three FortiAPs
+still say nothing, which is right: they are reported by the FortiGate rather
+than logged into, so no one asked them anything.
+
 ### LT-358 — **bug** A device reached over SNMP reports no uptime, though SNMP gave one — 2026-09-20
 **Source:** found on real hardware, 2026-09-20, crawling a Catalyst 2960CX over
 SNMP v3 from the lab subnet. The crawl printed `uptime Nones` while
