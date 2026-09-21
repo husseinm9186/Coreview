@@ -2334,7 +2334,7 @@ Model number            : WS-C2960X-24TS-L
             (SshError::NoPrompt { host: "h".into() }, FailureKind::NoPrompt),
             (SshError::HostKeyChanged("changed".into()), FailureKind::HostKeyChanged),
             (
-                SshError::CommandTimeout { host: "h".into(), command: "show run".into() },
+                SshError::CommandTimeout { host: "h".into(), command: "show run".into(), last_seen: String::new() },
                 FailureKind::CommandTimedOut,
             ),
             (

@@ -123,6 +123,59 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-378 — **bug** The banner was answered with the wrong byte, and the app could not say so — 2026-09-21
+**Source:** LT-375 shipped, LT-377's new state proved the login was fine —
+**"Logged in, waiting for a prompt"** — and the device still never reached a
+prompt. Then: "i think we just need to send return seq to the device because
+thats what its telling us press enter to continue".
+**He was right, and it was one byte.** `continuation_reply` answered a banner
+with `\n`. **A line feed is not what the Enter key sends.** A terminal
+transmits `\r`, and a device reading raw keystrokes from a banner waits for the
+byte the key actually produces. So the app pressed something that was not
+Enter and the banner went on waiting, exactly as before the fix.
+**Two other things were wrong in the same place, both found while proving
+it.**
+- **The matcher compared the wrong text.** A banner arrives as instructions
+  for *drawing* a banner — `ESC [ 2 K` to clear the line, carriage returns to
+  overwrite, colour codes around the words. Matching the raw line compares a
+  phrase against the painting instructions for that phrase. `visible_text`
+  now strips them, so what is matched is what a person would read.
+- **The failure could not be diagnosed from outside.** "Gave up after 60
+  seconds" threw away the one fact that explains it: what the device had said.
+  `CommandTimeout` now carries the tail of it.
+**That diagnostic is deliberately limited to the login read.** `command` is
+`None` there and the buffer is a banner. A command's buffer can hold a
+running-config, and an error message is the wrong place for one — it ends up in
+logs and screenshots (D-006). A command timeout still says nothing about
+content.
+**The lesson worth keeping:** two rounds were spent guessing at what the device
+printed because the app never said. The diagnostic should have come first.
+**Then widened to the other vendors, at his asking** — "maybe we need to
+research if there are other vendors requiring something else". `CONTINUATIONS`
+is now an explicit table of `(phrase, reply, anchored-at-end)`, so a platform
+is one line and one test:
+- **Pagers**, answered with a space: Cisco `--More--`, ASA `<--- More --->`,
+  Comware and Huawei `---- More ----`, Junos `---(more)---` and
+  `---(more 47%)---`, AOS-CX and Brocade `-- MORE --, next page: Space`,
+  Extreme `Press <SPACE> to continue or <Q> to quit`.
+- **Banners**, answered with a carriage return: `Press any key to continue`,
+  `Press enter to continue`, `Press RETURN to continue`, and a reloaded Cisco
+  console's `Press RETURN to get started`.
+- **Two proven exceptions that take a line feed**: the FortiGate FIPS accept
+  line and FortiOS's own pager. Both have been answered that way on real
+  devices through `run()`, which sends `\n`, so the table matches what works
+  rather than what is tidy — and that they differ is exactly why each entry
+  carries its own reply.
+**Provenance is recorded beside the table.** The Aruba banner is from
+hardware; the two FortiOS lines were proven earlier; **the rest are from
+vendor documentation and have not met a device**, the same standing D-026
+gives the stacking parsers.
+**Why a wrong entry is cheap in one direction only:** one that never matches
+leaves behaviour exactly as it was, while one that matches wrongly sends a
+keystroke into somebody's session. Hence literals, never patterns — and a test
+asserting `Continue? (y/n)`, `Proceed with reload? [confirm]` and
+`Save? [yes/no]` are still refused.
+
 ### LT-377 — "Authenticating" covered two phases that fail for different reasons — 2026-09-21
 **Source:** debugging LT-375. An Aruba 2930M sat on **Authenticating** for a
 full minute and then failed, and the state gave no way to tell whether the

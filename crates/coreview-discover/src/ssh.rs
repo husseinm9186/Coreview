@@ -133,8 +133,21 @@ pub enum SshError {
     AuthTimeout { host: String, timeout: Duration },
     #[error("{host} never presented a command prompt; it may not be a device with a CLI")]
     NoPrompt { host: String },
-    #[error("{host} stopped responding while running `{command}`")]
-    CommandTimeout { host: String, command: String },
+    #[error("{host} stopped responding while running `{command}`{last_seen}")]
+    CommandTimeout {
+        host: String,
+        command: String,
+        /// LT-378: what the device had said when we gave up, for the login
+        /// read only.
+        ///
+        /// A prompt that never arrives is otherwise undiagnosable from the
+        /// outside: the app says it waited, and the one thing that would
+        /// explain why — what the device actually sent — is thrown away. It
+        /// is filled in **only while reading the login**, where the buffer is
+        /// a banner. A command's output can hold a running-config, and an
+        /// error message is the wrong place for one (D-006).
+        last_seen: String,
+    },
     #[error("ssh error talking to {host}: {source}")]
     Protocol {
         host: String,
@@ -419,6 +432,7 @@ impl Device {
                 return Err(SshError::CommandTimeout {
                     host: self.host.clone(),
                     command: command.unwrap_or("<login>").to_string(),
+                    last_seen: last_seen_for(command, &buffer),
                 });
             }
 
@@ -427,6 +441,7 @@ impl Device {
                     return Err(SshError::CommandTimeout {
                         host: self.host.clone(),
                         command: command.unwrap_or("<login>").to_string(),
+                        last_seen: last_seen_for(command, &buffer),
                     })
                 }
                 Ok(None) => {
@@ -853,6 +868,39 @@ async fn authenticate(
     Err(SshError::AuthFailed {
         host: host.to_string(),
     })
+}
+
+/// The tail of what a device sent, for a login that never reached a prompt
+/// (LT-378).
+///
+/// **Only for the login read.** `command` is `None` there, and the buffer is a
+/// banner. For a real command the buffer can be a running-config, and putting
+/// that in an error message would scatter secrets through logs and screenshots
+/// (D-006) — so a command timeout says nothing about content, exactly as
+/// before.
+///
+/// Control characters are rendered rather than emitted, so a banner full of
+/// escape sequences reads as text instead of redrawing the terminal it is
+/// printed in.
+fn last_seen_for(command: Option<&str>, buffer: &str) -> String {
+    if command.is_some() {
+        return String::new();
+    }
+    let tail: String = buffer.chars().rev().take(300).collect::<Vec<_>>().into_iter().rev().collect();
+    let shown: String = tail
+        .chars()
+        .map(|c| match c {
+            '\n' => '\n',
+            c if c.is_control() => '·',
+            c => c,
+        })
+        .collect();
+    let shown = shown.trim();
+    if shown.is_empty() {
+        " — the device sent nothing at all".to_string()
+    } else {
+        format!(" — it had sent:\n{shown}")
+    }
 }
 
 /// Whether a challenge is asking for the account password rather than a second

@@ -320,6 +320,7 @@ impl TelnetDevice {
             return Err(SshError::CommandTimeout {
                 host: self.host.clone(),
                 command: String::new(),
+                last_seen: String::new(),
             });
         }
         let read = tokio::time::timeout(remaining, self.stream.read(&mut raw))
@@ -327,6 +328,7 @@ impl TelnetDevice {
             .map_err(|_| SshError::CommandTimeout {
                 host: self.host.clone(),
                 command: String::new(),
+                last_seen: String::new(),
             })?
             .map_err(|source| SshError::Connect {
                 host: self.host.clone(),

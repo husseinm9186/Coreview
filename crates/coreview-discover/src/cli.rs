@@ -83,6 +83,39 @@ pub fn is_paging(buffer: &str) -> bool {
     last.contains("--More--") || last.contains("---- More ----") || last.ends_with("--more--")
 }
 
+/// A line with its terminal control sequences taken out (LT-378).
+///
+/// What arrives over a shell is what a terminal would *draw*: `ESC [ 2 K` to
+/// clear a line, `ESC [ …` to move the cursor, bare carriage returns to
+/// overwrite. None of it is text, and matching against it compares a phrase
+/// with the instructions for painting that phrase.
+pub fn visible_text(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            // A CSI sequence runs to its first letter; anything else escaped
+            // is one character long.
+            if chars.peek() == Some(&'[') {
+                chars.next();
+                for c in chars.by_ref() {
+                    if c.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            } else {
+                chars.next();
+            }
+            continue;
+        }
+        if c == '\r' || (c.is_control() && c != '\t') {
+            continue;
+        }
+        out.push(c);
+    }
+    out.trim().to_string()
+}
+
 /// Whether the device is holding a banner open until somebody presses a key
 /// (LT-375).
 ///
@@ -99,7 +132,12 @@ pub fn is_paging(buffer: &str) -> bool {
 /// intact, so that a saved session shows what the device actually said.
 pub fn wants_keypress(buffer: &str) -> bool {
     let tail = buffer.trim_end();
-    let last = tail.lines().last().unwrap_or("").trim().to_ascii_lowercase();
+    // LT-378: a banner is drawn, not printed. Devices pad it with escape
+    // sequences, carriage returns and cursor moves, and a matcher that
+    // compared the raw line saw `\u{1b}[2KPress any key…` and decided it had
+    // never heard of it. Compare what a person would read.
+    let last = visible_text(tail.lines().last().unwrap_or("")).to_ascii_lowercase();
+    let last = last.trim();
     // Anchored to the end of the output: the same words inside a configuration
     // or a log line are text, not a question being asked right now.
     last.starts_with("press any key")
@@ -128,29 +166,86 @@ pub fn wants_keypress(buffer: &str) -> bool {
 /// The reply is the whole keystroke including any newline, because some
 /// devices want a bare character and others a line.
 pub fn continuation_reply(buffer: &str) -> Option<&'static [u8]> {
-    // A pager: "there is more of this output".
-    if is_paging(buffer) {
-        return Some(b" ");
-    }
-    // A banner: "I have not started yet".
-    if wants_keypress(buffer) {
-        return Some(b"\n");
-    }
     let tail = buffer.trim_end();
-    let last = tail.lines().last().unwrap_or("").trim();
-    // A FIPS-CC FortiGate prints its banner and waits for a literal `a`.
-    // Until it gets one, everything sent is read as the answer to the banner.
-    if tail.contains("(Press 'a' to accept)") {
-        return Some(b"a\n");
+    let last = visible_text(tail.lines().last().unwrap_or(""));
+    let lower = last.to_ascii_lowercase();
+
+    for (needle, reply, anchored_at_end) in CONTINUATIONS {
+        let hit = if *anchored_at_end {
+            lower.ends_with(needle)
+        } else {
+            lower.starts_with(needle)
+        };
+        if hit {
+            return Some(reply);
+        }
     }
-    // FortiOS's own pager. The wording reads like a decision and is not one —
-    // it is what that platform prints between pages — so it is matched as the
-    // exact phrase and never as a general `(y/n)`.
-    if last.ends_with("Do you want to continue? (y/n)") {
-        return Some(b"y\n");
+    // The FIPS-CC FortiGate prints its banner and then the accept line, and
+    // the accept line is not always last. Checked against the whole tail for
+    // that reason, and by an exact phrase so nothing else can match it.
+    if tail.contains("(Press 'a' to accept)") {
+        // `a` and a **line feed**, not a carriage return. The crawl has been
+        // accepting this banner with `run("a")` — which sends `{command}\n` —
+        // on real FortiGates, so this is the byte sequence known to work.
+        // The Aruba banner needs `\r` and this one does not: that they differ
+        // is precisely why each entry carries its own reply rather than the
+        // table assuming one keystroke fits every device.
+        return Some(b"a\n");
     }
     None
 }
+
+/// Everything known to hold a session open, and the keystroke that moves it on
+/// (LT-378, D-054).
+///
+/// `(phrase, reply, anchored_at_end)` — matched against the **last visible
+/// line** with its terminal control sequences removed, lower-cased. `true`
+/// anchors at the end of that line, `false` at the start, because a pager
+/// sometimes trails a percentage and a banner sometimes trails punctuation.
+///
+/// **Provenance, because it matters which of these have been seen.**
+/// The Aruba banner was captured from a 2930M-48G-PoE+ on WC.16.10.0009
+/// (LT-375). The FortiGate FIPS line came from a device earlier. **The rest
+/// are from vendor documentation and have not met hardware** — the same
+/// standing as D-026's stacking parsers, and said here rather than assumed.
+///
+/// A wrong entry here is cheap in one direction and not the other: one that
+/// never matches leaves the behaviour exactly as it was, while one that
+/// matches something it should not sends a keystroke into somebody's session.
+/// That is why every phrase is a literal a named platform prints and none is a
+/// pattern.
+const CONTINUATIONS: &[(&str, &[u8], bool)] = &[
+    // --- Pagers. Answered with a space: "show me the next page". ---
+    // Cisco IOS, NX-OS, Arista, and most of what copies them.
+    ("--more--", b" ", true),
+    // Cisco ASA.
+    ("<--- more --->", b" ", true),
+    // HPE Comware and Huawei VRP.
+    ("---- more ----", b" ", true),
+    // Junos.
+    ("---(more)---", b" ", true),
+    // Junos with a position, e.g. `---(more 47%)---`.
+    ("---(more ", b" ", false),
+    // Aruba AOS-CX and Brocade/Ruckus, which name the keys in the prompt.
+    ("-- more --", b" ", false),
+    ("press <space> to continue", b" ", false),
+    // --- Banners. Answered with a carriage return: that is what Enter sends. ---
+    // Aruba 2930M — captured from hardware.
+    ("press any key to continue", b"\r", false),
+    ("press any key to continue", b"\r", true),
+    ("press enter to continue", b"\r", false),
+    ("press return to continue", b"\r", false),
+    // A Cisco console that has been reloaded.
+    ("press return to get started", b"\r", false),
+    ("-- press any key --", b"\r", false),
+    // --- A pager phrased as a question, which is not one. ---
+    // FortiOS prints this between pages. Matched as the whole phrase and
+    // never as a general `(y/n)`, which would answer "yes" to erasing a
+    // configuration.
+    // A line feed, because that is what the crawl has been answering this
+    // with on real FortiGates (`run("y")` sends `{command}\n`).
+    ("do you want to continue? (y/n)", b"y\n", true),
+];
 
 /// Removes the paging markers a device left in captured output.
 ///
@@ -370,6 +465,25 @@ Press any key to continue";
         assert!(wants_keypress("Press enter to continue"));
     }
 
+    /// LT-378: the banner arrives as instructions for drawing a banner. An
+    /// Aruba pads it with line-clears and carriage returns, and the first
+    /// matcher compared the raw bytes and saw nothing it knew.
+    #[test]
+    fn a_banner_dressed_in_escape_sequences_is_still_a_banner() {
+        assert!(wants_keypress("legend\n\u{1b}[2KPress any key to continue"));
+        assert!(wants_keypress("legend\n\rPress any key to continue\u{1b}[K"));
+        assert!(wants_keypress("legend\n\u{1b}[0;1mPress any key to continue\u{1b}[0m"));
+        assert_eq!(visible_text("\u{1b}[2KPress any key to continue"), "Press any key to continue");
+        assert_eq!(visible_text("\rSW1#"), "SW1#");
+    }
+
+    /// Stripping the dressing must not turn a settled prompt into a question.
+    #[test]
+    fn stripping_control_characters_does_not_invent_a_question() {
+        assert!(!wants_keypress("\u{1b}[2KSW1#"));
+        assert!(!wants_keypress("\u{1b}[2K"));
+    }
+
     /// The words are only a question when the device is asking them *now*. In
     /// the middle of a capture they are text, and answering them would send a
     /// stray keystroke into somebody's configuration.
@@ -396,7 +510,10 @@ Press any key to continue";
     #[test]
     fn every_way_a_device_holds_the_session_is_answered_the_same_way() {
         assert_eq!(continuation_reply("output\n --More-- "), Some(&b" "[..]));
-        assert_eq!(continuation_reply("legend\nPress any key to continue"), Some(&b"\n"[..]));
+        // A carriage return: that is the byte Enter sends. A line feed is not
+        // what the key does, and a device reading raw keystrokes ignores it.
+        assert_eq!(continuation_reply("legend\nPress any key to continue"), Some(&b"\r"[..]));
+        assert_eq!(continuation_reply("legend\nPress enter to continue"), Some(&b"\r"[..]));
         // A FIPS-CC FortiGate waits for a literal `a`, not any key.
         assert_eq!(
             continuation_reply("Welcome\n(Press 'a' to accept)"),
@@ -421,6 +538,67 @@ Press any key to continue";
             "Destination filename [running-config]?",
             "Password:",
             "Do you want to erase the configuration? (y/n)",
+        ] {
+            assert_eq!(continuation_reply(dangerous), None, "{dangerous} must not be answered");
+        }
+    }
+
+    /// LT-378: the vendors the table now covers. Every pager is answered with
+    /// a space and every banner with a carriage return, except where a
+    /// platform has been proven to want something else.
+    #[test]
+    fn each_vendors_pager_is_recognised() {
+        let space = Some(&b" "[..]);
+        // Cisco IOS / NX-OS / Arista and everything that copies them.
+        assert_eq!(continuation_reply("output\n --More-- "), space);
+        // Cisco ASA.
+        assert_eq!(continuation_reply("output\n<--- More --->"), space);
+        // HPE Comware and Huawei VRP.
+        assert_eq!(continuation_reply("output\n  ---- More ----"), space);
+        // Junos, plain and with a position.
+        assert_eq!(continuation_reply("output\n---(more)---"), space);
+        assert_eq!(continuation_reply("output\n---(more 47%)---"), space);
+        // Aruba AOS-CX and Brocade, which name the keys in the prompt.
+        assert_eq!(
+            continuation_reply("output\n-- MORE --, next page: Space, quit: Control-C"),
+            space
+        );
+        // Extreme EXOS.
+        assert_eq!(continuation_reply("output\nPress <SPACE> to continue or <Q> to quit:"), space);
+    }
+
+    #[test]
+    fn each_vendors_banner_is_answered_with_a_real_return() {
+        let cr = Some(&b"\r"[..]);
+        assert_eq!(continuation_reply("legend\nPress any key to continue"), cr);
+        assert_eq!(continuation_reply("legend\nPress enter to continue"), cr);
+        assert_eq!(continuation_reply("legend\nPress RETURN to continue"), cr);
+        // A Cisco console that has been reloaded.
+        assert_eq!(continuation_reply("\nPress RETURN to get started"), cr);
+    }
+
+    /// Two platforms proven to want a line feed rather than a carriage return.
+    /// That they differ from the banners is why each entry carries its own
+    /// reply instead of the table assuming one keystroke fits everything.
+    #[test]
+    fn a_platform_proven_to_want_a_line_feed_still_gets_one() {
+        assert_eq!(continuation_reply("Welcome\n(Press 'a' to accept)"), Some(&b"a\n"[..]));
+        assert_eq!(
+            continuation_reply("page\nDo you want to continue? (y/n)"),
+            Some(&b"y\n"[..])
+        );
+    }
+
+    /// The widened table must not have widened what it will answer. Each of
+    /// these resembles an entry above and decides something.
+    #[test]
+    fn nothing_in_the_wider_table_answers_a_decision() {
+        for dangerous in [
+            "Continue? (y/n)",
+            "Do you want to continue with the erase? (y/n)",
+            "Press any key to reboot",
+            "System configuration has been modified. Save? [yes/no]",
+            "Proceed with reload? [confirm]",
         ] {
             assert_eq!(continuation_reply(dangerous), None, "{dangerous} must not be answered");
         }
