@@ -883,3 +883,35 @@ server. Nothing is auto-released: an address nobody has seen for a month is
 reported as unseen, never recycled, which is the same refusal D-050 makes about
 paths. And an ingested address says it was observed, not that it was intended —
 the register keeps knowing the difference.
+
+### D-053 — A seed is dialled; the subnet limit governs where a crawl spreads — 2026-09-21
+**Reported:** a scan that reached nothing. The dry run explained it exactly —
+the seed was "outside the subnet limit, not dialled" — and the operator's
+answer was "my seed device is different from the Stay inside these subnets not
+sure if that matters but it needs to work".
+
+**The two things were being treated as one, and they are not.**
+- **A seed** is an address somebody typed into the box and pressed scan on.
+  That is as explicit as an instruction gets.
+- **The subnet limit** is a containment rule. Its job is to stop a crawl
+  walking neighbour to neighbour out of the network anyone asked about — into a
+  partner's estate, a customer's, or the rest of the internet.
+
+Filtering the seed by the limit conflated them: the run reached nothing and
+looked broken, when the boundary was simply being applied to the one address it
+should never have applied to.
+
+**Decided:** `resolve_seeds` no longer filters by subnet. Every neighbour is
+still checked — `should_crawl` is untouched — so a crawl seeded outside the
+limit contacts exactly the one device named and spreads nowhere.
+
+**Why this is not a loosening of the safety rule.** Nothing is contacted that
+was not typed. The limit still does the job it exists for, which is bounding
+*discovery*; it was never a list of addresses the operator is forbidden to
+name. The dry run now says so rather than the opposite — "outside the subnet
+limit — dialled anyway, because you named it; its neighbours are not followed"
+— so a seed pasted by mistake is still visible before anything is sent.
+
+**What would change this.** If a deployment ever needs addresses that must not
+be contacted whatever anyone types, that is `exclude_subnets`, which is applied
+after everything else and is the right place for a prohibition.

@@ -332,6 +332,32 @@ mod tests {
         assert!(!counts.iter().any(|(c, _)| *c == DeviceClass::Camera));
     }
 
+    /// LT-374: several subnets are "any of these", not "all of these". An
+    /// estate is rarely one range, and a limit that required an address to be
+    /// in every listed subnet at once would match nothing at all.
+    #[test]
+    fn several_subnets_are_any_of_them() {
+        let estate = DiscoveryFilter {
+            subnets: vec![
+                parse_cidr("192.0.2.0/24").unwrap(),
+                parse_cidr("198.51.100.0/24").unwrap(),
+                parse_cidr("203.0.113.0/24").unwrap(),
+            ],
+            ..Default::default()
+        };
+        assert!(estate.allows_address("192.0.2.10"), "the first listed subnet");
+        assert!(estate.allows_address("198.51.100.10"), "the second");
+        assert!(estate.allows_address("203.0.113.10"), "the third");
+        assert!(!estate.allows_address("10.0.0.1"), "none of them");
+        // And an exclusion still wins over every one of them.
+        let with_hole = DiscoveryFilter {
+            exclude_subnets: vec![parse_cidr("198.51.100.0/25").unwrap()],
+            ..estate
+        };
+        assert!(with_hole.allows_address("198.51.100.200"));
+        assert!(!with_hole.allows_address("198.51.100.10"), "excluded wins");
+    }
+
     /// LT-156: a default gateway is dialled by address alone, under the same
     /// subnet rules as a neighbour.
     #[test]

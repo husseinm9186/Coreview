@@ -769,7 +769,11 @@ export function CrawlPanel({
           <span>Hops</span>
           <select className="cv-input" value={maxHops} disabled={running}
             onChange={(e) => setMaxHops(Number(e.target.value))}>
-            {[1, 2, 3, 4, 6, 8].map((h) => <option key={h} value={h}>{h}</option>)}
+            {/* LT-373: eight was short for a real estate — a campus core to a
+                branch access switch is readily a dozen, and the crawler has
+                always accepted up to the 32 the backend clamps to. The
+                dropdown was the only thing stopping it. */}
+            {[1, 2, 3, 4, 6, 8, 12, 16, 24, 32].map((h) => <option key={h} value={h}>{h}</option>)}
           </select>
         </label>
         <label className="cv-field cv-field-narrow">
@@ -1414,7 +1418,7 @@ function DryRunPanel({ plan, onClose }: { plan: DryRunPlan; onClose: () => void 
         {plan.seeds.map((s) => (
           <li key={s.seed} data-kind={s.kind}>
             <span className="cv-mono">{s.seed}</span>{' — '}
-            {s.kind === 'address' && (s.allowed ? <>would be dialled with {s.credentials.join(', then ')}</> : <>outside the subnet limit, not dialled</>)}
+            {s.kind === 'address' && (s.allowed ? <>would be dialled with {s.credentials.join(', then ')}</> : <>outside the subnet limit — dialled anyway, because you named it; its neighbours are not followed</>)}
             {s.kind === 'range' && <>{s.allowed} of {s.addresses} addresses inside the limit would be checked on the login port first, then dialled with {s.credentials.join(', then ')}</>}
             {s.kind === 'hostname' && <>would be looked up in DNS when the run starts; which address it is is not known yet</>}
             {s.kind === 'invalid' && <span className="cv-dry-run-bad">{s.reason}</span>}

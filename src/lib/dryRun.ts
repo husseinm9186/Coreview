@@ -115,6 +115,9 @@ export function dryRun(
         seeds.push({ kind: 'range', seed, addresses: hostsOf(c), allowed: inside, credentials: credentialOrder(sample, bindings.filter((b) => b.scope !== 'device'), label, runLogin) });
       }
     } else if (ipToInt(seed) !== null) {
+      // LT-374: a typed seed is always dialled; `allowed` now says only
+      // whether it sits inside the limit, so the panel can point out a seed
+      // that is outside one without claiming it will be skipped.
       seeds.push({ kind: 'address', seed, allowed: allowed(ipToInt(seed)!), credentials: credentialOrder(seed, bindings, label, runLogin) });
     } else if (HOSTNAME.test(seed) && /[a-z]/i.test(seed)) {
       seeds.push({ kind: 'hostname', seed });

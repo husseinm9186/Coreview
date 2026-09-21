@@ -123,6 +123,81 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-374 — **bug** A seed outside the subnet limit was dropped, so the crawl reached nothing — 2026-09-21
+**Source:** a scan that reached nothing, and a dry run that diagnosed itself
+perfectly: `10.254.254.247 — outside the subnet limit, not dialled`, with the
+limit set to `10.10.115.0/24`. Then: "my seed device is different from the Stay
+inside these subnets not sure if that matters but it needs to work".
+**It mattered, and the app was wrong rather than the operator.**
+`discovery.rs:445` passed the subnet filter into `resolve_seeds`, so a seed
+outside the limit was removed before the crawler ever saw it. The crawler
+itself never did this — `crawl_from` pushes every seed at hop 0 unconditionally
+— so the rule existed only in the layer above.
+**Fixed, with the reasoning recorded as D-053.** A seed is an address somebody
+typed and pressed scan on; the subnet limit is a containment rule for where a
+crawl *spreads*. Conflating them meant the run reached nothing and looked
+broken. `should_crawl` still checks every neighbour, so a crawl seeded outside
+the limit contacts exactly the one device named and spreads nowhere.
+**The dry run now says the true thing** rather than its opposite: "outside the
+subnet limit — dialled anyway, because you named it; its neighbours are not
+followed". A seed pasted by mistake is still visible before anything is sent.
+**Worth noting what the dry run got right.** It predicted the outcome exactly,
+which is what it is for — the fault was in the behaviour it was faithfully
+describing.
+
+### LT-373 — The crawl offered at most eight hops — 2026-09-21
+**Source:** "the hops should be more than 8 so it works on real enterprise
+networks", with a screenshot of the scan settings.
+**He was right, and the limit was only in the dropdown.** `discovery.rs:349`
+has always clamped the value to `0..=32`, and the crawler honours whatever it
+is given. The picker offered `1, 2, 3, 4, 6, 8` and nothing above — so a
+network deeper than eight hops could not be crawled to its edge no matter what
+the engine could do.
+**Eight is genuinely short for an estate.** A campus core down through
+distribution, an access switch, a WAN hop, a branch router and its access layer
+is readily a dozen; the default of four stays, because most people start small
+and a deep crawl is a deliberate choice.
+**Shipped:** `1, 2, 3, 4, 6, 8, 12, 16, 24, 32`.
+
+### LT-372 — A device that speaks only `hmac-sha1-96` cannot be reached — open, blocked upstream
+**Source:** reported 2026-09-21 with the app's own message, which is worth
+keeping because it diagnosed itself exactly:
+
+    No common Mac algorithm - ours: ["hmac-sha2-512-etm@openssh.com",
+    "hmac-sha2-256-etm@openssh.com", "hmac-sha2-512", "hmac-sha2-256",
+    "hmac-sha1-etm@openssh.com", "hmac-sha1"], theirs: ["hmac-sha1-96"]
+
+**Not a gap in our list.** `network_device_algorithms` already extends russh's
+defaults with SHA-1 for exactly this reason (LT-054), and that trade is written
+down where it is made. The missing algorithm is not one we declined to offer:
+**russh 0.63.1 does not implement `hmac-sha1-96` at all.** Its `ALL_MAC_ALGORITHMS`
+holds six entries and that is not among them.
+**Nor can it be added from here, and this was checked rather than assumed.**
+`mac::MACS`, the map from a name to an implementation, is `pub(crate)`; and
+`pub struct Name(&'static str)` keeps its field private, so a name russh does
+not already know cannot even be constructed outside the crate. There is no
+registration hook. Adding it needs a change to russh — which is small, because
+`CryptoMacAlgorithm<Hmac<Sha1>, U20>` is already generic over the output length
+and `hmac-sha1-96` is the same construction at `U12`.
+**What the operator can do today**, in the order worth trying:
+1. **Offer a second MAC on the device.** Most kit locked to `hmac-sha1-96` can
+   be told to accept more — on IOS, `ip ssh server algorithm mac hmac-sha1
+   hmac-sha2-256`. This is the real fix where the device allows it, and it
+   improves the device rather than weakening the app.
+2. **SNMP.** A crawl already falls back to it, and it gives identity, LLDP
+   neighbours and the forwarding table without SSH at all.
+3. **Telnet**, which the crawler supports, where the device is on a management
+   network that justifies it.
+**What this item is for:** an upstream patch to russh adding the algorithm, or
+a vendored fork if one is ever warranted. Either is a deliberate decision about
+a dependency and neither should be taken quietly, so it waits here rather than
+being half-done.
+**Worth saying plainly:** `hmac-sha1-96` is a truncated SHA-1 MAC and weak. The
+same argument recorded at LT-054 applies — the honest options are to support it
+or to not manage the device — but it is a weaker algorithm than anything
+currently offered, and the operator should prefer option 1 where the device
+permits it.
+
 ### LT-371 — A discovered diagram arrives arranged, without moving anything already drawn — 2026-09-21
 **Source:** the same screenshot as LT-370 — a grid of boxes with links crossing
 the whole canvas — and "help me with a way to organize the diagrams

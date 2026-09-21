@@ -442,10 +442,18 @@ pub async fn start_crawl(
         // LT-207: addresses, names and ranges, resolved and narrowed to what
         // answers on the login port; what could not be used is reported.
         let (parsed, mut skipped) = coreview_discover::seeds::parse_seeds(&seed);
-        let (seeds, more) = coreview_discover::seeds::resolve_seeds(&parsed, options.ssh.port, |a| {
-            options.filter.subnets.is_empty() || options.filter.allows_address(a)
-        })
-        .await;
+        // LT-374: a seed is always dialled, whatever the subnet limit says.
+        //
+        // "Stay inside these subnets" governs where a crawl *spreads* — it is
+        // what stops it walking neighbour to neighbour into a network nobody
+        // asked about, and `should_crawl` still enforces that on every
+        // neighbour. A seed is not a neighbour: somebody typed it and pressed
+        // scan, which is as explicit as an instruction gets. Filtering it here
+        // meant a seed outside the limit was dropped silently and the run
+        // reached nothing, which reads as the app being broken rather than as
+        // the boundary being enforced.
+        let (seeds, more) =
+            coreview_discover::seeds::resolve_seeds(&parsed, options.ssh.port, |_| true).await;
         skipped.extend(more);
         for s in skipped {
             let _ = tx.send(CrawlEvent::Skipped { name: s.seed, reason: s.reason }).await;
