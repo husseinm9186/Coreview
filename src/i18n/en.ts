@@ -56,6 +56,11 @@ export const en = {
   'ssh.sessions': { one: '{count} session', other: '{count} sessions' },
 
   // Trace Path (LT-346).
+  // LT-333: choosing what goes on the diagram by what it is.
+  'crawl.selectEverything': 'Select all {count}',
+  'crawl.selectInfra': 'Infrastructure only ({count})',
+  'crawl.infraTitle':
+    'Routers, switches, firewalls, wireless controllers, access points and servers. Anything unidentified is left out — it is far more often a workstation.',
   // LT-338: "Where is this?" — a search over what a crawl found.
   'whereis.run': 'Found by',
   'whereis.noRuns': 'No crawl yet',

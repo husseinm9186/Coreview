@@ -266,6 +266,23 @@ check("the result lists what is wrong", JSON.stringify(findings) === JSON.string
 ]), JSON.stringify(findings));
 // LT-215: with Physical and Logical views on the page, a layer-3 hop between
 // crawled devices is drawn on the Logical one.
+// ------------------------------------------------- LT-333 choose by role
+// Both devices in this crawl are infrastructure, so the count is the check
+// that the button is reading the rows rather than showing a constant.
+const infra = panel.locator("button").filter({ hasText: /^Infrastructure only \(\d+\)$/ });
+check("the review offers a choice by role", (await infra.count()) === 1);
+check("and says how many it would tick", /Infrastructure only \(2\)/.test(await infra.first().innerText()),
+  await infra.first().innerText());
+const selectAll = panel.locator("button").filter({ hasText: /^Select all \d+$/ });
+check("and Select all says how many that is too", (await selectAll.count()) === 1,
+  (await selectAll.count()) ? await selectAll.first().innerText() : "missing");
+await panel.locator("button", { hasText: "Select none" }).first().click();
+await page.waitForTimeout(250);
+await infra.first().click();
+await page.waitForTimeout(250);
+const addLabel = await page.locator("button").filter({ hasText: /to diagram$/ }).last().innerText();
+check("choosing by role ticks the infrastructure rows", /Add 2\b/.test(addLabel), addLabel);
+
 await page.evaluate(() => window.__cvStore.getState().addStandardLayers());
 await page.locator("button").filter({ hasText: /^Add .* to diagram$/ }).last().click();
 await page.waitForTimeout(500);

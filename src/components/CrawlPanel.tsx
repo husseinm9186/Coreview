@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { t } from '../i18n';
+import { isInfrastructure, roleCounts } from '../lib/deviceRoles';
 import { useStore } from '../state/store';
 import {
   ipc,
@@ -545,6 +547,19 @@ export function CrawlPanel({
     const keys = new Set(visible.map((v) => v.key));
     setRows((prev) => prev.map((r) => (keys.has(r.key) ? { ...r, picked } : r)));
   };
+  /**
+   * LT-333: the choice an engineer actually makes is "the network" against
+   * "everything the crawl found". Ticking thirty endpoints one at a time is a
+   * chore, not a choice. The individual ticks stay underneath, so this is a
+   * starting point rather than a mode.
+   */
+  const setVisibleByRole = () => {
+    const keys = new Set(visible.map((v) => v.key));
+    setRows((prev) =>
+      prev.map((r) => (keys.has(r.key) ? { ...r, picked: isInfrastructure(r.klass) } : r)),
+    );
+  };
+  const roleTotals = useMemo(() => roleCounts(visible), [visible]);
 
   /**
    * Builds the diagram from the crawl.
@@ -1119,7 +1134,17 @@ export function CrawlPanel({
 
           <div className="cv-discover-actions">
             <button type="button" className="cv-btn cv-btn-small" onClick={() => setAllVisible(true)}>
-              Select all
+              {t('crawl.selectEverything', { count: roleTotals.everything })}
+            </button>
+            {/* LT-333 */}
+            <button
+              type="button"
+              className="cv-btn cv-btn-small"
+              onClick={setVisibleByRole}
+              disabled={roleTotals.infrastructure === 0}
+              title={t('crawl.infraTitle')}
+            >
+              {t('crawl.selectInfra', { count: roleTotals.infrastructure })}
             </button>
             <button type="button" className="cv-btn cv-btn-small" onClick={() => setAllVisible(false)}>
               Select none

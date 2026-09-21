@@ -828,7 +828,7 @@ a VLAN name would make it untrustworthy.
 **Checked:** 9 unit tests in `whereIs.test.ts` and 14 in `e2e/whereis.mjs`,
 which drives the real panel.
 
-### LT-333 — Choose what goes on the diagram by what it is
+### LT-333 — Choose what goes on the diagram by what it is — 2026-09-21
 **Source:** asked 2026-09-19 — "the idea is to educate the discovery tool …
 we get all the devices on the wired and wireless network by collecting the mac
 address from the devices we crawled and build the diagram based on that / ping
@@ -851,7 +851,23 @@ only** (routers, switches, firewalls, access points, servers) against
 **LT-332 is done**, so the endpoints are now there to choose from: his
 FortiSwitch alone contributes 35 distinct MACs, and the FortiGate 46 DHCP
 leases of which 41 are wireless and name their SSID and AP.
-**Not started.**
+**Shipped.** The review's actions now read **Select all {n}**, **Infrastructure
+only ({n})** and **Select none**, with every individual tick still underneath —
+a starting point rather than a mode.
+**What counts as infrastructure, and why it is a judgement worth stating.**
+Routers, switches, firewalls, wireless controllers, access points and servers.
+A server is a thing somebody drew on purpose and expects on a topology; a
+phone, a camera, a printer and a laptop are things the network carries.
+**`unknown` is deliberately excluded**: a device nothing could identify is far
+more often a workstation than a switch, and putting every unidentified MAC on
+the diagram is the exact outcome "infrastructure only" exists to avoid.
+**Both buttons say what they will do before they are pressed**, counting the
+rows actually visible, so a filter narrowing the list narrows the number too.
+**Checked:** 6 unit tests in `deviceRoles.test.ts` — including that every
+member of the class union is decided one way or the other, so a new class
+cannot be silently neither — and 4 in `e2e/crawling.mjs` driving the real
+review, where the counts are the proof the buttons read the rows rather than
+showing a constant.
 
 ### LT-298 — IPAM Phase 2: devices, sites, tenants, bulk operations, reporting
 **Source:** the same specification, Phase 2.
