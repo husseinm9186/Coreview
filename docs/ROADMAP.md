@@ -123,6 +123,23 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-377 — "Authenticating" covered two phases that fail for different reasons — 2026-09-21
+**Source:** debugging LT-375. An Aruba 2930M sat on **Authenticating** for a
+full minute and then failed, and the state gave no way to tell whether the
+login had failed or had plainly succeeded and the device was holding a banner
+open. Both look identical, and they need entirely different answers.
+**`SshProgress` went straight from `Authenticating` to `Ready`**, and `Ready`
+is only sent once a prompt has been read. So everything between the password
+being accepted and the device drawing a prompt — the banner, the keypress
+wait, a slow shell — was reported as authentication.
+**Fixed:** a state of its own. `OpeningShell` is sent the moment authentication
+returns, before the prompt is read, and the table shows **"Logged in, waiting
+for a prompt"**. A device stuck there has credentials that work and something
+else wrong; a device stuck on **Authenticating** does not.
+**Small, and it pays for itself the first time somebody debugs a login.** The
+cost of the ambiguity was a full round trip of guessing on a device that had
+already let us in.
+
 ### LT-376 — **bug** The arranged diagram packs devices too tightly to read — 2026-09-21
 **Source:** two screenshots of a first discovery after LT-371, 2026-09-21:
 "devices on each other and some links don't show because the devices are so

@@ -466,6 +466,8 @@ export type SshProgress =
   | { kind: 'checkingHostKey'; host: string }
   | { kind: 'authenticating'; host: string }
   | { kind: 'awaitingSecondFactor'; host: string; message: string }
+  /** LT-377: logged in, waiting for the device to draw a prompt. */
+  | { kind: 'openingShell'; host: string }
   | { kind: 'ready'; host: string; hostname: string }
   | { kind: 'running'; host: string; command: string };
 

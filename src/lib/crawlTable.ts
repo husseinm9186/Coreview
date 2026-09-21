@@ -13,6 +13,7 @@ export type CrawlRowState =
   | 'dialling'
   | 'authenticating'
   | 'awaiting-approval'
+  | 'opening-shell'
   | 'collecting'
   | 'retrying'
   | 'collected'
@@ -39,6 +40,10 @@ export const STATE_LABEL: Record<CrawlRowState, string> = {
   dialling: 'Probing',
   authenticating: 'Authenticating',
   'awaiting-approval': 'Waiting for approval',
+  // LT-377: logged in, and the device has not drawn a prompt yet. Said
+  // separately from Authenticating because the two fail for different reasons
+  // and used to be impossible to tell apart.
+  'opening-shell': 'Logged in, waiting for a prompt',
   collecting: 'Collecting',
   retrying: 'Retrying',
   collected: 'Collected',
@@ -74,6 +79,7 @@ export function reduceCrawlTable(table: CrawlTable, e: CrawlEvent): CrawlTable {
       const p = e.progress;
       if (p.kind === 'connecting' || p.kind === 'checkingHostKey') put(p.host, { state: 'dialling', detail: undefined });
       else if (p.kind === 'authenticating') put(p.host, { state: 'authenticating', detail: undefined });
+      else if (p.kind === 'openingShell') put(p.host, { state: 'opening-shell', detail: undefined });
       else if (p.kind === 'awaitingSecondFactor') put(p.host, { state: 'awaiting-approval', detail: p.message });
       else if (p.kind === 'ready') put(p.host, { state: 'collecting', name: p.hostname, detail: undefined });
       else if (p.kind === 'running') put(p.host, { state: 'collecting', detail: p.command });

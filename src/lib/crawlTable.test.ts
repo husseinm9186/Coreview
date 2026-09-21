@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { CrawlEvent } from './ipc';
-import { reduceCrawlTable, stateCounts, tableRows, type CrawlTable } from './crawlTable';
+import { reduceCrawlTable, stateCounts, tableRows, STATE_LABEL, type CrawlTable } from './crawlTable';
 
 const run = (events: CrawlEvent[]): CrawlTable => events.reduce(reduceCrawlTable, new Map());
 
@@ -12,6 +12,8 @@ describe('the live crawl table (LT-210)', () => {
       { kind: 'queued', address: '192.0.2.1', hops: 0 },
       { kind: 'visiting', address: '192.0.2.1', hops: 0 },
       { kind: 'ssh', progress: { kind: 'authenticating', host: '192.0.2.1' } },
+      // LT-377: logged in, and the device has not drawn a prompt yet.
+      { kind: 'ssh', progress: { kind: 'openingShell', host: '192.0.2.1' } },
       { kind: 'ssh', progress: { kind: 'ready', host: '192.0.2.1', hostname: 'CORE-SW1' } },
       { kind: 'ssh', progress: { kind: 'running', host: '192.0.2.1', command: 'show vlan brief' } },
       { kind: 'queued', address: '192.0.2.2', hops: 1 },
@@ -46,6 +48,29 @@ describe('the live crawl table (LT-210)', () => {
       { kind: 'ssh', progress: { kind: 'running', host: '192.0.2.9', command: 'show version' } },
     ]);
     expect(tableRows(t)[0]!.state).toBe('failed');
+  });
+
+  /**
+   * LT-377: a device that has logged in and is waiting for a prompt is not in
+   * the same trouble as one still trying to authenticate, and used to be
+   * shown as though it were. An Aruba holding a banner open (LT-375) sat on
+   * "Authenticating" for a full minute, so a login that had plainly succeeded
+   * looked exactly like one that had not.
+   */
+  it('tells a login that has not finished from one that has', () => {
+    const authing = run([
+      { kind: 'queued', address: '192.0.2.1', hops: 0 },
+      { kind: 'ssh', progress: { kind: 'authenticating', host: '192.0.2.1' } },
+    ]);
+    expect(tableRows(authing)[0]!.state).toBe('authenticating');
+
+    const waiting = run([
+      { kind: 'queued', address: '192.0.2.1', hops: 0 },
+      { kind: 'ssh', progress: { kind: 'authenticating', host: '192.0.2.1' } },
+      { kind: 'ssh', progress: { kind: 'openingShell', host: '192.0.2.1' } },
+    ]);
+    expect(tableRows(waiting)[0]!.state).toBe('opening-shell');
+    expect(STATE_LABEL['opening-shell']).toBe('Logged in, waiting for a prompt');
   });
 
   it('starts empty for a new run', () => {

@@ -104,6 +104,13 @@ pub enum SshProgress {
     CheckingHostKey { host: String },
     Authenticating { host: String },
     AwaitingSecondFactor { host: String, message: String },
+    /// LT-377: logged in, waiting for the device to draw a prompt.
+    ///
+    /// Its own state because the two phases fail for entirely different
+    /// reasons and used to look identical: a device holding a banner open
+    /// (LT-375) reported "Authenticating" for the whole wait, so a login that
+    /// had plainly succeeded was indistinguishable from one that had not.
+    OpeningShell { host: String },
     Ready { host: String, hostname: String },
     Running { host: String, command: String },
 }
@@ -360,6 +367,7 @@ impl Device {
             },
         };
 
+        say(SshProgress::OpeningShell { host: host.to_string() });
         device.prompt = device.read_until_prompt(None).await?;
         say(SshProgress::Ready {
             host: host.to_string(),
