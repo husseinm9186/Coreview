@@ -56,6 +56,28 @@ export const en = {
   'ssh.sessions': { one: '{count} session', other: '{count} sessions' },
 
   // Trace Path (LT-346).
+  // LT-298: reading the register back from a spreadsheet.
+  'ipam.importCsv': 'Import CSV',
+  'ipam.importReady': {
+    one: '{count} address to add.',
+    other: '{count} addresses to add.',
+  },
+  'ipam.importSkipped': {
+    one: '{count} row skipped.',
+    other: '{count} rows skipped.',
+  },
+  'ipam.importConflicts': {
+    one: '{count} address claimed twice and left out.',
+    other: '{count} addresses claimed twice and left out.',
+  },
+  'ipam.importWanted': 'Subnets this file names that the register does not hold: {list}. They are not created for you.',
+  'ipam.importApply': 'Add them',
+  'ipam.importDiscard': 'Discard',
+  'ipam.importedAll': {
+    one: 'Added {count} address.',
+    other: 'Added {count} addresses.',
+  },
+  'ipam.importedSome': 'Added {added}; {refused} the register already held or refused.',
   // LT-333: choosing what goes on the diagram by what it is.
   'crawl.selectEverything': 'Select all {count}',
   'crawl.selectInfra': 'Infrastructure only ({count})',

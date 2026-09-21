@@ -876,7 +876,31 @@ and custom fields across objects; filtering, saved views, the column chooser,
 bulk selection and bulk actions; CSV and JSON import and export; the utilisation
 dashboard and its history; split and merge with an explicit review of what
 happens to the addresses inside.
-**Not started.**
+**In progress — one part shipped, 2026-09-21: CSV import.**
+The register has always *written* CSV (`ipamRows`) and nothing read it back,
+so the round trip was one-way and an estate already kept in a spreadsheet had
+to be typed in. **Import CSV** in the register's bar now reads one.
+- **Columns are matched by heading, not by position.** A spreadsheet that has
+  been through three people has reordered columns and added its own; insisting
+  on an order would reject exactly the files worth importing. Only `Address`
+  is required, because it is the only field that must parse. `IP`, `Name`,
+  `Held as`, `Used as` and the rest are all understood.
+- **Nothing is guessed, and nothing is half-applied.** The file is summarised
+  before anything is written: how many will be added, which rows were skipped
+  and why with their line numbers, which addresses two rows both claimed, and
+  which subnets the file names that the register does not hold. Only then is
+  there an **Add them** button.
+- **A subnet is reported as wanted rather than created.** Creating subnets is a
+  decision about someone's network (D-050).
+- **Both sides of a conflict stay out.** Two rows claiming one address is a
+  disagreement, not a preference for the later row.
+**Checked:** 9 unit tests, including a round trip against what `ipamRows`
+writes, and quoted fields so a note may contain a comma. `e2e/ipamlab` stays
+green.
+**Still to do in this phase:** sites and tenants; devices and interfaces linked
+to addresses; tags and custom fields; filtering, saved views, the column
+chooser and bulk actions; JSON import and export; the utilisation dashboard
+and its history; split and merge with an explicit review.
 
 ### LT-299 — IPAM Phase 3: DNS, DHCP, discovery and reconciliation
 **Source:** the same specification, Phase 3.

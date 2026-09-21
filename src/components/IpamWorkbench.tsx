@@ -27,6 +27,8 @@ import {
   type IpamContainerNode,
 } from '../lib/ipam';
 import { auditSentence } from '../lib/ipamAudit';
+import type { CsvImportResult } from '../lib/ipamImport';
+import { parseIpamCsv } from '../lib/ipamImport';
 import { allocationProblems, freeBlocks, planMerge, planSplit } from '../lib/ipamPlan';
 import { allNodes } from '../lib/pages';
 import { formatTime } from '../lib/timeFormat';
@@ -226,9 +228,43 @@ function Hierarchy({
   );
   const orphans = inVrf(model.blocks).filter((b) => !inContainer.has(`${b.vrfId}|${b.cidr}`));
 
+  // LT-298: what a chosen CSV would do, held until it is applied. An import
+  // that half-worked is worse than one that did not run, so the file is
+  // summarised first and nothing touches the register until Apply.
+  const [imported, setImported] = useState<CsvImportResult | null>(null);
+  const applyImport = () => {
+    if (!imported) return;
+    let added = 0;
+    let refused = 0;
+    for (const entry of imported.entries) {
+      if (store.addIpamEntry(entry)) refused += 1;
+      else added += 1;
+    }
+    setImported(null);
+    say(refused ? t('ipam.importedSome', { added, refused }) : t('ipam.importedAll', { count: added }));
+  };
+
   return (
     <div className="cv-lab-view">
       <div className="cv-lab-bar">
+        {/* LT-298: the register has always written CSV; now it reads it back. */}
+        <label className="cv-btn cv-btn-small">
+          {t('ipam.importCsv')}
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (!file) return;
+              void file.text().then((text) => {
+                setImported(parseIpamCsv(text, model.blocks.map((b) => b.cidr)));
+                say(null);
+              });
+            }}
+          />
+        </label>
         <button type="button" className="cv-btn cv-btn-small"
           onClick={() => { setAddingContainer((a) => !a); say(null); }}>
           {addingContainer ? t('ipam.cancel') : t('lab.addContainer')}
@@ -238,6 +274,35 @@ function Hierarchy({
         </button>
         <span className="cv-help">{t('lab.declaredSubnets', { count: inVrf(model.blocks).length })}</span>
       </div>
+
+      {imported && (
+        <div className="cv-lab-panel">
+          <p>{t('ipam.importReady', { count: imported.entries.length })}</p>
+          {imported.skipped.length > 0 && (
+            <>
+              <p className="cv-problem">{t('ipam.importSkipped', { count: imported.skipped.length })}</p>
+              <ul className="cv-help">
+                {imported.skipped.slice(0, 8).map((s) => (
+                  <li key={`${s.line}-${s.address ?? ''}`}>line {s.line}: {s.why}</li>
+                ))}
+              </ul>
+            </>
+          )}
+          {imported.conflicts.length > 0 && (
+            <p className="cv-problem">{t('ipam.importConflicts', { count: imported.conflicts.length })}</p>
+          )}
+          {imported.wantedSubnets.length > 0 && (
+            <p className="cv-help">{t('ipam.importWanted', { list: imported.wantedSubnets.join(', ') })}</p>
+          )}
+          <button type="button" className="cv-btn cv-btn-start" onClick={applyImport}
+            disabled={imported.entries.length === 0}>
+            {t('ipam.importApply')}
+          </button>
+          <button type="button" className="cv-btn cv-btn-small" onClick={() => setImported(null)}>
+            {t('ipam.importDiscard')}
+          </button>
+        </div>
+      )}
 
       {addingContainer && (
         <div className="cv-discover-form cv-ipam-add">
