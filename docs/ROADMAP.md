@@ -1039,6 +1039,22 @@ present a common LAG to downstream kit. They should not draw the same way —
 a VSX pair is two nodes with an ISL between them, and its whole purpose is
 that a downstream link survives losing one. Drawing it as one node hides
 exactly what it is for.
+**The Aruba CX image in the lab does not boot, and that was investigated
+properly rather than assumed** (2026-09-20). The node runs, but it spins at
+99% CPU indefinitely and **never writes a single byte to its overlay disk** —
+it is not reaching the operating system at all. Ruled out, each by test:
+permissions (identical ownership to a working NX-OS image, and
+`unl_wrapper -a fixpermissions` run afterwards); the disk itself
+(`qemu-img check` reports **no errors** — 16,006 leaked clusters, which it
+says are harmless — and the raw image has a valid MBR with an active FAT32
+boot partition); the NIC count (a second node built with the template's own
+defaults of seven behaves identically); and the CPU model (adding `-cpu host`,
+which the CSR and NX-OS templates carry and this one does not, changed
+nothing). Two independent nodes behave the same way, so it is the image or its
+qemu pairing, not the lab. The EVE-NG how-to describes 10.04; the installed
+image is 10.07. **A re-converted image is what would unblock this**, not more
+configuration.
+
 **Still blocked on:** hardware for the multi-chassis families. The screenshots
 he sent are images, and a parser here is written against captured text, not a
 picture of it. Text output of `show vsx status`, `sh vsf topology` and
