@@ -64,9 +64,12 @@ impl VrfDialect {
             VrfDialect::NxOs => true,
             // IOS 15.7 answered `show vrf`, `show ip route vrf <name>` and
             // `show ip route vrf *` in the lab on 2026-09-20 — and found two
-            // bugs doing it (LT-362, LT-363). IOS-XE 16.x has still not been
-            // seen; its `show vrf` is the same table, but that is a claim no
-            // device has confirmed yet.
+            // bugs doing it (LT-362, LT-363). **IOS-XE 16.12.05 answered the
+            // same three the same day**, on a CSR1000v with two VRFs: the
+            // `show vrf` table is indeed identical, `vrf *` prints
+            // `Routing Table: TENANT_A` with no `VRF` before the name, and
+            // `vrf all` is refused there exactly as it is on IOS. Both halves
+            // of this arm have now met hardware.
             VrfDialect::Cisco => true,
             VrfDialect::FortiOs | VrfDialect::Junos | VrfDialect::Arista => false,
         }

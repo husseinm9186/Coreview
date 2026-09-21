@@ -123,6 +123,44 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-368 — The enterprise lab, and what each technology was for — 2026-09-20
+**Source:** "make the lab enterprise level", "did you do mpls / segment routing
+/ ipv6 / dmvpn", and "hundreds of routes to benchmark coreview".
+`Coreview Path Lab` now carries, all verified running rather than merely
+configured:
+- **MPLS with LDP** — two LDP peers in `Oper` and **259 label forwarding
+  entries** on one router.
+- **MPBGP VPNv4** — a VRF on one PE filled by the other over the core.
+- **IPv6 with OSPFv3** — which is what found LT-365.
+- **DMVPN** — an mGRE hub with two spokes registered dynamically over NHRP,
+  carrying **EIGRP** over the tunnel.
+- **IS-IS level-2** with wide metrics.
+- **Segment routing**, on two CSR1000v running IOS-XE 16.12.05.
+- **311 static routes** redistributed into OSPF, which is what found LT-367.
+
+**Why each one is there is worth stating, because it is not obvious.**
+Coreview has **no MPLS, LDP, NHRP or segment-routing parser** — none of those
+protocols is read directly, and building them proves nothing on its own. What
+they are for is the **route codes** they put in a routing table, which *is*
+parsed: `D` from EIGRP over the DMVPN tunnel, `i L2` from IS-IS, `O E2` from
+redistribution, `B` from VPNv4, `LC` from an IPv6 loopback. LT-365 was a
+missing code; every new protocol is another chance to find the next one.
+**Each was checked against the parser, not assumed.** `i L2` reads as `isis`
+with metric `[115/20]`; `D` reads as `eigrp` with `Tunnel0` correctly kept as
+the interface; the classful `O E2` block reads in full since LT-367.
+**IOS-XE is no longer an unverified claim.** `VrfDialect::Cisco` said its
+IOS-XE half "has still not been seen". A CSR1000v on 16.12.05 has now answered
+`show vrf` (two VRFs, both parsed with their RDs and interfaces),
+`show ip route vrf *` (which works) and `show ip route vrf all` (which it
+refuses, exactly as IOS does). The source says so now.
+**One tooling trap, recorded because it nearly caused real damage.**
+`examples/try_commands.rs` prints at most 400 lines and appends `... N more`.
+Capturing a 528-line configuration through it produced a file that was
+truncated mid-table with no `end` — which was almost written back into the lab
+as a device's saved configuration. Long captures now go through a console
+reader instead. The example is a developer tool and the cap is reasonable for
+reading; it is simply not a capture mechanism.
+
 ### LT-367 — **bug** Most of a real routing table is silently dropped — 2026-09-20
 **Source:** a deliberate scale test, 2026-09-20 — "hundreds of routes to
 benchmark coreview". 250 static routes were redistributed into OSPF so a router
