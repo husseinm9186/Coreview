@@ -957,7 +957,7 @@ to addresses; custom fields; the column chooser; JSON import and export; the
 utilisation dashboard and its history; split and merge with an explicit
 review.
 
-### LT-299 — Discovery ingestion: the register learns what is actually in use
+### LT-299 — Discovery ingestion: the register learns what is actually in use — 2026-09-21
 **Source:** the same specification, Phase 3.
 **Scope:** DNS record and DHCP scope/lease models and screens; a discovery
 ingestion path that feeds the existing crawl and sweep into the register; the
