@@ -123,6 +123,25 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-376 — **bug** The arranged diagram packs devices too tightly to read — 2026-09-21
+**Source:** two screenshots of a first discovery after LT-371, 2026-09-21:
+"devices on each other and some links don't show because the devices are so
+close to each other".
+**The spacing was measured against the wrong thing.** `hierarchicalLayout`
+spaces by `n.width + columnGap`, and the node it is given is the **glyph box**,
+176 x 96. A discovered node does not render as a box: under it sit three lines
+of text — the hostname, the address, and what the device is — and names like a
+full FortiSwitch serial are wider than the glyph and taller than the box. So
+the boxes never overlapped and the labels always did, and a link running behind
+a neighbour's label is a link nobody can see.
+**Fixed by spacing for what is drawn rather than for the glyph**: a discovered
+arrangement asks for gaps that clear three lines of label, and the rows are
+spaced the same way. The button-driven **Arrange top to bottom** keeps the
+tighter defaults, because a diagram somebody has been working on has labels
+they have already dealt with.
+**Not fixed by zooming out.** Zoom changes what the screen shows and not what
+the diagram is; a drawing that is wrong at 100% is wrong when it is printed.
+
 ### LT-375 — **bug** A switch that says "Press any key to continue" is never reached — 2026-09-21
 **Source:** an Aruba 2930M-48G-PoE+ on WC.16.10.0009, 2026-09-21. The crawl sat
 on `Authenticating` and eventually timed out; PuTTY connected to the same

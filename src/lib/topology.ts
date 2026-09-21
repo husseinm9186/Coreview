@@ -52,6 +52,15 @@ export function glyphFor(klass: DeviceClassName, role: Role | undefined): Device
   return roleRefines ? ROLE_TYPE[role] : byClass;
 }
 
+/** Horizontal room between discovered devices (LT-376).
+ *
+ *  Wide enough for the label rather than the 176px glyph: a hostname like a
+ *  FortiSwitch serial, an address under it, and the class under that. */
+const DISCOVERED_COL_GAP = 150;
+/** Vertical room between tiers of discovered devices (LT-376). Three lines of
+ *  label below a 96px glyph need more than the glyph's own height. */
+const DISCOVERED_ROW_GAP = 190;
+
 /** The glyph each discovered class is drawn with. */
 export const CLASS_GLYPH: Record<DeviceClassName, DeviceType> = {
   router: 'router',
@@ -1198,7 +1207,14 @@ export function buildTopology(
         height: n.height ?? 96,
       })),
       layoutEdges,
-      { originX: leftOf, originY: below },
+      // LT-376: space for what is *drawn*, not for the glyph box. A
+      // discovered node carries three lines under it — hostname, address and
+      // what it is — and a full switch serial is wider than the 176px box the
+      // layout measures. Spacing by the box alone left the labels overlapping
+      // and links running invisibly behind them. The button-driven arrange
+      // keeps the tighter defaults: a diagram somebody has worked on has
+      // labels they have already dealt with.
+      { originX: leftOf, originY: below, columnGap: DISCOVERED_COL_GAP, rowGap: DISCOVERED_ROW_GAP },
     );
     // **The x only.** `hierarchicalLayout` tiers by what a device *is*, which
     // is right for a drawing and wrong for a crawl: a chain of three switches
@@ -1210,7 +1226,9 @@ export function buildTopology(
       const at = moved.get(n.id);
       if (!at) continue;
       const depth = depthOf.get(n.id) ?? 0;
-      n.position = { x: at.x, y: below + depth * ROW };
+      // The row is the distance from the seed (above), spaced for the label
+      // rather than for the glyph box (LT-376).
+      n.position = { x: at.x, y: below + depth * (96 + DISCOVERED_ROW_GAP) };
     }
   }
 

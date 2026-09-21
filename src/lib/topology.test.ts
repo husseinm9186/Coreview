@@ -140,6 +140,40 @@ describe('buildTopology', () => {
     expect(Math.min(...t.nodes.map((n) => n.position.y))).toBeGreaterThan(5000);
   });
 
+  /**
+   * LT-376: the boxes never overlapped; the labels did. A discovered node
+   * carries three lines under a 176x96 glyph, so the gap that matters is the
+   * one a label needs, not the one the box needs.
+   */
+  it('leaves room for the label, not just the glyph', () => {
+    const src = {
+      devices: [
+        device('CORE', '10.0.0.1', [
+          neighbor('S224ENTF19001615', 'Gi1/0/1', 'port24'),
+          neighbor('LRM-PU431F-2642', 'Gi1/0/2', 'eth1'),
+          neighbor('WORKSTATION-01', 'Gi1/0/3', 'eth0'),
+        ], { hops: 0 }),
+        device('S224ENTF19001615', '10.0.0.2', [], { hops: 1 }),
+        device('LRM-PU431F-2642', '10.0.0.3', [], { hops: 1 }),
+        device('WORKSTATION-01', '10.0.0.4', [], { hops: 1 }),
+      ],
+      notVisited: [],
+    };
+    const t = buildTopology(src, 'p');
+    const at = (label: string) =>
+      t.nodes.find((n) => (n.data as DeviceNodeData).label === label)!.position;
+
+    // Three devices share a row; none may sit within a glyph-width of another.
+    const row = ['S224ENTF19001615', 'LRM-PU431F-2642', 'WORKSTATION-01']
+      .map((l) => at(l).x)
+      .sort((a, b) => a - b);
+    for (let i = 1; i < row.length; i += 1) {
+      expect(row[i]! - row[i - 1]!).toBeGreaterThan(176 + 100);
+    }
+    // And the row below the seed clears the seed's own three lines of label.
+    expect(at('S224ENTF19001615').y - at('CORE').y).toBeGreaterThan(96 + 150);
+  });
+
   it('a single discovered device needs no arranging and gets none', () => {
     const t = buildTopology(
       { devices: [device('ONLY', '10.0.0.1', [], { hops: 0 })], notVisited: [] },
