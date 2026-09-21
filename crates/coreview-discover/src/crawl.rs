@@ -1021,7 +1021,15 @@ pub fn device_from_snmp(
         // LT-134: what its forwarding table says is plugged in.
         attached,
         port_channels: Vec::new(),
-        details: DeviceDetails::default(),
+        // LT-358: SNMP answered sysUpTime, so say so. It counts hundredths of
+        // a second, and it is the *agent's* uptime — it wraps at about 497
+        // days and a restarted agent resets it — so it is not always the same
+        // figure `show version` gives. Reporting what the device said beats
+        // reporting nothing while holding the number.
+        details: DeviceDetails {
+            uptime_seconds: identity.uptime_ticks.map(|t| t / 100),
+            ..DeviceDetails::default()
+        },
         dns_name: None,
     })
 }
@@ -2042,6 +2050,53 @@ Configuration register is 0x2102
 
 #[cfg(test)]
 mod tests {
+
+    /// LT-358: found on a Catalyst 2960CX reached over SNMP v3, which printed
+    /// `uptime Nones` while `snmp_probe` read 537,977,440 ticks from the same
+    /// switch a minute earlier. `device_from_snmp` had the number in hand and
+    /// built its details with `DeviceDetails::default()`.
+    #[test]
+    fn a_device_reached_over_snmp_keeps_the_uptime_snmp_gave() {
+        let identity = crate::snmp::SnmpIdentity {
+            address: "192.0.2.10".into(),
+            name: Some("LAB-CORE-SW1".into()),
+            uptime_ticks: Some(537_977_440),
+            ..Default::default()
+        };
+        let d = super::device_from_snmp(
+            "192.0.2.10",
+            0,
+            identity,
+            crate::snmp_topology::SnmpTopology::default(),
+            &std::collections::HashMap::new(),
+            None,
+        )
+        .expect("the device is named, so it is a device");
+        // sysUpTime counts hundredths of a second.
+        assert_eq!(d.details.uptime_seconds, Some(5_379_774));
+    }
+
+    /// And a device that does not answer sysUpTime says nothing rather than
+    /// claiming it has just booted.
+    #[test]
+    fn no_uptime_over_snmp_is_none_not_zero() {
+        let identity = crate::snmp::SnmpIdentity {
+            address: "192.0.2.11".into(),
+            name: Some("LAB-EDGE-SW".into()),
+            uptime_ticks: None,
+            ..Default::default()
+        };
+        let d = super::device_from_snmp(
+            "192.0.2.11",
+            0,
+            identity,
+            crate::snmp_topology::SnmpTopology::default(),
+            &std::collections::HashMap::new(),
+            None,
+        )
+        .expect("the device is named");
+        assert_eq!(d.details.uptime_seconds, None);
+    }
 
     /// LT-278: every event reaches the interface under its own kind. The
     /// failure and SSH-progress payloads carry a `kind` of their own, and an

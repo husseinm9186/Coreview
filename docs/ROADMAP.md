@@ -123,6 +123,35 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-358 — **bug** A device reached over SNMP reports no uptime, though SNMP gave one — 2026-09-20
+**Source:** found on real hardware, 2026-09-20, crawling a Catalyst 2960CX over
+SNMP v3 from the lab subnet. The crawl printed `uptime Nones` while
+`examples/snmp_probe` against the same switch a minute earlier read
+`uptime : Some(537977440) ticks` — about 62 days.
+**`crawl.rs:1024` builds the SNMP-reached device with
+`details: DeviceDetails::default()`**, although `identity.uptime_ticks` is in
+scope on the same expression and is already used there for the serial and the
+description. `details.uptime_seconds` is only ever filled at `crawl.rs:1512`,
+from `show version` text — the SSH path. So the number is collected and thrown
+away, which is the same fault as LT-357's discarded `seed`.
+**Acceptance:** a unit test on `device_from_snmp` — a `SnmpIdentity` carrying
+`uptime_ticks` produces a device whose `details.uptime_seconds` is the ticks in
+hundredths converted to seconds, and one carrying `None` still produces `None`
+rather than a zero. It must fail before the fix.
+**One caveat to write down in the code:** SNMP `sysUpTime` is the agent's
+uptime in hundredths of a second and wraps at about 497 days, so it is not
+always the box's uptime. That makes it worth reporting, not worth pretending
+it is the same figure `show version` gives.
+**Reproduced, fixed, and checked against the switch that found it.** The unit
+test failed first — `None` where the device had said 537,977,440 ticks. After
+the fix the same crawl of the same 2960CX read `uptime Some(5379972)s`, about
+62 days. Two tests: the conversion, and that a device which answers no
+`sysUpTime` still reports `None` rather than a zero.
+**This is the first thing the lab found.** It was invisible to every test in
+the repository because no fixture carried an SNMP uptime, and invisible in
+normal use because the SSH path fills the field from `show version` — it only
+shows on a device reached by SNMP alone.
+
 ### LT-355 — **bug** Clicking a device re-fits the page, which reads as zooming out — 2026-09-20
 **Source:** "when I click a device it zooms out", 2026-09-20, with a screenshot
 showing the diagram as a speck in the corner of the sheet and the inspector
