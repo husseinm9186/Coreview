@@ -111,7 +111,9 @@ export function PathTracePanel() {
   const meta = useStore((s) => s.meta);
   const setHighlight = useStore((s) => s.setCanvasHighlight);
 
-  const [runs, setRuns] = useState<{ id: string; takenAt: number; devices: number }[]>([]);
+  // LT-357: `seed` was fetched and dropped. With two runs a minute apart the
+  // date alone cannot say which part of the network each one covered.
+  const [runs, setRuns] = useState<{ id: string; takenAt: number; seed: string; devices: number }[]>([]);
   const [runId, setRunId] = useState('');
   const [result, setResult] = useState<CrawlResult | null>(null);
   const [from, setFrom] = useState('');
@@ -260,7 +262,11 @@ export function PathTracePanel() {
             {runs.length === 0 && <option value="">{t('trace.noRuns')}</option>}
             {runs.map((r) => (
               <option key={r.id} value={r.id}>
-                {new Date(r.takenAt).toLocaleString()} — {r.devices}
+                {t('trace.runOption', {
+                  when: new Date(r.takenAt).toLocaleString(),
+                  count: r.devices,
+                  seed: r.seed,
+                })}
               </option>
             ))}
           </select>

@@ -474,7 +474,7 @@ moving one still does. Selection is view state, not document state.
 **Reproduced, then fixed.** `onNodesChange` now dirties the document only when
 some change is not a `select`. Both halves are checked in `e2e/canvasfix.mjs`.
 
-### LT-357 — The trace panel's run picker says too little — open
+### LT-357 — The trace panel's run picker says too little — 2026-09-20
 **Source:** "what is routing from and where did that come from?", 2026-09-20 —
 the control was not self-explanatory to the person who asked for the feature.
 **Three things, none of them a crash.**
@@ -492,6 +492,13 @@ the control was not self-explanatory to the person who asked for the feature.
   network each covered, and the thing that would is already in hand.
 **Acceptance:** the label names the crawl, the option says what the number
 counts, and the seed appears. No engine change.
+**Shipped, all three.** The label is **"Routing data from"**, which no longer
+reads as a second way of saying "Source". Each option now reads
+`<when> — <n> devices from <seed>`, so the number says what it counts and the
+seed says which part of the network that run covered — the field was already
+being fetched and thrown away. The plural is an `Intl.PluralRules` form rather
+than a ternary, per the i18n rule. No change to the engine, and `pathtrace`
+stays 29 checks green.
 
 ### LT-354 — A second sweep, before anything goes public — 2026-09-20
 **Source:** "no data from the show comands pushed to the public must be wiped
@@ -783,7 +790,7 @@ the numbered explanation, and a **Not resolved** section that is always present.
 with 29 checks — including that the original page is unchanged after
 generating two applications.
 
-### LT-338 — "Where is this?" — one search over everything discovery has found
+### LT-338 — "Where is this?" — one search over everything discovery has found — 2026-09-20
 **Source:** agreed 2026-09-20 from a plan he asked for — "I love it / lets do
 it all".
 **The question a network engineer actually asks** is "where is this thing
@@ -796,7 +803,30 @@ the merged ARP tables, the DHCP leases and the FortiGate device store — all of
 which a crawl already produces.
 **Why it is first among these:** it is the feature that gets the app opened on
 an ordinary Tuesday rather than only during a documentation push.
-**Not started.**
+**Shipped.** A **Where is** tab beside Trace path. It reads a saved crawl run
+and searches what every device learned on every port: a MAC matches however
+either side punctuates it (`000c.e600.00a0` finds `00:0c:e6:00:00:a0`), an
+address matches whole or by leading octets, and a name, a maker or a VLAN
+matches as text. Each hit says which device saw it, on which port, in which
+VLAN, and what the OUI registry calls the maker.
+**Two things it does that are the whole point.**
+- **Most answers are about things nobody drew.** A printer on a port is a MAC
+  and a vendor and nothing else; the e2e harness asserts that a device absent
+  from the diagram is still found, because that is the case the feature exists
+  for.
+- **A wireless client's port is its SSID.** A FortiGate reports its clients
+  with the SSID where a switch reports a port, so asking where a handset is
+  answers with the network it is on and the controller that saw it — without a
+  separate wireless search, and without collecting anything new.
+**What it refuses.** A port with several addresses behind it leads to another
+switch, so the hit is marked `shared` and names the switch rather than
+pretending to name a socket. An empty query returns nothing rather than the
+estate, and a miss says which query missed (D-050).
+**Matching is literal, not fuzzy**, unlike the command palette (LT-230): that
+is a jump-to, this is an answer about one device, and `aa:bb` quietly matching
+a VLAN name would make it untrustworthy.
+**Checked:** 9 unit tests in `whereIs.test.ts` and 14 in `e2e/whereis.mjs`,
+which drives the real panel.
 
 ### LT-333 — Choose what goes on the diagram by what it is
 **Source:** asked 2026-09-19 — "the idea is to educate the discovery tool …

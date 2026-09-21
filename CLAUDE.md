@@ -154,6 +154,7 @@ node e2e/ipamlab.mjs      # the register's screen: hierarchy, allocation, split/
 node e2e/credentials.mjs  # a device's own login: saved encrypted, never in the document (LT-318)
 node e2e/ssh.mjs          # shells in the panel: tabs, colour, font, log, keepalive (LT-320–325)
 node e2e/pathtrace.mjs    # where a packet would go; the application page it draws (LT-346, LT-348)
+node e2e/whereis.mjs      # where a thing is, from what the crawl found (LT-338)
 node e2e/checks.mjs       # pass/fail checks against a run's captures (LT-153)
 node e2e/groups.mjs       # ordered collection groups, pauses and stops (LT-154)
 ```

@@ -10,6 +10,7 @@ import { CrawlPanel } from './CrawlPanel';
 import { BackupPanel } from './BackupPanel';
 import { PathCheckPanel } from './PathCheckPanel';
 import { PathTracePanel } from './PathTracePanel';
+import { WhereIsPanel } from './WhereIsPanel';
 import { SshPanel } from './SshPanel';
 import { STATUS_COLOR } from './edges/LiveEdge';
 import { linkStatus } from '../health/evaluate';
@@ -114,7 +115,7 @@ export function StatusPanel() {
 
   // LT-319: Compare, Racks and the two imports left for a screen of their own.
   // What is here is what reports on the diagram while it is being worked on.
-  const [tab, setTab] = useState<'objects' | 'events' | 'discover' | 'crawl' | 'backup' | 'path' | 'trace' | 'ssh'>('objects');
+  const [tab, setTab] = useState<'objects' | 'events' | 'discover' | 'crawl' | 'backup' | 'path' | 'trace' | 'whereis' | 'ssh'>('objects');
   useEffect(() => {
     if (!panelRequest) return;
     // LT-300: the register moved to a screen of its own. Anything that still
@@ -294,7 +295,7 @@ export function StatusPanel() {
   }
 
   return (
-    <div className={`cv-panel${tab === 'crawl' || tab === 'discover' || tab === 'backup' || tab === 'ssh' || tab === 'trace' ? ' is-tall' : ''}`}>
+    <div className={`cv-panel${tab === 'crawl' || tab === 'discover' || tab === 'backup' || tab === 'ssh' || tab === 'trace' || tab === 'whereis' ? ' is-tall' : ''}`}>
       <div className="cv-panel-head">
         <div
           className="cv-tabs"
@@ -383,6 +384,18 @@ export function StatusPanel() {
           >
             Trace path
           </button>
+          {/* LT-338: where a thing is, from what the crawl already found. */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'whereis'}
+            tabIndex={tab === 'whereis' ? 0 : -1}
+            className={tab === 'whereis' ? 'is-active' : ''}
+            onClick={() => setTab('whereis')}
+          >
+            {t('whereis.find')}
+          </button>
+
           {/* LT-320: open shells. It is about the diagram in front of you —
               these are its devices — so this one belongs in the panel. */}
           <button
@@ -397,7 +410,7 @@ export function StatusPanel() {
           </button>
         </div>
 
-        {tab !== 'discover' && tab !== 'crawl' && tab !== 'backup' && tab !== 'path' && tab !== 'trace' && tab !== 'ssh' && (
+        {tab !== 'discover' && tab !== 'crawl' && tab !== 'backup' && tab !== 'path' && tab !== 'trace' && tab !== 'whereis' && tab !== 'ssh' && (
           <>
             <input
               className="cv-input cv-panel-search"
@@ -445,6 +458,8 @@ export function StatusPanel() {
           <PathCheckPanel />
         ) : tab === 'trace' ? (
           <PathTracePanel />
+        ) : tab === 'whereis' ? (
+          <WhereIsPanel />
         ) : tab === 'ssh' ? (
           <SshPanel />
         ) : tab === 'objects' ? (

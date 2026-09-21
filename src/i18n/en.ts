@@ -56,7 +56,39 @@ export const en = {
   'ssh.sessions': { one: '{count} session', other: '{count} sessions' },
 
   // Trace Path (LT-346).
-  'trace.run': 'Routing from',
+  // LT-338: "Where is this?" — a search over what a crawl found.
+  'whereis.run': 'Found by',
+  'whereis.noRuns': 'No crawl yet',
+  'whereis.runDevices': {
+    one: '{count} device',
+    other: '{count} devices',
+  },
+  'whereis.find': 'Where is',
+  'whereis.placeholder': 'MAC, address, name or maker',
+  'whereis.needCrawl': 'Crawl a network first — this searches what a crawl found.',
+  'whereis.source': 'Searching {devices} crawled devices and {learned} things they learned. Nothing is sent.',
+  'whereis.nothing': 'Nothing in this crawl matches "{query}".',
+  'whereis.isDevice': 'crawled',
+  'whereis.shared': 'shared',
+  'whereis.sharedTitle': {
+    one: '{count} address on this port',
+    other: '{count} addresses on this port — it leads to another switch',
+  },
+  'whereis.colWhat': 'What',
+  'whereis.colAddress': 'Address',
+  'whereis.colMac': 'MAC',
+  'whereis.colSeenBy': 'Seen by',
+  'whereis.colPort': 'Port or SSID',
+  'whereis.colVlan': 'VLAN',
+  'whereis.colMaker': 'Maker',
+  // LT-357: it chooses which saved crawl the routing tables come from, and it
+  // sits beside a "Source" field that means the device a packet starts at.
+  // "Routing from" read as a second way of saying the same thing.
+  'trace.run': 'Routing data from',
+  'trace.runOption': {
+    one: '{when} — {count} device from {seed}',
+    other: '{when} — {count} devices from {seed}',
+  },
   'trace.noRuns': 'No crawl yet',
   'trace.from': 'Source',
   'trace.to': 'Destination',
