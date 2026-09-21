@@ -498,6 +498,8 @@ interface Store {
   addIpamEntry: (entry: Omit<IpamEntry, 'id'>) => string | null;
   updateIpamEntry: (id: string, patch: Partial<Omit<IpamEntry, 'id'>>) => string | null;
   removeIpamEntry: (id: string) => void;
+  /** LT-298: one edit applied to many entries, as one undo step. */
+  applyIpamBulk: (changes: readonly { entryId: string; patch: Partial<Omit<IpamEntry, 'id'>> }[], what: string) => number;
   /** LT-294: a DHCP pool or an excluded span. */
   addIpamRange: (range: Omit<IpamRange, 'id'>) => string | null;
   updateIpamRange: (id: string, patch: Partial<Omit<IpamRange, 'id'>>) => string | null;
@@ -1453,6 +1455,53 @@ export const useStore = create<Store>((set, get) => ({
       dirty: true,
     }));
     return null;
+  },
+
+  /**
+   * LT-298: applies one decision to many entries and commits **once**.
+   *
+   * Calling `updateIpamEntry` in a loop would be correct and unusable: two
+   * hundred changes would be two hundred undo steps, so putting it back would
+   * mean pressing undo two hundred times. A bulk edit is one decision and
+   * undoes as one.
+   */
+  applyIpamBulk(changes, what) {
+    if (changes.length === 0) return 0;
+    const had = entriesOf(get().doc.ipam);
+    let changed = 0;
+    const next = had.map((e) => {
+      const change = changes.find((c) => c.entryId === e.id);
+      if (!change) return e;
+      changed += 1;
+      const merged = { ...e, ...change.patch };
+      return {
+        id: e.id,
+        address: merged.address,
+        label: merged.label,
+        kind: merged.kind,
+        ...extras(merged, 'id', 'address', 'label', 'kind'),
+      } as IpamEntry;
+    });
+    if (changed === 0) return 0;
+    get().commit(what);
+    set((s) => ({
+      doc: {
+        ...s.doc,
+        ipam: {
+          ...s.doc.ipam,
+          entries: next,
+          reservations: undefined,
+          audit: noteChange(s.doc.ipam, {
+            action: 'edited',
+            object: 'address',
+            label: `${changed} addresses`,
+            changes: [{ field: what }],
+          }),
+        },
+      },
+      dirty: true,
+    }));
+    return changed;
   },
 
   removeIpamEntry(id) {

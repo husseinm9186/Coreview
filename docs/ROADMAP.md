@@ -919,10 +919,31 @@ actions will both be built on, so the grammar was worth getting right once.
 **Checked:** 11 unit tests on the grammar, and 5 in `e2e/ipam` that set a tag
 through the form and then find it — both halves, because a tag that can be
 filtered but not set is half a feature.
+**Third part shipped, 2026-09-21: bulk actions.** Filtering made a long
+register answerable; this makes it editable. Add or remove tags, set an owner
+or a purpose, or change what addresses are held as — applied to everything the
+filter found.
+- **The bar only appears once a filter is narrowing the list.** "Do this to all
+  of them" is only a sensible offer when "them" is a chosen set.
+- **It says what will change before it changes anything**, and the number is
+  not the number of rows on screen: an address that already carries the tag is
+  not a change. The button reads `Apply to 12` beside `12 to change, 3 already
+  so, 2 belong to a device`.
+- **A row that came from a device on the diagram is not edited, and is counted
+  and named rather than silently skipped.** Its address is a fact about the
+  device; the register displays it rather than owning it, and bulk-writing to
+  it would record something the device never reported.
+- **The whole edit is one undo.** `applyIpamBulk` commits once — a loop over
+  `updateIpamEntry` would be correct and unusable, because putting two hundred
+  changes back would mean pressing undo two hundred times.
+**Checked:** 10 unit tests on the planner, and 5 in `e2e/ipam` that filter,
+apply a tag to every match through the real bar, and then undo the lot in one
+step — the last asserted through the store rather than Ctrl+Z, because the
+claim under test is the commit granularity, not the shortcut.
 **Still to do in this phase:** sites and tenants; devices and interfaces linked
-to addresses; custom fields; saved views, the column chooser and bulk actions;
-JSON import and export; the utilisation dashboard and its history; split and
-merge with an explicit review.
+to addresses; custom fields; saved views and the column chooser; JSON import
+and export; the utilisation dashboard and its history; split and merge with an
+explicit review.
 
 ### LT-299 — Discovery ingestion: the register learns what is actually in use
 **Source:** the same specification, Phase 3.

@@ -34,6 +34,8 @@ import {
   type RangeKind,
 } from '../lib/ipam';
 import { allNodes } from '../lib/pages';
+import type { BulkAction } from '../lib/ipamBulk';
+import { describeBulk, planBulk } from '../lib/ipamBulk';
 import { matchesFilter, parseFilter } from '../lib/ipamFilter';
 import { useStore } from '../state/store';
 
@@ -116,6 +118,26 @@ export function IpamPanel() {
   const [rangingIn, setRangingIn] = useState<string | null>(null);
   const [editingRange, setEditingRange] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  // LT-298: one decision applied to everything the filter found. The bar only
+  // appears once a filter is narrowing the list, because "do this to all of
+  // them" is only a sensible offer when "them" is a chosen set.
+  const [bulkKind, setBulkKind] = useState<BulkAction['kind']>('add-tags');
+  const [bulkValue, setBulkValue] = useState('');
+  const matching = useMemo(
+    () => model.blocks.flatMap((b) => b.addresses.filter((a) => matches(a, filter))),
+    [model.blocks, filter],
+  );
+  const bulkAction = useMemo((): BulkAction => {
+    const tags = bulkValue.split(',');
+    switch (bulkKind) {
+      case 'add-tags': return { kind: 'add-tags', tags };
+      case 'remove-tags': return { kind: 'remove-tags', tags };
+      case 'set-kind': return { kind: 'set-kind', value: (ENTRY_KINDS.includes(bulkValue as EntryKind) ? bulkValue : 'in-use') as EntryKind };
+      case 'set-purpose': return { kind: 'set-purpose', value: bulkValue };
+      default: return { kind: 'set-owner', value: bulkValue };
+    }
+  }, [bulkKind, bulkValue]);
+  const bulkPlan = useMemo(() => planBulk(matching, bulkAction), [matching, bulkAction]);
   const [problem, setProblem] = useState<string | null>(null);
 
   const known = model.blocks.reduce((n, b) => n + b.used + b.excluded, 0) + model.loose.length;
@@ -267,6 +289,32 @@ export function IpamPanel() {
         </button>
         <input className="cv-input cv-ipam-filter" value={filter} aria-label={t('ipam.filter')}
           placeholder={t('ipam.filterPlaceholder')} onChange={(e) => setFilter(e.target.value)} />
+        {/* LT-298 */}
+        {filter.trim() !== '' && (
+          <span className="cv-ipam-bulk">
+            <select className="cv-input" aria-label={t('ipam.bulkAction')} value={bulkKind}
+              onChange={(e) => setBulkKind(e.target.value as BulkAction['kind'])}>
+              <option value="add-tags">{t('ipam.bulkAddTags')}</option>
+              <option value="remove-tags">{t('ipam.bulkRemoveTags')}</option>
+              <option value="set-owner">{t('ipam.bulkOwner')}</option>
+              <option value="set-purpose">{t('ipam.bulkPurpose')}</option>
+              <option value="set-kind">{t('ipam.bulkKind')}</option>
+            </select>
+            <input className="cv-input cv-ipam-bulk-value" value={bulkValue}
+              aria-label={t('ipam.bulkValue')} placeholder={t('ipam.bulkValue')}
+              onChange={(e) => setBulkValue(e.target.value)} />
+            <button type="button" className="cv-btn cv-btn-small"
+              disabled={bulkPlan.changes.length === 0}
+              onClick={() => {
+                const n = store.applyIpamBulk(bulkPlan.changes, t(`ipam.bulkWhat.${bulkKind}` as 'ipam.bulkWhat.add-tags'));
+                setBulkValue('');
+                setProblem(n ? null : null);
+              }}>
+              {t('ipam.bulkApply', { count: bulkPlan.changes.length })}
+            </button>
+            <span className="cv-help">{describeBulk(bulkPlan)}</span>
+          </span>
+        )}
       </div>
 
       {adding && (

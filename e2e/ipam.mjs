@@ -461,6 +461,43 @@ check("a leading minus excludes the tagged one",
 found = await rowsMatching("source:typed tag:pci");
 check("a field term and a tag term combine", found.length === 1, found.join(" | "));
 
+// ------------------------------------------------- LT-298 bulk actions
+// The bar only appears once a filter is narrowing the list: "do this to all
+// of them" is only a sensible offer when "them" is a chosen set.
+await page.locator(".cv-ipam-filter").fill("");
+await page.waitForTimeout(250);
+check("no bulk bar until something is filtered", (await page.locator(".cv-ipam-bulk").count()) === 0);
+
+await page.locator(".cv-ipam-filter").fill("source:typed");
+await page.waitForTimeout(300);
+check("a filter offers to act on what it found", (await page.locator(".cv-ipam-bulk").count()) === 1);
+
+const typedBefore = (await page.locator(".cv-ipam-addresses tbody tr").allInnerTexts())
+  .filter((x) => /\d+\.\d+\.\d+\.\d+/.test(x)).length;
+await page.locator(".cv-ipam-bulk select").selectOption("add-tags");
+await page.locator(".cv-ipam-bulk-value").fill("audited");
+await page.waitForTimeout(250);
+const applyBtn = page.locator(".cv-ipam-bulk button").first();
+check("the button says how many it will change", /Apply to \d+/.test(await applyBtn.innerText()),
+  await applyBtn.innerText());
+await applyBtn.click();
+await page.waitForTimeout(400);
+
+const audited = await rowsMatching("tag:audited");
+check("one decision tagged every match", audited.length === typedBefore && typedBefore > 1,
+  `${audited.length} tagged of ${typedBefore} matched`);
+
+// A bulk edit is one decision, so it undoes as one — the whole reason
+// applyIpamBulk exists rather than a loop over updateIpamEntry.
+await page.locator(".cv-ipam-filter").fill("");
+await page.waitForTimeout(200);
+// Through the store rather than Ctrl+Z: the claim under test is that the whole
+// bulk edit is a single commit, not that the keyboard shortcut is wired up.
+await page.evaluate(() => window.__cvStore.getState().undo());
+await page.waitForTimeout(450);
+const afterUndo = await rowsMatching("tag:audited");
+check("and one undo puts all of them back", afterUndo.length === 0, `${afterUndo.length} still tagged`);
+
 await page.locator(".cv-ipam-filter").fill("");
 await page.waitForTimeout(250);
 
