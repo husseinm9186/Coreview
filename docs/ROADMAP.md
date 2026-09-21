@@ -123,6 +123,44 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-367 — **bug** Most of a real routing table is silently dropped — 2026-09-20
+**Source:** a deliberate scale test, 2026-09-20 — "hundreds of routes to
+benchmark coreview". 250 static routes were redistributed into OSPF so a router
+would hold a table the size of a real one. It held **267 routes**.
+**`parse_routes` read 17 of them.**
+**IOS writes a classful block without repeating the mask.** Where several
+subnets of one classful network share a mask, the mask goes on a header line
+and every row underneath carries a bare address:
+
+          172.20.0.0/24 is subnetted, 250 subnets
+    O E2     172.20.0.0 [110/20] via 172.16.13.2, 00:00:52, Ethernet0/2
+                        [110/20] via 172.16.12.2, 00:00:52, Ethernet0/1
+
+`routes.rs:235` requires a `/` in the prefix — `split_once('/')` and `continue`
+on failure — and the `subnetted,` header is skipped at `:218` **without
+remembering the mask it carries**. So every row in such a block is dropped, and
+the larger and more realistic the table, the more is lost.
+**This is not an exotic shape.** It is what IOS prints for any classful network
+with more than one same-masked subnet, which is most enterprise tables. The
+fixtures in this repository are all small and all "variably subnetted", where
+each row does carry its own mask — which is exactly why 815 tests never saw it.
+**What it costs.** Everything downstream reads this: the path engine traces
+through routes it was given, so a destination inside a dropped block reports
+`insufficient` — a confident "I cannot tell you" about a route the device
+plainly holds. That is worse than the honest gap D-050 is written to protect.
+**Acceptance:** the mask from a `is subnetted` header applies to the bare rows
+beneath it; a `variably subnetted` block still takes each row's own mask; a
+fixture of the real shape above, failing before the fix; and the lab's own
+267-route table parses to 267.
+**Fixed, and measured on the router that found it.** The test failed first,
+returning two prefixes where five were written. The parser now remembers the
+mask a `is subnetted` header carries and gives it to the bare rows beneath,
+and clears it on a `variably subnetted` header so nothing leaks between blocks.
+**The same crawl of the same router went from 17 routes to 280** — and the
+other three routers in the lab from the same handful to 278, 279 and 281.
+**The SSH layer was never at fault**, which was worth checking before blaming
+it: the full table always arrived, and the parser discarded seven eighths of it.
+
 ### LT-365 — **bug** An IPv6 route to the router's own address is filed as `other` — 2026-09-20
 **Source:** the lab, on an IOS 15.7 router carrying OSPFv3 over an MPLS core.
 Every loopback row in `show ipv6 route` came back with protocol `other`:

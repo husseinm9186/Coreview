@@ -167,6 +167,9 @@ pub fn parse_routes(output: &str) -> Vec<Route> {
         return parse_junos_routes(output);
     }
     let mut routes: Vec<Route> = Vec::new();
+    // The mask from the `is subnetted` header above the current block, where
+    // there is one (LT-367).
+    let mut classful_bits: Option<u8> = None;
     let mut in_codes = false;
     for raw in output.lines() {
         let line = raw.trim_end();
@@ -215,7 +218,23 @@ pub fn parse_routes(output: &str) -> Vec<Route> {
 
         // "192.0.2.0/24 is variably subnetted, 2 subnets, 2 masks" and the
         // classful "10.0.0.0/8 is subnetted, 3 subnets": headers, not routes.
+        //
+        // LT-367: the classful one is not only a header, it is *where the mask
+        // lives*. Under `is subnetted` every row is written bare —
+        // `O E2  172.20.1.0 [110/20] via …` — and the length belongs to this
+        // line. Remembering it is the difference between reading a real table
+        // and reading a seventh of one. `variably subnetted` is the opposite:
+        // each row carries its own mask, so nothing is inherited and the
+        // remembered value is cleared rather than left to leak into it.
         if words.contains(&"subnetted,") {
+            classful_bits = if words.contains(&"variably") {
+                None
+            } else {
+                words
+                    .first()
+                    .and_then(|w| w.split_once('/'))
+                    .and_then(|(_, len)| len.parse::<u8>().ok())
+            };
             continue;
         }
 
@@ -233,9 +252,19 @@ pub fn parse_routes(output: &str) -> Vec<Route> {
             }
         }
         let Some(prefix_word) = words.get(i) else { continue };
-        let Some((network, length)) = prefix_word.split_once('/') else { continue };
+        // A bare address takes the mask from the `is subnetted` header above
+        // it (LT-367); anything else carries its own.
+        let (network, bits) = match prefix_word.split_once('/') {
+            Some((network, length)) => {
+                let Ok(bits) = length.parse::<u8>() else { continue };
+                (network, bits)
+            }
+            None => match classful_bits {
+                Some(bits) => (*prefix_word, bits),
+                None => continue,
+            },
+        };
         let Ok(addr) = network.parse::<IpAddr>() else { continue };
-        let Ok(bits) = length.parse::<u8>() else { continue };
         i += 1;
         let mut route = Route {
             family: if addr.is_ipv4() { 4 } else { 6 },
@@ -637,6 +666,42 @@ L   FF00::/8 [0/0]
         assert_eq!(routes[2].prefix, "192.168.77.7/32");
         assert_eq!(routes[2].protocol, "local");
         assert_eq!(connected_prefixes(&routes), vec!["192.168.77.0/24"]);
+    }
+
+    /// LT-367, from a 267-route table in the lab of which this parser read 17.
+    /// Where several subnets of one classful network share a mask, IOS puts
+    /// the mask on a header line and leaves every row beneath it bare.
+    #[test]
+    fn a_classful_subnetted_block_keeps_its_mask() {
+        let out = "\
+Gateway of last resort is not set
+
+      172.16.0.0/16 is variably subnetted, 2 subnets, 2 masks
+C        172.16.1.0/24 is directly connected, Ethernet0/0
+O        172.16.255.45/32 [110/31] via 172.16.13.2, 00:00:52, Ethernet0/2
+      172.20.0.0/24 is subnetted, 3 subnets
+O E2     172.20.0.0 [110/20] via 172.16.13.2, 00:00:52, Ethernet0/2
+                    [110/20] via 172.16.12.2, 00:00:52, Ethernet0/1
+O E2     172.20.1.0 [110/20] via 172.16.13.2, 00:00:52, Ethernet0/2
+O E2     172.20.2.0 [110/20] via 172.16.13.2, 00:00:52, Ethernet0/2
+";
+        let r = parse_routes(out);
+        let prefixes: Vec<&str> = r.iter().map(|x| x.prefix.as_str()).collect();
+        assert_eq!(
+            prefixes,
+            vec![
+                "172.16.1.0/24",
+                "172.16.255.45/32",
+                "172.20.0.0/24",
+                "172.20.1.0/24",
+                "172.20.2.0/24"
+            ],
+            "{prefixes:?}"
+        );
+        // The mask came from the header, and the row's own path is still read.
+        let first = r.iter().find(|x| x.prefix == "172.20.0.0/24").expect("the first bare row");
+        assert_eq!(first.protocol, "ospf");
+        assert_eq!(first.next_hops, vec!["172.16.13.2", "172.16.12.2"]);
     }
 
     /// LT-365, from the lab on 2026-09-20: an IOS IPv6 table where the
