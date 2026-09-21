@@ -915,3 +915,39 @@ limit — dialled anyway, because you named it; its neighbours are not followed"
 **What would change this.** If a deployment ever needs addresses that must not
 be contacted whatever anyone types, that is `exclude_subnets`, which is applied
 after everything else and is the right place for a prohibition.
+
+### D-054 — A device may be answered when it is waiting, never when it is asking — 2026-09-21
+**Asked for:** "maybe we make it a rule in our app to check for interactive and
+auto respond to this type so we don't run into this issue again with other
+devices and other vendors" — after an Aruba 2930M held its session open on
+`Press any key to continue` and a crawl sat there until it timed out (LT-375).
+
+**He was identifying real fragmentation.** Four handlers existed in three
+places, each added when a vendor forced it:
+- `--More--`, answered with a space in the SSH read loop;
+- `Press any key to continue`, which needed a second check beside it;
+- a FIPS-CC FortiGate's `(Press 'a' to accept)`, handled in the crawl's FortiOS
+  branch after `show version`;
+- FortiOS's own `Do you want to continue? (y/n)` pager, in a third place.
+
+Every new platform added another, and the Aruba was the one that showed what
+that costs: the mechanism already existed twice and still did not cover it.
+
+**The rule.** One table, `cli::continuation_reply`, maps what a device is
+waiting on to the keystroke that moves it along. The SSH read loop consults it
+and nothing else.
+
+**The boundary, which is the whole of the safety.** Only a **continuation** is
+answered — something that advances output and changes nothing. A prompt that
+**decides** something is never answered: `Erase startup-config? [confirm]`,
+`Are you sure? [y/n]`, `Overwrite?`, `Reload?`, a password asked mid-session.
+A test names those and asserts the table returns nothing for each.
+
+**No general patterns.** Every entry is an exact phrase a named platform
+prints. A rule that matched `(y/n)` generally would answer "yes" to erasing a
+configuration, which is the precise disaster this decision exists to prevent —
+and the FortiOS pager, whose wording reads exactly like a decision and is not
+one, is why the distinction has to be made by phrase and not by shape.
+
+**What adding a vendor looks like now:** one entry and one test, in one file,
+rather than a fifth handler somewhere new.

@@ -123,6 +123,33 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-375 — **bug** A switch that says "Press any key to continue" is never reached — 2026-09-21
+**Source:** an Aruba 2930M-48G-PoE+ on WC.16.10.0009, 2026-09-21. The crawl sat
+on `Authenticating` and eventually timed out; PuTTY connected to the same
+switch without trouble, SecureCRT did not.
+**Authentication was never the problem.** The device authenticates, prints its
+banner — the HPE copyright and restricted-rights legend — and then waits on:
+
+    Press any key to continue
+
+Only after a keypress does it draw a CLI prompt. `read_raw_until_prompt` waits
+for a prompt that, until something presses a key, will never be drawn, so the
+session hangs and the failure is reported against the login.
+**Why PuTTY worked and two other clients did not**: a person at a terminal
+presses a key without noticing they have done anything. A program has to be
+told.
+**The shape of the fix already existed.** The same loop already answers
+`--More--` by sending a space and carrying on; a banner waiting on a keypress
+is the same situation one step earlier, and is answered the same way.
+**`is_paging` was not widened to cover it**, deliberately. Paging means "there
+is more of this output"; a banner means "I have not started yet". They are
+answered with the same keystroke but they are different conditions, and a
+capture that confused them would strip the wrong thing (`strip_paging` removes
+paging markers from output — a banner is not a marker and must survive intact
+so that anyone reading a saved session sees what the device said).
+**Fixed:** `wants_keypress` recognises the wait, the read loop answers it with
+a newline and keeps reading, and the banner stays in the transcript.
+
 ### LT-374 — **bug** A seed outside the subnet limit was dropped, so the crawl reached nothing — 2026-09-21
 **Source:** a scan that reached nothing, and a dry run that diagnosed itself
 perfectly: `10.254.254.247 — outside the subnet limit, not dialled`, with the

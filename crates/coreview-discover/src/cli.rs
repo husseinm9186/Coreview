@@ -83,6 +83,75 @@ pub fn is_paging(buffer: &str) -> bool {
     last.contains("--More--") || last.contains("---- More ----") || last.ends_with("--more--")
 }
 
+/// Whether the device is holding a banner open until somebody presses a key
+/// (LT-375).
+///
+/// An Aruba 2930M authenticates, prints its copyright and restricted-rights
+/// legend, and then waits on `Press any key to continue`. No prompt is drawn
+/// until a key arrives, so a client that waits politely for a prompt waits for
+/// ever — which is why PuTTY reached the switch and two stricter clients did
+/// not: a person presses a key without noticing they have done anything.
+///
+/// **Deliberately separate from `is_paging`.** Both are answered with a
+/// keystroke, but paging means "there is more of this output" and a banner
+/// means "I have not started yet". `strip_paging` exists to take paging
+/// markers *out* of a capture; a banner is not a marker and must survive
+/// intact, so that a saved session shows what the device actually said.
+pub fn wants_keypress(buffer: &str) -> bool {
+    let tail = buffer.trim_end();
+    let last = tail.lines().last().unwrap_or("").trim().to_ascii_lowercase();
+    // Anchored to the end of the output: the same words inside a configuration
+    // or a log line are text, not a question being asked right now.
+    last.starts_with("press any key")
+        || last.ends_with("press any key to continue")
+        || last.starts_with("press enter to continue")
+        || last.starts_with("-- press any key --")
+}
+
+/// What to send when a device is waiting mid-session, or `None` to keep
+/// reading (LT-375, D-054).
+///
+/// **One rule, one table, because the alternative was four of them.** A
+/// `--More--` was answered in the read loop; an Aruba banner needed a second
+/// check beside it; a FIPS-CC FortiGate's `(Press 'a' to accept)` was handled
+/// in the crawl's FortiOS branch; FortiOS's own pager in a third place. Every
+/// new vendor added another. They are all the same situation — the device is
+/// holding the session until it is acknowledged — and they belong together.
+///
+/// **What may be answered, and what may not.** Everything here is a
+/// *continuation*: it only advances output and changes nothing. A prompt that
+/// decides something — `Are you sure? [y/n]`, `Erase startup-config?`,
+/// `Overwrite?`, a password asked mid-session — is **never** answered here,
+/// and nothing in this table is a general pattern that could match one by
+/// accident. Each entry is an exact phrase a named platform prints.
+///
+/// The reply is the whole keystroke including any newline, because some
+/// devices want a bare character and others a line.
+pub fn continuation_reply(buffer: &str) -> Option<&'static [u8]> {
+    // A pager: "there is more of this output".
+    if is_paging(buffer) {
+        return Some(b" ");
+    }
+    // A banner: "I have not started yet".
+    if wants_keypress(buffer) {
+        return Some(b"\n");
+    }
+    let tail = buffer.trim_end();
+    let last = tail.lines().last().unwrap_or("").trim();
+    // A FIPS-CC FortiGate prints its banner and waits for a literal `a`.
+    // Until it gets one, everything sent is read as the answer to the banner.
+    if tail.contains("(Press 'a' to accept)") {
+        return Some(b"a\n");
+    }
+    // FortiOS's own pager. The wording reads like a decision and is not one —
+    // it is what that platform prints between pages — so it is matched as the
+    // exact phrase and never as a general `(y/n)`.
+    if last.ends_with("Do you want to continue? (y/n)") {
+        return Some(b"y\n");
+    }
+    None
+}
+
 /// Removes the paging markers a device left in captured output.
 ///
 /// When paging happens anyway, the device writes `--More--`, then erases it
@@ -283,6 +352,84 @@ mod tests {
         assert!(is_paging("line one\n---- More ----"));
         assert!(!is_paging("line one\nSW1#"));
         assert!(!is_paging(""));
+    }
+
+    /// LT-375, from an Aruba 2930M on WC.16.10.0009: the switch authenticates,
+    /// prints its banner, and will not draw a prompt until a key arrives.
+    #[test]
+    fn a_banner_waiting_on_a_keypress_is_recognised() {
+        let banner = "\
+Aruba JL322A 2930M-48G-PoE+ Switch
+Software revision WC.16.10.0009
+
+                        RESTRICTED RIGHTS LEGEND
+ Confidential computer software.
+
+Press any key to continue";
+        assert!(wants_keypress(banner));
+        assert!(wants_keypress("Press enter to continue"));
+    }
+
+    /// The words are only a question when the device is asking them *now*. In
+    /// the middle of a capture they are text, and answering them would send a
+    /// stray keystroke into somebody's configuration.
+    #[test]
+    fn the_same_words_earlier_in_the_output_are_not_a_question() {
+        assert!(!wants_keypress("Press any key to continue\nSW1#"));
+        assert!(!wants_keypress("banner motd \"Press any key to continue\"\nSW1#"));
+        assert!(!wants_keypress(""));
+        assert!(!wants_keypress("SW1#"));
+    }
+
+    /// Paging and a banner are answered with the same keystroke and are not
+    /// the same condition: one says there is more output, the other that there
+    /// has been none yet.
+    #[test]
+    fn paging_and_a_banner_are_told_apart() {
+        assert!(is_paging("line one\n --More-- "));
+        assert!(!wants_keypress("line one\n --More-- "));
+        assert!(wants_keypress("legend\nPress any key to continue"));
+        assert!(!is_paging("legend\nPress any key to continue"));
+    }
+
+    /// D-054: one table, and it answers only continuations.
+    #[test]
+    fn every_way_a_device_holds_the_session_is_answered_the_same_way() {
+        assert_eq!(continuation_reply("output\n --More-- "), Some(&b" "[..]));
+        assert_eq!(continuation_reply("legend\nPress any key to continue"), Some(&b"\n"[..]));
+        // A FIPS-CC FortiGate waits for a literal `a`, not any key.
+        assert_eq!(
+            continuation_reply("Welcome\n(Press 'a' to accept)"),
+            Some(&b"a\n"[..])
+        );
+        assert_eq!(
+            continuation_reply("page one\nDo you want to continue? (y/n)"),
+            Some(&b"y\n"[..])
+        );
+    }
+
+    /// The boundary that makes the rule safe: a question with consequences is
+    /// never answered, however much it looks like the ones above. Answering
+    /// these would erase a configuration or overwrite a file.
+    #[test]
+    fn a_question_with_consequences_is_never_answered() {
+        for dangerous in [
+            "Erase startup-config? [confirm]",
+            "Are you sure you want to continue? [y/n]",
+            "Overwrite file [startup-config]? (y/n)",
+            "Reload the system? [yes/no]",
+            "Destination filename [running-config]?",
+            "Password:",
+            "Do you want to erase the configuration? (y/n)",
+        ] {
+            assert_eq!(continuation_reply(dangerous), None, "{dangerous} must not be answered");
+        }
+    }
+
+    #[test]
+    fn a_settled_prompt_is_not_waiting_for_anything() {
+        assert_eq!(continuation_reply("SW1#"), None);
+        assert_eq!(continuation_reply(""), None);
     }
 
     #[test]

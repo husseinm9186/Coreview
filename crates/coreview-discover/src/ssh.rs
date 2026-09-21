@@ -29,7 +29,7 @@ use russh::{ChannelMsg, Disconnect};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
-use crate::cli::{extract_output, find_prompt, is_paging, Prompt};
+use crate::cli::{extract_output, find_prompt, Prompt};
 use crate::hostkeys::{changed_key_message, HostKeyStore, HostKeyVerdict};
 
 /// A password, kept out of anything that prints.
@@ -428,8 +428,13 @@ impl Device {
                 Ok(Some(msg)) => match msg {
                     ChannelMsg::Data { ref data } => {
                         buffer.push_str(&String::from_utf8_lossy(data));
-                        if is_paging(&buffer) {
-                            let _ = self.channel.data(&b" "[..]).await;
+                        // LT-375 / D-054: one table for everything a device
+                        // holds the session open with — a pager, a banner
+                        // waiting on a keypress, a FIPS box waiting for `a`.
+                        // Only continuations are answered; a prompt that
+                        // decides something never is.
+                        if let Some(reply) = crate::cli::continuation_reply(&buffer) {
+                            let _ = self.channel.data(reply).await;
                             continue;
                         }
                         if find_prompt(&buffer).is_some() {
