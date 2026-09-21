@@ -127,6 +127,10 @@ export interface IpamEntry {
   purpose?: string;
   /** LT-297: which routing table. Absent means the default one. */
   vrfId?: string;
+  /** LT-298: free labels an operator puts on an address — "core", "pci",
+   *  "to-decommission". Lower-cased on the way in so `PCI` and `pci` are one
+   *  tag; a register where they are two is a register nobody trusts. */
+  tags?: string[];
 }
 
 /**
@@ -226,6 +230,8 @@ export interface IpamAddress {
   inRange?: { id: string; kind: RangeKind; name?: string };
   /** Which routing table this is in (LT-297). */
   vrfId: string;
+  /** LT-298: the tags on the entry behind this address, where there is one. */
+  tags?: string[];
 }
 
 export type SubnetOrigin = 'declared' | 'connected route' | 'from addresses';
@@ -503,6 +509,7 @@ export function buildIpam(nodes: readonly TopoNode[], state: IpamState | undefin
       mac: text(e.mac),
       owner: text(e.owner),
       purpose: text(e.purpose),
+      ...(e.tags?.length ? { tags: e.tags } : {}),
     });
   }
 

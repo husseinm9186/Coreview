@@ -427,6 +427,43 @@ check("the filter finds an address by its owner",
 await page.locator(".cv-ipam-filter").fill("");
 await page.waitForTimeout(250);
 
+// --------------------------------------------------------- LT-298 tags
+// A tag is worth nothing unless it can be set and then found, so both halves
+// are driven here rather than only the filter grammar being unit-tested.
+await page.locator(".cv-ipam-addresses tr", { hasText: "192.0.2.200" }).first()
+  .locator("button", { hasText: "Edit" }).first().click();
+await page.waitForTimeout(300);
+await field("Tags").fill("PCI, Door");
+await page.locator(".cv-ipam-add button", { hasText: /^Save$/ }).first().click();
+await page.waitForTimeout(400);
+
+const rowsMatching = async (q) => {
+  await page.locator(".cv-ipam-filter").fill(q);
+  await page.waitForTimeout(300);
+  return (await page.locator(".cv-ipam-addresses tbody tr").allInnerTexts())
+    .filter((x) => /\d+\.\d+\.\d+\.\d+/.test(x));
+};
+
+let found = await rowsMatching("tag:pci");
+check("a tag can be set and then found, whatever case it was typed in",
+  found.length === 1 && found[0].includes("192.0.2.200"), found.join(" | "));
+
+found = await rowsMatching("tag:pci tag:door");
+check("two tags both have to match", found.length === 1, found.join(" | "));
+
+found = await rowsMatching("tag:pc");
+check("a tag matches exactly, so a partial word finds nothing", found.length === 0, found.join(" | "));
+
+found = await rowsMatching("-tag:pci");
+check("a leading minus excludes the tagged one",
+  found.length > 0 && !found.some((x) => x.includes("192.0.2.200")), found.join(" | "));
+
+found = await rowsMatching("source:typed tag:pci");
+check("a field term and a tag term combine", found.length === 1, found.join(" | "));
+
+await page.locator(".cv-ipam-filter").fill("");
+await page.waitForTimeout(250);
+
 // -------------------------------------------------------------- the CSV export
 
 const csv = await page.evaluate(async () => {

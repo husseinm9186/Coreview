@@ -34,6 +34,7 @@ import {
   type RangeKind,
 } from '../lib/ipam';
 import { allNodes } from '../lib/pages';
+import { matchesFilter, parseFilter } from '../lib/ipamFilter';
 import { useStore } from '../state/store';
 
 /** Keys built from a value, so the catalogue check cannot see them. Both
@@ -62,6 +63,8 @@ interface AddressForm {
   owner: string;
   purpose: string;
   note: string;
+  /** LT-298: free labels, comma separated as typed. */
+  tags: string;
 }
 /** A device's own address, which belongs to the diagram (LT-295). */
 interface DeviceForm {
@@ -82,16 +85,18 @@ interface RangeForm {
 const blankSubnet: SubnetForm = { cidr: '', name: '', vlan: '', note: '' };
 const blankAddress = (address = ''): AddressForm => ({
   address, label: '', kind: 'reserved', assignment: 'static',
-  hostname: '', fqdn: '', mac: '', owner: '', purpose: '', note: '',
+  hostname: '', fqdn: '', mac: '', owner: '', purpose: '', note: '', tags: '',
 });
 
-/** What a row has to contain to survive the filter box. */
-const matches = (a: IpamAddress, needle: string) => {
-  if (!needle.trim()) return true;
-  const q = needle.trim().toLowerCase();
-  return [a.address, a.label, a.hostname, a.fqdn, a.mac, a.owner, a.purpose, a.interfaceLabel, a.note]
-    .some((v) => v?.toLowerCase().includes(q));
-};
+/**
+ * What a row has to contain to survive the filter box.
+ *
+ * LT-298: a bare word still searches everything a person might remember, as it
+ * always did. On top of that the box now understands `tag:pci`, `vlan:14`,
+ * `source:crawled` and the rest, and a leading `-` excludes — which is what
+ * makes a register of two hundred addresses answerable rather than scrollable.
+ */
+const matches = (a: IpamAddress, needle: string) => matchesFilter(a, parseFilter(needle));
 
 export function IpamPanel() {
   const doc = useStore((s) => s.doc);
@@ -161,7 +166,13 @@ export function IpamPanel() {
 
   const saveEntry = (id?: string) => {
     if (!entryForm) return;
-    const said = id ? store.updateIpamEntry(id, entryForm) : store.addIpamEntry(entryForm);
+    // LT-298: tags are typed as text and stored as a list, lower-cased and
+    // deduplicated — a register where `PCI` and `pci` are two tags is one
+    // nobody trusts. Clearing the box removes them rather than storing [''].
+    const { tags: typed, ...rest } = entryForm;
+    const tags = [...new Set(typed.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean))];
+    const patch = { ...rest, ...(tags.length ? { tags } : { tags: undefined }) };
+    const said = id ? store.updateIpamEntry(id, patch) : store.addIpamEntry(patch);
     setProblem(said);
     if (!said) closeForms();
   };
@@ -218,6 +229,7 @@ export function IpamPanel() {
         address: a.address, label: a.label, kind: a.kind ?? 'reserved',
         assignment: a.assignment ?? 'static', hostname: a.hostname ?? '', fqdn: a.fqdn ?? '',
         mac: a.mac ?? '', owner: a.owner ?? '', purpose: a.purpose ?? '', note: a.note ?? '',
+        tags: (a.tags ?? []).join(', '),
       });
       return;
     }
@@ -417,6 +429,8 @@ function AddressFields({
       <Field label={t('ipam.fqdn')} value={form.fqdn} onEnter={onSave} onChange={(v) => set({ ...form, fqdn: v })} />
       <Field label={t('ipam.mac')} value={form.mac} onEnter={onSave} onChange={(v) => set({ ...form, mac: v })} />
       <Field label={t('ipam.owner')} value={form.owner} onEnter={onSave} onChange={(v) => set({ ...form, owner: v })} />
+      {/* LT-298 */}
+      <Field label={t('ipam.tags')} value={form.tags} onEnter={onSave} onChange={(v) => set({ ...form, tags: v })} />
       <Field label={t('ipam.purpose')} value={form.purpose} onEnter={onSave}
         onChange={(v) => set({ ...form, purpose: v })} />
       <Field label={t('ipam.note')} value={form.note} onEnter={onSave} wide onChange={(v) => set({ ...form, note: v })} />

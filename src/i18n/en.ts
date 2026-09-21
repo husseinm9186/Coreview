@@ -352,7 +352,8 @@ export const en = {
   'ipam.editsDevice': 'This address is on {device}, on the diagram. Editing it here changes the device itself — the same edit the inspector makes, and one undo step.',
   'ipam.crawlWillCorrect': 'A crawl will correct what it reads from the device again.',
   'ipam.filter': 'Filter addresses',
-  'ipam.filterPlaceholder': 'Address, name, hostname, MAC, owner or purpose',
+  'ipam.tags': 'Tags',
+  'ipam.filterPlaceholder': 'Name, address, MAC… or tag:pci, vlan:14, source:crawled, -tag:old',
   'ipam.noMatch': 'Nothing on this subnet matches that filter.',
 
   // The IPAM workbench (LT-297): hierarchy, allocation, split/merge, history.

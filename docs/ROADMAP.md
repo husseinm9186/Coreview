@@ -897,10 +897,32 @@ to be typed in. **Import CSV** in the register's bar now reads one.
 **Checked:** 9 unit tests, including a round trip against what `ipamRows`
 writes, and quoted fields so a note may contain a comma. `e2e/ipamlab` stays
 green.
+**Second part shipped, 2026-09-21: tags, and a filter box that understands
+them.** A register of two hundred addresses is a list nobody reads; filtering
+is what turns it back into an answer, and it is what saved views and bulk
+actions will both be built on, so the grammar was worth getting right once.
+- **Bare words behave exactly as before** — the box already searched address,
+  name, hostname, MAC, owner and the rest, and still does.
+- **`field:value` narrows and a leading `-` excludes**: `tag:pci`, `vlan:14`,
+  `source:crawled`, `-tag:decommissioned`. Every term must match, because that
+  is what a person means by typing two of them. A quoted value may contain a
+  space.
+- **`tag:` and `vlan:` match exactly, the text fields by substring.** If
+  `tag:core` also matched `core-switches` then `-tag:core` would quietly
+  exclude things nobody asked it to, and an exclusion you cannot trust is
+  worse than none.
+- **An unknown field is a word, not an error.** Someone typing `printer:2f`
+  means to search for that text; rejecting the query would be the least useful
+  possible answer.
+- **Tags are lower-cased and deduplicated on the way in.** A register where
+  `PCI` and `pci` are two different tags is one nobody trusts.
+**Checked:** 11 unit tests on the grammar, and 5 in `e2e/ipam` that set a tag
+through the form and then find it — both halves, because a tag that can be
+filtered but not set is half a feature.
 **Still to do in this phase:** sites and tenants; devices and interfaces linked
-to addresses; tags and custom fields; filtering, saved views, the column
-chooser and bulk actions; JSON import and export; the utilisation dashboard
-and its history; split and merge with an explicit review.
+to addresses; custom fields; saved views, the column chooser and bulk actions;
+JSON import and export; the utilisation dashboard and its history; split and
+merge with an explicit review.
 
 ### LT-299 — Discovery ingestion: the register learns what is actually in use
 **Source:** the same specification, Phase 3.
