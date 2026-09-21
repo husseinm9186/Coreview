@@ -498,6 +498,41 @@ await page.waitForTimeout(450);
 const afterUndo = await rowsMatching("tag:audited");
 check("and one undo puts all of them back", afterUndo.length === 0, `${afterUndo.length} still tagged`);
 
+// ------------------------------------------------- LT-298 saved views
+// A view holds only the query, never the rows it matched, so it cannot go
+// stale — that is what is checked here: save, change the world, reopen.
+await page.locator(".cv-ipam-filter").fill("");
+await page.waitForTimeout(250);
+check("no view can be saved when nothing is filtered",
+  (await page.locator("button", { hasText: "Save this view" }).count()) === 0);
+
+await page.locator(".cv-ipam-filter").fill("tag:audited");
+await page.waitForTimeout(300);
+page.once("dialog", (d) => void d.accept("Needs auditing"));
+await page.locator("button", { hasText: "Save this view" }).first().click();
+await page.waitForTimeout(400);
+const views = await page.locator(".cv-ipam-views option").allInnerTexts();
+check("a filter can be kept under a name", views.includes("Needs auditing"), views.join(" | "));
+
+await page.locator(".cv-ipam-filter").fill("");
+await page.waitForTimeout(250);
+await page.locator(".cv-ipam-views").selectOption({ label: "Needs auditing" });
+await page.waitForTimeout(300);
+check("choosing it puts the filter back",
+  (await page.locator(".cv-ipam-filter").inputValue()) === "tag:audited",
+  await page.locator(".cv-ipam-filter").inputValue());
+
+check("the view is stored as the query, not as the rows it matched",
+  await page.evaluate(() => {
+    const v = (window.__cvStore.getState().doc.ipam?.views ?? [])[0];
+    return !!v && v.query === "tag:audited" && !("addresses" in v) && !("entries" in v);
+  }));
+
+await page.locator("button", { hasText: "Forget this view" }).first().click();
+await page.waitForTimeout(350);
+check("and it can be forgotten again",
+  !(await page.locator(".cv-ipam-views option").allInnerTexts()).includes("Needs auditing"));
+
 await page.locator(".cv-ipam-filter").fill("");
 await page.waitForTimeout(250);
 

@@ -940,10 +940,22 @@ filter found.
 apply a tag to every match through the real bar, and then undo the lot in one
 step — the last asserted through the store rather than Ctrl+Z, because the
 claim under test is the commit granularity, not the shortcut.
+**Fourth part shipped, 2026-09-21: saved views.** Once a filter can say
+`source:crawled vlan:14 -tag:audited`, it is a sentence worth writing once
+rather than retyping.
+- **A view holds only the query, never the rows it matched.** It therefore
+  cannot go stale: opening it asks the register again rather than showing an
+  answer from last week. An e2e check asserts the stored object has no
+  addresses in it, because that is the design and not an implementation
+  detail.
+- **Save appears only when there is a filter to save**, and a view can be
+  forgotten from the same bar.
+**Checked:** 5 checks in `e2e/ipam` — save, clear the box, reopen it, confirm
+what was stored, and forget it.
 **Still to do in this phase:** sites and tenants; devices and interfaces linked
-to addresses; custom fields; saved views and the column chooser; JSON import
-and export; the utilisation dashboard and its history; split and merge with an
-explicit review.
+to addresses; custom fields; the column chooser; JSON import and export; the
+utilisation dashboard and its history; split and merge with an explicit
+review.
 
 ### LT-299 — Discovery ingestion: the register learns what is actually in use
 **Source:** the same specification, Phase 3.

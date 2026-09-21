@@ -352,6 +352,11 @@ export const en = {
   'ipam.editsDevice': 'This address is on {device}, on the diagram. Editing it here changes the device itself — the same edit the inspector makes, and one undo step.',
   'ipam.crawlWillCorrect': 'A crawl will correct what it reads from the device again.',
   'ipam.filter': 'Filter addresses',
+  // LT-298: filters worth keeping.
+  'ipam.views': 'Saved views',
+  'ipam.saveView': 'Save this view',
+  'ipam.forgetView': 'Forget this view',
+  'ipam.viewName': 'What should this view be called?',
   // LT-298: one decision applied to everything the filter found.
   'ipam.bulkAction': 'Do this to the matches',
   'ipam.bulkAddTags': 'Add tags',

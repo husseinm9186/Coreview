@@ -498,6 +498,9 @@ interface Store {
   addIpamEntry: (entry: Omit<IpamEntry, 'id'>) => string | null;
   updateIpamEntry: (id: string, patch: Partial<Omit<IpamEntry, 'id'>>) => string | null;
   removeIpamEntry: (id: string) => void;
+  /** LT-298: a filter worth keeping, by name. */
+  saveIpamView: (name: string, query: string) => string | null;
+  removeIpamView: (id: string) => void;
   /** LT-298: one edit applied to many entries, as one undo step. */
   applyIpamBulk: (changes: readonly { entryId: string; patch: Partial<Omit<IpamEntry, 'id'>> }[], what: string) => number;
   /** LT-294: a DHCP pool or an excluded span. */
@@ -1455,6 +1458,47 @@ export const useStore = create<Store>((set, get) => ({
       dirty: true,
     }));
     return null;
+  },
+
+  /**
+   * LT-298: keeps a filter under a name.
+   *
+   * A view holds only the query, never the addresses it matched — so it cannot
+   * go stale, and reopening it asks the register again rather than showing an
+   * answer from last week.
+   */
+  saveIpamView(name, query) {
+    const label = name.trim();
+    if (!label) return 'Give the view a name.';
+    if (!query.trim()) return 'There is no filter to save.';
+    const had = get().doc.ipam?.views ?? [];
+    if (had.some((v) => v.name.toLowerCase() === label.toLowerCase())) {
+      return `There is already a view called ${label}.`;
+    }
+    get().commit('Save a view');
+    set((s) => ({
+      doc: {
+        ...s.doc,
+        ipam: {
+          ...s.doc.ipam,
+          views: [...(s.doc.ipam?.views ?? []), { id: uid(), name: label, query: query.trim() }],
+        },
+      },
+      dirty: true,
+    }));
+    return null;
+  },
+
+  removeIpamView(id) {
+    if (!(get().doc.ipam?.views ?? []).some((v) => v.id === id)) return;
+    get().commit('Remove a view');
+    set((s) => ({
+      doc: {
+        ...s.doc,
+        ipam: { ...s.doc.ipam, views: (s.doc.ipam?.views ?? []).filter((v) => v.id !== id) },
+      },
+      dirty: true,
+    }));
   },
 
   /**

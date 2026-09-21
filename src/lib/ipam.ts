@@ -181,6 +181,20 @@ export interface IpamAuditEntry {
   changes?: { field: string; before?: string; after?: string }[];
 }
 
+/**
+ * A filter worth keeping (LT-298).
+ *
+ * "Everything a crawl found in VLAN 14 that nobody has tagged" is
+ * `source:crawled vlan:14 -tag:audited` — a sentence worth writing once and
+ * not retyping. A view is only the query: it holds no addresses, so it can
+ * never go stale, and it answers freshly every time it is opened.
+ */
+export interface IpamView {
+  id: string;
+  name: string;
+  query: string;
+}
+
 export interface IpamState {
   subnets?: IpamSubnet[];
   entries?: IpamEntry[];
@@ -190,6 +204,8 @@ export interface IpamState {
   containers?: IpamContainer[];
   vrfs?: IpamVrf[];
   audit?: IpamAuditEntry[];
+  /** LT-298: filters worth keeping, by name. */
+  views?: IpamView[];
   /** Pre-LT-289. Read only by the migration. */
   reservations?: IpamReservation[];
 }

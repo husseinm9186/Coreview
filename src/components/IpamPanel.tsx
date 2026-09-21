@@ -289,6 +289,38 @@ export function IpamPanel() {
         </button>
         <input className="cv-input cv-ipam-filter" value={filter} aria-label={t('ipam.filter')}
           placeholder={t('ipam.filterPlaceholder')} onChange={(e) => setFilter(e.target.value)} />
+        {/* LT-298: a filter worth keeping. A view holds only the query, so it
+            cannot go stale — reopening it asks the register again. */}
+        <select className="cv-input cv-ipam-views" aria-label={t('ipam.views')}
+          value=""
+          onChange={(e) => {
+            const v = (doc.ipam?.views ?? []).find((x) => x.id === e.target.value);
+            if (v) setFilter(v.query);
+          }}>
+          <option value="">{t('ipam.views')}</option>
+          {(doc.ipam?.views ?? []).map((v) => (
+            <option key={v.id} value={v.id}>{v.name}</option>
+          ))}
+        </select>
+        {filter.trim() !== '' && (
+          <button type="button" className="cv-btn cv-btn-small"
+            onClick={() => {
+              const name = window.prompt(t('ipam.viewName'), filter.trim().slice(0, 40));
+              if (name === null) return;
+              setProblem(store.saveIpamView(name, filter));
+            }}>
+            {t('ipam.saveView')}
+          </button>
+        )}
+        {(doc.ipam?.views ?? []).some((v) => v.query === filter.trim()) && (
+          <button type="button" className="cv-btn cv-btn-small"
+            onClick={() => {
+              const v = (doc.ipam?.views ?? []).find((x) => x.query === filter.trim());
+              if (v) store.removeIpamView(v.id);
+            }}>
+            {t('ipam.forgetView')}
+          </button>
+        )}
         {/* LT-298 */}
         {filter.trim() !== '' && (
           <span className="cv-ipam-bulk">
