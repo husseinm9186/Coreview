@@ -20,11 +20,12 @@ import { useState } from 'react';
 import { t } from '../i18n';
 import { IpamDashboard } from './IpamDashboard';
 import { IpamPanel } from './IpamPanel';
+import { IpamSetup } from './IpamSetup';
 import { IpamWorkbench, type WorkbenchView } from './IpamWorkbench';
 import { useStore } from '../state/store';
 
 /** One bar of five, not a bar of two with another inside it. */
-type View = 'addresses' | 'dashboard' | WorkbenchView;
+type View = 'addresses' | 'dashboard' | 'setup' | WorkbenchView;
 
 const VIEWS: { id: View; label: () => string }[] = [
   { id: 'addresses', label: () => t('register.addresses') },
@@ -33,6 +34,8 @@ const VIEWS: { id: View; label: () => string }[] = [
   { id: 'allocate', label: () => t('lab.allocate') },
   { id: 'split', label: () => t('lab.splitMerge') },
   { id: 'history', label: () => t('lab.history') },
+  // LT-298
+  { id: 'setup', label: () => t('register.setup') },
 ];
 
 export function RegisterScreen() {
@@ -66,6 +69,8 @@ export function RegisterScreen() {
           <IpamPanel />
         ) : view === 'dashboard' ? (
           <IpamDashboard />
+        ) : view === 'setup' ? (
+          <IpamSetup />
         ) : (
           <IpamWorkbench view={view} />
         )}

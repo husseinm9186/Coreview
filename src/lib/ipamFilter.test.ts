@@ -82,3 +82,52 @@ describe('filtering the register (LT-298)', () => {
     expect(keep(addr({}), '-tag:anything')).toBe(true);
   });
 });
+
+describe('where, whose, which device, and the operator\'s own fields (LT-298)', () => {
+  const fields = [
+    { id: 'f1', name: 'Circuit ID', type: 'text' as const, on: ['address' as const] },
+    { id: 'f2', name: 'Tier', type: 'choice' as const, choices: ['gold', 'silver'], on: ['address' as const] },
+  ];
+  const hq = addr({
+    address: '192.0.2.5',
+    site: { name: 'HQ', from: 'own' },
+    tenant: { name: 'Finance', from: 'subnet' },
+    deviceLabel: 'LAB-SW-A',
+    custom: { f1: 'CKT-100-A', f2: 'gold' },
+  });
+  const branch = addr({ address: '192.0.2.6', site: { name: 'HQ Annex', from: 'subnet' }, custom: { f2: 'silver' } });
+  const find = (q: string, a: IpamAddress) => matchesFilter(a, parseFilter(q, fields));
+
+  it('narrows by site and tenant exactly, so an exclusion can be trusted', () => {
+    expect(find('site:hq', hq)).toBe(true);
+    // "HQ Annex" is not HQ. If it were, `-site:hq` would quietly hide it.
+    expect(find('site:hq', branch)).toBe(false);
+    expect(find('site:"hq annex"', branch)).toBe(true);
+    expect(find('tenant:finance', hq)).toBe(true);
+    expect(find('-tenant:finance', branch)).toBe(true);
+  });
+
+  it('narrows by device by any part of its name', () => {
+    expect(find('device:sw-a', hq)).toBe(true);
+    expect(find('device:sw-a', branch)).toBe(false);
+  });
+
+  it('knows each custom field by its own name', () => {
+    expect(find('circuit-id:ckt-100', hq)).toBe(true);
+    // A choice is exact, like a tag.
+    expect(find('tier:gold', hq)).toBe(true);
+    expect(find('tier:gol', hq)).toBe(false);
+    expect(find('-tier:gold', branch)).toBe(true);
+  });
+
+  it('a bare word finds the site, tenant, device and field values too', () => {
+    expect(find('finance', hq)).toBe(true);
+    expect(find('ckt-100', hq)).toBe(true);
+    expect(find('lab-sw-a', hq)).toBe(true);
+  });
+
+  it('without the field definitions, a custom name is just a word', () => {
+    // The old rule, unchanged: an unknown field is text, not an error.
+    expect(matchesFilter(hq, parseFilter('tier:gold'))).toBe(false);
+  });
+});

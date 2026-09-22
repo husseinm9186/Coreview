@@ -16,6 +16,10 @@ import {
   type IpamContainer, type IpamEntry, type IpamRange, type IpamState, type IpamVrf,
 } from '../lib/ipam';
 import { diffOf, noteChange } from '../lib/ipamAudit';
+import {
+  agreedBy, auditView, carriedBy, customFieldProblem, nameProblem, withoutField, withoutReference,
+  type CustomFieldDraft,
+} from '../lib/ipamMeta';
 import { tidyLayout as evenOutSpacing } from '../lib/tidyLayout';
 import { hierarchicalLayout } from '../lib/hierarchyLayout';
 import { routeLinks as chooseLinkSides } from '../lib/routeLinks';
@@ -182,6 +186,10 @@ export interface AppSettings {
    *  the document: two people reading the same diagram may want different
    *  clocks. */
   timeFormat: TimeFormat;
+  /** LT-298: the address table's columns this machine has hidden. Stored as
+   *  what is hidden rather than what is shown, so a custom field added later
+   *  appears without anybody having to go and find it. */
+  registerHiddenColumns: string[];
   highContrast: boolean;
   /** The overview box, bottom-right. A view preference for this machine, like
    *  which panels are open — not part of any project. */
@@ -490,11 +498,17 @@ interface Store {
    *  `addIpamSubnet` with the CIDR it was derived as. */
   addIpamSubnet: (
     cidr: string,
-    patch?: { name?: string; vlan?: number; note?: string; vrfId?: string; containerId?: string },
+    patch?: {
+      name?: string; vlan?: number; note?: string; vrfId?: string; containerId?: string;
+      siteId?: string; tenantId?: string; custom?: Record<string, string>;
+    },
   ) => string | null;
   updateIpamSubnet: (
     id: string,
-    patch: { cidr?: string; name?: string; vlan?: number; note?: string; vrfId?: string; containerId?: string },
+    patch: {
+      cidr?: string; name?: string; vlan?: number; note?: string; vrfId?: string; containerId?: string;
+      siteId?: string; tenantId?: string; custom?: Record<string, string>;
+    },
   ) => string | null;
   removeIpamSubnet: (id: string) => void;
   addIpamEntry: (entry: Omit<IpamEntry, 'id'>) => string | null;
@@ -516,6 +530,15 @@ interface Store {
   addIpamVrf: (vrf: Omit<IpamVrf, 'id'>) => string | null;
   updateIpamVrf: (id: string, patch: Partial<Omit<IpamVrf, 'id'>>) => string | null;
   removeIpamVrf: (id: string) => string | null;
+  /** LT-298: a site or a tenant — the same shape, kept as two lists. `id`
+   *  null adds one. Returns why it could not be saved, or null. */
+  saveIpamPlace: (kind: 'site' | 'tenant', id: string | null, place: { name: string; note?: string }) => string | null;
+  /** Removes it, and every subnet and address naming it is left with none. */
+  removeIpamPlace: (kind: 'site' | 'tenant', id: string) => void;
+  /** LT-298: the operator's own fields. `id` null adds one. */
+  saveIpamField: (id: string | null, draft: CustomFieldDraft) => string | null;
+  /** Removes the field and every value anybody put in it. */
+  removeIpamField: (id: string) => void;
   /** LT-297: one subnet becomes several, or several become one. Both take the
    *  plan they were shown, so what is committed is what was reviewed. */
   splitIpamSubnet: (cidr: string, vrfId: string, into: number) => string | null;
@@ -658,6 +681,16 @@ function viewPref(key: string, fallback = true): boolean {
     return v === null ? fallback : v === '1';
   } catch {
     return fallback;
+  }
+}
+
+/** LT-298: the register's hidden columns, remembered for this machine. */
+function readHiddenColumns(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem('coreview.view.registerHiddenColumns') ?? '[]');
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
   }
 }
 
@@ -874,6 +907,17 @@ function readRecovery(id: string): { savedAt: number; document: ProjectDocument 
  *  leaves the record without one rather than carrying an empty string that
  *  then renders as a named-nothing row (LT-288). */
 /** The same, minus the fields a record always writes explicitly. */
+/** LT-298: a register record as its history should describe it — a site by
+ *  name, a linked device by what the diagram calls it, each custom field
+ *  under its own name — rather than as ids nobody can read. */
+function readable(record: object, doc: ProjectDocument): Record<string, unknown> {
+  const nodes = allNodes(doc);
+  return auditView(record as Record<string, unknown>, doc.ipam, (id) => {
+    const label = (nodes.find((n) => n.id === id)?.data as { label?: string } | undefined)?.label;
+    return label?.trim() || undefined;
+  });
+}
+
 function extras<T extends Record<string, unknown>>(from: T, ...drop: (keyof T)[]): Partial<T> {
   const rest = { ...from };
   for (const k of drop) delete rest[k];
@@ -983,6 +1027,7 @@ export const useStore = create<Store>((set, get) => ({
     })()),
     minimap: viewPref('minimap'),
     timeFormat: readTimeFormat(),
+    registerHiddenColumns: readHiddenColumns(),
     paper: 'fit',
     orientation: 'landscape',
     ground: 'dark',
@@ -1386,7 +1431,8 @@ export const useStore = create<Store>((set, get) => ({
           // a name leaves the subnet unnamed instead of named nothing.
           subnets: (s.doc.ipam?.subnets ?? []).map((x) => (x.id === id ? after : x)),
           audit: noteChange(s.doc.ipam, {
-            action: 'edited', object: 'subnet', label: cidr, changes: diffOf(at, after),
+            action: 'edited', object: 'subnet', label: cidr,
+            changes: diffOf(readable(at, s.doc), readable(after, s.doc)),
           }),
         },
       },
@@ -1430,7 +1476,7 @@ export const useStore = create<Store>((set, get) => ({
           entries: [...entriesOf(s.doc.ipam), made],
           reservations: undefined,
           audit: noteChange(s.doc.ipam, {
-            action: 'added', object: 'address', label: address, changes: diffOf({}, made),
+            action: 'added', object: 'address', label: address, changes: diffOf({}, readable(made, s.doc)),
           }),
         },
       },
@@ -1462,7 +1508,8 @@ export const useStore = create<Store>((set, get) => ({
           entries: entriesOf(s.doc.ipam).map((e) => (e.id === id ? next : e)),
           reservations: undefined,
           audit: noteChange(s.doc.ipam, {
-            action: 'edited', object: 'address', label: address, changes: diffOf(at, next),
+            action: 'edited', object: 'address', label: address,
+            changes: diffOf(readable(at, s.doc), readable(next, s.doc)),
           }),
         },
       },
@@ -1498,6 +1545,108 @@ export const useStore = create<Store>((set, get) => ({
       dirty: true,
     }));
     return null;
+  },
+
+  saveIpamPlace(kind, id, place) {
+    const list = kind === 'site' ? 'sites' : 'tenants';
+    const had = get().doc.ipam?.[list] ?? [];
+    const problem = nameProblem(had, place.name, id ?? undefined);
+    if (problem) return problem;
+    const name = place.name.trim();
+    const note = place.note?.trim() || undefined;
+    const before = id ? had.find((x) => x.id === id) : undefined;
+    if (id && !before) return `That ${kind} is no longer in the register.`;
+    const after = { id: id ?? uid(), name, ...(note ? { note } : {}) };
+    get().commit(before ? `Edit a ${kind}` : `Add a ${kind}`);
+    set((s) => ({
+      doc: {
+        ...s.doc,
+        ipam: {
+          ...s.doc.ipam,
+          [list]: before
+            ? (s.doc.ipam?.[list] ?? []).map((x) => (x.id === id ? after : x))
+            : [...(s.doc.ipam?.[list] ?? []), after],
+          audit: noteChange(s.doc.ipam, {
+            action: before ? 'edited' : 'added', object: kind, label: name,
+            changes: diffOf(before ?? {}, after),
+          }),
+        },
+      },
+      dirty: true,
+    }));
+    return null;
+  },
+
+  removeIpamPlace(kind, id) {
+    const list = kind === 'site' ? 'sites' : 'tenants';
+    const gone = (get().doc.ipam?.[list] ?? []).find((x) => x.id === id);
+    if (!gone) return;
+    get().commit(`Remove a ${kind}`);
+    set((s) => ({
+      doc: {
+        ...s.doc,
+        ipam: {
+          ...withoutReference(s.doc.ipam ?? {}, kind, id),
+          audit: noteChange(s.doc.ipam, { action: 'removed', object: kind, label: gone.name }),
+        },
+      },
+      dirty: true,
+    }));
+  },
+
+  saveIpamField(id, draft) {
+    const had = get().doc.ipam?.customFields ?? [];
+    const problem = customFieldProblem(had, draft, id ?? undefined);
+    if (problem) return problem;
+    const before = id ? had.find((f) => f.id === id) : undefined;
+    if (id && !before) return 'That field is no longer in the register.';
+    const choices = draft.type === 'choice'
+      ? [...new Set((draft.choices ?? []).map((c) => c.trim()).filter(Boolean))]
+      : undefined;
+    const after = {
+      id: id ?? uid(),
+      name: draft.name.trim(),
+      type: draft.type,
+      ...(choices ? { choices } : {}),
+      on: [...new Set(draft.on)],
+    };
+    get().commit(before ? 'Edit a field' : 'Add a field');
+    set((s) => ({
+      doc: {
+        ...s.doc,
+        ipam: {
+          ...s.doc.ipam,
+          customFields: before
+            ? (s.doc.ipam?.customFields ?? []).map((f) => (f.id === id ? after : f))
+            : [...(s.doc.ipam?.customFields ?? []), after],
+          audit: noteChange(s.doc.ipam, {
+            action: before ? 'edited' : 'added', object: 'field', label: after.name,
+            changes: diffOf(
+              before ? { ...before, choices: before.choices?.join(', '), on: before.on.join(', ') } : {},
+              { ...after, choices: after.choices?.join(', '), on: after.on.join(', ') },
+            ),
+          }),
+        },
+      },
+      dirty: true,
+    }));
+    return null;
+  },
+
+  removeIpamField(id) {
+    const gone = (get().doc.ipam?.customFields ?? []).find((f) => f.id === id);
+    if (!gone) return;
+    get().commit('Remove a field');
+    set((s) => ({
+      doc: {
+        ...s.doc,
+        ipam: {
+          ...withoutField(s.doc.ipam ?? {}, id),
+          audit: noteChange(s.doc.ipam, { action: 'removed', object: 'field', label: gone.name }),
+        },
+      },
+      dirty: true,
+    }));
   },
 
   removeIpamView(id) {
@@ -1864,6 +2013,8 @@ export const useStore = create<Store>((set, get) => ({
       ...(parent?.vlan !== undefined ? { vlan: parent.vlan } : {}),
       ...(vrfId !== DEFAULT_VRF.id ? { vrfId } : {}),
       ...(parent?.containerId ? { containerId: parent.containerId } : {}),
+      // LT-298: a split moves nothing to another building or another owner.
+      ...carriedBy(parent),
     }));
 
     get().commit('Split a subnet');
@@ -1909,6 +2060,8 @@ export const useStore = create<Store>((set, get) => ({
               ...(first?.vlan !== undefined ? { vlan: first.vlan } : {}),
               ...(vrfId !== DEFAULT_VRF.id ? { vrfId } : {}),
               ...(first?.containerId ? { containerId: first.containerId } : {}),
+              // LT-298: only what every half agreed on (D-050).
+              ...agreedBy(parts),
             },
           ],
           audit: noteChange(s.doc.ipam, {
@@ -3021,6 +3174,13 @@ export const useStore = create<Store>((set, get) => ({
     if (patch.minimap !== undefined) rememberView('minimap', patch.minimap);
     // LT-242: a machine preference, kept like the others.
     if (patch.highContrast !== undefined) rememberView('highContrast', patch.highContrast);
+    if (patch.registerHiddenColumns !== undefined) {
+      try {
+        localStorage.setItem('coreview.view.registerHiddenColumns', JSON.stringify(patch.registerHiddenColumns));
+      } catch {
+        /* private mode — the choice lasts this session */
+      }
+    }
     if (patch.timeFormat !== undefined) {
       try {
         localStorage.setItem('coreview.view.timeFormat', patch.timeFormat);

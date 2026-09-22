@@ -314,6 +314,95 @@ describe('the register built from the project (LT-285)', () => {
     expect(rows[1]).toEqual([
       '192.0.2.0/24', 'Site', '10', '192.0.2.10', 'Core', '', '', '', '', '', '',
       'Management', '', '', 'drawn', '',
+      // LT-298: site, tenant, device and tags. A device's own address is on
+      // that device, so it names it.
+      '', '', 'Core', '',
     ]);
+  });
+});
+
+describe('where, whose, and which device (LT-298)', () => {
+  const state: IpamState = {
+    sites: [{ id: 's1', name: 'HQ' }, { id: 's2', name: 'Branch Two' }],
+    tenants: [{ id: 't1', name: 'Finance' }, { id: 't2', name: 'Retail' }],
+    customFields: [{ id: 'f1', name: 'Cost', type: 'number', on: ['address'] }],
+    subnets: [{ id: 'n1', cidr: '192.0.2.0/24', siteId: 's1', tenantId: 't1', custom: { f9: 'x' } }],
+    entries: [
+      // Set its own site; takes the subnet's tenant.
+      { id: 'e1', address: '192.0.2.5', label: 'printer', kind: 'in-use', siteId: 's2', custom: { f1: '40' } },
+      // Nothing of its own: both from the subnet. Linked to a device.
+      { id: 'e2', address: '192.0.2.6', label: 'phone', kind: 'in-use', deviceId: 'sw', deviceInterface: 'Gi0/6' },
+      // Its own tenant, and a link to a device since deleted.
+      { id: 'e3', address: '192.0.2.7', label: 'old', kind: 'reserved', tenantId: 't2', deviceId: 'gone' },
+    ],
+  };
+  const nodes = [device('sw', 'LAB-SW-A', ['192.0.2.1'], { site: 'Branch Two' })];
+  const rows = () => buildIpam(nodes, state).blocks[0]!.addresses;
+  const row = (address: string) => rows().find((a) => a.address === address)!;
+
+  it('an address says where it is, and whether that is its own answer or its subnet\'s', () => {
+    expect(row('192.0.2.5').site).toEqual({ name: 'Branch Two', from: 'own' });
+    expect(row('192.0.2.5').tenant).toEqual({ name: 'Finance', from: 'subnet' });
+    expect(row('192.0.2.6').site).toEqual({ name: 'HQ', from: 'subnet' });
+    expect(row('192.0.2.7').tenant).toEqual({ name: 'Retail', from: 'own' });
+  });
+
+  it('a device\'s own address takes the device\'s site before the subnet\'s', () => {
+    // The device says it is in Branch Two; the subnet says HQ. The device is
+    // the more specific statement about where that box physically is.
+    expect(row('192.0.2.1').site).toEqual({ name: 'Branch Two', from: 'device' });
+    expect(row('192.0.2.1').deviceLabel).toBe('LAB-SW-A');
+  });
+
+  it('a typed address can be linked to a device, and a broken link says so', () => {
+    expect(row('192.0.2.6').deviceLabel).toBe('LAB-SW-A');
+    expect(row('192.0.2.6').deviceInterface).toBe('Gi0/6');
+    expect(row('192.0.2.6').deviceMissing).toBeUndefined();
+    // Deleted from the diagram: the link is kept, and shown as broken rather
+    // than silently dropped or pointed at the wrong thing.
+    expect(row('192.0.2.7').deviceLabel).toBeUndefined();
+    expect(row('192.0.2.7').deviceMissing).toBe(true);
+  });
+
+  it('carries the operator\'s own fields, and the subnet keeps its own', () => {
+    expect(row('192.0.2.5').custom).toEqual({ f1: '40' });
+    expect(row('192.0.2.6').custom).toBeUndefined();
+    const block = buildIpam(nodes, state).blocks[0]!;
+    expect(block.siteId).toBe('s1');
+    expect(block.tenantId).toBe('t1');
+    expect(block.custom).toEqual({ f9: 'x' });
+  });
+
+  it('a site nobody can name is not invented', () => {
+    // A subnet pointing at a site that has since been removed says nothing,
+    // rather than showing an id nobody can read.
+    const orphan: IpamState = { subnets: [{ id: 'n1', cidr: '192.0.2.0/24', siteId: 'nope' }] };
+    const a = buildIpam([device('sw', 'LAB-SW-A', ['192.0.2.1'])], orphan).blocks[0]!.addresses[0]!;
+    expect(a.site).toBeUndefined();
+  });
+});
+
+describe('the export carries where, whose and which device (LT-298)', () => {
+  it('adds them after the columns that were already there, and one per field', () => {
+    const state: IpamState = {
+      sites: [{ id: 's1', name: 'HQ' }],
+      customFields: [
+        { id: 'f1', name: 'Circuit ID', type: 'text', on: ['address'] },
+        { id: 'f2', name: 'Subnet only', type: 'text', on: ['subnet'] },
+      ],
+      subnets: [{ id: 'n1', cidr: '192.0.2.0/24', siteId: 's1' }],
+      entries: [{ id: 'e1', address: '192.0.2.5', label: 'cam', kind: 'in-use', tags: ['cctv'],
+        deviceId: 'sw', deviceInterface: 'Gi0/5', custom: { f1: 'CKT-1' } }],
+    };
+    const rows = ipamRows(buildIpam([device('sw', 'LAB-SW-A', ['192.0.2.1'])], state), state.customFields);
+    const head = rows[0]!;
+    // The old columns keep their places, so a sheet built on them still works.
+    expect(head.slice(0, 16)).toEqual(['Subnet', 'Subnet name', 'VLAN', 'Address', 'Name', 'Held as', 'Used as',
+      'Hostname', 'FQDN', 'Owner', 'Purpose', 'Interface', 'MAC', 'In range', 'Known from', 'Note']);
+    expect(head.slice(16)).toEqual(['Site', 'Tenant', 'Device', 'Tags', 'Circuit ID']);
+    const cam = rows.find((r) => r[3] === '192.0.2.5')!;
+    const at = (h: string) => cam[head.indexOf(h)];
+    expect([at('Site'), at('Device'), at('Interface'), at('Tags'), at('Circuit ID')])
+      .toEqual(['HQ', 'LAB-SW-A', 'Gi0/5', 'cctv', 'CKT-1']);
   });
 });

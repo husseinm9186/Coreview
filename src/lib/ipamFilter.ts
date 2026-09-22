@@ -19,7 +19,8 @@
  * means to search for that text, and refusing the whole query because
  * `printer` is not a field would be the least useful possible response.
  */
-import type { IpamAddress } from './ipam';
+import type { IpamAddress, IpamCustomField } from './ipam';
+import { fieldKey } from './ipamMeta';
 
 export interface FilterTerm {
   /** The field named before the colon, lower-cased; null for a bare word. */
@@ -32,12 +33,26 @@ export interface FilterTerm {
 const FIELDS = new Set([
   'tag', 'vlan', 'kind', 'source', 'owner', 'purpose', 'hostname', 'fqdn',
   'mac', 'note', 'label', 'address', 'assignment',
+  // LT-298
+  'site', 'tenant', 'device',
 ]);
 
-/** Splits a query into terms, honouring quotes so a value may contain a space. */
-export function parseFilter(query: string): FilterTerm[] {
+/** Fields matched whole rather than by substring. `site:hq` must not also
+ *  match "HQ Annex", or `-site:hq` would quietly hide it. */
+const EXACT = new Set(['tag', 'vlan', 'kind', 'source', 'assignment', 'site', 'tenant']);
+
+/**
+ * Splits a query into terms, honouring quotes so a value may contain a space.
+ *
+ * LT-298: given the register's custom fields, each is a field too, under the
+ * name it would be typed as — `Circuit ID` is `circuit-id:`. The term records
+ * the field's id rather than its name, so renaming a field does not change
+ * what a saved view means halfway through.
+ */
+export function parseFilter(query: string, customFields: readonly IpamCustomField[] = []): FilterTerm[] {
+  const custom = new Map(customFields.map((f) => [fieldKey(f.name), f]));
   const terms: FilterTerm[] = [];
-  const words = query.match(/-?(?:[a-zA-Z]+:)?"[^"]*"|\S+/g) ?? [];
+  const words = query.match(/-?(?:[a-zA-Z][\w-]*:)?"[^"]*"|\S+/g) ?? [];
   for (const raw of words) {
     let word = raw;
     const negated = word.startsWith('-') && word.length > 1;
@@ -47,8 +62,13 @@ export function parseFilter(query: string): FilterTerm[] {
     let value = word;
     if (colon > 0) {
       const name = word.slice(0, colon).toLowerCase();
+      const own = custom.get(name);
       if (FIELDS.has(name)) {
         field = name;
+        value = word.slice(colon + 1);
+      } else if (own) {
+        // A choice, number or date is matched whole; free text by substring.
+        field = `${own.type === 'text' ? 'custom~' : 'custom='}${own.id}`;
         value = word.slice(colon + 1);
       }
     }
@@ -64,6 +84,8 @@ function haystack(a: IpamAddress): string {
   return [
     a.address, a.label, a.hostname, a.fqdn, a.owner, a.purpose, a.note, a.mac,
     a.vlan, a.kind, a.assignment, a.source, ...(a.tags ?? []),
+    // LT-298
+    a.site?.name, a.tenant?.name, a.deviceLabel, a.deviceInterface, ...Object.values(a.custom ?? {}),
   ]
     .filter(Boolean)
     .join(' ')
@@ -98,8 +120,18 @@ function fieldValue(a: IpamAddress, field: string): string[] {
       return [a.label];
     case 'address':
       return [a.address];
-    default:
-      return [];
+    case 'site':
+      return a.site ? [a.site.name] : [];
+    case 'tenant':
+      return a.tenant ? [a.tenant.name] : [];
+    case 'device':
+      return a.deviceLabel ? [a.deviceLabel] : [];
+    default: {
+      const id = field.replace(/^custom[~=]/, '');
+      if (id === field) return [];
+      const v = a.custom?.[id];
+      return v ? [v] : [];
+    }
   }
 }
 
@@ -109,8 +141,7 @@ function hit(a: IpamAddress, term: FilterTerm): boolean {
   // `tag:` and `vlan:` are exact — a register where `tag:core` also matched
   // `core-switches` would make an exclusion untrustworthy. The free-text
   // fields stay substring, because that is how people remember a note.
-  const exact = term.field === 'tag' || term.field === 'vlan' || term.field === 'kind'
-    || term.field === 'source' || term.field === 'assignment';
+  const exact = EXACT.has(term.field) || term.field.startsWith('custom=');
   const values = fieldValue(a, term.field).map((v) => v.toLowerCase());
   return exact
     ? values.includes(term.value)

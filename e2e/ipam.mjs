@@ -550,6 +550,146 @@ check("the export carries the subnet, the device and the interface",
 check("and what a typed address is held as",
   csv.includes("Warehouse printer 2") && csv.includes("in-use"), csv.split("\n").find((l) => l.includes("Warehouse")) ?? "");
 
+// ------------------------------------------------ LT-298: where, whose, which device, own fields
+
+// Invented names throughout (D-027).
+await page.locator(".cv-register-tabs button", { hasText: "Sites, tenants & fields" }).click();
+await page.waitForTimeout(300);
+const section = (name) => page.locator(`.cv-ipam-setup-section[aria-label="${name}"]`);
+const setupField = (sec, label) =>
+  section(sec).locator(".cv-field", { has: page.locator(`span:text-is("${label}")`) }).locator("input, select").first();
+
+const addPlace = async (sec, name) => {
+  await section(sec).locator("button", { hasText: /^Add an? / }).click();
+  await setupField(sec, "Name").fill(name);
+  await section(sec).locator(".cv-ipam-add button", { hasText: "Add" }).click();
+  await page.waitForTimeout(250);
+};
+await addPlace("Sites", "Lab Site A");
+await addPlace("Sites", "Lab Site B");
+await addPlace("Tenants", "Lab Tenant");
+check("a site is added to its list", (await section("Sites").locator("td", { hasText: "Lab Site A" }).count()) === 1);
+check("a tenant is added to its list", (await section("Tenants").locator("td", { hasText: "Lab Tenant" }).count()) === 1);
+
+await addPlace("Sites", "lab site a ");
+check("the same site twice is refused, whatever the case",
+  (await section("Sites").locator(".cv-problem").innerText()).includes("already"));
+await section("Sites").locator("button", { hasText: "Cancel" }).click();
+
+const addField = async (name, type, { choices, subnets = false, addresses = true } = {}) => {
+  const sec = "Your own fields";
+  await section(sec).locator("button", { hasText: "Add a field" }).click();
+  await setupField(sec, "Name").fill(name);
+  await setupField(sec, "Holds").selectOption(type);
+  if (choices) await setupField(sec, "Choices, comma separated").fill(choices);
+  const onSubnets = section(sec).locator("label", { hasText: "Subnets" }).locator("input");
+  const onAddresses = section(sec).locator("label", { hasText: "Addresses" }).locator("input");
+  if ((await onSubnets.isChecked()) !== subnets) await onSubnets.click();
+  if ((await onAddresses.isChecked()) !== addresses) await onAddresses.click();
+  await section(sec).locator(".cv-ipam-add button", { hasText: "Add" }).click();
+  await page.waitForTimeout(250);
+};
+await addField("Circuit ID", "text");
+await addField("Tier", "choice", { choices: "gold, silver", subnets: true, addresses: true });
+await addField("Cost", "number");
+check("a field says what it is typed as in the filter box",
+  (await section("Your own fields").innerText()).includes("circuit-id:"));
+await addField("Tag", "text");
+check("a field that would shadow a built-in filter is refused",
+  (await section("Your own fields").locator(".cv-problem").innerText()).includes("already means"));
+await section("Your own fields").locator("button", { hasText: "Cancel" }).click();
+
+// ---- a subnet in a site, and an address that inherits it
+await page.locator(".cv-register-tabs button", { hasText: "Addresses" }).click();
+await page.waitForTimeout(300);
+await page.locator("button", { hasText: "Add subnet" }).first().click();
+await page.waitForTimeout(200);
+await field("Subnet").fill("203.0.113.128/28");
+await field("Site").selectOption({ label: "Lab Site A" });
+await field("Tier").selectOption("gold");
+await page.locator(".cv-ipam-add button", { hasText: "Add" }).first().click();
+await page.waitForTimeout(400);
+check("a subnet shows its site under its name",
+  (await rowFor("203.0.113.128/28").innerText()).includes("Lab Site A"), await rowFor("203.0.113.128/28").innerText());
+
+await rowFor("203.0.113.128/28").locator("button", { hasText: "Add address" }).click();
+await page.waitForTimeout(250);
+await field("Name").fill("Lab camera");
+await field("Tenant").selectOption({ label: "Lab Tenant" });
+await field("Device on the diagram").selectOption({ label: "LAB-SW" });
+await page.waitForTimeout(150);
+await field("Its interface").fill("Gi0/7");
+await field("Circuit ID").fill("CKT-LAB-77");
+await field("Cost").fill("forty");
+await page.locator(".cv-ipam-add button", { hasText: "Add" }).first().click();
+await page.waitForTimeout(300);
+check("a value the field cannot hold is refused before anything is written",
+  (await page.locator(".cv-problem").innerText()).includes("Cost is a number"),
+  await page.locator(".cv-problem").innerText().catch(() => "no problem shown"));
+await field("Cost").fill("40");
+await page.locator(".cv-ipam-add button", { hasText: "Add" }).first().click();
+await page.waitForTimeout(400);
+await expand("203.0.113.128/28");
+const camera = (await page.locator(".cv-ipam-addresses tbody tr", { hasText: "Lab camera" }).count()) === 1;
+check("the address is added", camera);
+const addr = (await page.locator(".cv-ipam-addresses tbody tr", { hasText: "Lab camera" }).first().locator("td").first().innerText()).trim();
+check("it takes its site from the subnet, and says so",
+  (await addressCell(addr, "Site")) === "Lab Site A (from the subnet)", await addressCell(addr, "Site"));
+check("its own tenant is its own", (await addressCell(addr, "Tenant")) === "Lab Tenant", await addressCell(addr, "Tenant"));
+check("it is linked to the device on the diagram", (await addressCell(addr, "Device")) === "LAB-SW", await addressCell(addr, "Device"));
+check("on the interface given", (await addressCell(addr, "Interface")) === "Gi0/7", await addressCell(addr, "Interface"));
+check("its own fields are columns", (await addressCell(addr, "Circuit ID")) === "CKT-LAB-77", await addressCell(addr, "Circuit ID"));
+check("and so is a number field", (await addressCell(addr, "Cost")) === "40", await addressCell(addr, "Cost"));
+
+// ---- filtering by all of it
+const filterBox = page.locator(".cv-ipam-filter");
+const visibleAddresses = async () => page.locator(".cv-ipam-addresses tbody tr", { hasText: "Lab camera" }).count();
+await filterBox.fill("circuit-id:ckt-lab");
+await page.waitForTimeout(250);
+check("a custom field filters by its own name", (await visibleAddresses()) === 1);
+await filterBox.fill('site:"lab site a" tenant:"lab tenant" device:lab-sw');
+await page.waitForTimeout(250);
+check("site, tenant and device filter together", (await visibleAddresses()) === 1);
+await filterBox.fill('site:"lab site b"');
+await page.waitForTimeout(250);
+check("and exclude what does not match", (await visibleAddresses()) === 0);
+await filterBox.fill("");
+await page.waitForTimeout(250);
+
+// ---- the column chooser
+await page.locator(".cv-ipam-columns > summary").click();
+await page.locator(".cv-ipam-columns-list label", { hasText: "MAC" }).locator("input").uncheck();
+await page.waitForTimeout(250);
+const headingsNow = (await page.locator(".cv-ipam-addresses").first().locator("thead th").allInnerTexts()).map((h) => h.trim().toLowerCase());
+check("a hidden column leaves the table", !headingsNow.includes("mac") && headingsNow.includes("site"), headingsNow.join("|"));
+check("and is remembered on this machine, as what is hidden",
+  (await page.evaluate(() => localStorage.getItem("coreview.view.registerHiddenColumns"))) === '["mac"]');
+await page.locator(".cv-ipam-columns-list label", { hasText: "MAC" }).locator("input").check();
+await page.locator(".cv-ipam-columns > summary").click();
+await page.waitForTimeout(200);
+
+// ---- removing a site in use leaves nothing pointing at it
+await page.locator(".cv-register-tabs button", { hasText: "Sites, tenants & fields" }).click();
+await page.waitForTimeout(250);
+check("a site says how much uses it",
+  (await section("Sites").locator("tr", { hasText: "Lab Site A" }).innerText()).includes("Used by 1 record"));
+page.once("dialog", (d) => void d.accept());
+await section("Sites").locator("tr", { hasText: "Lab Site A" }).locator("button", { hasText: "Remove" }).click();
+await page.waitForTimeout(300);
+const leftover = await page.evaluate(() => {
+  const ipam = window.__cvStore.getState().doc.ipam;
+  return { sites: ipam.sites.map((x) => x.name), pointing: ipam.subnets.filter((x) => x.siteId).length };
+});
+check("the site is gone and nothing names it", leftover.sites.join() === "Lab Site B" && leftover.pointing === 0,
+  JSON.stringify(leftover));
+
+// ---- the history reads in names
+await page.locator(".cv-register-tabs button", { hasText: "History" }).click();
+await page.waitForTimeout(300);
+const history = await page.locator(".cv-register-body").innerText();
+check("the history names the device and the field, not their ids",
+  history.includes("LAB-SW") && history.includes("CKT-LAB-77") && !/\bn2\b/.test(history), history.slice(0, 400));
+
 await browser.close();
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

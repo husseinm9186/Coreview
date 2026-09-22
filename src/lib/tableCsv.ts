@@ -20,7 +20,7 @@ const devicesOf = (doc: ProjectDocument) =>
 
 /** LT-285: the address register, a row per known address. */
 export function ipamCsv(doc: ProjectDocument): string {
-  return toCsv(ipamRows(buildIpam(allNodes(doc), doc.ipam)));
+  return toCsv(ipamRows(buildIpam(allNodes(doc), doc.ipam), doc.ipam?.customFields));
 }
 
 export function portsCsv(doc: ProjectDocument): string {

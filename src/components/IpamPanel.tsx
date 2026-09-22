@@ -18,7 +18,7 @@
  * Nothing ships in it. There are no example subnets and no default plan
  * (D-027): an empty register says what it is for and waits.
  */
-import { useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 
 import { t } from '../i18n';
 import {
@@ -31,8 +31,12 @@ import {
   type EntryKind,
   type IpamAddress,
   type IpamBlock,
+  type IpamCustomField,
+  type IpamState,
   type RangeKind,
+  entriesOf,
 } from '../lib/ipam';
+import { cleanCustom, customValueProblem, visibleColumns, type AddressColumn } from '../lib/ipamMeta';
 import { allNodes } from '../lib/pages';
 import type { BulkAction } from '../lib/ipamBulk';
 import { describeBulk, planBulk } from '../lib/ipamBulk';
@@ -53,6 +57,10 @@ interface SubnetForm {
   name: string;
   vlan: string;
   note: string;
+  /** LT-298. Empty means none. */
+  siteId: string;
+  tenantId: string;
+  custom: Record<string, string>;
 }
 interface AddressForm {
   address: string;
@@ -67,6 +75,12 @@ interface AddressForm {
   note: string;
   /** LT-298: free labels, comma separated as typed. */
   tags: string;
+  /** LT-298. An empty site or tenant means "as the subnet". */
+  siteId: string;
+  tenantId: string;
+  deviceId: string;
+  deviceInterface: string;
+  custom: Record<string, string>;
 }
 /** A device's own address, which belongs to the diagram (LT-295). */
 interface DeviceForm {
@@ -84,11 +98,36 @@ interface RangeForm {
   note: string;
 }
 
-const blankSubnet: SubnetForm = { cidr: '', name: '', vlan: '', note: '' };
+const blankSubnet: SubnetForm = { cidr: '', name: '', vlan: '', note: '', siteId: '', tenantId: '', custom: {} };
 const blankAddress = (address = ''): AddressForm => ({
   address, label: '', kind: 'reserved', assignment: 'static',
   hostname: '', fqdn: '', mac: '', owner: '', purpose: '', note: '', tags: '',
+  siteId: '', tenantId: '', deviceId: '', deviceInterface: '', custom: {},
 });
+
+/**
+ * LT-298: what every form and row in the register needs to know and none of
+ * them owns — the sites, tenants and fields, the devices an address can be
+ * linked to, and which columns this machine shows. A context rather than
+ * another eight props threaded through `SubnetRows`, which has enough.
+ */
+interface RegisterMeta {
+  ipam: IpamState | undefined;
+  fields: IpamCustomField[];
+  devices: { id: string; label: string }[];
+  columns: AddressColumn[];
+}
+const Meta = createContext<RegisterMeta>({ ipam: undefined, fields: [], devices: [], columns: [] });
+
+/** The first custom value that will not do, as a sentence, or null. */
+function customProblem(fields: readonly IpamCustomField[], on: 'subnet' | 'address', values: Record<string, string>) {
+  for (const f of fields) {
+    if (!f.on.includes(on)) continue;
+    const problem = customValueProblem(f, values[f.id] ?? '');
+    if (problem) return problem;
+  }
+  return null;
+}
 
 /**
  * What a row has to contain to survive the filter box.
@@ -98,12 +137,25 @@ const blankAddress = (address = ''): AddressForm => ({
  * `source:crawled` and the rest, and a leading `-` excludes — which is what
  * makes a register of two hundred addresses answerable rather than scrollable.
  */
-const matches = (a: IpamAddress, needle: string) => matchesFilter(a, parseFilter(needle));
+const matches = (a: IpamAddress, needle: string, fields: readonly IpamCustomField[] = []) =>
+  matchesFilter(a, parseFilter(needle, fields));
 
 export function IpamPanel() {
   const doc = useStore((s) => s.doc);
   const store = useStore();
   const model = useMemo(() => buildIpam(allNodes(doc), doc.ipam), [doc]);
+  // LT-298
+  const hidden = useStore((s) => s.settings.registerHiddenColumns);
+  const fields = useMemo(() => doc.ipam?.customFields ?? [], [doc.ipam?.customFields]);
+  const meta = useMemo((): RegisterMeta => ({
+    ipam: doc.ipam,
+    fields,
+    devices: allNodes(doc)
+      .filter((n) => n.type === 'device')
+      .map((n) => ({ id: n.id, label: String((n.data as { label?: string })?.label ?? '').trim() || n.id }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    columns: visibleColumns(hidden, fields),
+  }), [doc, fields, hidden]);
 
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const [adding, setAdding] = useState(false);
@@ -124,8 +176,8 @@ export function IpamPanel() {
   const [bulkKind, setBulkKind] = useState<BulkAction['kind']>('add-tags');
   const [bulkValue, setBulkValue] = useState('');
   const matching = useMemo(
-    () => model.blocks.flatMap((b) => b.addresses.filter((a) => matches(a, filter))),
-    [model.blocks, filter],
+    () => model.blocks.flatMap((b) => b.addresses.filter((a) => matches(a, filter, fields))),
+    [model.blocks, filter, fields],
   );
   const bulkAction = useMemo((): BulkAction => {
     const tags = bulkValue.split(',');
@@ -177,7 +229,19 @@ export function IpamPanel() {
       setProblem(vlan);
       return;
     }
-    const patch = { name: subnetForm.name, vlan, note: subnetForm.note };
+    // LT-298: a field that will not take its value says so before anything
+    // is written, rather than storing it and failing a filter later.
+    const bad = customProblem(fields, 'subnet', subnetForm.custom);
+    if (bad) {
+      setProblem(bad);
+      return;
+    }
+    const patch = {
+      name: subnetForm.name, vlan, note: subnetForm.note,
+      siteId: subnetForm.siteId || undefined,
+      tenantId: subnetForm.tenantId || undefined,
+      custom: cleanCustom(fields, 'subnet', subnetForm.custom),
+    };
     // A declared subnet is edited; a derived one is adopted by declaring it.
     const said = block?.subnetId
       ? store.updateIpamSubnet(block.subnetId, { cidr: subnetForm.cidr, ...patch })
@@ -191,9 +255,24 @@ export function IpamPanel() {
     // LT-298: tags are typed as text and stored as a list, lower-cased and
     // deduplicated — a register where `PCI` and `pci` are two tags is one
     // nobody trusts. Clearing the box removes them rather than storing [''].
-    const { tags: typed, ...rest } = entryForm;
+    const { tags: typed, siteId, tenantId, deviceId, deviceInterface, custom, ...rest } = entryForm;
     const tags = [...new Set(typed.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean))];
-    const patch = { ...rest, ...(tags.length ? { tags } : { tags: undefined }) };
+    const bad = customProblem(fields, 'address', custom);
+    if (bad) {
+      setProblem(bad);
+      return;
+    }
+    const patch = {
+      ...rest,
+      ...(tags.length ? { tags } : { tags: undefined }),
+      // LT-298: empty means "as the subnet" for where and whose, and "not on
+      // a device" for the link — stored as nothing rather than as "".
+      siteId: siteId || undefined,
+      tenantId: tenantId || undefined,
+      deviceId: deviceId || undefined,
+      deviceInterface: deviceId ? deviceInterface || undefined : undefined,
+      custom: cleanCustom(fields, 'address', custom),
+    };
     const said = id ? store.updateIpamEntry(id, patch) : store.addIpamEntry(patch);
     setProblem(said);
     if (!said) closeForms();
@@ -221,6 +300,9 @@ export function IpamPanel() {
       name: b.name ?? b.routeInterface ?? '',
       vlan: b.vlan === undefined ? '' : String(b.vlan),
       note: b.note ?? '',
+      siteId: b.siteId ?? '',
+      tenantId: b.tenantId ?? '',
+      custom: { ...b.custom },
     });
   };
 
@@ -246,8 +328,17 @@ export function IpamPanel() {
   const editAddress = (a: IpamAddress) => {
     closeForms();
     if (a.entryId) {
+      // The entry's own answers, not the row's: a site the row inherited
+      // from its subnet is not one the address holds, and saving the form
+      // must not quietly make it one.
+      const own = entriesOf(doc.ipam).find((e) => e.id === a.entryId);
       setEditingEntry(a.entryId);
       setEntryForm({
+        siteId: own?.siteId ?? '',
+        tenantId: own?.tenantId ?? '',
+        deviceId: own?.deviceId ?? '',
+        deviceInterface: own?.deviceInterface ?? '',
+        custom: { ...own?.custom },
         address: a.address, label: a.label, kind: a.kind ?? 'reserved',
         assignment: a.assignment ?? 'static', hostname: a.hostname ?? '', fqdn: a.fqdn ?? '',
         mac: a.mac ?? '', owner: a.owner ?? '', purpose: a.purpose ?? '', note: a.note ?? '',
@@ -269,6 +360,7 @@ export function IpamPanel() {
   const COLUMNS = 8;
 
   return (
+    <Meta.Provider value={meta}>
     <div className="cv-ipam">
       <div className="cv-ipam-bar">
         <span className="cv-help">
@@ -289,6 +381,7 @@ export function IpamPanel() {
         </button>
         <input className="cv-input cv-ipam-filter" value={filter} aria-label={t('ipam.filter')}
           placeholder={t('ipam.filterPlaceholder')} onChange={(e) => setFilter(e.target.value)} />
+        <ColumnChooser />
         {/* LT-298: a filter worth keeping. A view holds only the query, so it
             cannot go stale — reopening it asks the register again. */}
         <select className="cv-input cv-ipam-views" aria-label={t('ipam.views')}
@@ -422,6 +515,149 @@ export function IpamPanel() {
         </p>
       )}
     </div>
+    </Meta.Provider>
+  );
+}
+
+/**
+ * Which columns the address table shows (LT-298).
+ *
+ * What is remembered is what was *hidden*, on this machine only — two people
+ * reading one register may want different columns, and a field added next
+ * week appears without anybody having to find it.
+ */
+function ColumnChooser() {
+  const { fields } = useContext(Meta);
+  const hidden = useStore((s) => s.settings.registerHiddenColumns);
+  const setSettings = useStore((s) => s.setSettings);
+  const every = visibleColumns([], fields);
+  return (
+    <details className="cv-ipam-columns">
+      <summary>{t('ipam.columns')}</summary>
+      <div className="cv-ipam-columns-list">
+        {every.map((c) => (
+          <label key={c} className="cv-check">
+            <input type="checkbox" checked={!hidden.includes(c)}
+              onChange={(e) => setSettings({
+                registerHiddenColumns: e.target.checked ? hidden.filter((x) => x !== c) : [...hidden, c],
+              })} />
+            {columnLabel(c, fields)}
+          </label>
+        ))}
+        <p className="cv-help">{t('ipam.columnsHelp')}</p>
+      </div>
+    </details>
+  );
+}
+
+function columnLabel(c: AddressColumn, fields: readonly IpamCustomField[]): string {
+  if (c.startsWith('custom:')) return fields.find((f) => `custom:${f.id}` === c)?.name ?? c;
+  switch (c) {
+    case 'name': return t('ipam.colName');
+    case 'heldAs': return t('ipam.colHeldAs');
+    case 'usedAs': return t('ipam.colUsedAs');
+    case 'hostname': return t('ipam.colHostname');
+    case 'interface': return t('ipam.colInterface');
+    case 'device': return t('ipam.colDevice');
+    case 'mac': return t('ipam.colMac');
+    case 'owner': return t('ipam.colOwner');
+    case 'purpose': return t('ipam.colPurpose');
+    case 'site': return t('ipam.colSite');
+    case 'tenant': return t('ipam.colTenant');
+    case 'tags': return t('ipam.colTags');
+    case 'inRange': return t('ipam.colInRange');
+    default: return t('ipam.colKnownFrom');
+  }
+}
+
+/** Where an inherited answer came from, said quietly after the answer. */
+function inherited(from: 'own' | 'device' | 'subnet') {
+  if (from === 'own') return null;
+  return <span className="cv-help"> ({from === 'subnet' ? t('ipam.fromSubnetHint') : t('ipam.fromDeviceHint')})</span>;
+}
+
+function cellFor(c: AddressColumn, a: IpamAddress) {
+  if (c.startsWith('custom:')) return a.custom?.[c.slice('custom:'.length)] ?? '';
+  switch (c) {
+    case 'name': return a.label;
+    case 'heldAs': return a.kind ? kindWord(a.kind) : '';
+    case 'usedAs': return a.assignment ? assignmentWord(a.assignment) : '';
+    case 'hostname': return a.hostname ?? '';
+    case 'interface': return a.interfaceLabel ?? a.deviceInterface ?? '';
+    case 'device':
+      return a.deviceMissing ? <span className="cv-help">{t('ipam.deviceRemoved')}</span> : (a.deviceLabel ?? '');
+    case 'mac': return a.mac ?? '';
+    case 'owner': return a.owner ?? '';
+    case 'purpose': return a.purpose ?? '';
+    case 'site': return a.site ? <>{a.site.name}{inherited(a.site.from)}</> : '';
+    case 'tenant': return a.tenant ? <>{a.tenant.name}{inherited(a.tenant.from)}</> : '';
+    case 'tags': return (a.tags ?? []).join(', ');
+    case 'inRange':
+      return <span className="cv-help">{a.inRange ? (a.inRange.name ?? rangeWord(a.inRange.kind)) : ''}</span>;
+    default: return <span className="cv-help">{sourceWord(a)}</span>;
+  }
+}
+
+/** Site and tenant selects. `inherit` offers "as the subnet" in place of none. */
+function WhereWhose({
+  siteId, tenantId, onChange, inherit,
+}: {
+  siteId: string;
+  tenantId: string;
+  onChange: (patch: { siteId?: string; tenantId?: string }) => void;
+  inherit: boolean;
+}) {
+  const { ipam } = useContext(Meta);
+  const empty = inherit ? t('ipam.fromSubnet') : t('ipam.none');
+  return (
+    <>
+      <label className="cv-field cv-field-narrow">
+        <span>{t('ipam.site')}</span>
+        <select className="cv-input" value={siteId} onChange={(e) => onChange({ siteId: e.target.value })}>
+          <option value="">{empty}</option>
+          {(ipam?.sites ?? []).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>
+      </label>
+      <label className="cv-field cv-field-narrow">
+        <span>{t('ipam.tenant')}</span>
+        <select className="cv-input" value={tenantId} onChange={(e) => onChange({ tenantId: e.target.value })}>
+          <option value="">{empty}</option>
+          {(ipam?.tenants ?? []).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>
+      </label>
+    </>
+  );
+}
+
+/** One input per field of the operator's that applies to this kind of record. */
+function CustomInputs({
+  on, values, onChange,
+}: {
+  on: 'subnet' | 'address';
+  values: Record<string, string>;
+  onChange: (values: Record<string, string>) => void;
+}) {
+  const { fields } = useContext(Meta);
+  return (
+    <>
+      {fields.filter((f) => f.on.includes(on)).map((f) => (
+        <label key={f.id} className="cv-field cv-field-narrow">
+          <span>{f.name}</span>
+          {f.type === 'choice' ? (
+            <select className="cv-input" value={values[f.id] ?? ''}
+              onChange={(e) => onChange({ ...values, [f.id]: e.target.value })}>
+              <option value="" />
+              {(f.choices ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          ) : (
+            <input className="cv-input" value={values[f.id] ?? ''} autoComplete="off"
+              type={f.type === 'date' ? 'date' : 'text'}
+              inputMode={f.type === 'number' ? 'decimal' : undefined}
+              onChange={(e) => onChange({ ...values, [f.id]: e.target.value })} />
+          )}
+        </label>
+      ))}
+    </>
   );
 }
 
@@ -467,6 +703,10 @@ function SubnetFields({
         placeholder="10.20.30.0/24" onChange={(v) => set({ ...form, cidr: v })} />
       <Field label={t('ipam.name')} value={form.name} onEnter={onSave} onChange={(v) => set({ ...form, name: v })} />
       <Field label={t('ipam.colVlan')} value={form.vlan} onEnter={onSave} onChange={(v) => set({ ...form, vlan: v })} />
+      {/* LT-298 */}
+      <WhereWhose siteId={form.siteId} tenantId={form.tenantId} inherit={false}
+        onChange={(patch) => set({ ...form, ...patch })} />
+      <CustomInputs on="subnet" values={form.custom} onChange={(custom) => set({ ...form, custom })} />
       <Field label={t('ipam.note')} value={form.note} onEnter={onSave} wide onChange={(v) => set({ ...form, note: v })} />
       <button type="button" className="cv-btn cv-btn-start" onClick={onSave}>{label}</button>
       <button type="button" className="cv-btn cv-btn-small" onClick={onCancel}>{t('ipam.cancel')}</button>
@@ -513,6 +753,12 @@ function AddressFields({
       <Field label={t('ipam.tags')} value={form.tags} onEnter={onSave} onChange={(v) => set({ ...form, tags: v })} />
       <Field label={t('ipam.purpose')} value={form.purpose} onEnter={onSave}
         onChange={(v) => set({ ...form, purpose: v })} />
+      {/* LT-298 */}
+      <WhereWhose siteId={form.siteId} tenantId={form.tenantId} inherit
+        onChange={(patch) => set({ ...form, ...patch })} />
+      <DevicePicker deviceId={form.deviceId} deviceInterface={form.deviceInterface}
+        onChange={(patch) => set({ ...form, ...patch })} />
+      <CustomInputs on="address" values={form.custom} onChange={(custom) => set({ ...form, custom })} />
       <Field label={t('ipam.note')} value={form.note} onEnter={onSave} wide onChange={(v) => set({ ...form, note: v })} />
       <button type="button" className="cv-btn cv-btn-start" onClick={onSave}>{label}</button>
       <button type="button" className="cv-btn cv-btn-small" onClick={onCancel}>{t('ipam.cancel')}</button>
@@ -622,7 +868,11 @@ function SubnetRows({
 }) {
   const used = utilisation(block);
   const declared = Boolean(block.subnetId);
-  const shown = block.addresses.filter((a) => matches(a, filter));
+  // LT-298: the columns this machine shows, and the address and actions
+  // either side of them.
+  const { columns: addressColumns, fields } = useContext(Meta);
+  const span = addressColumns.length + 2;
+  const shown = block.addresses.filter((a) => matches(a, filter, fields));
   return (
     <>
       <tr className="cv-ipam-subnet">
@@ -631,7 +881,10 @@ function SubnetRows({
             {open ? '▾' : '▸'} {block.cidr}
           </button>
         </td>
-        <td>{block.name ?? ''}</td>
+        <td>
+          {block.name ?? ''}
+          <WhereWhoseNote siteId={block.siteId} tenantId={block.tenantId} />
+        </td>
         <td>{block.vlan ?? ''}</td>
         <td>
           <span className="cv-ipam-meter" title={t('ipam.utilisation', { percent: used, usable: block.usable })}>
@@ -746,16 +999,7 @@ function SubnetRows({
               <thead>
                 <tr>
                   <th>{t('ipam.colAddress')}</th>
-                  <th>{t('ipam.colName')}</th>
-                  <th>{t('ipam.colHeldAs')}</th>
-                  <th>{t('ipam.colUsedAs')}</th>
-                  <th>{t('ipam.colHostname')}</th>
-                  <th>{t('ipam.colInterface')}</th>
-                  <th>{t('ipam.colMac')}</th>
-                  <th>{t('ipam.colOwner')}</th>
-                  <th>{t('ipam.colPurpose')}</th>
-                  <th>{t('ipam.colInRange')}</th>
-                  <th>{t('ipam.colKnownFrom')}</th>
+                  {addressColumns.map((c) => <th key={c}>{columnLabel(c, fields)}</th>)}
                   <th />
                 </tr>
               </thead>
@@ -765,7 +1009,7 @@ function SubnetRows({
                   if (a.entryId && editingEntry === a.entryId && entryForm) {
                     return (
                       <tr key={a.entryId} className="cv-ipam-form-row">
-                        <td colSpan={12}>
+                        <td colSpan={span}>
                           <AddressFields form={entryForm} set={setEntryForm}
                             onSave={() => onSaveEntry(a.entryId)} onCancel={onCancel} label={t('ipam.save')} />
                         </td>
@@ -775,7 +1019,7 @@ function SubnetRows({
                   if (!a.entryId && editingDevice === deviceKey && deviceForm) {
                     return (
                       <tr key={deviceKey} className="cv-ipam-form-row">
-                        <td colSpan={12}>
+                        <td colSpan={span}>
                           <DeviceFields form={deviceForm} set={setDeviceForm} onSave={() => onSaveDevice(a)}
                             onCancel={onCancel} device={a.label} />
                         </td>
@@ -785,16 +1029,7 @@ function SubnetRows({
                   return (
                     <tr key={`${a.address}-${a.entryId ?? deviceKey}`} title={a.note ?? undefined}>
                       <td>{a.address}</td>
-                      <td>{a.label}</td>
-                      <td>{a.kind ? kindWord(a.kind) : ''}</td>
-                      <td>{a.assignment ? assignmentWord(a.assignment) : ''}</td>
-                      <td title={a.fqdn ?? undefined}>{a.hostname ?? ''}</td>
-                      <td>{a.interfaceLabel ?? ''}</td>
-                      <td>{a.mac ?? ''}</td>
-                      <td>{a.owner ?? ''}</td>
-                      <td>{a.purpose ?? ''}</td>
-                      <td className="cv-help">{a.inRange ? (a.inRange.name ?? rangeWord(a.inRange.kind)) : ''}</td>
-                      <td className="cv-help">{sourceWord(a)}</td>
+                      {addressColumns.map((c) => <td key={c}>{cellFor(c, a)}</td>)}
                       <td className="cv-ipam-actions">
                         <button type="button" className="cv-btn cv-btn-small" onClick={() => onEditAddress(a)}>
                           {t('ipam.edit')}
@@ -810,7 +1045,7 @@ function SubnetRows({
                 })}
                 {shown.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="cv-help">
+                    <td colSpan={span} className="cv-help">
                       {block.addresses.length === 0 ? t('ipam.nothingOn') : t('ipam.noMatch')}
                     </td>
                   </tr>
@@ -821,5 +1056,51 @@ function SubnetRows({
         </tr>
       )}
     </>
+  );
+}
+
+/** The device an address is on, and which of its interfaces (LT-298). */
+function DevicePicker({
+  deviceId, deviceInterface, onChange,
+}: {
+  deviceId: string;
+  deviceInterface: string;
+  onChange: (patch: { deviceId?: string; deviceInterface?: string }) => void;
+}) {
+  const { devices } = useContext(Meta);
+  // A link to a device since deleted stays selectable, so opening the form
+  // does not quietly break it — it says what it is instead.
+  const missing = deviceId && !devices.some((d) => d.id === deviceId);
+  return (
+    <>
+      <label className="cv-field cv-field-narrow">
+        <span>{t('ipam.device')}</span>
+        <select className="cv-input" value={deviceId} onChange={(e) => onChange({ deviceId: e.target.value })}>
+          <option value="">{t('ipam.notOnDevice')}</option>
+          {missing && <option value={deviceId}>{t('ipam.deviceRemoved')}</option>}
+          {devices.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+        </select>
+      </label>
+      {deviceId && (
+        <label className="cv-field cv-field-narrow">
+          <span>{t('ipam.deviceInterface')}</span>
+          <input className="cv-input" value={deviceInterface} autoComplete="off"
+            onChange={(e) => onChange({ deviceInterface: e.target.value })} />
+        </label>
+      )}
+    </>
+  );
+}
+
+/** A subnet's site and tenant, quietly, under its name. */
+function WhereWhoseNote({ siteId, tenantId }: { siteId?: string; tenantId?: string }) {
+  const { ipam } = useContext(Meta);
+  const site = siteId ? ipam?.sites?.find((x) => x.id === siteId)?.name : undefined;
+  const tenant = tenantId ? ipam?.tenants?.find((x) => x.id === tenantId)?.name : undefined;
+  if (!site && !tenant) return null;
+  return (
+    <span className="cv-help cv-ipam-where">
+      {' '}{site && tenant ? t('ipam.whereWhose', { site, tenant }) : site ?? tenant}
+    </span>
   );
 }

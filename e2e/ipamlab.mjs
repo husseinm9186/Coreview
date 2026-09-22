@@ -108,9 +108,10 @@ check("the register takes the screen", (await page.locator(".cv-register").count
 check("the diagram and the bottom panel give way to it",
   (await page.locator(".cv-panel").count()) === 0 &&
   (await page.locator(".cv-main.is-behind").count()) === 1);
-check("six views, in one bar",
+// LT-298 added the seventh: where, whose, and the operator's own fields.
+check("seven views, in one bar",
   (await page.locator(".cv-register-tabs button").allInnerTexts()).join("|") ===
-    "Addresses|Utilisation|Hierarchy|Allocate|Split & merge|History",
+    "Addresses|Utilisation|Hierarchy|Allocate|Split & merge|History|Sites, tenants & fields",
   (await page.locator(".cv-register-tabs button").allInnerTexts()).join("|"));
 check("and it opens on the addresses", (await page.locator(".cv-ipam-table").count()) === 1);
 
@@ -327,6 +328,17 @@ check("and a range crossing a boundary stops it",
 check("so the split button is refused",
   await page.locator("button", { hasText: "Split it" }).first().isDisabled());
 
+// LT-298: give it a site and a tenant first, so the split can be seen to
+// keep them. Invented names (D-027).
+await page.evaluate(() => {
+  const s = window.__cvStore.getState();
+  s.saveIpamPlace("site", null, { name: "Lab Site" });
+  s.saveIpamPlace("tenant", null, { name: "Lab Tenant" });
+  const ipam = window.__cvStore.getState().doc.ipam;
+  const voice = ipam.subnets.find((x) => x.cidr === "198.51.100.0/24");
+  s.updateIpamSubnet(voice.id, { siteId: ipam.sites[0].id, tenantId: ipam.tenants[0].id });
+});
+
 // Splitting the other subnet, which nothing straddles, works.
 await splitPick.selectOption({ label: "198.51.100.0/24 · Voice" });
 await page.waitForTimeout(400);
@@ -337,6 +349,12 @@ await page.waitForTimeout(600);
 const after = await page.evaluate(() => window.__cvStore.getState().doc.ipam.subnets.map((s) => s.cidr));
 check("the subnet becomes its children", after.includes("198.51.100.0/26") && !after.includes("198.51.100.0/24"),
   JSON.stringify(after));
+check("and keep the site and tenant they were in (LT-298)",
+  await page.evaluate(() => {
+    const ipam = window.__cvStore.getState().doc.ipam;
+    const kids = ipam.subnets.filter((x) => x.cidr.startsWith("198.51.100.") && x.cidr.endsWith("/26"));
+    return kids.length === 4 && kids.every((k) => k.siteId === ipam.sites[0].id && k.tenantId === ipam.tenants[0].id);
+  }));
 check("which keep the container they came out of",
   (await page.evaluate(() => {
     const s = window.__cvStore.getState().doc.ipam.subnets.find((x) => x.cidr === "198.51.100.64/26");

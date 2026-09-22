@@ -72,6 +72,55 @@ export interface IpamSubnet {
   vrfId?: string;
   /** The container it was allocated out of, where it was. */
   containerId?: string;
+  /** LT-298: where it is and whose it is. An address in it with no site or
+   *  tenant of its own takes these. */
+  siteId?: string;
+  tenantId?: string;
+  /** LT-298: values of the operator's own fields, by field id. */
+  custom?: Record<string, string>;
+}
+
+/**
+ * Where something physically is (LT-298) — a building, a data centre, a
+ * branch. A list of its own, rather than free text on every record, so that
+ * "HQ" and "hq " are one place and renaming it renames it everywhere.
+ */
+export interface IpamSite {
+  id: string;
+  name: string;
+  note?: string;
+}
+
+/**
+ * Whose something is (LT-298) — a department, a business unit, a customer of
+ * the network. The same shape as a site and a separate list, because where a
+ * subnet is and who it belongs to are independent: one building holds several
+ * tenants and one tenant spans several buildings.
+ */
+export interface IpamTenant {
+  id: string;
+  name: string;
+  note?: string;
+}
+
+/** What a custom field holds, which decides how a value is checked. */
+export type CustomFieldType = 'text' | 'number' | 'choice' | 'date';
+
+export const CUSTOM_FIELD_TYPES: CustomFieldType[] = ['text', 'number', 'choice', 'date'];
+
+/**
+ * A field the operator adds to the register (LT-298) — "circuit id",
+ * "cost centre", "patch panel". Defined once, then offered on every record it
+ * applies to, filterable as `name:value` and choosable as a column.
+ */
+export interface IpamCustomField {
+  id: string;
+  name: string;
+  type: CustomFieldType;
+  /** The allowed answers, for `choice`. */
+  choices?: string[];
+  /** Which records carry it. */
+  on: ('subnet' | 'address')[];
 }
 
 /**
@@ -131,6 +180,16 @@ export interface IpamEntry {
    *  "to-decommission". Lower-cased on the way in so `PCI` and `pci` are one
    *  tag; a register where they are two is a register nobody trusts. */
   tags?: string[];
+  /** LT-298: where and whose, where it differs from its subnet. */
+  siteId?: string;
+  tenantId?: string;
+  /** LT-298: values of the operator's own fields, by field id. */
+  custom?: Record<string, string>;
+  /** LT-298: the device on the diagram this address is on, by node id, and
+   *  which of its interfaces. The link is the node, not its name, so renaming
+   *  the device on the diagram does not break it. */
+  deviceId?: string;
+  deviceInterface?: string;
 }
 
 /**
@@ -206,6 +265,10 @@ export interface IpamState {
   audit?: IpamAuditEntry[];
   /** LT-298: filters worth keeping, by name. */
   views?: IpamView[];
+  /** LT-298: places, owners, and the operator's own fields. */
+  sites?: IpamSite[];
+  tenants?: IpamTenant[];
+  customFields?: IpamCustomField[];
   /** Pre-LT-289. Read only by the migration. */
   reservations?: IpamReservation[];
 }
@@ -248,6 +311,20 @@ export interface IpamAddress {
   vrfId: string;
   /** LT-298: the tags on the entry behind this address, where there is one. */
   tags?: string[];
+  /** LT-298: where and whose, with where the answer came from — its own
+   *  record, the device it is on, or the subnet it is in. A value inherited
+   *  from the subnet reads differently from one set on the address, and the
+   *  table says which. */
+  site?: { name: string; from: 'own' | 'device' | 'subnet' };
+  tenant?: { name: string; from: 'own' | 'subnet' };
+  /** LT-298: the operator's own fields, by field id. */
+  custom?: Record<string, string>;
+  /** LT-298: the device this address is on. Set for an address read off a
+   *  device, and for a typed one linked to a device. `deviceMissing` is a link
+   *  whose device has since been deleted from the diagram. */
+  deviceLabel?: string;
+  deviceInterface?: string;
+  deviceMissing?: boolean;
 }
 
 export type SubnetOrigin = 'declared' | 'connected route' | 'from addresses';
@@ -294,6 +371,10 @@ export interface IpamBlock {
   /** LT-297: which routing table, and which folder of address space. */
   vrfId: string;
   containerId?: string;
+  /** LT-298, from the declared subnet. */
+  siteId?: string;
+  tenantId?: string;
+  custom?: Record<string, string>;
 }
 
 export interface IpamConflict {
@@ -465,7 +546,18 @@ export function buildIpam(nodes: readonly TopoNode[], state: IpamState | undefin
     add(parsed, 'declared', {
       name: s.name, vlan: s.vlan, note: s.note, subnetId: s.id,
       vrfId: s.vrfId, containerId: s.containerId,
+      // LT-298
+      siteId: s.siteId, tenantId: s.tenantId, custom: s.custom,
     });
+  }
+
+  // LT-298: ids to names, once. An id with no name behind it — a site since
+  // removed — resolves to nothing, which is the honest answer.
+  const siteName = (id?: string) => (id ? state?.sites?.find((x) => x.id === id)?.name : undefined);
+  const tenantName = (id?: string) => (id ? state?.tenants?.find((x) => x.id === id)?.name : undefined);
+  const labelOf = new Map<string, string>();
+  for (const n of nodes) {
+    if (n.type === 'device') labelOf.set(n.id, text((n.data as Partial<DeviceNodeData>)?.label) ?? n.id);
   }
 
   const addresses: IpamAddress[] = [];
@@ -503,6 +595,10 @@ export function buildIpam(nodes: readonly TopoNode[], state: IpamState | undefin
         mac: text(d.mac),
         vlan: text(d.vlan),
         hostname: text(d.hostname),
+        // LT-298: a device's own address is on that device, and where the
+        // device says it is is a more specific answer than its subnet's.
+        deviceLabel: label,
+        ...(text(d.site) ? { site: { name: text(d.site)!, from: 'device' as const } } : {}),
       });
     }
   }
@@ -526,6 +622,15 @@ export function buildIpam(nodes: readonly TopoNode[], state: IpamState | undefin
       owner: text(e.owner),
       purpose: text(e.purpose),
       ...(e.tags?.length ? { tags: e.tags } : {}),
+      // LT-298
+      ...(siteName(e.siteId) ? { site: { name: siteName(e.siteId)!, from: 'own' as const } } : {}),
+      ...(tenantName(e.tenantId) ? { tenant: { name: tenantName(e.tenantId)!, from: 'own' as const } } : {}),
+      ...(e.custom && Object.keys(e.custom).length ? { custom: e.custom } : {}),
+      ...(e.deviceId
+        ? labelOf.has(e.deviceId)
+          ? { deviceLabel: labelOf.get(e.deviceId), deviceInterface: text(e.deviceInterface) }
+          : { deviceMissing: true, deviceInterface: text(e.deviceInterface) }
+        : {}),
     });
   }
 
@@ -554,7 +659,14 @@ export function buildIpam(nodes: readonly TopoNode[], state: IpamState | undefin
     add(twentyFourOf(a.value), 'from addresses', { vrfId: a.vrfId });
   }
 
-  for (const a of addresses) holderOf(a.value, a.vrfId)?.addresses.push(a);
+  for (const a of addresses) {
+    const holder = holderOf(a.value, a.vrfId);
+    if (!holder) continue;
+    holder.addresses.push(a);
+    // LT-298: what the address does not say for itself, its subnet says.
+    if (!a.site && siteName(holder.siteId)) a.site = { name: siteName(holder.siteId)!, from: 'subnet' };
+    if (!a.tenant && tenantName(holder.tenantId)) a.tenant = { name: tenantName(holder.tenantId)!, from: 'subnet' };
+  }
 
   const loose = addresses.filter((a) => !holderOf(a.value, a.vrfId));
 
@@ -829,10 +941,16 @@ export function utilisation(block: IpamBlock): number {
  * two sums away from this, and the rows are what gets pasted into a change
  * request.
  */
-export function ipamRows(model: IpamModel): string[][] {
+export function ipamRows(model: IpamModel, fields: readonly IpamCustomField[] = []): string[][] {
+  // LT-298: where, whose, which device, the tags and the operator's own
+  // fields, after the columns that were already there — so a spreadsheet
+  // built against the old export still finds everything where it was, and
+  // the import, which reads by heading, still round-trips.
+  const own = fields.filter((f) => f.on.includes('address'));
   const rows: string[][] = [
     ['Subnet', 'Subnet name', 'VLAN', 'Address', 'Name', 'Held as', 'Used as', 'Hostname',
-     'FQDN', 'Owner', 'Purpose', 'Interface', 'MAC', 'In range', 'Known from', 'Note'],
+     'FQDN', 'Owner', 'Purpose', 'Interface', 'MAC', 'In range', 'Known from', 'Note',
+     'Site', 'Tenant', 'Device', 'Tags', ...own.map((f) => f.name)],
   ];
   const row = (b: IpamBlock | null, a: IpamAddress) => [
     b?.cidr ?? '',
@@ -846,11 +964,16 @@ export function ipamRows(model: IpamModel): string[][] {
     a.fqdn ?? '',
     a.owner ?? '',
     a.purpose ?? '',
-    a.interfaceLabel ?? '',
+    a.interfaceLabel ?? a.deviceInterface ?? '',
     a.mac ?? '',
     a.inRange ? (a.inRange.name ?? a.inRange.kind) : '',
     a.source,
     a.note ?? '',
+    a.site?.name ?? '',
+    a.tenant?.name ?? '',
+    a.deviceLabel ?? '',
+    (a.tags ?? []).join(', '),
+    ...own.map((f) => a.custom?.[f.id] ?? ''),
   ];
   for (const b of model.blocks) for (const a of b.addresses) rows.push(row(b, a));
   for (const a of model.loose) rows.push(row(null, a));

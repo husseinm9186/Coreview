@@ -1172,117 +1172,6 @@ cannot be silently neither — and 4 in `e2e/crawling.mjs` driving the real
 review, where the counts are the proof the buttons read the rows rather than
 showing a constant.
 
-### LT-298 — IPAM Phase 2: devices, sites, tenants, bulk operations, reporting
-**Source:** the same specification, Phase 2.
-**Narrowed 2026-09-22:** "sites and tenants, linking devices to addresses,
-custom fields, a column chooser. though I don't want JSON import and export,
-and I don't want utilisation history." Those two are LT-396 and LT-397 in
-Declined; what is left here is the four he named.
-**Scope:** sites and tenants; devices and interfaces linked to addresses; tags
-and custom fields across objects; filtering, saved views, the column chooser,
-bulk selection and bulk actions; CSV and JSON import and export; the utilisation
-dashboard and its history; split and merge with an explicit review of what
-happens to the addresses inside.
-**In progress — one part shipped, 2026-09-21: CSV import.**
-The register has always *written* CSV (`ipamRows`) and nothing read it back,
-so the round trip was one-way and an estate already kept in a spreadsheet had
-to be typed in. **Import CSV** in the register's bar now reads one.
-- **Columns are matched by heading, not by position.** A spreadsheet that has
-  been through three people has reordered columns and added its own; insisting
-  on an order would reject exactly the files worth importing. Only `Address`
-  is required, because it is the only field that must parse. `IP`, `Name`,
-  `Held as`, `Used as` and the rest are all understood.
-- **Nothing is guessed, and nothing is half-applied.** The file is summarised
-  before anything is written: how many will be added, which rows were skipped
-  and why with their line numbers, which addresses two rows both claimed, and
-  which subnets the file names that the register does not hold. Only then is
-  there an **Add them** button.
-- **A subnet is reported as wanted rather than created.** Creating subnets is a
-  decision about someone's network (D-050).
-- **Both sides of a conflict stay out.** Two rows claiming one address is a
-  disagreement, not a preference for the later row.
-**Checked:** 9 unit tests, including a round trip against what `ipamRows`
-writes, and quoted fields so a note may contain a comma. `e2e/ipamlab` stays
-green.
-**Second part shipped, 2026-09-21: tags, and a filter box that understands
-them.** A register of two hundred addresses is a list nobody reads; filtering
-is what turns it back into an answer, and it is what saved views and bulk
-actions will both be built on, so the grammar was worth getting right once.
-- **Bare words behave exactly as before** — the box already searched address,
-  name, hostname, MAC, owner and the rest, and still does.
-- **`field:value` narrows and a leading `-` excludes**: `tag:pci`, `vlan:14`,
-  `source:crawled`, `-tag:decommissioned`. Every term must match, because that
-  is what a person means by typing two of them. A quoted value may contain a
-  space.
-- **`tag:` and `vlan:` match exactly, the text fields by substring.** If
-  `tag:core` also matched `core-switches` then `-tag:core` would quietly
-  exclude things nobody asked it to, and an exclusion you cannot trust is
-  worse than none.
-- **An unknown field is a word, not an error.** Someone typing `printer:2f`
-  means to search for that text; rejecting the query would be the least useful
-  possible answer.
-- **Tags are lower-cased and deduplicated on the way in.** A register where
-  `PCI` and `pci` are two different tags is one nobody trusts.
-**Checked:** 11 unit tests on the grammar, and 5 in `e2e/ipam` that set a tag
-through the form and then find it — both halves, because a tag that can be
-filtered but not set is half a feature.
-**Third part shipped, 2026-09-21: bulk actions.** Filtering made a long
-register answerable; this makes it editable. Add or remove tags, set an owner
-or a purpose, or change what addresses are held as — applied to everything the
-filter found.
-- **The bar only appears once a filter is narrowing the list.** "Do this to all
-  of them" is only a sensible offer when "them" is a chosen set.
-- **It says what will change before it changes anything**, and the number is
-  not the number of rows on screen: an address that already carries the tag is
-  not a change. The button reads `Apply to 12` beside `12 to change, 3 already
-  so, 2 belong to a device`.
-- **A row that came from a device on the diagram is not edited, and is counted
-  and named rather than silently skipped.** Its address is a fact about the
-  device; the register displays it rather than owning it, and bulk-writing to
-  it would record something the device never reported.
-- **The whole edit is one undo.** `applyIpamBulk` commits once — a loop over
-  `updateIpamEntry` would be correct and unusable, because putting two hundred
-  changes back would mean pressing undo two hundred times.
-**Checked:** 10 unit tests on the planner, and 5 in `e2e/ipam` that filter,
-apply a tag to every match through the real bar, and then undo the lot in one
-step — the last asserted through the store rather than Ctrl+Z, because the
-claim under test is the commit granularity, not the shortcut.
-**Fourth part shipped, 2026-09-21: saved views.** Once a filter can say
-`source:crawled vlan:14 -tag:audited`, it is a sentence worth writing once
-rather than retyping.
-- **A view holds only the query, never the rows it matched.** It therefore
-  cannot go stale: opening it asks the register again rather than showing an
-  answer from last week. An e2e check asserts the stored object has no
-  addresses in it, because that is the design and not an implementation
-  detail.
-- **Save appears only when there is a filter to save**, and a view can be
-  forgotten from the same bar.
-**Checked:** 5 checks in `e2e/ipam` — save, clear the box, reopen it, confirm
-what was stored, and forget it.
-**Fifth part shipped, 2026-09-21: the utilisation view.** "So I know in the
-future that this subnet is used and that subnet is not used" is the sentence
-this register was asked for, and the list answered it one subnet at a time.
-**Utilisation** is a sixth view in the register's bar that answers it for the
-estate at once.
-- **Fullest first**, because that is the end that needs acting on. Ties break
-  by size and then by name, so the same data always reads the same way.
-- **Four bands rather than one sorted column**: nearly full, busy, lightly
-  used, and *nothing in them*. A sorted list makes you read all of it to find
-  the two that matter. Empty is its own band because 0% is not "very light" —
-  it is reclaimable, and it is the other end an operator acts on.
-- **The reclaimable ones are named in a sentence**, not left to be spotted.
-- **A subnet holding only excluded addresses or a DHCP pool is not
-  "untouched"**: a server owns those, and offering them back would be wrong.
-- **Nothing is stored.** Every number is derived from the same `buildIpam` the
-  list beneath it uses, so the two cannot disagree and the view cannot go
-  stale.
-**Checked:** 10 unit tests — including that a /31 or /32 is not divided by
-zero — and 4 in `e2e/ipamlab` which assert the view agrees with the register
-rather than merely rendering.
-**Still to do in this phase:** sites and tenants; devices and interfaces linked
-to addresses; custom fields; the column chooser; JSON import and export;
-utilisation *history*; split and merge with an explicit review.
-
 ### LT-299 — Discovery ingestion: the register learns what is actually in use — 2026-09-21
 **Source:** the same specification, Phase 3.
 **Scope:** DNS record and DHCP scope/lease models and screens; a discovery
@@ -1627,6 +1516,156 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-298 — IPAM Phase 2: devices, sites, tenants, bulk operations, reporting
+**Source:** the same specification, Phase 2.
+**Narrowed 2026-09-22:** "sites and tenants, linking devices to addresses,
+custom fields, a column chooser. though I don't want JSON import and export,
+and I don't want utilisation history." Those two are LT-396 and LT-397 in
+Declined; what is left here is the four he named.
+**Scope:** sites and tenants; devices and interfaces linked to addresses; tags
+and custom fields across objects; filtering, saved views, the column chooser,
+bulk selection and bulk actions; CSV and JSON import and export; the utilisation
+dashboard and its history; split and merge with an explicit review of what
+happens to the addresses inside.
+**In progress — one part shipped, 2026-09-21: CSV import.**
+The register has always *written* CSV (`ipamRows`) and nothing read it back,
+so the round trip was one-way and an estate already kept in a spreadsheet had
+to be typed in. **Import CSV** in the register's bar now reads one.
+- **Columns are matched by heading, not by position.** A spreadsheet that has
+  been through three people has reordered columns and added its own; insisting
+  on an order would reject exactly the files worth importing. Only `Address`
+  is required, because it is the only field that must parse. `IP`, `Name`,
+  `Held as`, `Used as` and the rest are all understood.
+- **Nothing is guessed, and nothing is half-applied.** The file is summarised
+  before anything is written: how many will be added, which rows were skipped
+  and why with their line numbers, which addresses two rows both claimed, and
+  which subnets the file names that the register does not hold. Only then is
+  there an **Add them** button.
+- **A subnet is reported as wanted rather than created.** Creating subnets is a
+  decision about someone's network (D-050).
+- **Both sides of a conflict stay out.** Two rows claiming one address is a
+  disagreement, not a preference for the later row.
+**Checked:** 9 unit tests, including a round trip against what `ipamRows`
+writes, and quoted fields so a note may contain a comma. `e2e/ipamlab` stays
+green.
+**Second part shipped, 2026-09-21: tags, and a filter box that understands
+them.** A register of two hundred addresses is a list nobody reads; filtering
+is what turns it back into an answer, and it is what saved views and bulk
+actions will both be built on, so the grammar was worth getting right once.
+- **Bare words behave exactly as before** — the box already searched address,
+  name, hostname, MAC, owner and the rest, and still does.
+- **`field:value` narrows and a leading `-` excludes**: `tag:pci`, `vlan:14`,
+  `source:crawled`, `-tag:decommissioned`. Every term must match, because that
+  is what a person means by typing two of them. A quoted value may contain a
+  space.
+- **`tag:` and `vlan:` match exactly, the text fields by substring.** If
+  `tag:core` also matched `core-switches` then `-tag:core` would quietly
+  exclude things nobody asked it to, and an exclusion you cannot trust is
+  worse than none.
+- **An unknown field is a word, not an error.** Someone typing `printer:2f`
+  means to search for that text; rejecting the query would be the least useful
+  possible answer.
+- **Tags are lower-cased and deduplicated on the way in.** A register where
+  `PCI` and `pci` are two different tags is one nobody trusts.
+**Checked:** 11 unit tests on the grammar, and 5 in `e2e/ipam` that set a tag
+through the form and then find it — both halves, because a tag that can be
+filtered but not set is half a feature.
+**Third part shipped, 2026-09-21: bulk actions.** Filtering made a long
+register answerable; this makes it editable. Add or remove tags, set an owner
+or a purpose, or change what addresses are held as — applied to everything the
+filter found.
+- **The bar only appears once a filter is narrowing the list.** "Do this to all
+  of them" is only a sensible offer when "them" is a chosen set.
+- **It says what will change before it changes anything**, and the number is
+  not the number of rows on screen: an address that already carries the tag is
+  not a change. The button reads `Apply to 12` beside `12 to change, 3 already
+  so, 2 belong to a device`.
+- **A row that came from a device on the diagram is not edited, and is counted
+  and named rather than silently skipped.** Its address is a fact about the
+  device; the register displays it rather than owning it, and bulk-writing to
+  it would record something the device never reported.
+- **The whole edit is one undo.** `applyIpamBulk` commits once — a loop over
+  `updateIpamEntry` would be correct and unusable, because putting two hundred
+  changes back would mean pressing undo two hundred times.
+**Checked:** 10 unit tests on the planner, and 5 in `e2e/ipam` that filter,
+apply a tag to every match through the real bar, and then undo the lot in one
+step — the last asserted through the store rather than Ctrl+Z, because the
+claim under test is the commit granularity, not the shortcut.
+**Fourth part shipped, 2026-09-21: saved views.** Once a filter can say
+`source:crawled vlan:14 -tag:audited`, it is a sentence worth writing once
+rather than retyping.
+- **A view holds only the query, never the rows it matched.** It therefore
+  cannot go stale: opening it asks the register again rather than showing an
+  answer from last week. An e2e check asserts the stored object has no
+  addresses in it, because that is the design and not an implementation
+  detail.
+- **Save appears only when there is a filter to save**, and a view can be
+  forgotten from the same bar.
+**Checked:** 5 checks in `e2e/ipam` — save, clear the box, reopen it, confirm
+what was stored, and forget it.
+**Fifth part shipped, 2026-09-21: the utilisation view.** "So I know in the
+future that this subnet is used and that subnet is not used" is the sentence
+this register was asked for, and the list answered it one subnet at a time.
+**Utilisation** is a sixth view in the register's bar that answers it for the
+estate at once.
+- **Fullest first**, because that is the end that needs acting on. Ties break
+  by size and then by name, so the same data always reads the same way.
+- **Four bands rather than one sorted column**: nearly full, busy, lightly
+  used, and *nothing in them*. A sorted list makes you read all of it to find
+  the two that matter. Empty is its own band because 0% is not "very light" —
+  it is reclaimable, and it is the other end an operator acts on.
+- **The reclaimable ones are named in a sentence**, not left to be spotted.
+- **A subnet holding only excluded addresses or a DHCP pool is not
+  "untouched"**: a server owns those, and offering them back would be wrong.
+- **Nothing is stored.** Every number is derived from the same `buildIpam` the
+  list beneath it uses, so the two cannot disagree and the view cannot go
+  stale.
+**Checked:** 10 unit tests — including that a /31 or /32 is not divided by
+zero — and 4 in `e2e/ipamlab` which assert the view agrees with the register
+rather than merely rendering.
+**Still to do in this phase:** sites and tenants; devices and interfaces linked
+to addresses; custom fields; the column chooser; JSON import and export;
+utilisation *history*; split and merge with an explicit review.
+
+**Last part shipped, 2026-09-22: sites, tenants, device links, custom fields and
+the column chooser** — the four the operator named when he narrowed the scope.
+LT-298 is Done; JSON import and export and utilisation history are declined
+(LT-396, LT-397), and split and merge with its review shipped under LT-297.
+- **Sites and tenants are lists, not free text** — so "HQ" and "hq " are one
+  place and renaming one renames it everywhere — managed on a seventh register
+  view, **Sites, tenants & fields**. A subnet or an address can be put in
+  either; **an address with none of its own takes its subnet's**, and the table
+  says which, dimly, after the name: `Lab Site A (from the subnet)`. A device's
+  own address takes the device's Site first, as the more specific statement
+  about where that box is.
+- **A typed address can be linked to a device on the diagram**, and which of
+  its interfaces. The link is the node id, not its name, so renaming the device
+  does not break it; a device since deleted shows as *Removed from the diagram*
+  rather than vanishing or pointing at the wrong thing.
+- **Custom fields** — text, a number, one of a list, or a date — on subnets,
+  addresses or both. A value that cannot go in its field is refused *before*
+  anything is written. Each is filterable as its own name (`Circuit ID` is
+  `circuit-id:`); a name that would shadow a built-in filter field is refused,
+  because it would always be the operator's that lost.
+- **The column chooser** stores what is *hidden*, on this machine only, so a
+  field added next week appears without anybody going to find it.
+- **Removing a site, tenant or field in use** says first what it will leave
+  behind, then leaves nothing pointing at it.
+- **The history reads in names**: a site by its name, a device by what the
+  diagram calls it, each field under its own name — not ids nobody can read.
+- **A split hands site, tenant and fields to every child; a merge keeps only
+  what every half agreed on** (D-050): two halves in different tenants is a
+  disagreement for a person, and picking one would record something nobody
+  decided.
+- **The CSV export carries all of it**, after the columns that were already
+  there, so a sheet built on the old export still finds everything in place.
+**Checked:** 13 unit tests on the lists, values, removals, history, columns and
+split/merge; 5 on inheritance and device links; 5 on the filter; the export's
+columns; 22 checks in `e2e/ipam` driving every part through the real screen;
+and one in `e2e/ipamlab` that a real split keeps site and tenant. Screenshots
+looked at, not only asserted — which caught the saved-views menu stretching
+across the whole bar, now sized to its content.
 
 ### LT-393 — **bug** A router's ARP entries collapse to one address — 2026-09-21
 
