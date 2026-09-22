@@ -269,8 +269,8 @@ jobs:
   bundle-macos:
     name: bundle (macOS, universal .dmg)
     needs: test
-    # LT-398: paused again — NSIS only. `if: false`, so it returns in one edit.
-    if: false
+    # LT-399: asked for on its own — "can you build the macos". The Windows
+    # NSIS and this one; Linux, the MSI and the offline installer stay paused.
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5

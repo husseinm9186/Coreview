@@ -2012,6 +2012,20 @@ asserting `Continue? (y/n)`, `Proceed with reload? [confirm]` and
 
 **Done 2026-09-22, proven on the production 2930M:** the banner was answered with `[13]`, a carriage return, and the device moved past it.
 
+### LT-399 — The macOS .dmg, alongside the Windows NSIS — 2026-09-22
+**Source:** "can you build the macos".
+**Shipped:** the macOS job is on again; Linux, its AppImage test, the MSI and
+the offline Windows installer stay paused. The `.dmg` is universal — Apple
+silicon and Intel in one file.
+**Two things that are true of it and worth saying rather than discovering:**
+- **It is unsigned and not notarised.** There is no Apple certificate in this
+  repository and no notarisation step in the workflow, so Gatekeeper will
+  refuse it on first open — the right-click **Open** route, or clearing the
+  quarantine attribute, is what gets past that. Signing it needs a paid Apple
+  Developer account and two secrets; that is a decision, not an oversight.
+- **It has never been run.** Nothing here can open a `.dmg`. The first person
+  to install it is its first test (recorded at LT-394 and still true).
+
 ### LT-398 — Back to the Windows NSIS installer only — 2026-09-22
 **Source:** "don't build any installer yet please except the NSIS for
 windows" — the same day LT-394 turned everything on, and before anything had
