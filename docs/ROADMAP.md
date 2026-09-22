@@ -1870,6 +1870,16 @@ pulled into Phase 1.*
 
 ## Done
 
+### LT-394 — Every installer again — 2026-09-22
+**Source:** "can you go ahead build all the installers".
+**Shipped:** the Linux leg (`.deb` and `.AppImage`) and its WebKit-free smoke
+test, the Windows MSI beside the NSIS, the offline Windows installer and the
+universal macOS `.dmg` are all back in `build.yml`. They were paused at LT-349
+("only Build windows installer just like last time"); this reverses that at
+his instruction. Nothing was deleted either time, so it was one edit per job.
+**Not run here:** CI builds them on the push. The macOS bundle cannot be
+tested from this machine at all, which is why it stays a job of its own.
+
 ### LT-391 — **bug** The crawl speaks Cisco to an ArubaOS-Switch — 2026-09-21
 
 **Evidenced by the operator's own debug log**, the first run that reached a

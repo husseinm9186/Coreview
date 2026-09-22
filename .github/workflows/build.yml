@@ -129,28 +129,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # LT-349: paused again, at his instruction — "only Build windows
-          # installer just like last time". LT-337 turned this back on; this is
-          # the fourth time the set has been narrowed or widened (LT-305,
-          # LT-311, LT-331, LT-337), so it stays commented rather than deleted
-          # and comes back in one edit. `test` still runs on Linux, so nothing
-          # about Linux goes unchecked — only the bundling is paused.
-          # - os: ubuntu-latest
-          #   artifact: coreview-linux
-          #   bundles: deb,appimage
-          #   paths: |
-          #     target/release/bundle/deb/*.deb
-          #     target/release/bundle/appimage/*.AppImage
+          # LT-394: every installer again — "can you go ahead build all the
+          # installers". The set has now been narrowed or widened six times
+          # (LT-305, LT-311, LT-331, LT-337, LT-349, LT-394); each time it is
+          # one edit, which is why nothing here is ever deleted.
+          - os: ubuntu-latest
+            artifact: coreview-linux
+            bundles: deb,appimage
+            paths: |
+              target/release/bundle/deb/*.deb
+              target/release/bundle/appimage/*.AppImage
           - os: windows-latest
             artifact: coreview-windows
-            # LT-331, restated at LT-349 — "No msi or offline installer".
-            # `--bundles` below means the MSI is not built at all rather than
-            # built and thrown away, which is the point: this is about the
-            # minutes. One edit puts it back.
-            bundles: nsis
+            bundles: nsis,msi
             paths: |
               target/release/bundle/nsis/*.exe
-            #  target/release/bundle/msi/*.msi
+              target/release/bundle/msi/*.msi
     steps:
       - uses: actions/checkout@v5
 
@@ -215,10 +209,8 @@ jobs:
   bundle-windows-offline:
     name: bundle (Windows, offline installer)
     needs: test
-    # LT-331, and restated at LT-349 — "No msi or offline installer". It is a
-    # second, much larger NSIS of the same commit, and he has asked twice for
-    # one Windows installer only.
-    if: false
+    # LT-394: back on with the rest. It was paused at LT-331 and LT-349 as a
+    # second, much larger NSIS of the same commit.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -277,10 +269,8 @@ jobs:
   bundle-macos:
     name: bundle (macOS, universal .dmg)
     needs: test
-    # LT-349: paused again — "only Build windows installer just like last
-    # time". `if: false` rather than deletion, so it returns in one edit with
-    # its history and its comments intact.
-    if: false
+    # LT-394: back on with the rest. It cannot be tested from here, which is
+    # why it stays a job of its own — a failure in it holds nothing else up.
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
@@ -321,9 +311,7 @@ jobs:
   appimage-smoke:
     name: AppImage on a machine without WebKit
     needs: bundle
-    # LT-349: there is no AppImage to smoke-test while the Linux bundle is
-    # paused. Goes back on with it.
-    if: false
+    # LT-394: back on with the Linux bundle it tests.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
