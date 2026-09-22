@@ -1502,6 +1502,53 @@ pulled into Phase 1.*
 
 ## Done
 
+### LT-400 — **bug** Every ping times out on a Mac — 2026-09-22
+
+**Source:** "ping sweep is not working from mac devices", on the first macOS
+build (LT-399).
+
+`icmp::ping_args` builds one argument vector for everything that is not
+Windows, with this comment on it:
+
+```rust
+// Linux/macOS ping takes -W in seconds (rounded up, minimum 1).
+let secs = timeout_ms.div_ceil(1000).max(1).to_string();
+vec!["-c".into(), "1".into(), "-W".into(), secs, t]
+```
+
+**It does not.** On Linux, iputils `ping -W` is a timeout in **seconds**. On
+macOS and the BSDs, `-W` is the wait for a reply in **milliseconds**. So a
+sweep asking for a one-second timeout sent macOS `-W 1` — wait one
+millisecond — and every reply on a real network arrives far too late to count.
+Every host reads as silent, which is a sweep that finds nothing rather than a
+sweep that errors, and that is why it looked like it was not working at all.
+
+**Why no test caught it:** `ping_args` is pure and tested, and the test asserts
+what it produces *on the machine running it*. CI runs tests on Linux and
+Windows only. A flag that is wrong on a third platform cannot be seen that way
+by construction.
+
+**Fix:** the flavour becomes a parameter, so the macOS argument vector is
+testable from Linux, and the current platform picks one. The BSDs go with
+macOS, because `-W` means milliseconds there too.
+
+**Acceptance:** a macOS vector asks for milliseconds and a Linux one for
+seconds, both asserted from any machine; the sweep finds hosts on a Mac.
+
+**Shipped 2026-09-22.** `PingFlavour` — `Windows`, `Linux`, `Bsd` — is a
+parameter to `ping_args_for`, and `PingFlavour::here()` picks one for the
+machine. The BSD vector passes the timeout through in milliseconds; the Linux
+one still rounds up to whole seconds, because asking iputils for less than one
+is asking for none. macOS, iOS and the four BSDs share the BSD flavour.
+**The sweep's default timeout is 1000 ms**, so a Mac was being told to wait one
+millisecond for every reply — which is why it found nothing at all rather than
+finding less.
+**Tested from Linux, which is the point:** all three vectors are asserted by
+name, including that neither rounds a zero timeout down to no wait, plus one
+test tying `ping_args` to `here()` so the pure function and the real one cannot
+drift. None of that was possible while the branch was a `cfg!`.
+**Not yet run on a Mac** — the build this ships in is what tests it.
+
 ### LT-395 — ArubaOS-Switch: port-channels, interfaces and stacking — 2026-09-22
 **Source:** "More Aruba commands: port-channels (show trunks/show lacp), the
 interface list (show ip), and 2930M stacking."

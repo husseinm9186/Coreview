@@ -14,23 +14,74 @@ use tokio::time::timeout;
 use crate::types::{Outcome, ProbeResult};
 use crate::validate::{parse_target, Target};
 
-/// Build the argument vector for a single-shot ping. Pure, so the exact flags
-/// are covered by tests on every platform.
-pub fn ping_args(target: &Target, timeout_ms: u64) -> Vec<String> {
-    let t = target.as_str();
-    if cfg!(windows) {
-        let mut args = vec!["-n".into(), "1".into(), "-w".into(), timeout_ms.to_string()];
-        match target {
-            Target::Ip(ip) if ip.is_ipv6() => args.push("-6".into()),
-            Target::Ip(_) => args.push("-4".into()),
-            Target::Host(_) => {}
+/// Which `ping` this machine has, because the three disagree about what `-W`
+/// means (LT-400).
+///
+/// A parameter rather than a `cfg!`, so every platform's argument vector can
+/// be asserted from any machine. It was a `cfg!`, and the macOS branch was
+/// wrong for months: tests run on Linux and Windows, and a flag that is wrong
+/// on a third platform cannot be seen by a test that only asks the machine it
+/// is running on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PingFlavour {
+    /// `ping.exe`: `-n` for the count, `-w` a timeout in milliseconds.
+    Windows,
+    /// iputils, on Linux: `-W` a timeout in **seconds**.
+    Linux,
+    /// macOS and the BSDs: `-W` the wait for a reply in **milliseconds**.
+    Bsd,
+}
+
+impl PingFlavour {
+    pub fn here() -> Self {
+        if cfg!(windows) {
+            PingFlavour::Windows
+        } else if cfg!(any(
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "freebsd",
+            target_os = "netbsd",
+            target_os = "openbsd",
+            target_os = "dragonfly",
+        )) {
+            PingFlavour::Bsd
+        } else {
+            PingFlavour::Linux
         }
-        args.push(t);
-        args
-    } else {
-        // Linux/macOS ping takes -W in seconds (rounded up, minimum 1).
-        let secs = timeout_ms.div_ceil(1000).max(1).to_string();
-        vec!["-c".into(), "1".into(), "-W".into(), secs, t]
+    }
+}
+
+/// Build the argument vector for a single-shot ping, for this machine.
+pub fn ping_args(target: &Target, timeout_ms: u64) -> Vec<String> {
+    ping_args_for(PingFlavour::here(), target, timeout_ms)
+}
+
+/// The same, for a named flavour. Pure, so the exact flags every platform gets
+/// are covered by tests run anywhere.
+pub fn ping_args_for(flavour: PingFlavour, target: &Target, timeout_ms: u64) -> Vec<String> {
+    let t = target.as_str();
+    match flavour {
+        PingFlavour::Windows => {
+            let mut args = vec!["-n".into(), "1".into(), "-w".into(), timeout_ms.max(1).to_string()];
+            match target {
+                Target::Ip(ip) if ip.is_ipv6() => args.push("-6".into()),
+                Target::Ip(_) => args.push("-4".into()),
+                Target::Host(_) => {}
+            }
+            args.push(t);
+            args
+        }
+        // Seconds, rounded up: asking iputils for less than one is asking for
+        // zero, which is no wait at all.
+        PingFlavour::Linux => {
+            let secs = timeout_ms.div_ceil(1000).max(1).to_string();
+            vec!["-c".into(), "1".into(), "-W".into(), secs, t]
+        }
+        // Milliseconds, as given. Rounding these up to a second would be
+        // harmless; rounding them *down* to one is what broke the sweep.
+        PingFlavour::Bsd => {
+            vec!["-c".into(), "1".into(), "-W".into(), timeout_ms.max(1).to_string(), t]
+        }
     }
 }
 
@@ -355,6 +406,43 @@ rtt min/avg/max/mdev = 0.044/0.044/0.044/0.000 ms\n";
         let p = parse_ping_output("", "ping: socket: Operation not permitted", Some(2));
         assert_eq!(p.outcome, Outcome::OsError);
         assert!(p.summary.contains("Operation not permitted"));
+    }
+
+    /// LT-400. The bug a Mac found and no test here could: `-W` is seconds to
+    /// iputils and milliseconds to macOS and the BSDs, so one argument vector
+    /// for "everything that is not Windows" asked a Mac to wait a single
+    /// millisecond for a reply. Every host on a real network answered too late
+    /// and read as silent — a sweep that finds nothing rather than one that
+    /// fails, which is why it looked like it simply did not work.
+    ///
+    /// The flavour is a parameter so that all three can be asserted from any
+    /// machine. CI tests on Linux and Windows; a flag wrong on a third
+    /// platform is invisible to a test that only asks the machine it runs on.
+    #[test]
+    fn each_ping_is_asked_for_the_timeout_in_its_own_units() {
+        let t = parse_target("192.0.2.1").unwrap();
+        // iputils: seconds, rounded up, never zero.
+        assert_eq!(ping_args_for(PingFlavour::Linux, &t, 1500), ["-c", "1", "-W", "2", "192.0.2.1"]);
+        assert_eq!(ping_args_for(PingFlavour::Linux, &t, 200), ["-c", "1", "-W", "1", "192.0.2.1"]);
+        // macOS and the BSDs: milliseconds, passed straight through.
+        assert_eq!(ping_args_for(PingFlavour::Bsd, &t, 1500), ["-c", "1", "-W", "1500", "192.0.2.1"]);
+        assert_eq!(ping_args_for(PingFlavour::Bsd, &t, 200), ["-c", "1", "-W", "200", "192.0.2.1"]);
+        // A timeout of nothing is still a wait of something, on both.
+        assert_eq!(ping_args_for(PingFlavour::Bsd, &t, 0)[3], "1");
+        assert_eq!(ping_args_for(PingFlavour::Linux, &t, 0)[3], "1");
+        // Windows: milliseconds, and the family is named explicitly.
+        let win = ping_args_for(PingFlavour::Windows, &t, 1500);
+        assert_eq!(win, ["-n", "1", "-w", "1500", "-4", "192.0.2.1"]);
+    }
+
+    #[test]
+    fn the_platform_this_was_built_for_gets_its_own_flavour() {
+        // Whatever machine runs this, `ping_args` must agree with the vector
+        // for that machine's flavour — the one line tying the pure function
+        // to the real one.
+        let t = parse_target("192.0.2.1").unwrap();
+        assert_eq!(ping_args(&t, 1000), ping_args_for(PingFlavour::here(), &t, 1000));
+        assert_eq!(PingFlavour::here() == PingFlavour::Windows, cfg!(windows));
     }
 
     #[test]
