@@ -53,6 +53,9 @@ pub enum StackKind {
     VendorStack,
     /// FortiSwitches stacked behind a FortiGate.
     FortiLinkStack,
+    /// ArubaOS-Switch backplane stacking — a 2930M or 3810M ring, one
+    /// logical switch with a commander and a standby (LT-395).
+    ArubaStack,
 }
 
 impl StackKind {
@@ -84,6 +87,7 @@ impl StackKind {
             StackKind::VirtualChassis => "Virtual Chassis",
             StackKind::VendorStack => "Stack",
             StackKind::FortiLinkStack => "FortiLink stack",
+            StackKind::ArubaStack => "Stack",
         }
     }
 
@@ -99,6 +103,10 @@ impl StackKind {
             // switch` with "Invalid input", which is how a standalone switch
             // must read. Checked 2026-09-12 against LAB-CORE-SW1.
             StackKind::StackWise => false,
+            // LT-395: parsed from `show stacking detail` on a production
+            // two-member 2930M-48G-PoE+ ring, 2026-09-22 — both members, their
+            // roles, MACs and serials read back correctly.
+            StackKind::ArubaStack => true,
             _ => false,
         }
     }
@@ -158,6 +166,11 @@ pub struct StackInfo {
 }
 
 impl StackInfo {
+    /// An ArubaOS-Switch backplane stack (LT-395).
+    pub fn backplane(members: Vec<StackMember>) -> Self {
+        Self::new(StackKind::ArubaStack, members)
+    }
+
     fn new(kind: StackKind, members: Vec<StackMember>) -> Self {
         Self {
             unverified: !kind.verified_against_hardware(),
@@ -186,6 +199,12 @@ impl StackInfo {
 /// platform that does not know a command answers with a rejection this crate
 /// already recognises.
 pub fn commands_for(platform_hint: &str) -> &'static [&'static str] {
+    // LT-395: ArubaOS-Switch before anything keyed on the word "aruba", which
+    // its `show version` never says — so a 2930M used to be asked Cisco's
+    // three stack commands and none of its own.
+    if crate::arubasw::is_arubaos_switch(platform_hint) {
+        return &["show stacking detail"];
+    }
     let p = platform_hint.to_ascii_lowercase();
     if p.contains("aruba") || p.contains("aos-cx") || p.contains("hpe") || p.contains("hp ") {
         // `show vsf` is a table; `show vsf topology` is ASCII art. The table
@@ -794,6 +813,7 @@ pub fn parse_any(output: &str) -> Option<StackInfo> {
         .or_else(|| parse_vsf(output))
         .or_else(|| parse_vsf_topology(output))
         .or_else(|| parse_virtual_chassis(output))
+        .or_else(|| crate::arubasw::parse_stacking_detail(output))
         .or_else(|| parse_fastpath_stack(output))
         .or_else(|| parse_show_switch(output))
 }

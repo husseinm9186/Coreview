@@ -1395,9 +1395,24 @@ async fn visit(
     }
     // What is aggregated (LT-009). FortiOS rejects the command harmlessly and
     // the parser reads an empty answer as no bundles.
-    let port_channels = crate::etherchannel::parse_etherchannel_summary(
+    let mut port_channels = crate::etherchannel::parse_etherchannel_summary(
         &device.run("show etherchannel summary").await.unwrap_or_default(),
     );
+    // LT-395: ArubaOS-Switch. Its `show version` never says "Aruba", so the
+    // arms keyed on that word missed it; the image stamp is its signature.
+    // Asked by platform rather than by result here, because a Cisco with no
+    // bundles is common and should not pay a rejected command for it.
+    let aruba_switch = crate::arubasw::is_arubaos_switch(&version);
+    // Its own `show ip` answers three questions at once — addresses,
+    // the default gateway — so it is asked once and read twice.
+    let aruba_ip = if aruba_switch {
+        device.run("show ip").await.unwrap_or_default()
+    } else {
+        String::new()
+    };
+    if aruba_switch && port_channels.is_empty() {
+        port_channels = crate::arubasw::parse_trunks(&device.run("show trunks").await.unwrap_or_default());
+    }
 
     // LT-131: which way this device sends unknown traffic. One line, not a
     // forwarding table — the operator asked for direction and warned it must
@@ -1411,6 +1426,11 @@ async fn visit(
             default_next_hop = Some(hop.to_string());
             break;
         }
+    }
+    // LT-395: a switch that does not route has no default route to read —
+    // it has a default gateway, and `show ip` names it.
+    if default_next_hop.is_none() && aruba_switch {
+        default_next_hop = crate::arubasw::default_gateway(&aruba_ip);
     }
 
     // LT-139: one switch or several. The parsers behind this were written
@@ -1592,7 +1612,12 @@ async fn visit(
         learned.extend(f.learned.iter().cloned());
     }
 
-    let interfaces = parse_ip_interface_brief(&brief);
+    let mut interfaces = parse_ip_interface_brief(&brief);
+    // LT-395: `show ip interface brief` is rejected there; `show ip` has the
+    // same answer in its own table.
+    if interfaces.is_empty() && aruba_switch {
+        interfaces = crate::arubasw::parse_show_ip(&aruba_ip);
+    }
     let mut addresses = addresses_from(&interfaces, address);
     if let Some(f) = &forti {
         if addresses.is_empty() {
@@ -1883,6 +1908,14 @@ async fn read_details(device: &mut Session, version: &str, wanted: DetailOptions
                 crate::arubasw::parse_vlans(&device.run("show vlans").await.unwrap_or_default());
         }
         details.ports = crate::vlans::parse_interface_status(&status);
+        // LT-395: ArubaOS-Switch answers `show interfaces status` too, in a
+        // shape the Cisco parser was never written for, so its answer is not
+        // trusted; `show interfaces brief` is the table this platform means.
+        if crate::arubasw::is_arubaos_switch(version) {
+            details.ports = crate::arubasw::parse_interfaces_brief(
+                &device.run("show interfaces brief").await.unwrap_or_default(),
+            );
+        }
         details.port_vlans = crate::vlans::port_vlans(&details.ports, &crate::vlans::parse_trunks(&trunks));
         // LT-235: errors per port, read with the ports.
         let interfaces = device.run(crate::counters::COMMAND).await.unwrap_or_default();

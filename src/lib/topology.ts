@@ -272,6 +272,8 @@ export function stackFields(stack: StackInfo | null | undefined): Partial<Device
 /** The words to show for each technology, matching what the vendors call them. */
 const STACK_KIND_LABEL: Record<string, string> = {
   'stack-wise': 'StackWise',
+  // LT-395: ArubaOS-Switch backplane stacking, which is what HPE calls it.
+  'aruba-stack': 'Stacking',
   'stack-wise-virtual': 'StackWise Virtual',
   vss: 'VSS',
   vsf: 'VSF',

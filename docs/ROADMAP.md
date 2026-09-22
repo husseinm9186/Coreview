@@ -123,21 +123,6 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
-### LT-395 — ArubaOS-Switch: port-channels, interfaces and stacking — 2026-09-22
-**Source:** "More Aruba commands: port-channels (show trunks/show lacp), the
-interface list (show ip), and 2930M stacking."
-LT-391 taught the crawl this platform's neighbours, MAC table, VLANs and ARP.
-Three things it still asks in Cisco and gets nothing back for:
-- **Aggregation.** `show etherchannel summary` is rejected; the platform says
-  `show trunks` and `show lacp`. Without it every `Trk1` in the MAC table is a
-  port the diagram cannot draw as the bundle it is.
-- **The interface list.** `show ip interface brief` is rejected; the platform
-  says `show ip`. It is where a switch's own addresses come from.
-- **Stacking.** A 2930M stacks with `show stacking`, not the VSF commands the
-  stacking module asks an Aruba for — VSF is the 2930F and 5400R.
-**Blocked on captures, deliberately.** Parsers here are written against real
-output (CLAUDE.md); asked for 2026-09-22.
-
 ### LT-382 — **bug** Three tests race each other for one LibreOffice — 2026-09-21
 
 `icons::folder_tests::a_real_emf_becomes_a_palette_icon` fails under a full
@@ -1516,6 +1501,53 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-395 — ArubaOS-Switch: port-channels, interfaces and stacking — 2026-09-22
+**Source:** "More Aruba commands: port-channels (show trunks/show lacp), the
+interface list (show ip), and 2930M stacking."
+LT-391 taught the crawl this platform's neighbours, MAC table, VLANs and ARP.
+Three things it still asks in Cisco and gets nothing back for:
+- **Aggregation.** `show etherchannel summary` is rejected; the platform says
+  `show trunks` and `show lacp`. Without it every `Trk1` in the MAC table is a
+  port the diagram cannot draw as the bundle it is.
+- **The interface list.** `show ip interface brief` is rejected; the platform
+  says `show ip`. It is where a switch's own addresses come from.
+- **Stacking.** A 2930M stacks with `show stacking`, not the VSF commands the
+  stacking module asks an Aruba for — VSF is the 2930F and 5400R.
+**Blocked on captures, deliberately.** Parsers here are written against real
+output (CLAUDE.md); asked for 2026-09-22.
+
+**Shipped 2026-09-22, from the operator's own captures off the production
+2930M stack** — every committed fixture invented (D-027).
+- **Why the arms never fired:** ArubaOS-Switch's `show version` never says
+  "Aruba". It is an image stamp, a firmware string and a boot ROM line, so
+  every platform arm keyed on the word "aruba" missed a 2930M and asked it
+  Cisco's questions. `arubasw::is_arubaos_switch` recognises the image stamp and
+  boot ROM together, and the new commands are asked by platform — a Cisco with
+  no bundles is common and should not pay a rejected command for it.
+- **Bundles** from `show trunks`: member ports, and the protocol from the
+  *second* column headed `Type` — `Trunk` is static, recorded as `-` the way the
+  Cisco side records "on"; `LACP` is LACP. `Table::cell_nth` exists for that.
+- **The switch's own addresses** from `show ip`, and its **default gateway**
+  from the same answer — a switch that does not route has no default route to
+  read, but it has a gateway. Asked once, read twice.
+- **Ports** from `show interfaces brief`, in the words the rest of the app
+  already reads — `connected`, `notconnect`, `disabled` — so nothing downstream
+  has to know the vendor; `1/45-Trk45` is port 1/45. This platform also answers
+  `show interfaces status`, in a shape the Cisco parser was never written for,
+  so on it that answer is not trusted.
+- **Stacking** from `show stacking detail`, a new `StackKind::ArubaStack` drawn
+  as one switch, with each member's role, MAC, priority and **serial** — the
+  summary table has no serials, and the serial is what an RMA is keyed on. It
+  is **the first stack family verified against hardware**: every other one
+  still reports `verified_against_hardware() == false` (D-026).
+**Verified** by running the parsers over his real output outside the
+repository: three bundles (the firewall uplink correctly LACP across both
+members), both addresses, the gateway, every port's state and speed, and both
+stack members with their roles and serials. `show lacp` was captured but is not
+parsed: `show trunks` already says which bundles are LACP, and nothing on the
+diagram uses per-member LACP state yet. Not yet run through a crawl on the
+switch.
 
 ### LT-298 — IPAM Phase 2: devices, sites, tenants, bulk operations, reporting
 **Source:** the same specification, Phase 2.

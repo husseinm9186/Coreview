@@ -291,7 +291,9 @@ export type StackInfo = {
     | 'vsx'
     | 'virtual-chassis'
     | 'vendor-stack'
-    | 'forti-link-stack';
+    | 'forti-link-stack'
+    /** LT-395: ArubaOS-Switch backplane stacking, a 2930M ring. */
+    | 'aruba-stack';
   members: StackMember[];
   peer: string | null;
   interSwitchLink: string | null;
