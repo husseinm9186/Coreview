@@ -632,7 +632,12 @@ mod tests {
             write_capture(&root, "CORE-SW-01", "10.1.1.1", "20260828-101530", BackupKind::Running, CONFIG)
                 .unwrap();
 
-        assert!(path.ends_with("CORE-SW-01/20260828-101530-running-config.txt"), "got {path:?}");
+        // LT-390: the folder names the device and now so does the file, for
+        // when a capture is copied out of the folder.
+        assert!(
+            path.ends_with("CORE-SW-01/20260828-101530-running-config-CORE-SW-01-10.1.1.1-2026-08-28.txt"),
+            "got {path:?}",
+        );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), CONFIG);
         assert!(!unchanged, "there was nothing to compare against");
         std::fs::remove_dir_all(&root).ok();
@@ -707,9 +712,12 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "20260828-090000-running-config.txt",
-                "20260827-090000-running-config.txt",
-                "20260826-090000-running-config.txt",
+                // LT-390: newest first still, which is what this test is
+                // about — `stamp_in` finds the stamp wherever the pattern put
+                // it, so a longer name does not change the ordering.
+                "20260828-090000-running-config-SW1-10.1.1.1-2026-08-28.txt",
+                "20260827-090000-running-config-SW1-10.1.1.1-2026-08-27.txt",
+                "20260826-090000-running-config-SW1-10.1.1.1-2026-08-26.txt",
             ]
         );
         std::fs::remove_dir_all(&root).ok();

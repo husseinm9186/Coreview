@@ -324,8 +324,10 @@ await openBackups();
 const patternInput = page.locator(".cv-file-pattern input");
 const patternHelp = page.locator(".cv-file-pattern .cv-help");
 check("the file name field ships blank — the default naming", (await patternInput.inputValue()) === "");
-check("and previews the default name",
-  (await patternHelp.innerText()).includes("20260828-101530-running-config.txt"), await patternHelp.innerText());
+// LT-390: the default now names the device too, so a capture identifies
+// itself once it is copied out of the device's folder.
+check("and previews the default name, which names the device",
+  (await patternHelp.innerText()).includes("20260828-101530-running-config-LAB-SW-A-"), await patternHelp.innerText());
 
 await field("Username").fill("e2e-user");
 await field("Password").fill("e2e-not-a-password");

@@ -7,7 +7,10 @@
  * wrong while the pattern is being typed, rather than after Back up.
  */
 
-export const DEFAULT_FILE_PATTERN = '{stamp}-{kind}';
+/** LT-390. `{stamp}-{kind}` is unambiguous in the device's own folder and
+ *  nowhere else. Mirrors `backup::DEFAULT_PATTERN`, which names the real file;
+ *  `fileNames.test.ts` and the Rust tests must agree. */
+export const DEFAULT_FILE_PATTERN = '{stamp}-{kind}-{device}-{address}-{site}-{date}';
 
 export const FILE_TOKENS: { token: string; means: string }[] = [
   { token: '{stamp}', means: 'date and time of the run, 20260828-101530 — required' },
@@ -55,10 +58,12 @@ function sanitise(raw: string): string {
   let out = '';
   let lastDash = false;
   for (const ch of raw.trim()) {
-    if (/[A-Za-z0-9._-]/.test(ch)) {
+    if (/[A-Za-z0-9._]/.test(ch)) {
       out += ch;
       lastDash = false;
     } else if (!lastDash && out) {
+      // A separator, and a run of them is one (LT-390): a token that renders
+      // to nothing must not leave a gap in the middle of the name.
       out += '-';
       lastDash = true;
     }

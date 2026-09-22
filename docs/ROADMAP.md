@@ -123,6 +123,64 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-391 — **bug** The crawl speaks Cisco to an ArubaOS-Switch — 2026-09-21
+
+**Evidenced by the operator's own debug log**, the first run that reached a
+prompt on the production 2930M. Read the sizes: a real answer is hundreds or
+thousands of bytes, and a rejection is ~300 bytes and 2 lines.
+
+```
+ran `show lldp neighbors detail`   343 bytes, 2 lines    <- rejected
+ran `show ip interface brief`      340 bytes, 2 lines    <- rejected
+ran `show mac address-table`       335 bytes, 2 lines    <- rejected
+ran `show etherchannel summary`    345 bytes, 2 lines    <- rejected
+ran `show vlan brief`              295 bytes, 2 lines    <- rejected
+ran `show switch`                  292 bytes, 2 lines    <- rejected
+ran `show cdp neighbors detail`  25145 bytes, 453 lines  <- answered
+ran `show spanning-tree`          9502 bytes, 134 lines  <- answered
+ran `show interfaces status`      8252 bytes, 99 lines   <- answered
+ran `show running-config`         6187 bytes, 219 lines  <- answered
+```
+
+So the device is reachable and talking, and Coreview is asking it half its
+questions in a language it does not speak. **No LLDP neighbours, no MAC table,
+no VLANs, no interface list** — on a switch that has all four.
+
+`crawl.rs` sends a fixed Cisco-shaped core set to everything that is not
+FortiOS; only `stacking` and `defaultroute` have Aruba arms. The ArubaOS-Switch
+words are `show lldp info remote-device`, `show vlans`, `show mac-address`,
+`show trunks` and `show ip`.
+
+**Also wrong in the same place:** `terminal length 0` is not how this platform
+turns off paging — it is `no page`, which `showcmd::Paging::ArubaHp` already
+knows and only the Backups path uses. The log shows the consequence: every
+long capture is paged and answered a screen at a time.
+
+```
+ran `terminal length 0`  293 bytes, 2 lines    <- rejected
+holding on "-- MORE --, next page: Space, next line: Enter, quit: Control-C"
+```
+
+It works, because D-054's table answers the pager, but it is slower and it is
+one more thing that has to keep working.
+
+**Not a parser problem.** Captures are needed before any of these can be
+written properly (D-051), and now there is a device that will give them.
+
+### LT-392 — The debug log does not say when a crawl ended — 2026-09-21
+
+Found reading the first real log. It records every device, command and
+failure, but nothing for: a crawl finishing, how many neighbours a device's
+CDP or LLDP produced, or a neighbour dropped by the subnet limit or the hop
+limit. So a log that shows one device and then a ninety-second gap cannot be
+read: it is impossible to tell from the file whether the crawl was still
+running, whether neighbours were found and filtered, or whether something else
+opened the sessions that follow.
+
+That is exactly the question a debug log exists to answer, and this one could
+not. **Add:** the crawl's own start and end with a count, neighbours parsed
+per device per protocol, and every neighbour not followed with the reason.
+
 ### LT-383 — **bug** The prompt was drawn and never seen — 2026-09-21
 
 **Source:** "please fix once and for all, can't have this, we've wasted many
@@ -1831,6 +1889,30 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-390 — A capture's file name says which device it came from — 2026-09-21
+
+**Source:** "the backup stamp needs to be defaulted to {stamp} {kind} {device}
+{address} {site} {date}".
+
+The default was `{stamp}-{kind}`, so a capture was called
+`20260828-101530-running-config.txt`. That is unambiguous *in the device's own
+folder* and nowhere else — the moment a file is attached to a change record,
+dropped in a ticket or copied next to another device's capture, nothing in it
+says which device it came from.
+
+**Shipped:** the default is `{stamp}-{kind}-{device}-{address}-{site}-{date}`,
+and an empty token no longer leaves a gap — a device with no Site used to
+produce `…-192.0.2.10--20260828`, because the sanitiser collapsed *other*
+punctuation into a dash but left runs of dashes alone.
+
+**Said plainly, because it was asked for as written:** `{date}` is already the
+first half of `{stamp}`, so the default now carries the date twice. It is
+harmless and it is what was asked for; `{stamp}-{kind}-{device}-{address}-{site}`
+is the same name without the repetition, and the pattern box takes it.
+
+Existing patterns are untouched — this changes what an empty box means, not
+what a typed one does.
 
 ### LT-389 — A debug log for a crawl, on a switch — 2026-09-21
 

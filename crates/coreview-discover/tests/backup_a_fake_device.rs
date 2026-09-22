@@ -397,7 +397,11 @@ async fn show_commands_are_filed_as_one_capture_in_the_backup_folder() {
     assert_eq!(run.saved.len(), 1, "one file per device per run: {:?}", run.saved);
     let saved = &run.saved[0];
     assert!(saved.path.contains("SW-SHOW"), "filed under the device: {}", saved.path);
-    assert!(saved.path.ends_with("show-commands.txt"), "got {}", saved.path);
+    // LT-390: the kind is still in the name, but the default now carries the
+    // device and address after it, so the file identifies itself once it is
+    // copied out of the folder.
+    assert!(saved.path.contains("show-commands"), "got {}", saved.path);
+    assert!(saved.path.ends_with(".txt"), "got {}", saved.path);
 
     let text = std::fs::read_to_string(&saved.path).unwrap();
     let v = text.find("show version").expect("show version heading");
@@ -488,7 +492,8 @@ async fn show_commands_still_run_on_a_device_stuck_in_user_mode() {
     .await;
 
     assert_eq!(run.saved.len(), 1, "show output should still be filed: {:?}", run.failed);
-    assert!(run.saved[0].path.ends_with("show-commands.txt"));
+    assert!(run.saved[0].path.contains("show-commands"), "got {}", run.saved[0].path);
+    assert!(run.saved[0].path.ends_with(".txt"), "got {}", run.saved[0].path);
     let text = std::fs::read_to_string(&run.saved[0].path).unwrap();
     assert!(text.starts_with("# Ran in user mode"), "{text}");
     // And no running-config was invented out of an error message.

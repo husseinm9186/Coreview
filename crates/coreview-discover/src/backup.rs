@@ -33,7 +33,15 @@ pub enum BackupPathError {
 
 /// The filename every capture had before patterns existed (LT-151), and still
 /// the default: sortable, and it says what it is.
-pub const DEFAULT_PATTERN: &str = "{stamp}-{kind}";
+/// LT-390. `{stamp}-{kind}` alone is unambiguous in the device's own folder
+/// and nowhere else — once a capture is attached to a change record or copied
+/// beside another device's, nothing in the name says where it came from.
+///
+/// `{date}` repeats the first half of `{stamp}`. That is deliberate: it is
+/// what was asked for, it costs nine characters, and a name that ends in a
+/// plain date reads well in a file listing. Anyone who disagrees can type
+/// `{stamp}-{kind}-{device}-{address}-{site}` into the pattern box.
+pub const DEFAULT_PATTERN: &str = "{stamp}-{kind}-{device}-{address}-{site}-{date}";
 
 /// Every token a filename pattern may use.
 pub const PATTERN_TOKENS: &[&str] = &["{stamp}", "{kind}", "{device}", "{address}", "{site}", "{date}"];
@@ -168,10 +176,14 @@ fn sanitise_unbounded(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut last_dash = false;
     for ch in raw.trim().chars() {
-        if ch.is_ascii_alphanumeric() || ch == '.' || ch == '-' || ch == '_' {
+        if ch.is_ascii_alphanumeric() || ch == '.' || ch == '_' {
             out.push(ch);
             last_dash = false;
         } else if !last_dash && !out.is_empty() {
+            // A separator, and a run of them is one. LT-390: a token that
+            // renders to nothing — a device with no Site — used to leave a
+            // gap in the middle of the name, because a dash was treated as an
+            // ordinary character and only *other* punctuation collapsed.
             out.push('-');
             last_dash = true;
         }
@@ -369,9 +381,13 @@ mod tests {
     #[test]
     fn an_ordinary_device_gets_an_ordinary_path() {
         let p = backup_path(&root(), "CORE-SW-01", "10.1.1.1", "20260828-101530", BackupKind::Running).unwrap();
+        // LT-390: the folder still identifies the device, and now so does the
+        // file, for when it is copied out of the folder.
         assert_eq!(
             p,
-            PathBuf::from("/home/user/backups/CORE-SW-01/20260828-101530-running-config.txt")
+            PathBuf::from(
+                "/home/user/backups/CORE-SW-01/20260828-101530-running-config-CORE-SW-01-10.1.1.1-2026-08-28.txt"
+            )
         );
     }
 
@@ -401,9 +417,16 @@ mod tests {
     fn a_name_that_sanitises_to_nothing_falls_back_to_the_address() {
         // "../.." is all separators and dots; there is no name left.
         let p = backup_path(&root(), "../..", "10.1.1.9", "20260828-101530", BackupKind::Running).unwrap();
+        // `{device}` falls back to the address, so a nameless device has it
+        // twice in the default name. Repetitive rather than wrong, and the
+        // alternative is a template renderer that silently drops a token
+        // because it matched another one — which is the sort of cleverness
+        // nobody can predict from the pattern they typed.
         assert_eq!(
             p,
-            PathBuf::from("/home/user/backups/10.1.1.9/20260828-101530-running-config.txt")
+            PathBuf::from(
+                "/home/user/backups/10.1.1.9/20260828-101530-running-config-10.1.1.9-10.1.1.9-2026-08-28.txt"
+            )
         );
     }
 
@@ -485,7 +508,8 @@ mod tests {
         assert_eq!(BackupKind::ShowCommands.command(), None);
         assert_eq!(BackupKind::ShowCommands.slug(), "show-commands");
         let r = backup_path(&root(), "SW1", "", "20260828-101530", BackupKind::Startup).unwrap();
-        assert!(r.to_string_lossy().ends_with("startup-config.txt"));
+        assert!(r.to_string_lossy().contains("startup-config"), "{r:?}");
+        assert!(r.to_string_lossy().ends_with(".txt"), "{r:?}");
     }
 
     #[test]
@@ -498,21 +522,58 @@ mod tests {
 
     // ------------------------------------------------------ patterns (LT-151)
 
+    /// LT-390. The default used to be `{stamp}-{kind}`, which is unambiguous
+    /// in the device's own folder and nowhere else: the moment a capture is
+    /// attached to a change record or dropped beside another device's, nothing
+    /// in the name says where it came from.
     #[test]
-    fn the_default_pattern_names_files_exactly_as_before() {
-        let old = backup_path(&root(), "SW1", "192.0.2.1", "20260828-101530", BackupKind::Startup).unwrap();
+    fn the_default_name_says_which_device_it_came_from() {
         let named = backup_path_named(
             &root(), "SW1", "192.0.2.1", "LAB", "20260828-101530", BackupKind::Startup, Some(DEFAULT_PATTERN),
         )
         .unwrap();
-        assert_eq!(old, root().join("SW1").join("20260828-101530-startup-config.txt"));
-        assert_eq!(old, named);
-        // A blank pattern is the default, not an error.
+        assert_eq!(
+            named,
+            root().join("SW1").join("20260828-101530-startup-config-SW1-192.0.2.1-LAB-2026-08-28.txt"),
+        );
+        // A blank pattern is the default, not an error, and the no-pattern
+        // call is the same default by another name.
         let blank = backup_path_named(
-            &root(), "SW1", "192.0.2.1", "", "20260828-101530", BackupKind::Startup, Some("  "),
+            &root(), "SW1", "192.0.2.1", "LAB", "20260828-101530", BackupKind::Startup, Some("  "),
         )
         .unwrap();
-        assert_eq!(old, blank);
+        assert_eq!(named, blank);
+        let old = backup_path(&root(), "SW1", "192.0.2.1", "20260828-101530", BackupKind::Startup).unwrap();
+        assert_eq!(
+            old,
+            root().join("SW1").join("20260828-101530-startup-config-SW1-192.0.2.1-2026-08-28.txt"),
+            "no Site is a token that renders to nothing, not a gap in the name",
+        );
+    }
+
+    /// A device with no Site, or no name, used to leave a hole: the sanitiser
+    /// collapsed *other* punctuation into a dash but left runs of dashes
+    /// alone, so an empty token in the middle produced `…-192.0.2.1--2026…`.
+    #[test]
+    fn an_empty_token_leaves_no_gap() {
+        for (site, expected) in [
+            ("LAB", "20260828-101530-running-config-SW1-192.0.2.1-LAB-2026-08-28.txt"),
+            ("", "20260828-101530-running-config-SW1-192.0.2.1-2026-08-28.txt"),
+        ] {
+            let f = render_filename(
+                DEFAULT_PATTERN, "SW1", "192.0.2.1", site, "20260828-101530", BackupKind::Running,
+            )
+            .unwrap();
+            assert_eq!(f, expected);
+            assert!(!f.contains("--"), "a gap was left: {f}");
+        }
+        // Every token empty but the required two, in a pattern of nothing but
+        // separators, still leaves a usable name rather than `---`.
+        let f = render_filename(
+            "{site}-{device}-{stamp}-{kind}", "", "", "", "20260828-101530", BackupKind::Running,
+        )
+        .unwrap();
+        assert_eq!(f, "20260828-101530-running-config.txt");
     }
 
     #[test]

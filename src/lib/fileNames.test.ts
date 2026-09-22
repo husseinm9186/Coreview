@@ -12,13 +12,22 @@ import {
 const dev = { name: 'LAB-SW-A', address: '192.0.2.10', site: 'Lab Two' };
 
 describe('capture filename patterns (LT-151)', () => {
-  it('names files exactly as before by default', () => {
+  it('names a file after the device it came from, by default (LT-390)', () => {
+    // The blank box and the default written out are the same thing.
     expect(previewFileName('', dev, '20260828-101530', 'running-config')).toBe(
-      '20260828-101530-running-config.txt',
+      '20260828-101530-running-config-LAB-SW-A-192.0.2.10-Lab-Two-2026-08-28.txt',
     );
     expect(previewFileName(DEFAULT_FILE_PATTERN, dev, '20260828-101530', 'show-commands')).toBe(
-      '20260828-101530-show-commands.txt',
+      '20260828-101530-show-commands-LAB-SW-A-192.0.2.10-Lab-Two-2026-08-28.txt',
     );
+  });
+
+  it('leaves no gap where a token renders to nothing (LT-390)', () => {
+    // A device with no Site. This used to come out `…-192.0.2.10--2026-08-28`.
+    const noSite = { name: 'LAB-SW-A', address: '192.0.2.10' };
+    const f = previewFileName('', noSite, '20260828-101530', 'running-config');
+    expect(f).toBe('20260828-101530-running-config-LAB-SW-A-192.0.2.10-2026-08-28.txt');
+    expect(f).not.toContain('--');
   });
 
   it('fills every token, matching the backend byte for byte', () => {
