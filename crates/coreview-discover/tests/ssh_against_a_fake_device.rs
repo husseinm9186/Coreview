@@ -229,6 +229,7 @@ fn options(port: u16) -> SshOptions {
         connect_timeout: Duration::from_secs(10),
         auth_timeout: Duration::from_secs(20),
         command_timeout: Duration::from_secs(10),
+        login_transcript: None,
     }
 }
 
@@ -375,6 +376,7 @@ async fn an_unreachable_device_fails_fast_rather_than_waiting_for_a_push() {
         connect_timeout: Duration::from_secs(3),
         auth_timeout: Duration::from_secs(60),
         command_timeout: Duration::from_secs(10),
+        login_transcript: None,
     };
 
     let started = std::time::Instant::now();
@@ -389,4 +391,264 @@ async fn an_unreachable_device_fails_fast_rather_than_waiting_for_a_push() {
         "took {elapsed:?}; a dead device must not wait out the auth deadline"
     );
     assert!(err.to_string().contains("127.0.0.1"), "got: {err}");
+}
+
+// ---------------------------------------------------------------------------
+// LT-383: a device that paints a screen instead of printing lines.
+//
+// This is the Aruba 2930M, reconstructed from the bytes it actually sent over
+// four failed rounds. Nothing here is invented: the banner held on a keypress
+// is LT-375, the `\r` it wants rather than `\n` is LT-378, and the
+// `ESC[1920;1920H ESC[6n` terminal measurement it will not move past is
+// LT-379. The fourth thing — the one none of those fixed — is that when it
+// finally draws its prompt it wraps it in erase sequences, so read as a raw
+// stream the buffer ends in the `K` of `ESC[K` and there is no prompt to find.
+//
+// A device that does all four is the only honest test of the claim that this
+// is fixed, because fixing any three of them still leaves a crawl that hangs.
+
+/// How far through the painted login this connection has got.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Phase {
+    /// The banner is on screen, waiting for a keypress.
+    Banner,
+    /// The screen has been repainted and the terminal measured; the device is
+    /// waiting to be told where the cursor is.
+    Measuring,
+    /// Logged in, drawing prompts.
+    Ready,
+}
+
+#[derive(Clone)]
+struct PaintingDevice {
+    hostname: String,
+    phase: Arc<std::sync::Mutex<Phase>>,
+    /// Set when the device is never going to draw a prompt at all, which is
+    /// what a crawl has to be able to report on rather than merely survive.
+    never_prompts: bool,
+}
+
+impl PaintingDevice {
+    /// The prompt as this device draws it: clear the line, write it, then
+    /// erase to the end. The trailing erase is what defeated `find_prompt`.
+    fn prompt(&self) -> String {
+        format!("\x1b[2K{}#\x1b[K", self.hostname)
+    }
+}
+
+impl server::Handler for PaintingDevice {
+    type Error = russh::Error;
+
+    async fn auth_password(&mut self, _user: &str, password: &str) -> Result<Auth, Self::Error> {
+        if password == "correct-horse" {
+            Ok(Auth::Accept)
+        } else {
+            Ok(Auth::Reject { proceed_with_methods: None, partial_success: false })
+        }
+    }
+
+    async fn channel_open_session(
+        &mut self,
+        _channel: Channel<Msg>,
+        reply: server::ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
+    }
+
+    async fn pty_request(
+        &mut self,
+        _channel: ChannelId,
+        _term: &str,
+        _cw: u32,
+        _rh: u32,
+        _pw: u32,
+        _ph: u32,
+        _modes: &[(russh::Pty, u32)],
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn shell_request(
+        &mut self,
+        channel: ChannelId,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        // The copyright notice and the restricted-rights legend, then a
+        // keypress it will wait on indefinitely.
+        session.data(
+            channel,
+            concat!(
+                "\r\nGathering information, please wait...\r\n",
+                "\r\nRESTRICTED RIGHTS LEGEND\r\n",
+                "\r\nPress any key to continue",
+            )
+            .to_string()
+            .into_bytes(),
+        )?;
+        Ok(())
+    }
+
+    async fn data(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let phase = *self.phase.lock().unwrap();
+        match phase {
+            Phase::Banner => {
+                // A line feed is not what the Enter key sends, and this device
+                // knows the difference (LT-378).
+                if !data.contains(&b'\r') {
+                    return Ok(());
+                }
+                if self.never_prompts {
+                    // It answers, and then simply stops — the case a crawl has
+                    // to be able to explain rather than merely time out on.
+                    return Ok(());
+                }
+                *self.phase.lock().unwrap() = Phase::Measuring;
+                // Reset the screen, then drive the cursor off the end and ask
+                // where it landed. Nothing more is sent until it is told.
+                session.data(
+                    channel,
+                    concat!(
+                        "\x1b[13;1H\x1b[?25h\x1b[200;27H\x1b[?6l\x1b[1;200r\x1b[?7h",
+                        "\x1b[2J\x1b[1;1H",
+                        "\x1b[1920;1920H\x1b[6n",
+                    )
+                    .to_string()
+                    .into_bytes(),
+                )?;
+            }
+            Phase::Measuring => {
+                // Only a cursor-position report moves it on.
+                let said = String::from_utf8_lossy(data);
+                if !(said.starts_with("\x1b[") && said.ends_with('R')) {
+                    return Ok(());
+                }
+                *self.phase.lock().unwrap() = Phase::Ready;
+                // The whole screen, in one go, with no newline anywhere in
+                // it: the notice at the top, a hint pinned to the bottom, and
+                // only then the prompt, drawn back up at row 3.
+                //
+                // **This is the part no stream reader can survive.** Read as
+                // text there is one enormous line, and its last characters
+                // are the prompt with the bottom-of-screen hint run into the
+                // front of it — so whatever is judged, it is not a hostname.
+                // Rendered, the prompt is alone on row 3 with the cursor
+                // sitting after it.
+                session.data(
+                    channel,
+                    format!(
+                        "\x1b[2J\x1b[1;1HYour previous successful login was on 2026-09-21\
+                         \x1b[24;1H\x1b[2KUse 'menu' for the menu interface\
+                         \x1b[3;1H{}",
+                        self.prompt()
+                    )
+                    .into_bytes(),
+                )?;
+            }
+            Phase::Ready => {
+                let line = String::from_utf8_lossy(data);
+                let command = line.trim();
+                let body = match command {
+                    "terminal length 0" | "no page" => String::new(),
+                    "show version" => {
+                        "Image stamp: /ws/swbuildm/rel_WC_16_10\r\nSoftware revision: WC.16.10.0009\r\n".into()
+                    }
+                    _ => "Invalid input: ".to_string() + command + "\r\n",
+                };
+                session.data(
+                    channel,
+                    format!("{command}\r\n{body}{}", self.prompt()).into_bytes(),
+                )?;
+            }
+        }
+        Ok(())
+    }
+}
+
+async fn start_painting_device(hostname: &str, never_prompts: bool) -> String {
+    let key = russh::keys::PrivateKey::random(&mut rand::rng(), russh::keys::Algorithm::Ed25519)
+        .expect("generate host key");
+    let config = Arc::new(server::Config {
+        inactivity_timeout: Some(Duration::from_secs(30)),
+        auth_rejection_time: Duration::from_millis(1),
+        keys: vec![key],
+        ..Default::default()
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let hostname = hostname.to_string();
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            let config = Arc::clone(&config);
+            let handler = PaintingDevice {
+                hostname: hostname.clone(),
+                phase: Arc::new(std::sync::Mutex::new(Phase::Banner)),
+                never_prompts,
+            };
+            tokio::spawn(async move {
+                let _ = server::run_stream(config, stream, handler).await;
+            });
+        }
+    });
+    addr.to_string()
+}
+
+#[tokio::test]
+async fn a_device_that_paints_its_screen_reaches_a_prompt() {
+    // Four rounds of one-fix-at-a-time on a production switch, and this is
+    // the shape of all four at once. Before LT-383 this hangs until the
+    // command timeout, every time, on a prompt that arrived immediately.
+    let addr = start_painting_device("LAB-SW9", false).await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+
+    let mut device = Device::connect(
+        "127.0.0.1",
+        &creds("correct-horse"),
+        options(port_of(&addr)),
+        store,
+        None,
+    )
+    .await
+    .expect("a painted prompt is still a prompt");
+
+    assert_eq!(device.hostname(), "LAB-SW9", "read off the rendered screen");
+
+    let out = device.run("show version").await.expect("run a command");
+    assert!(out.contains("WC.16.10.0009"), "got: {out:?}");
+    assert!(!out.contains("LAB-SW9#"), "the prompt leaked: {out:?}");
+
+    device.close().await;
+}
+
+#[tokio::test]
+async fn a_device_that_never_prompts_leaves_what_it_sent() {
+    // LT-384. The crawl cannot be fixed by guessing, and for four rounds
+    // guessing was all there was, because nothing kept what the device said.
+    let addr = start_painting_device("LAB-SW9", true).await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let kept: Arc<std::sync::Mutex<Vec<u8>>> = Arc::default();
+
+    let mut options = options(port_of(&addr));
+    options.command_timeout = Duration::from_secs(2);
+    options.login_transcript = Some(Arc::clone(&kept));
+
+    let error = match Device::connect("127.0.0.1", &creds("correct-horse"), options, store, None).await {
+        Ok(_) => panic!("it never draws a prompt, so connecting must not succeed"),
+        Err(e) => e,
+    };
+    assert!(matches!(error, SshError::CommandTimeout { .. }), "got: {error:?}");
+
+    let said = kept.lock().unwrap().clone();
+    let readable = coreview_discover::cli::escape_for_reading(&said);
+    assert!(readable.contains("RESTRICTED RIGHTS LEGEND"), "got: {readable}");
+    assert!(readable.contains("Press any key to continue"), "got: {readable}");
+    // And it is safe to paste: no raw escape survived the rendering.
+    assert!(!readable.contains('\x1b'), "a raw escape got through");
 }

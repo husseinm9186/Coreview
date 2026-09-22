@@ -29,7 +29,8 @@ use russh::{ChannelMsg, Disconnect};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
-use crate::cli::{extract_output, find_prompt, Prompt};
+use crate::cli::{extract_output, find_prompt, find_prompt_on_screen, Prompt};
+use crate::screen::Screen;
 
 /// The terminal Coreview claims to be when it opens a shell, and the answer it
 /// gives when a device asks how big that terminal is (LT-379). The two must
@@ -86,6 +87,19 @@ pub struct SshOptions {
     pub auth_timeout: Duration,
     /// How long to wait for a command's output to finish arriving.
     pub command_timeout: Duration,
+    /// Where the login stream is written, when anybody wants it (LT-384).
+    ///
+    /// An out-parameter rather than an option, which is untidy — but it is the
+    /// one thing that has to survive a failure, and on a failure the `Device`
+    /// is dropped and the error is all that comes back. A crawl hands one of
+    /// these in so that a device which never reaches a prompt can be
+    /// diagnosed from what it actually sent.
+    ///
+    /// **The login only, never a command's output** — the boundary
+    /// `last_seen_for` already draws. A command's output can hold a
+    /// running-config, and on somebody's production switch that is exactly
+    /// what must not be written to a file (D-006).
+    pub login_transcript: Option<Arc<std::sync::Mutex<Vec<u8>>>>,
 }
 
 impl Default for SshOptions {
@@ -95,6 +109,7 @@ impl Default for SshOptions {
             connect_timeout: Duration::from_secs(8),
             auth_timeout: Duration::from_secs(90),
             command_timeout: Duration::from_secs(60),
+            login_transcript: None,
         }
     }
 }
@@ -413,87 +428,120 @@ impl Device {
                 source: e,
             })?;
 
-        let raw = self.read_raw_until_prompt(Some(command)).await?;
+        let (raw, _) = self.read_raw_until_prompt(Some(command)).await?;
         Ok(extract_output(&raw, command))
     }
 
     /// Reads until the device draws its prompt, returning the prompt itself.
     async fn read_until_prompt(&mut self, command: Option<&str>) -> Result<Prompt, SshError> {
-        let raw = self.read_raw_until_prompt(command).await?;
-        find_prompt(&raw).ok_or_else(|| SshError::NoPrompt {
-            host: self.host.clone(),
-        })
+        let (raw, prompt) = self.read_raw_until_prompt(command).await?;
+        // The rendered screen is what found it. The raw buffer is the fallback
+        // for a channel that closed before the loop got that far.
+        prompt
+            .or_else(|| find_prompt(&raw))
+            .ok_or_else(|| SshError::NoPrompt {
+                host: self.host.clone(),
+            })
     }
 
-    /// The read loop. Accumulates output until a prompt appears at the end.
+    /// The read loop. Renders what the device draws, and stops when it has
+    /// drawn a prompt.
     ///
-    /// Paging is answered with a space rather than treated as the end of
-    /// output: on a device where `terminal length 0` was refused, stopping at
-    /// the first `--More--` would truncate every long capture.
-    async fn read_raw_until_prompt(&mut self, command: Option<&str>) -> Result<String, SshError> {
+    /// **It keeps two views of the same bytes, and they answer different
+    /// questions** (LT-383). The raw buffer is *what the device said*, and it
+    /// is what a capture is extracted from — a 200-row screen would scroll the
+    /// top off a long `show run`. The [`Screen`] is *has the device finished
+    /// talking*, and it is the only one of the two that can answer, because a
+    /// device paints: it clears, positions the cursor, overwrites, repaints.
+    /// Read as a stream, a prompt followed by an erase sequence ends in the
+    /// `K` of the erase, and for four rounds on one Aruba that meant a prompt
+    /// arrived every time and was recognised none of them.
+    ///
+    /// Paging is answered rather than treated as the end of output: on a
+    /// device where `terminal length 0` was refused, stopping at the first
+    /// `--More--` would truncate every long capture.
+    async fn read_raw_until_prompt(
+        &mut self,
+        command: Option<&str>,
+    ) -> Result<(String, Option<Prompt>), SshError> {
         let mut buffer = String::new();
+        let mut screen = Screen::new(PTY_ROWS, PTY_COLS);
         let deadline = tokio::time::Instant::now() + self.options.command_timeout;
-        // How many cursor-position requests have been answered (LT-379). The
-        // buffer only grows, so a request answered on one pass is still in it
-        // on the next; counting is what keeps the reply from being sent twice.
-        let mut answered = 0usize;
+        // LT-387: which line a continuation was last answered for. The buffer
+        // only grows, so without this a banner that stays the last line is
+        // answered again on every chunk — keystrokes nobody asked for, sent to
+        // somebody's production switch. A genuine second page starts a new
+        // line and so is still answered.
+        let mut answered_line: Option<usize> = None;
+        // LT-384: the login only. See `SshOptions::login_transcript`.
+        let recording = command.is_none();
 
         loop {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
             if remaining.is_zero() {
-                return Err(SshError::CommandTimeout {
-                    host: self.host.clone(),
-                    command: command.unwrap_or("<login>").to_string(),
-                    last_seen: last_seen_for(command, &buffer),
-                });
+                return Err(self.timed_out(command, &buffer));
             }
 
-            match timeout(remaining, self.channel.wait()).await {
-                Err(_) => {
-                    return Err(SshError::CommandTimeout {
-                        host: self.host.clone(),
-                        command: command.unwrap_or("<login>").to_string(),
-                        last_seen: last_seen_for(command, &buffer),
-                    })
-                }
-                Ok(None) => {
-                    // The channel closed. Whatever arrived is all there is.
-                    return Ok(buffer);
-                }
+            let data = match timeout(remaining, self.channel.wait()).await {
+                Err(_) => return Err(self.timed_out(command, &buffer)),
+                // The channel closed. Whatever arrived is all there is.
+                Ok(None) => return Ok((buffer, find_prompt_on_screen(&screen))),
                 Ok(Some(msg)) => match msg {
-                    ChannelMsg::Data { ref data } => {
-                        buffer.push_str(&String::from_utf8_lossy(data));
-                        // LT-379 / D-054: the device measuring the terminal.
-                        // It will not draw a prompt until this is answered,
-                        // which is the whole reason PuTTY could log into an
-                        // Aruba that this client could not. No `continue`: a
-                        // prompt can arrive in the same read as the request,
-                        // and waiting for another one would hang on it.
-                        let reports = crate::cli::cursor_reports(&buffer, PTY_ROWS, PTY_COLS);
-                        for report in reports.iter().skip(answered) {
-                            let _ = self.channel.data(report.as_slice()).await;
-                        }
-                        answered = reports.len();
-                        // LT-375 / D-054: one table for everything a device
-                        // holds the session open with — a pager, a banner
-                        // waiting on a keypress, a FIPS box waiting for `a`.
-                        // Only continuations are answered; a prompt that
-                        // decides something never is.
-                        if let Some(reply) = crate::cli::continuation_reply(&buffer) {
-                            let _ = self.channel.data(reply).await;
-                            continue;
-                        }
-                        if find_prompt(&buffer).is_some() {
-                            return Ok(buffer);
-                        }
+                    // Stderr is the same screen to a terminal, and LT-386 was
+                    // that it used to be appended and then never checked for a
+                    // prompt — so a device that drew one there waited for the
+                    // timeout.
+                    ChannelMsg::Data { ref data } | ChannelMsg::ExtendedData { ref data, .. } => {
+                        data.to_vec()
                     }
-                    ChannelMsg::ExtendedData { ref data, .. } => {
-                        buffer.push_str(&String::from_utf8_lossy(data));
+                    ChannelMsg::Eof | ChannelMsg::Close => {
+                        return Ok((buffer, find_prompt_on_screen(&screen)))
                     }
-                    ChannelMsg::Eof | ChannelMsg::Close => return Ok(buffer),
-                    _ => {}
+                    _ => continue,
                 },
+            };
+
+            if recording {
+                record_login(&self.options.login_transcript, &data);
             }
+            buffer.push_str(&String::from_utf8_lossy(&data));
+
+            // LT-379 / D-054: the device measuring the terminal. It will not
+            // draw a prompt until it is told where the cursor is, which is the
+            // whole reason PuTTY could log into an Aruba that this client
+            // could not. The screen answers from where the cursor actually is,
+            // having tracked every move, wrap and scroll that put it there.
+            let replies = screen.feed(&data);
+            if !replies.is_empty() {
+                let _ = self.channel.data(replies.as_slice()).await;
+            }
+
+            // LT-375 / D-054: one table for everything a device holds the
+            // session open with — a pager, a banner waiting on a keypress, a
+            // FIPS box waiting for `a`. Only continuations are answered; a
+            // prompt that decides something never is.
+            let line_start = buffer.rfind('\n').map_or(0, |i| i + 1);
+            if answered_line != Some(line_start) {
+                if let Some(reply) = crate::cli::continuation_reply(&buffer) {
+                    let _ = self.channel.data(reply).await;
+                    answered_line = Some(line_start);
+                }
+            }
+
+            // The screen first, because it is the one that can read a painted
+            // prompt. The raw buffer stays as a fallback so that no device
+            // which already worked can stop working.
+            if let Some(prompt) = find_prompt_on_screen(&screen).or_else(|| find_prompt(&buffer)) {
+                return Ok((buffer, Some(prompt)));
+            }
+        }
+    }
+
+    fn timed_out(&self, command: Option<&str>, buffer: &str) -> SshError {
+        SshError::CommandTimeout {
+            host: self.host.clone(),
+            command: command.unwrap_or("<login>").to_string(),
+            last_seen: last_seen_for(command, buffer),
         }
     }
 
@@ -905,6 +953,21 @@ async fn authenticate(
 /// Control characters are rendered rather than emitted, so a banner full of
 /// escape sequences reads as text instead of redrawing the terminal it is
 /// printed in.
+/// Keeps the login stream, up to a point (LT-384).
+///
+/// Bounded because a device that floods rather than prompting would otherwise
+/// fill memory while the loop waits for its timeout. A quarter of a megabyte
+/// is far more than any login banner and far less than any running-config.
+fn record_login(sink: &Option<Arc<std::sync::Mutex<Vec<u8>>>>, data: &[u8]) {
+    const CAP: usize = 256 * 1024;
+    let Some(sink) = sink else { return };
+    let Ok(mut kept) = sink.lock() else { return };
+    let room = CAP.saturating_sub(kept.len());
+    if room > 0 {
+        kept.extend_from_slice(&data[..data.len().min(room)]);
+    }
+}
+
 fn last_seen_for(command: Option<&str>, buffer: &str) -> String {
     if command.is_some() {
         return String::new();

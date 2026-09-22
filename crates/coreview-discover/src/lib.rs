@@ -49,6 +49,7 @@ pub mod pathcheck;
 pub mod ptr;
 pub mod routes;
 pub mod seeds;
+pub mod screen;
 pub mod sessionlog;
 pub mod overlay;
 pub mod vrftables;
@@ -64,8 +65,8 @@ pub mod vault;
 
 pub use backup::{backup_path, is_inside, safe_component, BackupKind, BackupPathError};
 pub use capture::{count_changes, diff, list_captures, run_backups, BackupEvent, BackupOptions, BackupTarget, DiffLine};
-pub use cli::{extract_output, find_prompt, looks_like_config, Prompt};
-pub use crawl::{crawl, CrawlEvent, CrawlOptions, CrawlResult, CrawledDevice};
+pub use cli::{extract_output, find_prompt, find_prompt_on_screen, looks_like_config, Prompt};
+pub use crawl::{crawl, CrawlEvent, CrawlFailure, CrawlOptions, CrawlResult, CrawledDevice};
 pub use interfaces::{addresses_from, parse_ip_interface_brief, Interface};
 pub use hostkeys::{changed_key_message, HostKeyStore, HostKeyVerdict};
 pub use snmp::{identify, AuthKind, PrivKind, SnmpAuth, SnmpIdentity};

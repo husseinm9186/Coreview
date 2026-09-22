@@ -78,6 +78,7 @@ async fn main() {
             connect_timeout: Duration::from_secs(10),
             auth_timeout: Duration::from_secs(60),
             command_timeout: Duration::from_secs(60),
+            login_transcript: None,
         },
         second_factor: false,
         show: Some(ShowPlan { commands, paging }),

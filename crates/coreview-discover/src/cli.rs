@@ -33,10 +33,28 @@ pub struct Prompt {
 /// Returns `None` while output is still arriving, which is what the read loop
 /// uses to decide whether to keep waiting.
 pub fn find_prompt(buffer: &str) -> Option<Prompt> {
-    let last = buffer.lines().rev().find(|l| !l.trim().is_empty())?;
+    // LT-383: judged on what the line *says*, not on the bytes that draw it.
+    // A device that repaints after drawing its prompt — `LAB-SW1#` followed
+    // by `ESC [ K` — used to end the buffer with the `K` of an erase, and no
+    // prompt was ever found. `visible_text` has existed since LT-378 and the
+    // pager matcher two lines away in the read loop already used it.
+    let last = buffer
+        .lines()
+        .rev()
+        .map(visible_text)
+        .find(|l| !l.trim().is_empty())?;
+    prompt_from_line(&last)
+}
+
+/// The prompt on one already-visible line, if it is one.
+///
+/// Split out of [`find_prompt`] so the same rules can judge a line taken from
+/// a stream and a line read off a rendered screen (LT-383). Nothing about the
+/// rules was ever wrong; they were being handed the wrong text.
+pub fn prompt_from_line(line: &str) -> Option<Prompt> {
     // The prompt is drawn without a newline after it, so anything trailing is
     // still being written. Trailing spaces are tolerated; trailing text is not.
-    let line = last.trim_end();
+    let line = line.trim_end();
     let (head, enabled) = match line.chars().last()? {
         '#' => (&line[..line.len() - 1], true),
         // `$` is FortiOS for "logged in, but not as super_admin". It is a real
@@ -66,6 +84,25 @@ pub fn find_prompt(buffer: &str) -> Option<Prompt> {
         hostname: base.to_string(),
         enabled,
     })
+}
+
+/// The prompt on a rendered screen, if the device has drawn one (LT-383).
+///
+/// The cursor's own line is tried first, because that is where a prompt is by
+/// definition: a device draws its prompt and leaves the cursor after it,
+/// waiting to be typed at. Anything painted further down afterwards — a status
+/// line, the remains of a banner — is not the prompt, and taking the last
+/// non-empty row would pick it.
+///
+/// The last non-empty row is still the fallback, because not every device
+/// parks the cursor where it drew.
+pub fn find_prompt_on_screen(screen: &crate::screen::Screen) -> Option<Prompt> {
+    if let Some(prompt) = prompt_from_line(&screen.cursor_line()) {
+        return Some(prompt);
+    }
+    let lines = screen.lines();
+    let last = lines.iter().rev().find(|l| !l.trim().is_empty())?;
+    prompt_from_line(last)
 }
 
 fn is_hostname_char(c: char) -> bool {
@@ -247,65 +284,31 @@ const CONTINUATIONS: &[(&str, &[u8], bool)] = &[
     ("do you want to continue? (y/n)", b"y\n", true),
 ];
 
-/// Every cursor-position report the device has asked for, in the order it
-/// asked (LT-379).
+/// A byte stream written so a person can read it and paste it somewhere
+/// (LT-384).
 ///
-/// A device that wants to know how wide the terminal is drives the cursor far
-/// past any real screen — `ESC [ 1920 ; 1920 H` — and then asks where it ended
-/// up with `ESC [ 6 n`. The answer is clamped to the screen, so the position
-/// that comes back *is* the size. Until it comes back, the device waits, which
-/// is why an Aruba that PuTTY and SecureCRT log into fine would sit silent
-/// here until the command timed out.
+/// The point of a login transcript is that somebody sends it on, usually by
+/// pasting it into a message. Raw bytes do not survive that: an `ESC` is
+/// invisible, a bell rings, and a cursor-positioning sequence rearranges
+/// whatever window it lands in — which is the one thing a diagnostic must
+/// never do.
 ///
-/// This is not a decision being put to anybody, so D-054 permits it: nothing
-/// is confirmed, nothing runs, and the app is the only thing that can answer.
-///
-/// The whole buffer is scanned and every request reported, rather than only
-/// the newest, because the buffer only ever grows: the caller answers by
-/// count and so never replies to the same request twice.
-pub fn cursor_reports(buffer: &str, rows: u16, cols: u16) -> Vec<Vec<u8>> {
-    let bytes = buffer.as_bytes();
-    let (mut row, mut col) = (1u16, 1u16);
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] != 0x1b || bytes.get(i + 1) != Some(&b'[') {
-            i += 1;
-            continue;
+/// So every control byte is written the way it would be typed into source,
+/// and nothing else is touched. Newlines stay newlines, because a file nobody
+/// can skim is a file nobody reads. It is reversible: what comes back is
+/// exactly what the device sent.
+pub fn escape_for_reading(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for &b in bytes {
+        match b {
+            b'\n' => out.push('\n'),
+            0x1b => out.push_str("\\x1b"),
+            b'\\' => out.push_str("\\\\"),
+            0x20..=0x7e => out.push(b as char),
+            // Everything else, including the high bytes of a UTF-8 character:
+            // a transcript is a record of bytes, not of text.
+            _ => out.push_str(&format!("\\x{b:02x}")),
         }
-        // A CSI sequence is parameter bytes, then intermediate bytes, then one
-        // final byte that says what it was. A private marker such as the `?`
-        // in `ESC [ ? 6 l` is a parameter byte, which is what keeps that mode
-        // change from being mistaken for the request two bytes along from it.
-        let start = i + 2;
-        let mut j = start;
-        while matches!(bytes.get(j), Some(0x30..=0x3f)) {
-            j += 1;
-        }
-        while matches!(bytes.get(j), Some(0x20..=0x2f)) {
-            j += 1;
-        }
-        let Some(&final_byte) = bytes.get(j) else {
-            // Cut off mid-sequence. The rest has not arrived yet, and half a
-            // sequence is not yet anything.
-            break;
-        };
-        let params = std::str::from_utf8(&bytes[start..j]).unwrap_or("");
-        match final_byte {
-            b'H' | b'f' => {
-                let mut parts = params.split(';');
-                row = parts.next().and_then(|p| p.parse().ok()).unwrap_or(1).max(1);
-                col = parts.next().and_then(|p| p.parse().ok()).unwrap_or(1).max(1);
-            }
-            // Only the cursor. `ESC [ ? 6 n` asks about something else and
-            // `ESC [ 5 n` about the device's health; a made-up answer to
-            // either is worse than no answer.
-            b'n' if params == "6" => {
-                out.push(format!("\x1b[{};{}R", row.min(rows), col.min(cols)).into_bytes());
-            }
-            _ => {}
-        }
-        i = j + 1;
     }
     out
 }
@@ -769,77 +772,85 @@ SW1#";
         let err = looks_like_config("").unwrap_err();
         assert!(err.contains("nothing"), "got: {err}");
     }
-    /// LT-379. The bytes below are what the Aruba at the operator's edge
-    /// actually sent, in the order it sent them, taken from the failure the
-    /// LT-378 build reported.
-    ///
-    /// They say the banner was answered: the device cleared the screen and
-    /// began printing the login notice. Then it measured the terminal — drive
-    /// the cursor past any real screen, ask where it ended up — and waited for
-    /// an answer that never came.
-    const ARUBA_MEASURING: &str = concat!(
-        "any key to continue",
-        "\x1b[13;1H\x1b[?25h\x1b[200;27H\x1b[?6l\x1b[1;200r\x1b[?7h",
-        "\x1b[2J\x1b[1;1H",
-        "\x1b[1920;1920H\x1b[6n",
-        "\x1b[1;1HYour previous successful login",
-    );
+    /// LT-383. This is the failure, reduced to one line: a device draws its
+    /// prompt, then repaints. Read raw, the last character is the `K` of an
+    /// erase sequence, so there is no prompt — and the crawler waits until it
+    /// times out, every time, on a prompt that arrived immediately.
+    #[test]
+    fn a_prompt_wrapped_in_escapes_is_found() {
+        for raw in [
+            "\x1b[2KLAB-SW1#",
+            "LAB-SW1#\x1b[K",
+            "\x1b[2KLAB-SW1#\x1b[K",
+            "\x1b[1;32mLAB-SW1\x1b[0m#",
+            "\x1b[24;1HLAB-SW1# \x1b[?25h",
+        ] {
+            let found = find_prompt(raw).unwrap_or_else(|| panic!("no prompt in {raw:?}"));
+            assert_eq!(found.hostname, "LAB-SW1", "{raw:?}");
+            assert!(found.enabled, "{raw:?}");
+        }
+    }
 
     #[test]
-    fn a_cursor_position_request_is_answered() {
-        // The cursor was driven to 1920;1920 against a 200x200 pty, so it is
-        // sitting in the far corner — and the clamped position is exactly the
-        // terminal size the device is asking for.
+    fn stripping_the_escapes_does_not_invent_a_prompt() {
+        // The rules that were already right stay right. A configuration line
+        // that ends in `#` is still not a prompt once the colour is gone.
+        assert!(find_prompt("\x1b[0mbanner motd #").is_none());
+        assert!(find_prompt("\x1b[2Kset passwd ENC $1$xyz$").is_none());
+        assert!(find_prompt("\x1b[2K\x1b[K").is_none());
+    }
+
+    #[test]
+    fn a_prompt_on_a_painted_screen_is_found_under_the_cursor() {
+        // No newlines anywhere: the device positions the cursor. Read as a
+        // stream this is one enormous line; rendered, the prompt is plainly
+        // on row 3 with the cursor sitting after it.
+        let mut screen = crate::screen::Screen::new(24, 80);
+        screen.feed(b"\x1b[2J\x1b[1;1HSome switch banner\x1b[3;1H\x1b[2KLAB-SW1# \x1b[K");
+        let found = find_prompt_on_screen(&screen).expect("prompt");
+        assert_eq!(found.hostname, "LAB-SW1");
+        assert!(found.enabled);
+    }
+
+    #[test]
+    fn the_cursor_decides_which_line_is_the_prompt() {
+        // A device leaves the cursor after the prompt it just drew. Something
+        // painted further down the screen afterwards — a status line, the
+        // remains of a banner — is not the prompt, and taking the last
+        // non-empty row would pick it.
+        let mut screen = crate::screen::Screen::new(24, 80);
+        screen.feed(b"\x1b[5;1HStatus: everything is fine\x1b[3;1HLAB-SW1#");
+        let found = find_prompt_on_screen(&screen).expect("prompt");
+        assert_eq!(found.hostname, "LAB-SW1");
+
+        // With nothing under the cursor, the last non-empty row is still worth
+        // trying: not every device parks the cursor where it drew.
+        let mut screen = crate::screen::Screen::new(24, 80);
+        screen.feed(b"\x1b[1;1HLAB-SW2>\x1b[20;1H");
+        let found = find_prompt_on_screen(&screen).expect("prompt");
+        assert_eq!(found.hostname, "LAB-SW2");
+        assert!(!found.enabled, "a `>` is an unprivileged prompt");
+    }
+
+    #[test]
+    fn a_screen_still_being_painted_has_no_prompt_yet() {
+        let mut screen = crate::screen::Screen::new(24, 80);
+        screen.feed(b"\x1b[2J\x1b[1;1HPlease wait, gathering information");
+        assert!(find_prompt_on_screen(&screen).is_none());
+    }
+    #[test]
+    fn a_transcript_can_be_read_and_pasted() {
+        // The sequence that has cost four rounds, written so it can be sent
+        // to somebody without rearranging their terminal on the way.
         assert_eq!(
-            cursor_reports(ARUBA_MEASURING, 200, 200),
-            vec![b"\x1b[200;200R".to_vec()],
+            escape_for_reading(b"\x1b[2J\x1b[1;1HLAB-SW1#"),
+            r"\x1b[2J\x1b[1;1HLAB-SW1#",
         );
-    }
-
-    #[test]
-    fn the_answer_is_where_the_cursor_actually_is() {
-        // Not every request follows the corner trick. When the cursor is
-        // somewhere reachable, that is the honest answer.
-        assert_eq!(cursor_reports("\x1b[5;9H\x1b[6n", 200, 200), vec![b"\x1b[5;9R".to_vec()]);
-        // No cursor movement at all: a terminal starts in the top left.
-        assert_eq!(cursor_reports("\x1b[6n", 24, 80), vec![b"\x1b[1;1R".to_vec()]);
-        // `ESC [ H` with no parameters is also the top left.
-        assert_eq!(cursor_reports("\x1b[9;9H\x1b[H\x1b[6n", 24, 80), vec![b"\x1b[1;1R".to_vec()]);
-    }
-
-    #[test]
-    fn only_a_request_for_the_cursor_is_answered() {
-        // `ESC [ ? 6 l` and `ESC [ ? 7 h` are mode changes and sit in the
-        // capture above a few bytes from the real request; `ESC [ ? 6 n` is a
-        // different question entirely, about the printer, and guessing at an
-        // answer would be worse than silence.
-        assert!(cursor_reports("\x1b[?6l\x1b[?7h", 24, 80).is_empty());
-        assert!(cursor_reports("\x1b[?6n", 24, 80).is_empty());
-        assert!(cursor_reports("\x1b[5n", 24, 80).is_empty());
-        assert!(cursor_reports("Building configuration...\n", 24, 80).is_empty());
-    }
-
-    #[test]
-    fn each_request_is_counted_once() {
-        // The read loop answers by count, because the buffer only grows: a
-        // request answered on one pass is still in the buffer on the next,
-        // and answering it again would put stray bytes on the device's line.
-        let twice = "\x1b[3;4H\x1b[6n and later \x1b[7;8H\x1b[6n";
-        assert_eq!(
-            cursor_reports(twice, 24, 80),
-            vec![b"\x1b[3;4R".to_vec(), b"\x1b[7;8R".to_vec()],
-        );
-    }
-
-    #[test]
-    fn half_an_escape_sequence_is_not_a_request() {
-        // Reads land wherever the network splits them. A sequence cut in half
-        // is not yet anything, and must not be answered until the rest lands.
-        assert!(cursor_reports("\x1b[1920;1920H\x1b[6", 200, 200).is_empty());
-        assert!(cursor_reports("\x1b[", 200, 200).is_empty());
-        assert_eq!(
-            cursor_reports("\x1b[1920;1920H\x1b[6n", 200, 200),
-            vec![b"\x1b[200;200R".to_vec()],
-        );
+        // Newlines survive, because a file nobody can skim is not read.
+        assert_eq!(escape_for_reading(b"one\r\ntwo"), "one\\x0d\ntwo");
+        // A bell does not ring and a backslash is not ambiguous.
+        assert_eq!(escape_for_reading(b"a\x07b\\c"), r"a\x07b\\c");
+        // High bytes are bytes; a transcript records what arrived.
+        assert_eq!(escape_for_reading("é".as_bytes()), r"\xc3\xa9");
     }
 }

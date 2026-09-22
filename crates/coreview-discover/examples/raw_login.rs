@@ -73,14 +73,25 @@ async fn main() {
 
     let deadline = tokio::time::Instant::now() + Duration::from_secs(seconds);
     let mut buffer = Vec::new();
+    // LT-388: the same screen the crawler keeps, so this behaves the way the
+    // thing it is diagnosing behaves. Without it a device that will not move
+    // past `ESC[6n` looks silent here while the real crawl gets past it, and
+    // a diagnostic that disagrees with the crawler is worse than none.
+    let mut screen = coreview_discover::screen::Screen::new(200, 200);
     loop {
         let left = deadline.saturating_duration_since(tokio::time::Instant::now());
         if left.is_zero() {
             break;
         }
         match tokio::time::timeout(left, channel.wait()).await {
-            Ok(Some(ChannelMsg::Data { data })) => buffer.extend_from_slice(&data),
-            Ok(Some(ChannelMsg::ExtendedData { data, .. })) => buffer.extend_from_slice(&data),
+            Ok(Some(ChannelMsg::Data { data })) | Ok(Some(ChannelMsg::ExtendedData { data, .. })) => {
+                buffer.extend_from_slice(&data);
+                let replies = screen.feed(&data);
+                if !replies.is_empty() {
+                    println!("== answering {replies:?}");
+                    let _ = channel.data(replies.as_slice()).await;
+                }
+            }
             Ok(Some(_)) => {}
             Ok(None) => break,
             Err(_) => break,
@@ -93,4 +104,19 @@ async fn main() {
         println!("| {line:?}");
     }
     println!("== tail bytes: {:?}", &buffer[buffer.len().saturating_sub(40)..]);
+
+    // What a person at a terminal would have been looking at, which is the
+    // thing the crawler now judges (LT-383).
+    println!("== the screen as rendered");
+    for (n, line) in screen.lines().iter().enumerate() {
+        if !line.is_empty() {
+            println!("| {:>3} {line:?}", n + 1);
+        }
+    }
+    let (row, col) = screen.cursor();
+    println!("== cursor at row {row}, column {col}: {:?}", screen.cursor_line());
+    match coreview_discover::cli::find_prompt_on_screen(&screen) {
+        Some(p) => println!("== prompt found: {:?} (enabled: {})", p.text, p.enabled),
+        None => println!("== NO PROMPT — this is what a crawl would hang on"),
+    }
 }

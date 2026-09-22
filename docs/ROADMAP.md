@@ -123,6 +123,121 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-383 — **bug** The prompt was drawn and never seen — 2026-09-21
+
+**Source:** "please fix once and for all, can't have this, we've wasted many
+many hours on this we need it working now" — after a fourth failure against a
+**production** Aruba 2930M-48G-PoE+ (JL322A), not the lab.
+
+**Four rounds, each fixing something real, each hitting a new wall:** LT-375
+the unanswered banner, LT-377 the state that lied about which phase failed,
+LT-378 the `\n` that should have been `\r`, LT-379 the unanswered `ESC[6n`.
+**The pattern was the diagnosis and it was missed three times.**
+
+`find_prompt` judges the **raw** buffer:
+
+```rust
+let last = buffer.lines().rev().find(|l| !l.trim().is_empty())?;
+let line = last.trim_end();
+match line.chars().last()? { '#' => …, '>' | '$' => …, _ => return None }
+```
+
+The prompt has to be the last character of the last line **in raw bytes**. So
+`SW1#` followed by a repaint — `SW1#ESC[K` — ends in `K` and is not a prompt.
+`ESC[2KSW1#` puts `ESC [ 2 K` inside the hostname and fails
+`is_hostname_char`. And a device that positions the cursor instead of emitting
+newlines has **no line structure at all**: `buffer.lines()` sees one enormous
+line.
+
+ArubaOS-Switch does exactly that — `ESC[2J` `ESC[1;1H` `ESC[1;200r`
+`ESC[1920;1920H` `ESC[6n`, clear, set a scroll region, measure, repaint. **The
+prompt was arriving every time and was never recognised.** No amount of
+answering one more sequence was ever going to help.
+
+The asymmetry sits on two adjacent lines of the same loop: `continuation_reply`
+compares ANSI-**stripped** text through `visible_text` (`ssh.rs:483`),
+`find_prompt` compares **raw** text (`ssh.rs:486`). `visible_text` has existed
+since LT-378 and `find_prompt` was never pointed at it.
+
+**The fix is to render, not to read.** A new `screen.rs` keeps a grid, applies
+what the device sends to it, and the prompt is read off the rendered screen —
+the way PuTTY does, which is why PuTTY has always worked on this switch. The
+escape parser is not written from scratch: `sessionlog.rs` already has a
+correct, chunk-boundary-safe one, used only by the terminal's logging and never
+pointed at the crawler.
+
+**Acceptance:** a prompt wrapped in `ESC[2K` … `ESC[K` is found; a screen
+painted by cursor positioning yields real lines; `ESC[6n` is answered from the
+screen's actual cursor rather than by scanning for the last `CUP`; the devices
+that already worked still work.
+
+**Built 2026-09-21. Proven against a reproduction, not yet against his
+switch.** `screen.rs` keeps the grid; `cli::find_prompt_on_screen` reads the
+prompt off the cursor's own line; `find_prompt` itself now judges
+`visible_text` rather than raw bytes, which fixes the simpler half on every
+other code path. `cursor_reports` is gone — the screen tracks the cursor
+through relative moves, wrapping and scrolling, which a scan for the last
+`CUP` never could.
+
+**The test is a fake device that does all four things at once** — holds a
+banner on a keypress, wants `\r` and not `\n`, will not move past
+`ESC[1920;1920H ESC[6n`, and then paints its prompt at row 3 with a hint
+pinned to row 24 and no newline anywhere in the stream. That last part is what
+no stream reader can survive: read as text there is one enormous line whose
+tail is the bottom-of-screen hint run into the front of the prompt.
+`ssh_against_a_fake_device::a_device_that_paints_its_screen_reaches_a_prompt`.
+
+**It was checked that the test fails without the fix**, and the first version
+of it did not — it passed on the `visible_text` change alone, because the fake
+device was not painting hard enough to need a screen. That was worth finding:
+a test that cannot fail proves nothing. With the full-screen paint it fails
+without `find_prompt_on_screen` and passes with it.
+
+**No regression on hardware that already worked:** `try_commands` against the
+Cisco 2960CX at the operator's edge — prompt found, `show version` 61 lines,
+`show vlan brief` and `show ip interface brief` both clean.
+
+It stays in Now until the production 2930M reaches a prompt.
+
+### LT-384 — The login transcript writes itself to disk — 2026-09-21
+
+**Source:** "lets caputre the error and log the error somewhere on the machine
+so i can copy here, i'm doing this from a differnt computer".
+
+Every round so far has been a guess, because **there is no raw capture on the
+crawl path at all.** `SshError::CommandTimeout` carries a 300-character tail
+with control bytes flattened to `·` — that is the single clue the app has ever
+produced, and it only appears on one of several failure paths.
+
+**What ships:** on a login failure the raw login bytes are written to a file
+**without being asked for**, one per device per run, as raw bytes plus an
+escaped rendering (`ESC` as `\x1b`) that survives being pasted into a chat
+window. The failure row shows the full path, with **Copy path** and **Open
+folder** beside it, because a path nobody can find is not a capture.
+
+**Login phase only, never command output.** The boundary is the one
+`last_seen_for` already draws: a command's output can hold a running-config,
+and on a production switch that is exactly what must not be written to disk
+(D-006).
+
+**Acceptance:** a failed login leaves a file; the path is on screen and
+copyable; a successful crawl writes nothing; no command output ever reaches
+the file.
+
+**Built 2026-09-21.** The sink is `SshOptions::login_transcript`, filled only
+while `command.is_none()`, capped at 256 KB. `VisitJob::run` makes it before
+the per-device budget wraps anything, which is what lets LT-385 carry it out.
+`discovery.rs` writes `%LOCALAPPDATA%\Coreview\logins\<address>-<stamp>.log`
+with a header saying what it is and why it exists, and the escaped rendering
+below it. The failure row shows the path with **Copy path** and **Open
+folder**.
+
+Tested: the recording (`a_device_that_never_prompts_leaves_what_it_sent`), the
+rendering (`escape_for_reading`, reversible and paste-safe), and the file
+(`transcript_tests`, including that an address cannot escape the folder it
+names a file in). Not yet seen on his machine, which is the only thing that
+proves the path is findable.
+
 ### LT-382 — **bug** Three tests race each other for one LibreOffice — 2026-09-21
 
 `icons::folder_tests::a_real_emf_becomes_a_palette_icon` fails under a full
@@ -1716,6 +1831,57 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-385 — **bug** The per-device budget threw away the one useful message — 2026-09-21
+
+The fourth failure read `gave up after 60 seconds without finishing` and
+carried **no device output**, which is why it could not be diagnosed from the
+screenshot alone.
+
+Two timers collided. `command_timeout` is 60 s (`ssh.rs:97`) and produces
+`SshError::CommandTimeout` **with** the `last_seen` tail. `per_host_timeout`
+wraps the whole visit (`crawl.rs:877`) and was also 60 s, so it fired first and
+returned a `format!`-built failure with nothing in it.
+
+`command_timeout` is not exposed to the UI at all, while `per_host_timeout`
+sits right next to it in the panel — so an operator can set the outer budget
+below the inner one and silently lose every diagnostic.
+
+**Fix:** carry the SSH layer's diagnostic out through the budget expiry, and
+stop the two from being set into that relationship.
+
+**Shipped:** the budget expiry now carries the transcript out with it, and `command_timeout` is derived as `per_host - 5s`, clamped to 10..60, so the inner timeout always fires first and the richer error is always the one that happens.
+
+### LT-386 — **bug** A prompt drawn on stderr is never seen — 2026-09-21
+
+`read_raw_until_prompt` appends `ChannelMsg::ExtendedData` to the buffer and
+then falls through with **no `find_prompt` check** (`ssh.rs:490`); only
+`ChannelMsg::Data` triggers detection. A device that draws its prompt on stderr
+waits for the next stdout chunk, or for the timeout. Found while reading the
+loop for LT-383.
+
+**Shipped:** stderr and stdout are one arm of the same match now, so both are rendered, both are recorded and both are checked for a prompt.
+
+### LT-387 — **bug** A banner is re-answered on every chunk — 2026-09-21
+
+`continuation_reply(&buffer)` is re-evaluated over the **whole growing buffer**
+with a `continue` (`ssh.rs:483`). The buffer never shrinks, so a pager or
+banner that remains the last visible line is answered again on every subsequent
+chunk — keystrokes the device did not ask for, sent to a production switch.
+`cursor_reports` already avoids this by answering per count; the continuation
+table should too. Found while reading the loop for LT-383.
+
+**Shipped:** a continuation is answered once per line. The line's byte offset is remembered; a genuine second page starts a new line and is still answered, while the same line redrawn is not. The `continue` is gone too, so a stuck continuation no longer blinds the loop to a prompt.
+
+### LT-388 — **bug** `raw_login` no longer behaves like the crawler — 2026-09-21
+
+The diagnostic example opens a 200x200 `vt100` pty and mirrors the crawler's
+algorithms, but it does **not** answer `ESC[6n`, so since LT-379 a device
+blocked on the terminal-size query looks silent to it while the real crawler
+would have answered. A diagnostic that disagrees with the thing it diagnoses is
+worse than none. Point it at `screen.rs` too.
+
+**Shipped:** `raw_login` keeps the same `Screen`, answers `ESC[6n` the way the crawler does, and prints the rendered screen, the cursor position and whether a prompt would have been found.
 
 ### LT-380 — Saving says so, in green — 2026-09-21
 **Source:** "when I click save i need to see a green confirmation saved

@@ -330,6 +330,10 @@ a:hover { color: var(--text); }
   font-family: var(--mono); font-size: 11px; color: var(--text-dim);
   border: 1px solid var(--line-strong); border-radius: 4px; padding: 1px 6px;
 }
+/* LT-384: the login transcript a failed device left behind. */
+.cv-failure-log { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
+.cv-failure-log-path { font-size: 11px; word-break: break-all; color: var(--text-dim); }
+.cv-btn-small { padding: 1px 6px; font-size: 11px; }
 .cv-save-state { color: var(--text-faint); font-size: 11px; display: inline-flex; align-items: center; gap: 4px; }
 .cv-save-state.is-dirty { color: var(--warning); }
 /* LT-380: the answer to pressing Save. It is a chrome element, so it reads a

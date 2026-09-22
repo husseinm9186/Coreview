@@ -340,6 +340,7 @@ pub async fn start_crawl(
         subnets.push(parse_cidr(s).map_err(|e| format!("{s}: {e}"))?);
     }
 
+    let per_host_secs = input.per_host_timeout_secs.unwrap_or(300).clamp(30, 1_800);
     let options = CrawlOptions {
         filter: DiscoveryFilter {
             subnets,
@@ -350,13 +351,25 @@ pub async fn start_crawl(
         max_devices: input.max_devices.clamp(1, 5_000),
         // LT-208. A push factor still logs in one at a time (the auth gate);
         // commands afterwards may overlap.
+        // LT-385: read once, because the SSH command timeout is derived from it.
         concurrency: input.concurrency.unwrap_or(4).clamp(1, 32),
-        per_host_timeout: std::time::Duration::from_secs(input.per_host_timeout_secs.unwrap_or(300).clamp(30, 1_800)),
+        per_host_timeout: std::time::Duration::from_secs(per_host_secs),
         retries: input.retries.unwrap_or(1).min(3),
         second_factor: input.second_factor,
         address_preference: parse_preference(&input.address_preference, input.interface_name.as_deref()),
         ssh: SshOptions {
             port: input.port,
+            // LT-385: the inner timeout must fire before the outer budget.
+            //
+            // Both defaulted to 60 seconds and an operator can set the budget
+            // from the panel while this one is not exposed at all. When the
+            // budget wins, the failure is a sentence with nothing in it; when
+            // this one wins, it is `SshError::CommandTimeout`, which says what
+            // the device had sent. The richer error should always be the one
+            // that happens, so this is kept a margin below the budget.
+            command_timeout: std::time::Duration::from_secs(
+                per_host_secs.saturating_sub(5).clamp(10, 60),
+            ),
             ..SshOptions::default()
         },
         transport: match input.transport.as_deref() {
@@ -459,6 +472,12 @@ pub async fn start_crawl(
             let _ = tx.send(CrawlEvent::Skipped { name: s.seed, reason: s.reason }).await;
         }
         let mut result = crawl_from(&seeds, credentials, options, store, tx, token).await;
+        // LT-384: a device that never reached a prompt leaves what it sent on
+        // disk, without being asked. The operator is usually testing from a
+        // different machine to the one being diagnosed from, so a Save dialog
+        // he has to know to press is no use — the file has to already exist,
+        // and the path has to be on screen.
+        write_login_transcripts(&mut result.failures);
         // LT-206: names from reverse DNS where nothing else named a device.
         if reverse_dns && !result.cancelled {
             coreview_discover::ptr::enrich_names(&mut result, |ip| {
@@ -484,6 +503,64 @@ pub async fn start_crawl(
     });
 
     Ok(())
+}
+
+/// Writes the login stream of every device that failed with one, and records
+/// where it went (LT-384).
+///
+/// Into the app's own data folder — `%LOCALAPPDATA%\Coreview\logins` on
+/// Windows — because that is somewhere the app can always write and somewhere
+/// an operator can be told to look. One file per device per run; the address
+/// and the time are in the name so two runs do not overwrite each other.
+///
+/// A failure to write is not reported as a crawl failure: the crawl already
+/// failed, and a second error about a log file would bury the first.
+fn write_login_transcripts(failures: &mut [coreview_discover::CrawlFailure]) {
+    write_login_transcripts_into(&crate::db::data_dir().join("logins"), failures);
+}
+
+/// The part that does not need to know where the app keeps its data, so that
+/// it can be tested somewhere harmless.
+fn write_login_transcripts_into(dir: &std::path::Path, failures: &mut [coreview_discover::CrawlFailure]) {
+    if std::fs::create_dir_all(dir).is_err() {
+        return;
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    for failure in failures.iter_mut() {
+        let Some(bytes) = failure.transcript.take() else { continue };
+        // The address goes in the file name, so anything that is not plainly
+        // part of an address does not.
+        let safe: String = failure
+            .address
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' { c } else { '_' })
+            .collect();
+        let path = dir.join(format!("{safe}-{stamp}.log"));
+        let body = format!(
+            "Coreview {} — login transcript for {}\n\
+             What this is: every byte {} sent between the password being \n\
+             accepted and the crawl giving up, with control characters \n\
+             written the way they would be typed. Nothing was run on the \n\
+             device; this is the login only, so it holds no configuration.\n\
+             Why it exists: the device never drew a prompt Coreview could \n\
+             recognise. What it sent is the only thing that explains why.\n\
+             \n\
+             {}\n\
+             \n\
+             ---- begin ----\n{}\n---- end ----\n",
+            env!("CARGO_PKG_VERSION"),
+            failure.address,
+            failure.address,
+            failure.reason,
+            coreview_discover::cli::escape_for_reading(&bytes),
+        );
+        if std::fs::write(&path, body).is_ok() {
+            failure.transcript_path = Some(path.to_string_lossy().into_owned());
+        }
+    }
 }
 
 /// LT-225: can `device` reach `target`? Asked of the device itself, over SSH
@@ -1072,4 +1149,70 @@ pub fn read_snmp_walk(text: String, address: Option<String>) -> coreview_discove
 #[tauri::command]
 pub fn read_nmap_xml(text: String) -> Result<crate::nmap_import::NmapReport, String> {
     crate::nmap_import::read_nmap_xml(&text)
+}
+
+#[cfg(test)]
+mod transcript_tests {
+    use coreview_discover::crawl::FailureKind;
+    use coreview_discover::CrawlFailure;
+
+    /// LT-384. The operator is diagnosing from a different machine to the one
+    /// running the crawl, so the file has to exist without being asked for
+    /// and the path has to come back for the interface to show.
+    #[test]
+    fn a_failure_with_a_transcript_leaves_a_file_and_says_where() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut failure = CrawlFailure::new(
+            "198.51.100.7".into(),
+            "198.51.100.7 stopped responding while running `<login>`".into(),
+            FailureKind::CommandTimedOut,
+        );
+        failure.transcript = Some(b"\x1b[2JPress any key to continue".to_vec());
+        let mut failures = vec![failure];
+
+        super::write_login_transcripts_into(dir.path(), &mut failures);
+
+        let path = failures[0].transcript_path.clone().expect("a path came back");
+        let written = std::fs::read_to_string(&path).expect("the file is there");
+        assert!(written.contains("198.51.100.7"), "names the device: {written}");
+        assert!(written.contains(r"\x1b[2J"), "the escapes are readable: {written}");
+        assert!(!written.contains('\u{1b}'), "no raw escape reached the file");
+        // The transcript itself does not also travel to the interface.
+        assert!(failures[0].transcript.is_none(), "the bytes were handed over, not copied");
+    }
+
+    #[test]
+    fn a_failure_with_nothing_recorded_leaves_nothing() {
+        // A device that refused the connection never said anything, and an
+        // empty file in a folder of transcripts is a false lead.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut failures = vec![CrawlFailure::new(
+            "198.51.100.8".into(),
+            "nothing answered".into(),
+            FailureKind::Unreachable,
+        )];
+        super::write_login_transcripts_into(dir.path(), &mut failures);
+        assert!(failures[0].transcript_path.is_none());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn an_address_cannot_escape_the_folder_it_is_named_in() {
+        // The address reaches a file name, so anything that is not plainly
+        // part of an address must not survive the trip.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut failure = CrawlFailure::new(
+            "../../etc/passwd".into(),
+            "nope".into(),
+            FailureKind::Other,
+        );
+        failure.transcript = Some(b"x".to_vec());
+        let mut failures = vec![failure];
+        super::write_login_transcripts_into(dir.path(), &mut failures);
+        let path = failures[0].transcript_path.clone().expect("a path");
+        assert!(
+            std::path::Path::new(&path).parent() == Some(dir.path()),
+            "wrote outside the folder: {path}",
+        );
+    }
 }

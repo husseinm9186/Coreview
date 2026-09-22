@@ -41,6 +41,7 @@ async fn main() {
         connect_timeout: Duration::from_secs(10),
         auth_timeout: Duration::from_secs(90),
         command_timeout: Duration::from_secs(45),
+        login_transcript: None,
     };
     let credentials = Credentials {
         username: user,

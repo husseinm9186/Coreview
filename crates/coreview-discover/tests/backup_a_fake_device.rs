@@ -192,6 +192,7 @@ fn options(root: std::path::PathBuf, port: u16, kinds: Vec<BackupKind>) -> Backu
             connect_timeout: Duration::from_secs(5),
             auth_timeout: Duration::from_secs(10),
             command_timeout: Duration::from_secs(10),
+            login_transcript: None,
         },
         second_factor: false,
         show: None,

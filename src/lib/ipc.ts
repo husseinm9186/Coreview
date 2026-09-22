@@ -534,6 +534,10 @@ export type CrawlFailure = {
   address: string;
   reason: string;
   kind?: FailureKind;
+  /** LT-384: where the login stream was written, for a device that never
+   *  reached a prompt. Absent when there was nothing to write — a device that
+   *  refused the connection outright never said anything to record. */
+  transcriptPath?: string;
 };
 
 export type CrawlResult = {

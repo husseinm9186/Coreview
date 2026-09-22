@@ -336,6 +336,25 @@ pub struct CrawlFailure {
     /// What kind of failure it was, so the interface can group and explain
     /// without reading the sentence (LT-144).
     pub kind: FailureKind,
+    /// The raw login stream, when there was one and the device never reached a
+    /// prompt (LT-384).
+    ///
+    /// **Not serialised.** It is bytes, it can be a quarter of a megabyte, and
+    /// the interface has no use for it — what the operator needs is a file he
+    /// can find and send. The layer that owns the disk writes it and fills in
+    /// `transcript_path`; this field never crosses the wire.
+    #[serde(skip)]
+    pub transcript: Option<Vec<u8>>,
+    /// Where that file was written, once it has been.
+    pub transcript_path: Option<String>,
+}
+
+impl CrawlFailure {
+    /// A failure with nothing recorded — the common case, and every case
+    /// before LT-384.
+    pub fn new(address: String, reason: String, kind: FailureKind) -> Self {
+        Self { address, reason, kind, transcript: None, transcript_path: None }
+    }
 }
 
 /// Turns an SSH failure into a kind, asking the network where the error alone
@@ -839,9 +858,22 @@ fn worth_retrying(e: &SshError) -> bool {
     }
 }
 
+/// Whatever the login stream collected, if anything (LT-384).
+fn taken(sink: &Arc<std::sync::Mutex<Vec<u8>>>) -> Option<Vec<u8>> {
+    let kept = sink.lock().ok()?;
+    (!kept.is_empty()).then(|| kept.clone())
+}
+
 impl VisitJob {
     async fn run(self) -> Outcome {
         let limit = self.options.per_host_timeout;
+        // LT-384: somewhere for the login stream to go. Made out here, before
+        // the budget wraps anything, so that whatever the device said survives
+        // even when the budget is what ends the visit.
+        let transcript: Arc<std::sync::Mutex<Vec<u8>>> = Arc::default();
+        let mut options = (*self.options).clone();
+        options.ssh.login_transcript = Some(Arc::clone(&transcript));
+        let options = &options;
         let mut attempt = 0u32;
         let error = loop {
             let visited = tokio::time::timeout(
@@ -851,7 +883,7 @@ impl VisitJob {
                     self.known.as_ref(),
                     self.hops,
                     &self.credentials,
-                    &self.options,
+                    options,
                     Arc::clone(&self.store),
                     &self.events,
                     Arc::clone(&self.auth_gate),
@@ -871,30 +903,38 @@ impl VisitJob {
                 }
                 Ok(Err(e)) => break e,
                 Err(_) => {
-                    return Outcome::Failed(CrawlFailure {
-                        address: self.address.clone(),
-                        reason: format!(
+                    // LT-385: this used to return a sentence and nothing else.
+                    // When the per-device budget is set at or below the SSH
+                    // command timeout it fires first, and the one thing that
+                    // would explain the failure — what the device actually
+                    // sent — was thrown away. It is carried now.
+                    let mut failure = CrawlFailure::new(
+                        self.address.clone(),
+                        format!(
                             "{}: gave up after {} seconds without finishing",
                             self.address,
                             limit.as_secs()
                         ),
-                        kind: FailureKind::CommandTimedOut,
-                    })
+                        FailureKind::CommandTimedOut,
+                    );
+                    failure.transcript = taken(&transcript);
+                    return Outcome::Failed(failure);
                 }
             }
         };
-        let failure = CrawlFailure {
-            address: self.address.clone(),
-            reason: error.to_string(),
-            kind: classify_failure(&error, &self.address).await,
-        };
+        let mut failure = CrawlFailure::new(
+            self.address.clone(),
+            error.to_string(),
+            classify_failure(&error, &self.address).await,
+        );
+        failure.transcript = taken(&transcript);
         // SSH would not have it. Before writing the device off, ask whether it
         // will identify itself over SNMP — a device that answers is worth
         // drawing, even without its neighbours. What a neighbour already said
         // about it is passed along: SNMP often cannot tell a device's role,
         // and throwing that away would make a device change kind depending on
         // which protocol reached it.
-        match Box::pin(identify_over_snmp(&self.address, self.hops, &self.options, self.known.as_ref())).await {
+        match Box::pin(identify_over_snmp(&self.address, self.hops, options, self.known.as_ref())).await {
             Some(device) => Outcome::Snmp { device: Box::new(device), failure },
             None => Outcome::Failed(failure),
         }
@@ -2133,11 +2173,13 @@ mod tests {
                 rest[..rest.find('"').unwrap()].to_string()
             }).collect()
         };
-        let failed = CrawlEvent::Failed { failure: CrawlFailure {
-            address: "192.0.2.1".into(),
-            reason: "rejected".into(),
-            kind: FailureKind::AuthRejected,
-        } };
+        let failed = CrawlEvent::Failed {
+            failure: CrawlFailure::new(
+                "192.0.2.1".into(),
+                "rejected".into(),
+                FailureKind::AuthRejected,
+            ),
+        };
         assert_eq!(kind_of(&failed), vec!["failed"], "{}", serde_json::to_string(&failed).unwrap());
         let push = CrawlEvent::Ssh { progress: SshProgress::AwaitingSecondFactor { host: "192.0.2.1".into(), message: "Approve".into() } };
         assert_eq!(kind_of(&push), vec!["ssh"], "{}", serde_json::to_string(&push).unwrap());

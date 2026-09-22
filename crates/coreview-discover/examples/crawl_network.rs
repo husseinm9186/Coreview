@@ -92,6 +92,7 @@ async fn main() {
         connect_timeout: Duration::from_secs(8),
         auth_timeout: Duration::from_secs(60),
         command_timeout: Duration::from_secs(45),
+        login_transcript: None,
     };
 
     let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));

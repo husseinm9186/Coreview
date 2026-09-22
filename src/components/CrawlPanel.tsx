@@ -1311,6 +1311,33 @@ export function CrawlPanel({
                   {group.map((f) => (
                     <li key={f.address}>
                       <code>{f.address}</code> — {reasonWithoutAddress(f.address, f.reason)}
+                      {/* LT-384: a device that answered and then never reached
+                          a prompt left what it sent on disk. The path is shown
+                          rather than hidden behind a button, because the whole
+                          point is that somebody can find the file and send it
+                          on — often from a different machine to this one. */}
+                      {f.transcriptPath && (
+                        <div className="cv-failure-log">
+                          <span className="cv-help">
+                            What it sent was saved, so it can be read or sent on:
+                          </span>
+                          <code className="cv-failure-log-path">{f.transcriptPath}</code>
+                          <button
+                            type="button"
+                            className="cv-btn cv-btn-small"
+                            onClick={() => void navigator.clipboard.writeText(f.transcriptPath ?? '')}
+                          >
+                            Copy path
+                          </button>
+                          <button
+                            type="button"
+                            className="cv-btn cv-btn-small"
+                            onClick={() => void ipc.openAttachment(f.transcriptPath ?? '', true)}
+                          >
+                            Open folder
+                          </button>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>

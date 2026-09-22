@@ -960,8 +960,16 @@ falls inside this rule rather than beside it: nothing is decided, nothing runs,
 nothing is confirmed, and no human is being addressed. It is the terminal being
 asked about itself, and Coreview is the only thing that can answer.
 
-It is answered from `cli::cursor_reports` rather than the phrase table, because
-the reply is computed — the cursor position clamped to the pty that was
-actually negotiated — rather than looked up. The boundary above is unchanged
-and still holds by phrase: `ESC [ ? 6 n` asks a different question and is left
-alone, because a made-up answer is worse than silence.
+It is answered from a computed reply rather than the phrase table, because the
+reply is a cursor position rather than something that can be looked up. The
+boundary above is unchanged and still holds by phrase: `ESC [ ? 6 n` asks a
+different question and is left alone, because a made-up answer is worse than
+silence.
+
+**Moved 2026-09-21 (LT-383): the reply comes from `screen::Screen`.** The
+first version scanned the buffer for the last absolute cursor move, which is
+right only for a device that never moves the cursor any other way. The screen
+tracks every relative move, every wrap and every scroll, so the position it
+reports is the one a terminal would report. Same rule, better arithmetic —
+and it arrived alongside the discovery that answering the question was never
+the last wall anyway: the prompt that followed was drawn and never recognised.

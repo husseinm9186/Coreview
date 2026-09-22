@@ -339,6 +339,7 @@ fn options(port: u16) -> CrawlOptions {
             connect_timeout: Duration::from_secs(5),
             auth_timeout: Duration::from_secs(10),
             command_timeout: Duration::from_secs(10),
+            login_transcript: None,
         },
         ..Default::default()
     }
