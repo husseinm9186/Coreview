@@ -1941,6 +1941,15 @@ asserting `Continue? (y/n)`, `Proceed with reload? [confirm]` and
 
 **Done 2026-09-22, proven on the production 2930M:** the banner was answered with `[13]`, a carriage return, and the device moved past it.
 
+### LT-398 — Back to the Windows NSIS installer only — 2026-09-22
+**Source:** "don't build any installer yet please except the NSIS for
+windows" — the same day LT-394 turned everything on, and before anything had
+been pushed after it.
+**Shipped:** the Linux leg and its AppImage test, the MSI, the offline Windows
+installer and the macOS `.dmg` are paused again, each by one edit and none
+deleted. `test` still runs on Linux and Windows, so nothing goes unchecked —
+only the bundling is paused.
+
 ### LT-394 — Every installer again — 2026-09-22
 **Source:** "can you go ahead build all the installers".
 **Shipped:** the Linux leg (`.deb` and `.AppImage`) and its WebKit-free smoke

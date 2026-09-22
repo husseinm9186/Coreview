@@ -129,22 +129,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # LT-394: every installer again — "can you go ahead build all the
-          # installers". The set has now been narrowed or widened six times
-          # (LT-305, LT-311, LT-331, LT-337, LT-349, LT-394); each time it is
-          # one edit, which is why nothing here is ever deleted.
-          - os: ubuntu-latest
-            artifact: coreview-linux
-            bundles: deb,appimage
-            paths: |
-              target/release/bundle/deb/*.deb
-              target/release/bundle/appimage/*.AppImage
+          # LT-398: the NSIS installer only — "don't build any installer yet
+          # please except the NSIS for windows". The seventh change to this
+          # set (LT-305, LT-311, LT-331, LT-337, LT-349, LT-394, LT-398), and
+          # like every one before it, one edit that deletes nothing.
+          # - os: ubuntu-latest
+          #   artifact: coreview-linux
+          #   bundles: deb,appimage
+          #   paths: |
+          #     target/release/bundle/deb/*.deb
+          #     target/release/bundle/appimage/*.AppImage
           - os: windows-latest
             artifact: coreview-windows
-            bundles: nsis,msi
+            bundles: nsis
             paths: |
               target/release/bundle/nsis/*.exe
-              target/release/bundle/msi/*.msi
+            #  target/release/bundle/msi/*.msi
     steps:
       - uses: actions/checkout@v5
 
@@ -209,8 +209,8 @@ jobs:
   bundle-windows-offline:
     name: bundle (Windows, offline installer)
     needs: test
-    # LT-394: back on with the rest. It was paused at LT-331 and LT-349 as a
-    # second, much larger NSIS of the same commit.
+    # LT-398: paused again with the rest — NSIS only.
+    if: false
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -269,8 +269,8 @@ jobs:
   bundle-macos:
     name: bundle (macOS, universal .dmg)
     needs: test
-    # LT-394: back on with the rest. It cannot be tested from here, which is
-    # why it stays a job of its own — a failure in it holds nothing else up.
+    # LT-398: paused again — NSIS only. `if: false`, so it returns in one edit.
+    if: false
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
@@ -311,7 +311,8 @@ jobs:
   appimage-smoke:
     name: AppImage on a machine without WebKit
     needs: bundle
-    # LT-394: back on with the Linux bundle it tests.
+    # LT-398: no AppImage to test while the Linux bundle is paused.
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
