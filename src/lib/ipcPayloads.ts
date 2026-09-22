@@ -77,7 +77,7 @@ export const crawlInput = (input: object) => {
   const out = pickAll(i, [
     'seed', 'subnets', 'crawlClasses', 'maxHops', 'maxDevices', 'secondFactor', 'addressPreference', 'interfaceName', 'port',
     'transport', 'vdom', 'snmp', 'credentialId', 'snmpCredentialIds', 'details', 'bindings', 'reverseDns', 'concurrency',
-    'perHostTimeoutSecs', 'retries',
+    'perHostTimeoutSecs', 'retries', 'debugLog',
   ]);
   if (Array.isArray(i.snmp)) out.snmp = i.snmp.map((s) => pickAll(s, SNMP_INPUT_KEYS));
   if (i.details) out.details = pickAll(i.details, ['routes', 'spanningTree', 'vlans']);

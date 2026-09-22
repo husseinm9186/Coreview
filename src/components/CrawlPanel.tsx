@@ -223,6 +223,10 @@ export function CrawlPanel({
   });
   // LT-206.
   const [reverseDns, setReverseDns] = useState(true);
+  // LT-389: off unless asked for. A log nobody asked for is a file nobody is
+  // guarding (D-055).
+  const [debugLog, setDebugLog] = useState(false);
+  const [debugLogPath, setDebugLogPath] = useState<string | null>(null);
   // LT-210: where each device is, live.
   const [table, setTable] = useState<CrawlTable>(new Map());
   // LT-211: the plan a run would follow, worked out with nothing sent.
@@ -403,6 +407,8 @@ export function CrawlPanel({
         const next = resultRows(r, seenKeys.current);
         setRows((prev) => [...prev, ...next]);
         setFailures(r.failures);
+        // LT-389: where it went, so it can be found and sent on.
+        setDebugLogPath(r.debugLogPath ?? null);
         // The adjacencies live here and nowhere else. Flattening to rows threw
         // away who is plugged into what, which is why the built diagram used
         // to be a grid of unconnected boxes.
@@ -482,6 +488,7 @@ export function CrawlPanel({
           snmpCredentialIds: snmpForRun().savedIds,
           details,
           reverseDns,
+          debugLog,
           concurrency,
           perHostTimeoutSecs: perHost,
           retries,
@@ -982,6 +989,43 @@ export function CrawlPanel({
           Names from reverse DNS
         </label>
       </fieldset>
+
+      {/* LT-389: what the app did, as it did it — every command, login and
+          protocol decision, with timings. It names commands and counts their
+          output; it never writes down a password, an SNMP community or any
+          device output (D-055). */}
+      <label
+        className="cv-check cv-check-inline"
+        title="Writes a file naming every command, login and failure, with timings. It contains no passwords, no SNMP communities and no command output."
+      >
+        <input
+          type="checkbox"
+          checked={debugLog}
+          disabled={running}
+          onChange={(e) => setDebugLog(e.target.checked)}
+        />
+        Write a debug log of this run
+      </label>
+      {debugLogPath && (
+        <div className="cv-failure-log">
+          <span className="cv-help">The debug log for the last run:</span>
+          <code className="cv-failure-log-path">{debugLogPath}</code>
+          <button
+            type="button"
+            className="cv-btn cv-btn-small"
+            onClick={() => void navigator.clipboard.writeText(debugLogPath)}
+          >
+            Copy path
+          </button>
+          <button
+            type="button"
+            className="cv-btn cv-btn-small"
+            onClick={() => void ipc.openAttachment(debugLogPath, true)}
+          >
+            Open folder
+          </button>
+        </div>
+      )}
 
       <details className="cv-snmp" open={snmpOpen}
         onToggle={(e) => setSnmpOpen((e.target as HTMLDetailsElement).open)}>

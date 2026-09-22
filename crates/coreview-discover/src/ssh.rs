@@ -309,6 +309,12 @@ impl Device {
             }
         };
 
+        crate::say!(
+            crate::debuglog::Area::Ssh,
+            "{host}:{} connecting as {}",
+            options.port,
+            credentials.username,
+        );
         say(SshProgress::Connecting {
             host: host.to_string(),
         });
@@ -354,19 +360,31 @@ impl Device {
             Ok(Ok(h)) => h,
         };
 
+        crate::say!(crate::debuglog::Area::Ssh, "{host}: host key accepted");
         say(SshProgress::Authenticating {
             host: host.to_string(),
         });
         let auth = authenticate(&mut handle, host, credentials, &say);
         match timeout(options.auth_timeout, auth).await {
             Err(_) => {
+                crate::say!(
+                    crate::debuglog::Area::Ssh,
+                    "{host}: authentication not completed within {}s",
+                    options.auth_timeout.as_secs(),
+                );
                 return Err(SshError::AuthTimeout {
                     host: host.to_string(),
                     timeout: options.auth_timeout,
                 })
             }
-            Ok(result) => result?,
+            Ok(result) => {
+                if let Err(e) = &result {
+                    crate::say!(crate::debuglog::Area::Ssh, "{host}: authentication refused — {e}");
+                }
+                result?
+            }
         }
+        crate::say!(crate::debuglog::Area::Ssh, "{host}: authenticated");
 
         let channel = handle.channel_open_session().await.map_err(|e| SshError::Protocol {
             host: host.to_string(),
@@ -403,8 +421,26 @@ impl Device {
             },
         };
 
+        crate::say!(
+            crate::debuglog::Area::Ssh,
+            "{host}: shell open on a {PTY_COLS}x{PTY_ROWS} vt100, waiting for a prompt",
+        );
         say(SshProgress::OpeningShell { host: host.to_string() });
-        device.prompt = device.read_until_prompt(None).await?;
+        device.prompt = match device.read_until_prompt(None).await {
+            Ok(p) => {
+                crate::say!(
+                    crate::debuglog::Area::Ssh,
+                    "{host}: prompt {:?}, {}",
+                    p.text,
+                    if p.enabled { "privileged" } else { "unprivileged" },
+                );
+                p
+            }
+            Err(e) => {
+                crate::say!(crate::debuglog::Area::Ssh, "{host}: no prompt — {e}");
+                return Err(e);
+            }
+        };
         say(SshProgress::Ready {
             host: host.to_string(),
             hostname: device.prompt.hostname.clone(),
@@ -428,7 +464,28 @@ impl Device {
                 source: e,
             })?;
 
-        let (raw, _) = self.read_raw_until_prompt(Some(command)).await?;
+        // D-055: the command is named and the output counted, never written
+        // down. A `show running-config` is the most sensitive thing on a
+        // switch and this file is made to be sent to somebody.
+        let started = std::time::Instant::now();
+        let result = self.read_raw_until_prompt(Some(command)).await;
+        match &result {
+            Ok((raw, _)) => crate::say!(
+                crate::debuglog::Area::Ssh,
+                "{}: ran `{command}` in {}ms, {} bytes, {} lines",
+                self.host,
+                started.elapsed().as_millis(),
+                raw.len(),
+                raw.lines().count(),
+            ),
+            Err(e) => crate::say!(
+                crate::debuglog::Area::Ssh,
+                "{}: `{command}` failed after {}ms — {e}",
+                self.host,
+                started.elapsed().as_millis(),
+            ),
+        }
+        let (raw, _) = result?;
         Ok(extract_output(&raw, command))
     }
 
@@ -513,6 +570,12 @@ impl Device {
             // having tracked every move, wrap and scroll that put it there.
             let replies = screen.feed(&data);
             if !replies.is_empty() {
+                let (row, col) = screen.cursor();
+                crate::say!(
+                    crate::debuglog::Area::Ssh,
+                    "{}: it asked where the cursor was; answered row {row}, column {col}",
+                    self.host,
+                );
                 let _ = self.channel.data(replies.as_slice()).await;
             }
 
@@ -523,6 +586,12 @@ impl Device {
             let line_start = buffer.rfind('\n').map_or(0, |i| i + 1);
             if answered_line != Some(line_start) {
                 if let Some(reply) = crate::cli::continuation_reply(&buffer) {
+                    crate::say!(
+                        crate::debuglog::Area::Ssh,
+                        "{}: holding on {:?}; answered {reply:?}",
+                        self.host,
+                        crate::cli::visible_text(buffer.lines().last().unwrap_or("")),
+                    );
                     let _ = self.channel.data(reply).await;
                     answered_line = Some(line_start);
                 }

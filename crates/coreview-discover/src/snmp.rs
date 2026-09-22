@@ -239,7 +239,18 @@ pub async fn identify(
     // cause of the stack overflows measured in LT-124 was the session's own
     // inline buffers, fixed with snmp2's `heap_buffers` feature; this keeps the
     // caller's future small as well, for one allocation per device.
-    let mut session = Box::pin(open_session(host, port, auth, timeout)).await?;
+    // D-055: the version and the OIDs are named; the community string and
+    // every v3 passphrase are not. `SnmpAuth`'s own `Debug` already redacts
+    // them, for exactly this reason — reused rather than written twice.
+    crate::say!(crate::debuglog::Area::Snmp, "{host}:{port} identifying with {auth:?}");
+    let started = std::time::Instant::now();
+    let mut session = match Box::pin(open_session(host, port, auth, timeout)).await {
+        Ok(s) => s,
+        Err(e) => {
+            crate::say!(crate::debuglog::Area::Snmp, "{host}: no session — {e}");
+            return Err(e);
+        }
+    };
 
     let oids = [
         Oid::from(SYS_DESCR).unwrap(),
@@ -311,9 +322,22 @@ pub async fn identify(
     // successful identification puts a nameless row on the diagram and hides
     // the real problem. Seen on a UniFi switch whose v3 user did not match.
     if identity.name.is_none() && identity.description.is_none() && identity.object_id.is_none() {
+        crate::say!(
+            crate::debuglog::Area::Snmp,
+            "{host}: answered in {}ms with nothing in the system group — wrong credentials, or a view that excludes it",
+            started.elapsed().as_millis(),
+        );
         return Err(SnmpError::NothingReturned { host: host.into() });
     }
 
+    crate::say!(
+        crate::debuglog::Area::Snmp,
+        "{host}: identified in {}ms, {} serial(s), routes={}, bridges={}",
+        started.elapsed().as_millis(),
+        identity.serials.len(),
+        identity.routes,
+        identity.bridges,
+    );
     Ok(identity)
 }
 

@@ -445,6 +445,8 @@ export type CrawlInput = {
   concurrency?: number;
   perHostTimeoutSecs?: number;
   retries?: number;
+  /** LT-389: write a debug log of this run. Off unless asked for. */
+  debugLog?: boolean;
   /** LT-199, LT-209: saved credentials bound to devices, subnets or vendors,
    *  by vault id. */
   bindings?: { scope: 'device' | 'subnet' | 'vendor'; value: string; credentialId: string }[];
@@ -545,6 +547,8 @@ export type CrawlResult = {
   notVisited: Neighbor[];
   failures: CrawlFailure[];
   cancelled: boolean;
+  /** LT-389: where the debug log went, when the run was asked to write one. */
+  debugLogPath?: string | null;
 };
 
 /** `commands` are this device's own show commands (LT-149), run after the

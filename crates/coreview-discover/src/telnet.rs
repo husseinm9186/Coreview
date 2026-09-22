@@ -157,6 +157,11 @@ impl TelnetDevice {
         connect_timeout: Duration,
         command_timeout: Duration,
     ) -> Result<Self, SshError> {
+        crate::say!(
+            crate::debuglog::Area::Telnet,
+            "{host}:{port} connecting as {} — in clear text, which is what telnet is",
+            credentials.username,
+        );
         let stream = tokio::time::timeout(connect_timeout, TcpStream::connect((host, port)))
             .await
             .map_err(|_| SshError::ConnectTimeout {
@@ -227,12 +232,23 @@ impl TelnetDevice {
                 }
                 Some(LoginPrompt::Username) | Some(LoginPrompt::Password) => {
                     // Asked twice: the credentials were refused.
+                    crate::say!(
+                        crate::debuglog::Area::Telnet,
+                        "{}: asked to log in a second time — the credentials were refused",
+                        self.host,
+                    );
                     return Err(SshError::AuthFailed {
                         host: self.host.clone(),
                     });
                 }
                 None => {
                     if let Some(p) = find_prompt(&buffer) {
+                        crate::say!(
+                            crate::debuglog::Area::Telnet,
+                            "{}: prompt {:?}",
+                            self.host,
+                            p.text,
+                        );
                         self.prompt = p;
                         return Ok(());
                     }
@@ -244,7 +260,30 @@ impl TelnetDevice {
     /// Runs one command and returns its output.
     pub async fn run(&mut self, command: &str) -> Result<String, SshError> {
         self.write_line(command).await?;
-        let raw = self.read_until_prompt(Some(command)).await?;
+        // D-055: named and counted, never quoted.
+        let started = std::time::Instant::now();
+        let raw = match self.read_until_prompt(Some(command)).await {
+            Ok(raw) => {
+                crate::say!(
+                    crate::debuglog::Area::Telnet,
+                    "{}: ran `{command}` in {}ms, {} bytes, {} lines",
+                    self.host,
+                    started.elapsed().as_millis(),
+                    raw.len(),
+                    raw.lines().count(),
+                );
+                raw
+            }
+            Err(e) => {
+                crate::say!(
+                    crate::debuglog::Area::Telnet,
+                    "{}: `{command}` failed after {}ms — {e}",
+                    self.host,
+                    started.elapsed().as_millis(),
+                );
+                return Err(e);
+            }
+        };
         Ok(extract_output(&raw, command))
     }
 

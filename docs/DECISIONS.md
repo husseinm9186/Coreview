@@ -973,3 +973,37 @@ tracks every relative move, every wrap and every scroll, so the position it
 reports is the one a terminal would report. Same rule, better arithmetic —
 and it arrived alongside the discovery that answering the question was never
 the last wall anyway: the prompt that followed was drawn and never recognised.
+
+### D-055 — A debug log records what happened, never what was said — 2026-09-21
+**Asked for:** a log of "the commands it runs and logins and functions that the
+ssh, snmp, and telnet", so that a failure can be understood instead of guessed
+at (LT-389).
+
+**Decision:** the log names actions and counts results. It never contains a
+secret and never contains device output.
+
+- **Never:** a password, an enable secret, an SNMP community or v3 passphrase,
+  a keyboard-interactive answer, or the body of any command's output.
+- **Always safe:** an address, a port, a username, a command *name*, an OID, a
+  duration, a byte or line count, an error, a protocol decision and why it was
+  taken.
+
+**Why it is a decision and not a code comment.** A debug log is the most
+natural place in a program for a secret to end up, because the whole instinct
+of writing one is "print everything and look at it later". It is also the file
+most likely to be attached to a message and sent to somebody — that is what it
+is *for*. And this one runs against production equipment.
+
+`show running-config` is the sharpest case: it is the single most useful thing
+to see when a backup goes wrong and the single most damaging thing to put in a
+file somebody will forward. So it is counted, never quoted. The login
+transcript of LT-384 is the deliberate, narrow exception, and it is narrow
+precisely because it stops at the prompt — before any command has run.
+
+**Enforced, not merely written down.** `debuglog` takes a redaction test: a
+whole fake session runs with a known password and a known community string,
+and the test asserts neither appears in the log. A rule this easy to break by
+accident needs something that fails the build.
+
+**Off by default.** A log nobody asked for is a file nobody is guarding.
+

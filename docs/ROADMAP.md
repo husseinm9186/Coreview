@@ -1832,6 +1832,77 @@ pulled into Phase 1.*
 
 ## Done
 
+### LT-389 — A debug log for a crawl, on a switch — 2026-09-21
+
+**Source:** "Can we create log file for error messages during crawling with
+check box to enable debugging and disable it / For the commands it runs and
+logins and functions that the ssh, snmp, and telnet / It could help me and you
+so we know what breaks and what is going on".
+
+He is right, and LT-384 is half of it already: that keeps what one device said
+when it would not reach a prompt. This is the other half — what Coreview *did*,
+across every device and all three protocols, in order, with timings.
+
+**What goes in it:** the connection, the host-key verdict, which
+authentication methods the device offered and which was tried, the pty and the
+shell, the prompt when one is found, every command with how long it took and
+how much came back, every continuation answered and why, every timeout with
+what had arrived; for SNMP the version, the OIDs asked for and what answered;
+for telnet the options negotiated and the prompts seen; and for the crawl
+itself the seeds, the queue, the neighbours parsed and every skip with its
+reason.
+
+**What must never go in it — and this is the whole design (D-055).** It
+records *what happened*, never *what was said*. No password, no enable secret,
+no SNMP community, no keyboard-interactive answer, and no command output: a
+`show running-config` is the single most sensitive thing on a switch and this
+runs against production. Commands are named, output is counted. The rule is
+enforced by a test that runs a whole fake session with a known password and
+asserts the password is not in the log.
+
+**Off by default**, with a checkbox on the crawl panel and the path shown
+after a run, so it can be found and sent. Free when off: one atomic load.
+
+**Acceptance:** a crawl with the box ticked leaves one file naming every
+command and every failure in order; a crawl with it unticked leaves nothing; a
+password put through the fake device never appears in the log.
+
+**Shipped 2026-09-21.** `debuglog.rs`, a global sink behind one `AtomicBool`,
+written through a `say!` macro that builds nothing when the log is off.
+Instrumented: SSH (connect, host key, authentication, the pty and shell, the
+prompt, every command with its timing and size, every continuation answered,
+every cursor report answered), SNMP (version, session, what answered, and the
+empty-system-group case that looks like success), telnet (the clear-text
+warning, a second login prompt meaning refusal, commands), and the crawl
+(each device with its hop count and what a neighbour had said, the device
+limit, the budget expiry, every failure with its kind). Written as it goes and
+flushed each line, because the interesting case is a crawl that hangs.
+
+A run reads like this:
+
+```
+       0 ssh    198.51.100.1:22 connecting as admin
+      57 ssh    198.51.100.1: host key accepted
+      61 ssh    198.51.100.1: authenticated
+      61 ssh    198.51.100.1: shell open on a 200x200 vt100, waiting for a prompt
+      62 ssh    198.51.100.1: prompt "LAB-SW1#", privileged
+      63 ssh    198.51.100.1: ran `show running-config` in 0ms, 431 bytes, 27 lines
+```
+
+**D-055 is enforced twice.** Once in `debuglog`'s own test, and once — the one
+that matters — by `a_real_session_writes_a_useful_log_and_leaks_no_password`,
+which runs a whole session through the actual instrumented code with a known
+password and asserts that neither the password, nor the running-config, nor
+the banner reached the file. Testing the rule against hand-written log lines
+would only have proved that the test's own strings are clean.
+
+`SnmpAuth` already had a redacting `Debug` for the same reason; it is reused
+rather than written a second time.
+
+Tests for `debuglog` take a mutex, because the sink is global and `cargo test`
+runs tests in parallel — which is LT-382, recorded the same day, and not worth
+writing twice.
+
 ### LT-385 — **bug** The per-device budget threw away the one useful message — 2026-09-21
 
 The fourth failure read `gave up after 60 seconds without finishing` and

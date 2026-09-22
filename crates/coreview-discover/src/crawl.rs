@@ -632,6 +632,12 @@ pub async fn crawl_from(
         while running.len() < at_once && !cancel.is_cancelled() {
             let Some((address, hops)) = queue.pop_front() else { break };
             if result.devices.len() + running.len() >= options.max_devices {
+                crate::say!(
+                    crate::debuglog::Area::Crawl,
+                    "stopped at the {} device limit with {} still queued",
+                    options.max_devices,
+                    queue.len(),
+                );
                 let _ = events
                     .send(CrawlEvent::Skipped {
                         name: address.clone(),
@@ -651,6 +657,14 @@ pub async fn crawl_from(
                 .values()
                 .find(|n| n.addresses.iter().any(|a| a.ip == address))
                 .cloned();
+            crate::say!(
+                crate::debuglog::Area::Crawl,
+                "{address} at {hops} hop(s){}",
+                match &known {
+                    Some(n) => format!(", known from a neighbour as {:?}", n.short_name),
+                    None => String::new(),
+                },
+            );
             let _ = events.send(CrawlEvent::Visiting { address: address.clone(), hops }).await;
             let job = VisitJob {
                 address: address.clone(),
@@ -908,6 +922,12 @@ impl VisitJob {
                     // command timeout it fires first, and the one thing that
                     // would explain the failure — what the device actually
                     // sent — was thrown away. It is carried now.
+                    crate::say!(
+                        crate::debuglog::Area::Crawl,
+                        "{}: the {}s per-device budget ran out",
+                        self.address,
+                        limit.as_secs(),
+                    );
                     let mut failure = CrawlFailure::new(
                         self.address.clone(),
                         format!(
@@ -926,6 +946,13 @@ impl VisitJob {
             self.address.clone(),
             error.to_string(),
             classify_failure(&error, &self.address).await,
+        );
+        crate::say!(
+            crate::debuglog::Area::Crawl,
+            "{}: failed as {:?} — {}",
+            self.address,
+            failure.kind,
+            failure.reason,
         );
         failure.transcript = taken(&transcript);
         // SSH would not have it. Before writing the device off, ask whether it

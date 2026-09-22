@@ -652,3 +652,57 @@ async fn a_device_that_never_prompts_leaves_what_it_sent() {
     // And it is safe to paste: no raw escape survived the rendering.
     assert!(!readable.contains('\x1b'), "a raw escape got through");
 }
+
+/// LT-389 / D-055, enforced against the real code rather than against
+/// hand-written log lines.
+///
+/// A whole session runs with the debug log on — connect, authenticate, take a
+/// shell, find a prompt, run commands — and the assertion is that the password
+/// it authenticated with is nowhere in the file. A debug log is the most
+/// natural place in a program for a secret to end up, because the instinct
+/// that produces one is "print everything and look at it later"; and it is the
+/// file most likely to be attached to a message and sent on, because that is
+/// what it is for.
+#[tokio::test]
+async fn a_real_session_writes_a_useful_log_and_leaks_no_password() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("crawl.log");
+    coreview_discover::debuglog::start(&path, "Coreview test").expect("start the log");
+
+    let addr = start_device(AuthStyle::PasswordOnly, "CORE-SW-02").await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let mut device = Device::connect(
+        "127.0.0.1",
+        &creds("correct-horse"),
+        options(port_of(&addr)),
+        store,
+        None,
+    )
+    .await
+    .expect("connect");
+    let _ = device.run("show version").await.expect("run");
+    let _ = device.run("show running-config").await.expect("run");
+    device.close().await;
+
+    coreview_discover::debuglog::stop();
+    let log = std::fs::read_to_string(&path).expect("the log is there");
+
+    // It says what happened, in order.
+    assert!(log.contains("connecting as admin"), "the login is recorded:\n{log}");
+    assert!(log.contains("authenticated"), "the outcome is recorded:\n{log}");
+    assert!(log.contains("CORE-SW-02#"), "the prompt is recorded:\n{log}");
+    assert!(log.contains("ran `show version`"), "the command is named:\n{log}");
+    assert!(log.contains("ran `show running-config`"), "and so is this one:\n{log}");
+    assert!(log.contains(" bytes, "), "the output is counted:\n{log}");
+
+    // And it says nothing it should not.
+    assert!(!log.contains("correct-horse"), "the password reached the log:\n{log}");
+    assert!(
+        !log.contains("switchport mode access"),
+        "the running-config reached the log:\n{log}",
+    );
+    assert!(
+        !log.contains("Unauthorized access prohibited"),
+        "the banner reached the log:\n{log}",
+    );
+}

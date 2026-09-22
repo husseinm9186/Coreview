@@ -109,6 +109,10 @@ pub struct CrawlInput {
     pub concurrency: Option<usize>,
     pub per_host_timeout_secs: Option<u64>,
     pub retries: Option<u32>,
+    /// LT-389: write a debug log of this run. Off unless asked for — a log
+    /// nobody asked for is a file nobody is guarding (D-055).
+    #[serde(default)]
+    pub debug_log: bool,
 }
 
 fn yes() -> bool {
@@ -450,6 +454,29 @@ pub async fn start_crawl(
     let reverse_dns = input.reverse_dns;
     let credentials = resolve_ssh(&state, input.credential_id.as_deref(), credentials)?;
     let persist_store = Arc::clone(&store);
+
+    // LT-389: started here rather than inside the run, so a file that cannot
+    // be opened is reported now. Somebody ticked a box and is waiting for a
+    // file; silently not writing one is worse than saying so.
+    if input.debug_log {
+        let dir = crate::db::data_dir().join("logs");
+        let _ = std::fs::create_dir_all(&dir);
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or_default();
+        let header = format!(
+            "Coreview {} — crawl debug log\nSeeds: {seed}\nMax hops: {}",
+            env!("CARGO_PKG_VERSION"),
+            options.max_hops,
+        );
+        coreview_discover::debuglog::start(&dir.join(format!("crawl-{stamp}.log")), &header)
+            .map_err(|e| format!("could not open the debug log: {e}"))?;
+    } else {
+        // A previous run may have left it on.
+        coreview_discover::debuglog::stop();
+    }
+
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         // LT-207: addresses, names and ranges, resolved and narrowed to what

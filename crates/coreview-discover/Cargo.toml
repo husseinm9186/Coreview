@@ -35,3 +35,6 @@ rand = "0.10"
 serde_json = "1"
 # LT-267: properties every parser keeps, on any input.
 proptest = "1"
+# LT-389: somewhere harmless to write a debug log while testing it. Already a
+# dev-dependency of src-tauri, so no new crate reaches an installer.
+tempfile = "3"
