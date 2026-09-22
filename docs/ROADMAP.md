@@ -1502,6 +1502,47 @@ pulled into Phase 1.*
 
 ## Done
 
+### LT-401 — **bug** On a Mac, the app's data is in a folder Finder will not show — 2026-09-22
+
+**Source:** "I can't find the debug data file in the macos".
+
+`db::data_dir` reads `%LOCALAPPDATA%` and otherwise falls back to the XDG
+layout — `$XDG_DATA_HOME`, else `$HOME/.local/share`. That is right on Windows
+and right on Linux, and on macOS it puts everything in
+`~/.local/share/Coreview`: a **dotfolder, which Finder hides by default**, and
+not where a Mac application is supposed to keep anything. So the debug log
+(LT-389) and the login transcripts (LT-384) both landed somewhere the operator
+could not see, which is indistinguishable from their not being written.
+
+macOS keeps this in `~/Library/Application Support`.
+
+**The database lives in the same folder**, so moving it without carrying the
+old one across would look exactly like every project being deleted. The
+existing `adopt_livetopo_data` already solves that shape of problem for the
+rename from LiveTopo; this needs the same, from the XDG folder to the
+Application Support one.
+
+**Testable from here, deliberately.** LT-400 was a platform branch that could
+not be asserted from Linux and was wrong on macOS for months. The same mistake
+is not worth making twice in a day: the platform becomes a parameter, so the
+macOS answer is checked by a test on any machine.
+
+**Acceptance:** on macOS the data folder is `~/Library/Application
+Support/Coreview`; an existing `~/.local/share/Coreview` is copied across the
+first time, database and subfolders included; Windows and Linux are unchanged.
+
+**Shipped 2026-09-22.** `DataHome` — `Windows`, `MacOs`, `Xdg` — is a
+parameter to `base_dir_for`, and `DataHome::here()` picks one. macOS now keeps
+everything under `~/Library/Application Support/Coreview`, so the debug log is
+`…/Coreview/logs/` and the login transcripts `…/Coreview/logins/`, both in a
+folder Finder shows. Windows and Linux are untouched.
+**The old folder is adopted whole**, once, and never over anything already
+there: `adopt_from` copies the database and every subfolder across the first
+time the new location is used, so nobody's projects vanish the day this ships.
+**Tested from Linux:** all three platforms' base folders asserted by name,
+including that no home directory yields no guess, and the adoption both ways —
+that it carries subfolders, and that it leaves newer data alone.
+
 ### LT-400 — **bug** Every ping times out on a Mac — 2026-09-22
 
 **Source:** "ping sweep is not working from mac devices", on the first macOS

@@ -66,15 +66,90 @@ pub struct EventRow {
     pub message: String,
 }
 
+/// Where this platform keeps an application's data (LT-401).
+///
+/// A parameter rather than a `cfg!`, so every platform's answer can be
+/// asserted from any machine. LT-400 was a platform branch no test here could
+/// see, wrong on macOS for months; this is the same shape of decision and gets
+/// the same treatment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataHome {
+    /// `%LOCALAPPDATA%`.
+    Windows,
+    /// `~/Library/Application Support`, which is where a Mac keeps this and,
+    /// unlike a dotfolder, a place Finder will show.
+    MacOs,
+    /// `$XDG_DATA_HOME`, else `~/.local/share`.
+    Xdg,
+}
+
+impl DataHome {
+    fn here() -> Self {
+        if cfg!(windows) {
+            DataHome::Windows
+        } else if cfg!(target_os = "macos") {
+            DataHome::MacOs
+        } else {
+            DataHome::Xdg
+        }
+    }
+}
+
+fn base_dir_for(
+    home: DataHome,
+    local_app_data: Option<PathBuf>,
+    xdg_data_home: Option<PathBuf>,
+    user_home: Option<PathBuf>,
+) -> Option<PathBuf> {
+    match home {
+        DataHome::Windows => local_app_data,
+        DataHome::MacOs => user_home.map(|h| h.join("Library/Application Support")),
+        DataHome::Xdg => xdg_data_home.or_else(|| user_home.map(|h| h.join(".local/share"))),
+    }
+}
+
 pub fn data_dir() -> PathBuf {
-    // %LOCALAPPDATA% on Windows, XDG data dir elsewhere.
-    let base = std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .or_else(dirs_next_local)
-        .unwrap_or_else(|| PathBuf::from("."));
+    let base = base_dir_for(
+        DataHome::here(),
+        std::env::var_os("LOCALAPPDATA").map(PathBuf::from),
+        std::env::var_os("XDG_DATA_HOME").map(PathBuf::from),
+        std::env::var_os("HOME").map(PathBuf::from),
+    )
+    .unwrap_or_else(|| PathBuf::from("."));
     let dir = base.join("Coreview");
     adopt_livetopo_data(&base, &dir);
+    // LT-401: everything a Mac wrote before this went to the XDG folder, and
+    // that includes the database. Moving without carrying it across would look
+    // exactly like every project having been deleted.
+    if DataHome::here() == DataHome::MacOs {
+        if let Some(old) = dirs_next_local().map(|b| b.join("Coreview")) {
+            adopt_from(&old, &dir);
+        }
+    }
     dir
+}
+
+/// Copies a whole data folder across, once, and never over anything already
+/// there — so a later run cannot overwrite newer data with older.
+fn adopt_from(old_dir: &Path, new_dir: &Path) {
+    if new_dir.exists() || !old_dir.is_dir() {
+        return;
+    }
+    if std::fs::create_dir_all(new_dir).is_err() {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(old_dir) else { return };
+    for entry in entries.flatten() {
+        let Ok(kind) = entry.file_type() else { continue };
+        let to = new_dir.join(entry.file_name());
+        if kind.is_dir() {
+            // Logs and transcripts live in subfolders, and a half-copied
+            // folder is worse than an uncopied one.
+            adopt_from(&entry.path(), &to);
+        } else if kind.is_file() {
+            let _ = std::fs::copy(entry.path(), to);
+        }
+    }
 }
 
 /// Carries a pre-rename database over to the new name.
@@ -927,6 +1002,65 @@ pub fn delete_credential(conn: &Connection, id: &str) -> rusqlite::Result<usize>
 
 #[cfg(test)]
 mod tests {
+    /// LT-401. On macOS everything went to `~/.local/share/Coreview` — a
+    /// dotfolder Finder hides — so a debug log written there could not be
+    /// found, which looks exactly like one that was never written.
+    ///
+    /// The platform is a parameter so this can be asserted from Linux. LT-400
+    /// was a platform branch that no test here could see and that was wrong on
+    /// macOS for months; once in a day is enough.
+    #[test]
+    fn each_platform_keeps_its_data_where_that_platform_keeps_data() {
+        use std::path::PathBuf;
+        let home = || Some(PathBuf::from("/Users/someone"));
+        // Windows: %LOCALAPPDATA%, whatever else is set.
+        assert_eq!(
+            super::base_dir_for(super::DataHome::Windows, Some(PathBuf::from("C:\\Users\\a\\AppData\\Local")), None, home()),
+            Some(PathBuf::from("C:\\Users\\a\\AppData\\Local")),
+        );
+        // macOS: Application Support, which Finder shows and a Mac expects.
+        assert_eq!(
+            super::base_dir_for(super::DataHome::MacOs, None, Some(PathBuf::from("/xdg")), home()),
+            Some(PathBuf::from("/Users/someone/Library/Application Support")),
+        );
+        // Linux: XDG first, then the default underneath HOME.
+        assert_eq!(
+            super::base_dir_for(super::DataHome::Xdg, None, Some(PathBuf::from("/xdg")), home()),
+            Some(PathBuf::from("/xdg")),
+        );
+        assert_eq!(
+            super::base_dir_for(super::DataHome::Xdg, None, None, home()),
+            Some(PathBuf::from("/Users/someone/.local/share")),
+        );
+        // Nothing to go on is nothing, not a guess.
+        assert_eq!(super::base_dir_for(super::DataHome::MacOs, None, None, None), None);
+    }
+
+    /// The old folder is carried across, or a Mac user's projects would all
+    /// appear to have been deleted the day this shipped.
+    #[test]
+    fn the_folder_that_was_there_before_is_adopted_whole() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let old = root.path().join("old/Coreview");
+        std::fs::create_dir_all(old.join("logs")).expect("old");
+        std::fs::write(old.join("coreview.db"), b"a database").expect("db");
+        std::fs::write(old.join("logs/crawl-1.log"), b"a log").expect("log");
+        let new = root.path().join("new/Coreview");
+
+        super::adopt_from(&old, &new);
+        assert_eq!(std::fs::read(new.join("coreview.db")).expect("db came across"), b"a database");
+        assert_eq!(
+            std::fs::read(new.join("logs/crawl-1.log")).expect("subfolders come across too"),
+            b"a log",
+        );
+
+        // Already there: nothing is touched, so a later run cannot overwrite
+        // newer data with older.
+        std::fs::write(new.join("coreview.db"), b"newer").expect("newer");
+        super::adopt_from(&old, &new);
+        assert_eq!(std::fs::read(new.join("coreview.db")).expect("db"), b"newer");
+    }
+
     /// LT-138: everything the operator types lives in one file, and that file
     /// is not inside the program.
     ///
