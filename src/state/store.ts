@@ -286,6 +286,8 @@ interface Store {
   doc: ProjectDocument;
   dirty: boolean;
   lastSavedAt: number | null;
+  /** When a person last asked for a save (LT-380). Autosave does not set it. */
+  savedAck: number | null;
 
   // --- selection & ui
   selectedNodeId: string | null;
@@ -334,7 +336,7 @@ interface Store {
   createProject: (meta: Partial<ProjectMeta>, doc?: ProjectDocument) => Promise<void>;
   openProject: (id: string) => Promise<void>;
   closeProject: () => Promise<void>;
-  saveProject: () => Promise<void>;
+  saveProject: (opts?: { auto?: boolean }) => Promise<void>;
   duplicateProject: (id: string) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   updateMeta: (patch: Partial<ProjectMeta>) => void;
@@ -955,6 +957,7 @@ export const useStore = create<Store>((set, get) => ({
   doc: emptyDocument(),
   dirty: false,
   lastSavedAt: null,
+  savedAck: null,
   selectedNodeId: null,
   editingNodeId: null,
   canvasHighlight: null,
@@ -1030,7 +1033,7 @@ export const useStore = create<Store>((set, get) => ({
     // Re-key probes so a seeded sample never shares ids with another project.
     document.probes = document.probes.map((p) => ({ ...p, projectId: meta.id }));
     await ipc.saveProject({ meta, documentVersion: 1, document });
-    set({ meta, doc: document, dirty: false, lastSavedAt: now, past: [], future: [] });
+    set({ meta, doc: document, dirty: false, lastSavedAt: now, savedAck: null, past: [], future: [] });
     await get().refreshProjects();
   },
 
@@ -1051,6 +1054,7 @@ export const useStore = create<Store>((set, get) => ({
       doc,
       dirty: changed > 0,
       lastSavedAt: pkg.meta.updatedAt,
+      savedAck: null,
       past: [],
       future: [],
       runtime: new Map(),
@@ -1146,14 +1150,21 @@ export const useStore = create<Store>((set, get) => ({
     });
   },
 
-  async saveProject() {
+  async saveProject(opts) {
     const { meta, doc } = get();
     if (!meta) return;
     const updated = { ...meta, updatedAt: Date.now() };
     await ipc.saveProject({ meta: updated, documentVersion: 1, document: doc });
     // The save is real, so the crash slot for it is stale.
     clearRecovery(meta.id);
-    set({ meta: updated, dirty: false, lastSavedAt: updated.updatedAt });
+    // LT-380: an explicit save says so; autosave stays quiet, because a
+    // flash on its own schedule would answer no press in particular.
+    set({
+      meta: updated,
+      dirty: false,
+      lastSavedAt: updated.updatedAt,
+      savedAck: opts?.auto ? get().savedAck : updated.updatedAt,
+    });
     // LT-185: this save's undo history, kept on this machine only.
     void saveHistory(meta.id, updated.updatedAt, get().past, get().future);
     await get().refreshProjects();

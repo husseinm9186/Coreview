@@ -951,3 +951,17 @@ one, is why the distinction has to be made by phrase and not by shape.
 
 **What adding a vendor looks like now:** one entry and one test, in one file,
 rather than a fifth handler somewhere new.
+
+**Extended 2026-09-21 (LT-379): the terminal protocol counts as waiting.** The
+same Aruba, past the banner, sent `ESC [ 1920 ; 1920 H` followed by `ESC [ 6 n`
+— drive the cursor off the end of the screen, then ask where it landed — and
+would not draw a prompt until it was told. That is a device waiting, and it
+falls inside this rule rather than beside it: nothing is decided, nothing runs,
+nothing is confirmed, and no human is being addressed. It is the terminal being
+asked about itself, and Coreview is the only thing that can answer.
+
+It is answered from `cli::cursor_reports` rather than the phrase table, because
+the reply is computed — the cursor position clamped to the pty that was
+actually negotiated — rather than looked up. The boundary above is unchanged
+and still holds by phrase: `ESC [ ? 6 n` asks a different question and is left
+alone, because a made-up answer is worse than silence.

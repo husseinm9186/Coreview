@@ -123,6 +123,86 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
+### LT-382 — **bug** Three tests race each other for one LibreOffice — 2026-09-21
+
+`icons::folder_tests::a_real_emf_becomes_a_palette_icon` fails under a full
+`cargo test --workspace` and passes every time it is run on its own. It failed
+that way once in the previous session too, and was reported as a flake rather
+than hidden; it has now done it twice, which makes it a defect and not luck.
+
+**The cause is not the assertion.** Three tests shell out to `soffice` —
+`icons.rs:597`, `icons.rs:1170` and `shapeconv.rs:937` — and `cargo test` runs
+them on parallel threads. **LibreOffice will not run two instances against one
+user profile**: the second either attaches to the first and returns before it
+has written anything, or gives up. On a 3.2 GB VM it can also simply be starved.
+The conversion produces nothing, `lib.icons` is empty, and the count assertion
+is what reports it — accurately, and about the wrong thing.
+
+**What it costs:** a red workspace run that has nothing to do with whatever was
+being changed. That trains the eye to ignore the suite, which is the real
+damage.
+
+**Fix:** one soffice at a time — a mutex the three share, or a `-env:UserInstallation`
+per test so each gets its own profile, which is the supported way and does not
+serialise them. Not the timeout: the conversion is not slow, it is excluded.
+
+**Acceptance:** twenty consecutive `cargo test --workspace` runs, green.
+
+### LT-379 — **bug** The device was waiting on the terminal, not on the operator — 2026-09-21
+
+**Source:** the Aruba at `.10` still failed on the build with LT-378 in it —
+but LT-378 worked, and the new diagnostic is what proves it. The failure now
+quotes what the device sent:
+
+```
+any key to continue ESC[13;1H ESC[?25h ESC[200;27H ESC[?6l ESC[1;200r
+ESC[?7h ESC[2J ESC[1;1H ESC[1920;1920H ESC[6n ESC[1;1H Your previo…
+```
+
+Read it in order. `any key to continue` is the banner — and the device moved
+**past** it: it reset the screen and began printing `Your previous successful
+login…`. **The `\r` from LT-378 was accepted.** The banner is not the problem
+any more.
+
+**The problem is the last three sequences.** `ESC[1920;1920H` drives the
+cursor far beyond any real screen; `ESC[6n` then asks *"where is the cursor
+now?"*. That pair is the standard way a device measures the terminal it is
+talking to — drive the cursor off the end, ask where it landed, and the
+clamped answer **is** the width and height. The device then waits for a reply
+of the form `ESC[<row>;<col>R` before it will draw a prompt.
+
+Coreview never answered, so the switch waited until the command timeout. It is
+the whole reason **PuTTY and SecureCRT work and this did not**: a terminal
+emulator answers a cursor-position request as a matter of course, and this
+client is not a terminal emulator.
+
+**Why this is allowed under D-054.** The rule is that a device may be answered
+when it is *waiting* and never when it is *asking*. A cursor-position request
+is not a question put to the operator — nothing is decided, nothing is
+confirmed, no command runs. It is the terminal protocol asking the terminal
+about itself, and the app is the only thing that can answer it.
+
+**Corroborated by the app's own terminal.** `SshPanel` hands the stream to
+xterm.js and forwards everything xterm.js produces back down the channel
+(`SshPanel.tsx:496`), and xterm.js answers a cursor-position request itself. So
+the interactive terminal has always been able to log into this switch. Only the
+crawler, which is not a terminal emulator, could not — which is the same split
+as PuTTY working where this did not, seen from inside.
+
+**Acceptance:** a capture containing `ESC[1920;1920H ESC[6n` is answered with
+the cursor position clamped to the pty actually requested; the same request is
+answered once and not again on every later read; a `ESC[?6n` — a different
+request — is not answered; and the Aruba at `.10` reaches a prompt.
+
+**Built 2026-09-21, not yet met the device.** `cli::cursor_reports` is written
+and tested against the exact bytes the switch sent, and the SSH read loop
+answers by count. A live login through the changed path still works
+(`try_commands` against the Cisco 2960CX at the operator's edge: prompt found,
+`show version` returned 61 lines), so the change is safe where no request is
+made. **The round trip itself is unproven:** nothing reachable from this
+machine sends `ESC[6n`, and the Aruba that does is on the operator's network.
+It stays in Now until his crawl reaches a prompt.
+
 ### LT-378 — **bug** The banner was answered with the wrong byte, and the app could not say so — 2026-09-21
 **Source:** LT-375 shipped, LT-377's new state proved the login was fine —
 **"Logged in, waiting for a prompt"** — and the device still never reached a
@@ -1598,7 +1678,21 @@ MAC tables, stacks, the default route, sweeps and crawls from a seed.*
 - **LT-223** — Scheduled validation sessions. Blocked on D-030 being accepted.
 - **LT-229** — Local OS notifications. Blocked on D-030 being accepted.
 
-**Phase 4 — UX and workflow.** *All done; see Done.*
+**Phase 4 — UX and workflow.**
+- **LT-381** — **bug** `--good` is a colour that does not exist. Three rules
+  read it — `.cv-lab-said`, `.cv-pill-subnet`, `.cv-diff-in` — and it is
+  declared in no block: not `:root`, not `.is-contrast`, not `@media print`.
+  Each of those elements therefore inherits whatever colour its parent happens
+  to carry, so a "found in the lab" note, a subnet pill and an added line in a
+  diff are all painted by accident. Found while looking for a green for
+  LT-380, which used `--healthy` instead. The fix is to decide what those
+  three should be and say so; `groundTokens.test.ts` parses the stylesheet
+  already and could be taught to fail on a `var()` that resolves to nothing,
+  which is what would have caught this. Not folded into LT-380: it changes how
+  three existing pieces of interface look, and that is a decision, not a
+  side effect.
+
+*The rest of Phase 4 is done; see Done.*
 
 **Phase 5 — import and export.** *All done; see Done.*
 
@@ -1622,6 +1716,35 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-380 — Saving says so, in green — 2026-09-21
+**Source:** "when I click save i need to see a green confirmation saved
+please".
+**Shipped:** an explicit save — the button, Ctrl+S, the command palette — now
+answers the press. The indicator turns `--healthy`, shows a tick and reads
+**Saved** for two seconds, then settles back to the grey timestamp it always
+showed.
+
+**Autosave stays silent**, and that is the part that took the work. It runs
+every 2.5 seconds while there are unsaved edits, so a flash on any save at all
+would fire on its own schedule and confirm nothing in particular. The store
+therefore keeps two separate facts: `lastSavedAt`, when the document reached
+disk by any route, and `savedAck`, when a *person* asked for that.
+`saveProject({ auto: true })` writes the first and leaves the second alone.
+
+The decision itself is `src/lib/saveIndicator.ts`, pure and unit-tested the way
+every layout rule here is — including the two cases that are easy to get wrong:
+an edit made straight after a save wins over the acknowledgement, and a clock
+corrected backwards under a running session does not leave a green flash stuck
+on screen for an hour.
+
+It is announced as well as coloured (`role="status"`, `aria-live="polite"`),
+because a colour alone is no confirmation to a screen reader, nor to anyone who
+cannot tell this green from this grey.
+
+**Verified:** six new checks in `e2e/interact.mjs`, green — autosave does not
+claim the acknowledgement, the press does, the computed colour is green, it is
+announced, it clears itself, and the timestamp comes back.
 
 ### LT-345 — Test this login — 2026-09-20
 **Source:** agreed 2026-09-20.

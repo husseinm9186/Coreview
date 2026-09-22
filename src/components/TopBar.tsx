@@ -15,6 +15,7 @@ import { eventsToCsv, linksToCsv, nodesToCsv } from '../lib/csv';
 import type { DeviceNodeData, HealthStatus, LinkData, NodeAddress } from '../types/domain';
 import { STATUS_LABEL } from '../types/domain';
 import { activePage, allEdges, allNodes } from '../lib/pages';
+import { SAVE_ACK_MS, saveIndicator } from '../lib/saveIndicator';
 import { drawioFile } from '../lib/drawio';
 import { interactiveHtml } from '../lib/htmlExport';
 import { projectFolderFiles } from '../lib/projectFolder';
@@ -41,6 +42,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   const dirty = useStore((s) => s.dirty);
   const recovery = useStore((s) => s.recovery);
   const lastSavedAt = useStore((s) => s.lastSavedAt);
+  const savedAck = useStore((s) => s.savedAck);
   const session = useStore((s) => s.session);
   const settings = useStore((s) => s.settings);
   const store = useStore();
@@ -59,11 +61,25 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   const [reporting, setReporting] = useState(false);
 
   // Autosave. Runs only while a project is open and unsaved edits exist.
+  // LT-380: `auto` keeps it from claiming the green acknowledgement, which
+  // belongs to a save somebody pressed for.
   useEffect(() => {
     if (!meta || !dirty) return;
-    const t = setTimeout(() => void store.saveProject(), 2500);
+    const t = setTimeout(() => void store.saveProject({ auto: true }), 2500);
     return () => clearTimeout(t);
   }, [meta, dirty, store]);
+
+  // LT-380: the acknowledgement goes stale on a clock rather than on an
+  // event, so something has to come back and repaint when it does. One timer
+  // per save, cleared if another save lands first.
+  const [, setAckTick] = useState(0);
+  useEffect(() => {
+    if (savedAck === null) return;
+    const t = setTimeout(() => setAckTick((n) => n + 1), SAVE_ACK_MS + 50);
+    return () => clearTimeout(t);
+  }, [savedAck]);
+
+  const save = saveIndicator({ dirty, lastSavedAt, savedAck, now: Date.now() });
 
   // A bare <details> opens and then stays open: neither Escape nor a click
   // elsewhere closes it, so the export menu sat over the canvas until someone
@@ -664,12 +680,17 @@ export function TopBar({ onExit }: { onExit: () => void }) {
         </span>
         {meta.customer && <span className="cv-project-sub">{meta.customer}</span>}
         {meta.ticket && <span className="cv-ticket">{meta.ticket}</span>}
-        <span className={`cv-save-state ${dirty ? 'is-dirty' : ''}`}>
-          {dirty
-            ? 'Unsaved changes'
-            : lastSavedAt
-              ? `Saved ${new Date(lastSavedAt).toLocaleTimeString()}`
-              : 'Saved'}
+        <span
+          className={`cv-save-state is-${save.tone}`}
+          data-tone={save.tone}
+          /* Spoken aloud when it changes, so the confirmation is not only a
+             colour: a colour alone is no confirmation to a screen reader, nor
+             to anybody who cannot tell this green from this grey. */
+          role="status"
+          aria-live="polite"
+        >
+          {save.tone === 'acknowledged' && <span className="cv-save-tick" aria-hidden="true">✓</span>}
+          {save.at === null ? save.label : `${save.label} ${new Date(save.at).toLocaleTimeString()}`}
         </span>
       </div>
 

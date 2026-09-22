@@ -247,6 +247,69 @@ const CONTINUATIONS: &[(&str, &[u8], bool)] = &[
     ("do you want to continue? (y/n)", b"y\n", true),
 ];
 
+/// Every cursor-position report the device has asked for, in the order it
+/// asked (LT-379).
+///
+/// A device that wants to know how wide the terminal is drives the cursor far
+/// past any real screen — `ESC [ 1920 ; 1920 H` — and then asks where it ended
+/// up with `ESC [ 6 n`. The answer is clamped to the screen, so the position
+/// that comes back *is* the size. Until it comes back, the device waits, which
+/// is why an Aruba that PuTTY and SecureCRT log into fine would sit silent
+/// here until the command timed out.
+///
+/// This is not a decision being put to anybody, so D-054 permits it: nothing
+/// is confirmed, nothing runs, and the app is the only thing that can answer.
+///
+/// The whole buffer is scanned and every request reported, rather than only
+/// the newest, because the buffer only ever grows: the caller answers by
+/// count and so never replies to the same request twice.
+pub fn cursor_reports(buffer: &str, rows: u16, cols: u16) -> Vec<Vec<u8>> {
+    let bytes = buffer.as_bytes();
+    let (mut row, mut col) = (1u16, 1u16);
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != 0x1b || bytes.get(i + 1) != Some(&b'[') {
+            i += 1;
+            continue;
+        }
+        // A CSI sequence is parameter bytes, then intermediate bytes, then one
+        // final byte that says what it was. A private marker such as the `?`
+        // in `ESC [ ? 6 l` is a parameter byte, which is what keeps that mode
+        // change from being mistaken for the request two bytes along from it.
+        let start = i + 2;
+        let mut j = start;
+        while matches!(bytes.get(j), Some(0x30..=0x3f)) {
+            j += 1;
+        }
+        while matches!(bytes.get(j), Some(0x20..=0x2f)) {
+            j += 1;
+        }
+        let Some(&final_byte) = bytes.get(j) else {
+            // Cut off mid-sequence. The rest has not arrived yet, and half a
+            // sequence is not yet anything.
+            break;
+        };
+        let params = std::str::from_utf8(&bytes[start..j]).unwrap_or("");
+        match final_byte {
+            b'H' | b'f' => {
+                let mut parts = params.split(';');
+                row = parts.next().and_then(|p| p.parse().ok()).unwrap_or(1).max(1);
+                col = parts.next().and_then(|p| p.parse().ok()).unwrap_or(1).max(1);
+            }
+            // Only the cursor. `ESC [ ? 6 n` asks about something else and
+            // `ESC [ 5 n` about the device's health; a made-up answer to
+            // either is worse than no answer.
+            b'n' if params == "6" => {
+                out.push(format!("\x1b[{};{}R", row.min(rows), col.min(cols)).into_bytes());
+            }
+            _ => {}
+        }
+        i = j + 1;
+    }
+    out
+}
+
 /// Removes the paging markers a device left in captured output.
 ///
 /// When paging happens anyway, the device writes `--More--`, then erases it
@@ -705,5 +768,78 @@ SW1#";
         assert!(err.contains("rejected"), "got: {err}");
         let err = looks_like_config("").unwrap_err();
         assert!(err.contains("nothing"), "got: {err}");
+    }
+    /// LT-379. The bytes below are what the Aruba at the operator's edge
+    /// actually sent, in the order it sent them, taken from the failure the
+    /// LT-378 build reported.
+    ///
+    /// They say the banner was answered: the device cleared the screen and
+    /// began printing the login notice. Then it measured the terminal — drive
+    /// the cursor past any real screen, ask where it ended up — and waited for
+    /// an answer that never came.
+    const ARUBA_MEASURING: &str = concat!(
+        "any key to continue",
+        "\x1b[13;1H\x1b[?25h\x1b[200;27H\x1b[?6l\x1b[1;200r\x1b[?7h",
+        "\x1b[2J\x1b[1;1H",
+        "\x1b[1920;1920H\x1b[6n",
+        "\x1b[1;1HYour previous successful login",
+    );
+
+    #[test]
+    fn a_cursor_position_request_is_answered() {
+        // The cursor was driven to 1920;1920 against a 200x200 pty, so it is
+        // sitting in the far corner — and the clamped position is exactly the
+        // terminal size the device is asking for.
+        assert_eq!(
+            cursor_reports(ARUBA_MEASURING, 200, 200),
+            vec![b"\x1b[200;200R".to_vec()],
+        );
+    }
+
+    #[test]
+    fn the_answer_is_where_the_cursor_actually_is() {
+        // Not every request follows the corner trick. When the cursor is
+        // somewhere reachable, that is the honest answer.
+        assert_eq!(cursor_reports("\x1b[5;9H\x1b[6n", 200, 200), vec![b"\x1b[5;9R".to_vec()]);
+        // No cursor movement at all: a terminal starts in the top left.
+        assert_eq!(cursor_reports("\x1b[6n", 24, 80), vec![b"\x1b[1;1R".to_vec()]);
+        // `ESC [ H` with no parameters is also the top left.
+        assert_eq!(cursor_reports("\x1b[9;9H\x1b[H\x1b[6n", 24, 80), vec![b"\x1b[1;1R".to_vec()]);
+    }
+
+    #[test]
+    fn only_a_request_for_the_cursor_is_answered() {
+        // `ESC [ ? 6 l` and `ESC [ ? 7 h` are mode changes and sit in the
+        // capture above a few bytes from the real request; `ESC [ ? 6 n` is a
+        // different question entirely, about the printer, and guessing at an
+        // answer would be worse than silence.
+        assert!(cursor_reports("\x1b[?6l\x1b[?7h", 24, 80).is_empty());
+        assert!(cursor_reports("\x1b[?6n", 24, 80).is_empty());
+        assert!(cursor_reports("\x1b[5n", 24, 80).is_empty());
+        assert!(cursor_reports("Building configuration...\n", 24, 80).is_empty());
+    }
+
+    #[test]
+    fn each_request_is_counted_once() {
+        // The read loop answers by count, because the buffer only grows: a
+        // request answered on one pass is still in the buffer on the next,
+        // and answering it again would put stray bytes on the device's line.
+        let twice = "\x1b[3;4H\x1b[6n and later \x1b[7;8H\x1b[6n";
+        assert_eq!(
+            cursor_reports(twice, 24, 80),
+            vec![b"\x1b[3;4R".to_vec(), b"\x1b[7;8R".to_vec()],
+        );
+    }
+
+    #[test]
+    fn half_an_escape_sequence_is_not_a_request() {
+        // Reads land wherever the network splits them. A sequence cut in half
+        // is not yet anything, and must not be answered until the rest lands.
+        assert!(cursor_reports("\x1b[1920;1920H\x1b[6", 200, 200).is_empty());
+        assert!(cursor_reports("\x1b[", 200, 200).is_empty());
+        assert_eq!(
+            cursor_reports("\x1b[1920;1920H\x1b[6n", 200, 200),
+            vec![b"\x1b[200;200R".to_vec()],
+        );
     }
 }

@@ -3491,6 +3491,35 @@ await dismissRecovery();
   await setGround("dark");
 }
 
+// --- LT-380: pressing Save says so ------------------------------------------
+{
+  const indicator = page.locator(".cv-save-state");
+  const tone = () => indicator.getAttribute("data-tone");
+
+  // Settle first: whatever the checks above left dirty gets autosaved, and an
+  // autosave must not light the indicator up on its own.
+  await page.waitForTimeout(3200);
+  check("autosave does not claim the acknowledgement", (await tone()) === "idle", await tone());
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.waitForTimeout(150);
+  const after = await tone();
+  check("pressing Save acknowledges the press", after === "acknowledged", String(after));
+
+  const colour = await indicator.evaluate((e) => getComputedStyle(e).color);
+  const [r, g, b] = colour.match(/\d+/g).map(Number);
+  check("and it is green", g > r + 40 && g > b + 40, colour);
+
+  // It says so out loud as well, for anyone who cannot tell these two apart.
+  check("the acknowledgement is announced", (await indicator.getAttribute("aria-live")) === "polite");
+
+  await page.waitForTimeout(2200);
+  const settled = await tone();
+  check("the acknowledgement clears itself", settled === "idle", String(settled));
+  const text = await indicator.textContent();
+  check("and the timestamp comes back", /Saved .*\d/.test(text), text);
+}
+
 if (out) await page.screenshot({ path: `${out}/interact-final.png` });
 await browser.close();
 console.log(failures === 0 ? "\nall interaction checks passed" : `\n${failures} failed`);

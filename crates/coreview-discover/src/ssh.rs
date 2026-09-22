@@ -30,6 +30,13 @@ use tokio::sync::mpsc;
 use tokio::time::timeout;
 
 use crate::cli::{extract_output, find_prompt, Prompt};
+
+/// The terminal Coreview claims to be when it opens a shell, and the answer it
+/// gives when a device asks how big that terminal is (LT-379). The two must
+/// agree: a device that measures the screen and is told something other than
+/// what was negotiated will wrap its output in the wrong place.
+const PTY_COLS: u16 = 200;
+const PTY_ROWS: u16 = 200;
 use crate::hostkeys::{changed_key_message, HostKeyStore, HostKeyVerdict};
 
 /// A password, kept out of anything that prints.
@@ -353,9 +360,10 @@ impl Device {
 
         // A terminal wide enough that the device does not wrap its own output,
         // and tall enough that `terminal length 0` is not the only thing
-        // standing between us and a paged capture.
+        // standing between us and a paged capture. LT-379: a device may also
+        // ask how big it is, and the answer has to be this same size.
         channel
-            .request_pty(true, "vt100", 200, 200, 0, 0, &[])
+            .request_pty(true, "vt100", PTY_COLS.into(), PTY_ROWS.into(), 0, 0, &[])
             .await
             .map_err(|e| SshError::Protocol {
                 host: host.to_string(),
@@ -425,6 +433,10 @@ impl Device {
     async fn read_raw_until_prompt(&mut self, command: Option<&str>) -> Result<String, SshError> {
         let mut buffer = String::new();
         let deadline = tokio::time::Instant::now() + self.options.command_timeout;
+        // How many cursor-position requests have been answered (LT-379). The
+        // buffer only grows, so a request answered on one pass is still in it
+        // on the next; counting is what keeps the reply from being sent twice.
+        let mut answered = 0usize;
 
         loop {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -451,6 +463,17 @@ impl Device {
                 Ok(Some(msg)) => match msg {
                     ChannelMsg::Data { ref data } => {
                         buffer.push_str(&String::from_utf8_lossy(data));
+                        // LT-379 / D-054: the device measuring the terminal.
+                        // It will not draw a prompt until this is answered,
+                        // which is the whole reason PuTTY could log into an
+                        // Aruba that this client could not. No `continue`: a
+                        // prompt can arrive in the same read as the request,
+                        // and waiting for another one would hang on it.
+                        let reports = crate::cli::cursor_reports(&buffer, PTY_ROWS, PTY_COLS);
+                        for report in reports.iter().skip(answered) {
+                            let _ = self.channel.data(report.as_slice()).await;
+                        }
+                        answered = reports.len();
                         // LT-375 / D-054: one table for everything a device
                         // holds the session open with — a pager, a banner
                         // waiting on a keypress, a FIPS box waiting for `a`.
