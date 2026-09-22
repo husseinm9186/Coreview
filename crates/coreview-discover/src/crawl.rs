@@ -872,6 +872,24 @@ fn worth_retrying(e: &SshError) -> bool {
     }
 }
 
+/// CDP neighbours, from whichever form the device answered in (LT-391).
+fn cdp_neighbours(cisco: &str, aruba: &str) -> Vec<Neighbor> {
+    let found = parse_cdp_detail(cisco);
+    if found.is_empty() {
+        return crate::arubasw::parse_cdp_neighbors(aruba);
+    }
+    found
+}
+
+/// LLDP neighbours, the same way.
+fn lldp_neighbours(cisco: &str, aruba: &str) -> Vec<Neighbor> {
+    let found = parse_lldp_detail(cisco);
+    if found.is_empty() {
+        return crate::arubasw::parse_lldp_remote_devices(aruba);
+    }
+    found
+}
+
 /// Whatever the login stream collected, if anything (LT-384).
 fn taken(sink: &Arc<std::sync::Mutex<Vec<u8>>>) -> Option<Vec<u8>> {
     let kept = sink.lock().ok()?;
@@ -1203,6 +1221,24 @@ async fn visit(
     // silent hole in the map.
     let cdp = device.run("show cdp neighbors detail").await.unwrap_or_default();
     let lldp = device.run("show lldp neighbors detail").await.unwrap_or_default();
+    // LT-391: ArubaOS-Switch answers both of those and means something else by
+    // them. Its `show cdp neighbors detail` returned 453 lines on the
+    // operator's switch and produced not one neighbour, because what came back
+    // is a fixed-width table and the parser was reading Cisco paragraphs.
+    //
+    // Asked only when the Cisco form found nothing, so a Cisco that genuinely
+    // has no neighbours pays one extra rejected command and a working estate
+    // pays nothing.
+    let aruba_cdp = if parse_cdp_detail(&cdp).is_empty() {
+        device.run("show cdp neighbors").await.unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let aruba_lldp = if parse_lldp_detail(&lldp).is_empty() {
+        device.run("show lldp info remote-device").await.unwrap_or_default()
+    } else {
+        String::new()
+    };
     let brief = device.run("show ip interface brief").await.unwrap_or_default();
     let version = device.run("show version").await.unwrap_or_default();
     // LLDP does not require a device to advertise a management address, and
@@ -1210,12 +1246,29 @@ async fn visit(
     // named and classified correctly and has nowhere to connect. The switch
     // that sees it knows: the chassis id is a MAC, and this maps it.
     let mut arp = crate::arp::parse_arp_table(&device.run("show ip arp").await.unwrap_or_default());
+    // LT-391: ArubaOS-Switch spells it `show arp`, and until now every one of
+    // these was asked in Cisco and answered with a rejection. The fallback is
+    // by *result* rather than by platform string on purpose: a device that
+    // answered the first command with nothing has cost us one more command,
+    // and a platform string that is wrong costs nothing at all.
+    //
+    // The ARP parser itself needs no help — it finds the first address and the
+    // first MAC on each line rather than reading by position, and Aruba's
+    // `aabbcc-001122` spelling is a MAC by that rule already.
+    if arp.is_empty() {
+        arp = crate::arp::parse_arp_table(&device.run("show arp").await.unwrap_or_default());
+    }
     // What the switch has learned on each port. Discovery protocols only see
     // devices that speak them; a printer or a workstation announces nothing,
     // and on a real diagram those are most of what is plugged in.
     let mut learned = crate::mac_table::parse_mac_table(
         &device.run("show mac address-table").await.unwrap_or_default(),
     );
+    if learned.is_empty() {
+        learned = crate::arubasw::parse_mac_address_table(
+            &device.run("show mac-address").await.unwrap_or_default(),
+        );
+    }
     // What is aggregated (LT-009). FortiOS rejects the command harmlessly and
     // the parser reads an empty answer as no bundles.
     let port_channels = crate::etherchannel::parse_etherchannel_summary(
@@ -1432,7 +1485,10 @@ async fn visit(
         });
     }
 
-    let mut neighbors = merge_neighbors(parse_cdp_detail(&cdp), parse_lldp_detail(&lldp));
+    let mut neighbors = merge_neighbors(
+        cdp_neighbours(&cdp, &aruba_cdp),
+        lldp_neighbours(&lldp, &aruba_lldp),
+    );
 
     // Fill in an address for anything that did not advertise one. Only where
     // there is none: an address a device advertised about itself beats one
@@ -1682,6 +1738,12 @@ async fn read_details(device: &mut Session, version: &str, wanted: DetailOptions
         let trunks = device.run("show interfaces trunk").await.unwrap_or_default();
         let status = device.run("show interfaces status").await.unwrap_or_default();
         details.vlans = crate::vlans::parse_vlan_brief(&brief);
+        // LT-391: ArubaOS-Switch spells it `show vlans` and answers with a
+        // table, not Cisco's listing.
+        if details.vlans.is_empty() {
+            details.vlans =
+                crate::arubasw::parse_vlans(&device.run("show vlans").await.unwrap_or_default());
+        }
         details.ports = crate::vlans::parse_interface_status(&status);
         details.port_vlans = crate::vlans::port_vlans(&details.ports, &crate::vlans::parse_trunks(&trunks));
         // LT-235: errors per port, read with the ports.

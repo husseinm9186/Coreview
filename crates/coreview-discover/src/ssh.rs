@@ -448,7 +448,21 @@ impl Device {
 
         // Turn paging off. Failure is not fatal — some accounts cannot set it —
         // because strip_paging can still clean up after it.
-        let _ = device.run("terminal length 0").await;
+        //
+        // LT-391: two spellings, because this runs before anything has said
+        // what the platform is. `terminal length 0` is rejected by
+        // ArubaOS-Switch, which wants `no page`, and the operator's debug log
+        // showed the cost: every long capture on that switch was paged and
+        // answered a screen at a time. Sending the second only when the first
+        // was refused keeps a Cisco from being asked twice.
+        let paging = device.run("terminal length 0").await.unwrap_or_default();
+        if crate::cli::command_was_rejected(&paging).is_some() {
+            crate::say!(
+                crate::debuglog::Area::Ssh,
+                "{host}: `terminal length 0` was refused; trying `no page`",
+            );
+            let _ = device.run("no page").await;
+        }
 
         Ok(device)
     }

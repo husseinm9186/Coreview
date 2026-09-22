@@ -123,49 +123,29 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
-### LT-391 — **bug** The crawl speaks Cisco to an ArubaOS-Switch — 2026-09-21
+### LT-393 — **bug** A router's ARP entries collapse to one address — 2026-09-21
 
-**Evidenced by the operator's own debug log**, the first run that reached a
-prompt on the production 2930M. Read the sizes: a real answer is hundreds or
-thousands of bytes, and a rejection is ~300 bytes and 2 lines.
-
-```
-ran `show lldp neighbors detail`   343 bytes, 2 lines    <- rejected
-ran `show ip interface brief`      340 bytes, 2 lines    <- rejected
-ran `show mac address-table`       335 bytes, 2 lines    <- rejected
-ran `show etherchannel summary`    345 bytes, 2 lines    <- rejected
-ran `show vlan brief`              295 bytes, 2 lines    <- rejected
-ran `show switch`                  292 bytes, 2 lines    <- rejected
-ran `show cdp neighbors detail`  25145 bytes, 453 lines  <- answered
-ran `show spanning-tree`          9502 bytes, 134 lines  <- answered
-ran `show interfaces status`      8252 bytes, 99 lines   <- answered
-ran `show running-config`         6187 bytes, 219 lines  <- answered
-```
-
-So the device is reachable and talking, and Coreview is asking it half its
-questions in a language it does not speak. **No LLDP neighbours, no MAC table,
-no VLANs, no interface list** — on a switch that has all four.
-
-`crawl.rs` sends a fixed Cisco-shaped core set to everything that is not
-FortiOS; only `stacking` and `defaultroute` have Aruba arms. The ArubaOS-Switch
-words are `show lldp info remote-device`, `show vlans`, `show mac-address`,
-`show trunks` and `show ip`.
-
-**Also wrong in the same place:** `terminal length 0` is not how this platform
-turns off paging — it is `no page`, which `showcmd::Paging::ArubaHp` already
-knows and only the Backups path uses. The log shows the consequence: every
-long capture is paged and answered a screen at a time.
+Found while running the LT-391 parsers over the operator's real capture. His
+gateway — a firewall doing inter-VLAN routing — has one MAC against many
+addresses, which is what such a device looks like in every ARP table:
 
 ```
-ran `terminal length 0`  293 bytes, 2 lines    <- rejected
-holding on "-- MORE --, next page: Space, next line: Enter, quit: Control-C"
+  <another subnet>   aabbcc-001122   dynamic Trk1
+  <the gateway>      aabbcc-001122   dynamic Trk1
 ```
 
-It works, because D-054's table answers the pager, but it is slower and it is
-one more thing that has to keep working.
+`arp::parse_arp_table` returns `HashMap<MAC, address>` and documents "first
+wins … which is as good a tie-break as any and is stable". It is stable, and on
+this device it is wrong: the first line is on a subnet the crawl was never
+pointed at, so the gateway's real address is thrown away — and the gateway is
+the device he went looking for.
 
-**Not a parser problem.** Captures are needed before any of these can be
-written properly (D-051), and now there is a device that will give them.
+**First is not as good as any.** An address inside the run's subnet limit is
+reachable and the others may not be. The map should keep every address for a
+MAC and the caller should prefer one the crawl can actually use.
+
+**Acceptance:** a MAC with two addresses keeps both; resolving prefers one
+inside the crawl's subnets; a MAC with one address behaves exactly as now.
 
 ### LT-392 — The debug log does not say when a crawl ended — 2026-09-21
 
@@ -1889,6 +1869,83 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-391 — **bug** The crawl speaks Cisco to an ArubaOS-Switch — 2026-09-21
+
+**Evidenced by the operator's own debug log**, the first run that reached a
+prompt on the production 2930M. Read the sizes: a real answer is hundreds or
+thousands of bytes, and a rejection is ~300 bytes and 2 lines.
+
+```
+ran `show lldp neighbors detail`   343 bytes, 2 lines    <- rejected
+ran `show ip interface brief`      340 bytes, 2 lines    <- rejected
+ran `show mac address-table`       335 bytes, 2 lines    <- rejected
+ran `show etherchannel summary`    345 bytes, 2 lines    <- rejected
+ran `show vlan brief`              295 bytes, 2 lines    <- rejected
+ran `show switch`                  292 bytes, 2 lines    <- rejected
+ran `show cdp neighbors detail`  25145 bytes, 453 lines  <- answered
+ran `show spanning-tree`          9502 bytes, 134 lines  <- answered
+ran `show interfaces status`      8252 bytes, 99 lines   <- answered
+ran `show running-config`         6187 bytes, 219 lines  <- answered
+```
+
+So the device is reachable and talking, and Coreview is asking it half its
+questions in a language it does not speak. **No LLDP neighbours, no MAC table,
+no VLANs, no interface list** — on a switch that has all four.
+
+`crawl.rs` sends a fixed Cisco-shaped core set to everything that is not
+FortiOS; only `stacking` and `defaultroute` have Aruba arms. The ArubaOS-Switch
+words are `show lldp info remote-device`, `show vlans`, `show mac-address`,
+`show trunks` and `show ip`.
+
+**Also wrong in the same place:** `terminal length 0` is not how this platform
+turns off paging — it is `no page`, which `showcmd::Paging::ArubaHp` already
+knows and only the Backups path uses. The log shows the consequence: every
+long capture is paged and answered a screen at a time.
+
+```
+ran `terminal length 0`  293 bytes, 2 lines    <- rejected
+holding on "-- MORE --, next page: Space, next line: Enter, quit: Control-C"
+```
+
+It works, because D-054's table answers the pager, but it is slower and it is
+one more thing that has to keep working.
+
+**Shipped 2026-09-21, from captures off that switch.** `arubasw.rs`, one
+module for five tables, because they all have the same shape: a heading, a
+ruler of dashes that gives the column widths exactly, then fixed-width rows.
+
+**The ruler is the whole trick.** Splitting those rows on whitespace loses —
+`aa bb cc 00 11 22` and `WAN PORT` both contain spaces and an empty cell
+contains nothing, so a row comes apart into a different number of pieces
+depending on which phone answered. Read by column, every row is unambiguous.
+
+`show lldp info remote-device`, `show cdp neighbors`, `show mac-address` and
+`show vlans` are parsed; `show arp` needed no parser at all, because that one
+already finds the first address and the first MAC on each line rather than
+reading by position, and Aruba's `aabbcc-001122` spelling is a MAC by that
+rule.
+
+**Asked by result, not by platform string.** Each Aruba command runs only when
+the Cisco one found nothing. A device that genuinely has no neighbours pays one
+extra rejected command; a platform string that is wrong costs nothing, which it
+would not if the arm were chosen by `show version`. Paging is the same shape:
+`no page` goes out only when `terminal length 0` was refused.
+
+**Verified against the operator's own captures**, run through the parsers
+outside the repository (D-027 — every committed fixture is invented):
+
+every row of his LLDP table came back with its port, its neighbour's port,
+the vendor resolved from the OUI, and an address where the neighbour
+advertised one. Access switches, IP phones and the UniFi switches all read
+correctly; before this they were not neighbours at all.
+
+**The Palo Alto is a different answer, and it is not a Coreview bug.** It
+appears in neither the LLDP nor the CDP table, because PAN-OS ships with LLDP
+off per interface and does not advertise CDP at all. The switch never heard it.
+It *is* in the ARP table and the MAC table, on the trunk, under an OUI the
+vendor table resolves to Palo Alto Networks — which is how it can be found now
+that those two are read.
 
 ### LT-390 — A capture's file name says which device it came from — 2026-09-21
 

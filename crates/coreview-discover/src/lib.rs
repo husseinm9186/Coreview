@@ -49,6 +49,7 @@ pub mod pathcheck;
 pub mod ptr;
 pub mod routes;
 pub mod seeds;
+pub mod arubasw;
 pub mod debuglog;
 pub mod screen;
 pub mod sessionlog;
