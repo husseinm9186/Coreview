@@ -123,158 +123,20 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
-### LT-393 — **bug** A router's ARP entries collapse to one address — 2026-09-21
-
-Found while running the LT-391 parsers over the operator's real capture. His
-gateway — a firewall doing inter-VLAN routing — has one MAC against many
-addresses, which is what such a device looks like in every ARP table:
-
-```
-  <another subnet>   aabbcc-001122   dynamic Trk1
-  <the gateway>      aabbcc-001122   dynamic Trk1
-```
-
-`arp::parse_arp_table` returns `HashMap<MAC, address>` and documents "first
-wins … which is as good a tie-break as any and is stable". It is stable, and on
-this device it is wrong: the first line is on a subnet the crawl was never
-pointed at, so the gateway's real address is thrown away — and the gateway is
-the device he went looking for.
-
-**First is not as good as any.** An address inside the run's subnet limit is
-reachable and the others may not be. The map should keep every address for a
-MAC and the caller should prefer one the crawl can actually use.
-
-**Acceptance:** a MAC with two addresses keeps both; resolving prefers one
-inside the crawl's subnets; a MAC with one address behaves exactly as now.
-
-### LT-392 — The debug log does not say when a crawl ended — 2026-09-21
-
-Found reading the first real log. It records every device, command and
-failure, but nothing for: a crawl finishing, how many neighbours a device's
-CDP or LLDP produced, or a neighbour dropped by the subnet limit or the hop
-limit. So a log that shows one device and then a ninety-second gap cannot be
-read: it is impossible to tell from the file whether the crawl was still
-running, whether neighbours were found and filtered, or whether something else
-opened the sessions that follow.
-
-That is exactly the question a debug log exists to answer, and this one could
-not. **Add:** the crawl's own start and end with a count, neighbours parsed
-per device per protocol, and every neighbour not followed with the reason.
-
-### LT-383 — **bug** The prompt was drawn and never seen — 2026-09-21
-
-**Source:** "please fix once and for all, can't have this, we've wasted many
-many hours on this we need it working now" — after a fourth failure against a
-**production** Aruba 2930M-48G-PoE+ (JL322A), not the lab.
-
-**Four rounds, each fixing something real, each hitting a new wall:** LT-375
-the unanswered banner, LT-377 the state that lied about which phase failed,
-LT-378 the `\n` that should have been `\r`, LT-379 the unanswered `ESC[6n`.
-**The pattern was the diagnosis and it was missed three times.**
-
-`find_prompt` judges the **raw** buffer:
-
-```rust
-let last = buffer.lines().rev().find(|l| !l.trim().is_empty())?;
-let line = last.trim_end();
-match line.chars().last()? { '#' => …, '>' | '$' => …, _ => return None }
-```
-
-The prompt has to be the last character of the last line **in raw bytes**. So
-`SW1#` followed by a repaint — `SW1#ESC[K` — ends in `K` and is not a prompt.
-`ESC[2KSW1#` puts `ESC [ 2 K` inside the hostname and fails
-`is_hostname_char`. And a device that positions the cursor instead of emitting
-newlines has **no line structure at all**: `buffer.lines()` sees one enormous
-line.
-
-ArubaOS-Switch does exactly that — `ESC[2J` `ESC[1;1H` `ESC[1;200r`
-`ESC[1920;1920H` `ESC[6n`, clear, set a scroll region, measure, repaint. **The
-prompt was arriving every time and was never recognised.** No amount of
-answering one more sequence was ever going to help.
-
-The asymmetry sits on two adjacent lines of the same loop: `continuation_reply`
-compares ANSI-**stripped** text through `visible_text` (`ssh.rs:483`),
-`find_prompt` compares **raw** text (`ssh.rs:486`). `visible_text` has existed
-since LT-378 and `find_prompt` was never pointed at it.
-
-**The fix is to render, not to read.** A new `screen.rs` keeps a grid, applies
-what the device sends to it, and the prompt is read off the rendered screen —
-the way PuTTY does, which is why PuTTY has always worked on this switch. The
-escape parser is not written from scratch: `sessionlog.rs` already has a
-correct, chunk-boundary-safe one, used only by the terminal's logging and never
-pointed at the crawler.
-
-**Acceptance:** a prompt wrapped in `ESC[2K` … `ESC[K` is found; a screen
-painted by cursor positioning yields real lines; `ESC[6n` is answered from the
-screen's actual cursor rather than by scanning for the last `CUP`; the devices
-that already worked still work.
-
-**Built 2026-09-21. Proven against a reproduction, not yet against his
-switch.** `screen.rs` keeps the grid; `cli::find_prompt_on_screen` reads the
-prompt off the cursor's own line; `find_prompt` itself now judges
-`visible_text` rather than raw bytes, which fixes the simpler half on every
-other code path. `cursor_reports` is gone — the screen tracks the cursor
-through relative moves, wrapping and scrolling, which a scan for the last
-`CUP` never could.
-
-**The test is a fake device that does all four things at once** — holds a
-banner on a keypress, wants `\r` and not `\n`, will not move past
-`ESC[1920;1920H ESC[6n`, and then paints its prompt at row 3 with a hint
-pinned to row 24 and no newline anywhere in the stream. That last part is what
-no stream reader can survive: read as text there is one enormous line whose
-tail is the bottom-of-screen hint run into the front of the prompt.
-`ssh_against_a_fake_device::a_device_that_paints_its_screen_reaches_a_prompt`.
-
-**It was checked that the test fails without the fix**, and the first version
-of it did not — it passed on the `visible_text` change alone, because the fake
-device was not painting hard enough to need a screen. That was worth finding:
-a test that cannot fail proves nothing. With the full-screen paint it fails
-without `find_prompt_on_screen` and passes with it.
-
-**No regression on hardware that already worked:** `try_commands` against the
-Cisco 2960CX at the operator's edge — prompt found, `show version` 61 lines,
-`show vlan brief` and `show ip interface brief` both clean.
-
-It stays in Now until the production 2930M reaches a prompt.
-
-### LT-384 — The login transcript writes itself to disk — 2026-09-21
-
-**Source:** "lets caputre the error and log the error somewhere on the machine
-so i can copy here, i'm doing this from a differnt computer".
-
-Every round so far has been a guess, because **there is no raw capture on the
-crawl path at all.** `SshError::CommandTimeout` carries a 300-character tail
-with control bytes flattened to `·` — that is the single clue the app has ever
-produced, and it only appears on one of several failure paths.
-
-**What ships:** on a login failure the raw login bytes are written to a file
-**without being asked for**, one per device per run, as raw bytes plus an
-escaped rendering (`ESC` as `\x1b`) that survives being pasted into a chat
-window. The failure row shows the full path, with **Copy path** and **Open
-folder** beside it, because a path nobody can find is not a capture.
-
-**Login phase only, never command output.** The boundary is the one
-`last_seen_for` already draws: a command's output can hold a running-config,
-and on a production switch that is exactly what must not be written to disk
-(D-006).
-
-**Acceptance:** a failed login leaves a file; the path is on screen and
-copyable; a successful crawl writes nothing; no command output ever reaches
-the file.
-
-**Built 2026-09-21.** The sink is `SshOptions::login_transcript`, filled only
-while `command.is_none()`, capped at 256 KB. `VisitJob::run` makes it before
-the per-device budget wraps anything, which is what lets LT-385 carry it out.
-`discovery.rs` writes `%LOCALAPPDATA%\Coreview\logins\<address>-<stamp>.log`
-with a header saying what it is and why it exists, and the escaped rendering
-below it. The failure row shows the path with **Copy path** and **Open
-folder**.
-
-Tested: the recording (`a_device_that_never_prompts_leaves_what_it_sent`), the
-rendering (`escape_for_reading`, reversible and paste-safe), and the file
-(`transcript_tests`, including that an address cannot escape the folder it
-names a file in). Not yet seen on his machine, which is the only thing that
-proves the path is findable.
+### LT-395 — ArubaOS-Switch: port-channels, interfaces and stacking — 2026-09-22
+**Source:** "More Aruba commands: port-channels (show trunks/show lacp), the
+interface list (show ip), and 2930M stacking."
+LT-391 taught the crawl this platform's neighbours, MAC table, VLANs and ARP.
+Three things it still asks in Cisco and gets nothing back for:
+- **Aggregation.** `show etherchannel summary` is rejected; the platform says
+  `show trunks` and `show lacp`. Without it every `Trk1` in the MAC table is a
+  port the diagram cannot draw as the bundle it is.
+- **The interface list.** `show ip interface brief` is rejected; the platform
+  says `show ip`. It is where a switch's own addresses come from.
+- **Stacking.** A 2930M stacks with `show stacking`, not the VSF commands the
+  stacking module asks an Aruba for — VSF is the 2930F and 5400R.
+**Blocked on captures, deliberately.** Parsers here are written against real
+output (CLAUDE.md); asked for 2026-09-22.
 
 ### LT-382 — **bug** Three tests race each other for one LibreOffice — 2026-09-21
 
@@ -300,114 +162,6 @@ per test so each gets its own profile, which is the supported way and does not
 serialise them. Not the timeout: the conversion is not slow, it is excluded.
 
 **Acceptance:** twenty consecutive `cargo test --workspace` runs, green.
-
-### LT-379 — **bug** The device was waiting on the terminal, not on the operator — 2026-09-21
-
-**Source:** the Aruba at `.10` still failed on the build with LT-378 in it —
-but LT-378 worked, and the new diagnostic is what proves it. The failure now
-quotes what the device sent:
-
-```
-any key to continue ESC[13;1H ESC[?25h ESC[200;27H ESC[?6l ESC[1;200r
-ESC[?7h ESC[2J ESC[1;1H ESC[1920;1920H ESC[6n ESC[1;1H Your previo…
-```
-
-Read it in order. `any key to continue` is the banner — and the device moved
-**past** it: it reset the screen and began printing `Your previous successful
-login…`. **The `\r` from LT-378 was accepted.** The banner is not the problem
-any more.
-
-**The problem is the last three sequences.** `ESC[1920;1920H` drives the
-cursor far beyond any real screen; `ESC[6n` then asks *"where is the cursor
-now?"*. That pair is the standard way a device measures the terminal it is
-talking to — drive the cursor off the end, ask where it landed, and the
-clamped answer **is** the width and height. The device then waits for a reply
-of the form `ESC[<row>;<col>R` before it will draw a prompt.
-
-Coreview never answered, so the switch waited until the command timeout. It is
-the whole reason **PuTTY and SecureCRT work and this did not**: a terminal
-emulator answers a cursor-position request as a matter of course, and this
-client is not a terminal emulator.
-
-**Why this is allowed under D-054.** The rule is that a device may be answered
-when it is *waiting* and never when it is *asking*. A cursor-position request
-is not a question put to the operator — nothing is decided, nothing is
-confirmed, no command runs. It is the terminal protocol asking the terminal
-about itself, and the app is the only thing that can answer it.
-
-**Corroborated by the app's own terminal.** `SshPanel` hands the stream to
-xterm.js and forwards everything xterm.js produces back down the channel
-(`SshPanel.tsx:496`), and xterm.js answers a cursor-position request itself. So
-the interactive terminal has always been able to log into this switch. Only the
-crawler, which is not a terminal emulator, could not — which is the same split
-as PuTTY working where this did not, seen from inside.
-
-**Acceptance:** a capture containing `ESC[1920;1920H ESC[6n` is answered with
-the cursor position clamped to the pty actually requested; the same request is
-answered once and not again on every later read; a `ESC[?6n` — a different
-request — is not answered; and the Aruba at `.10` reaches a prompt.
-
-**Built 2026-09-21, not yet met the device.** `cli::cursor_reports` is written
-and tested against the exact bytes the switch sent, and the SSH read loop
-answers by count. A live login through the changed path still works
-(`try_commands` against the Cisco 2960CX at the operator's edge: prompt found,
-`show version` returned 61 lines), so the change is safe where no request is
-made. **The round trip itself is unproven:** nothing reachable from this
-machine sends `ESC[6n`, and the Aruba that does is on the operator's network.
-It stays in Now until his crawl reaches a prompt.
-
-### LT-378 — **bug** The banner was answered with the wrong byte, and the app could not say so — 2026-09-21
-**Source:** LT-375 shipped, LT-377's new state proved the login was fine —
-**"Logged in, waiting for a prompt"** — and the device still never reached a
-prompt. Then: "i think we just need to send return seq to the device because
-thats what its telling us press enter to continue".
-**He was right, and it was one byte.** `continuation_reply` answered a banner
-with `\n`. **A line feed is not what the Enter key sends.** A terminal
-transmits `\r`, and a device reading raw keystrokes from a banner waits for the
-byte the key actually produces. So the app pressed something that was not
-Enter and the banner went on waiting, exactly as before the fix.
-**Two other things were wrong in the same place, both found while proving
-it.**
-- **The matcher compared the wrong text.** A banner arrives as instructions
-  for *drawing* a banner — `ESC [ 2 K` to clear the line, carriage returns to
-  overwrite, colour codes around the words. Matching the raw line compares a
-  phrase against the painting instructions for that phrase. `visible_text`
-  now strips them, so what is matched is what a person would read.
-- **The failure could not be diagnosed from outside.** "Gave up after 60
-  seconds" threw away the one fact that explains it: what the device had said.
-  `CommandTimeout` now carries the tail of it.
-**That diagnostic is deliberately limited to the login read.** `command` is
-`None` there and the buffer is a banner. A command's buffer can hold a
-running-config, and an error message is the wrong place for one — it ends up in
-logs and screenshots (D-006). A command timeout still says nothing about
-content.
-**The lesson worth keeping:** two rounds were spent guessing at what the device
-printed because the app never said. The diagnostic should have come first.
-**Then widened to the other vendors, at his asking** — "maybe we need to
-research if there are other vendors requiring something else". `CONTINUATIONS`
-is now an explicit table of `(phrase, reply, anchored-at-end)`, so a platform
-is one line and one test:
-- **Pagers**, answered with a space: Cisco `--More--`, ASA `<--- More --->`,
-  Comware and Huawei `---- More ----`, Junos `---(more)---` and
-  `---(more 47%)---`, AOS-CX and Brocade `-- MORE --, next page: Space`,
-  Extreme `Press <SPACE> to continue or <Q> to quit`.
-- **Banners**, answered with a carriage return: `Press any key to continue`,
-  `Press enter to continue`, `Press RETURN to continue`, and a reloaded Cisco
-  console's `Press RETURN to get started`.
-- **Two proven exceptions that take a line feed**: the FortiGate FIPS accept
-  line and FortiOS's own pager. Both have been answered that way on real
-  devices through `run()`, which sends `\n`, so the table matches what works
-  rather than what is tidy — and that they differ is exactly why each entry
-  carries its own reply.
-**Provenance is recorded beside the table.** The Aruba banner is from
-hardware; the two FortiOS lines were proven earlier; **the rest are from
-vendor documentation and have not met a device**, the same standing D-026
-gives the stacking parsers.
-**Why a wrong entry is cheap in one direction only:** one that never matches
-leaves behaviour exactly as it was, while one that matches wrongly sends a
-keystroke into somebody's session. Hence literals, never patterns — and a test
-asserting `Continue? (y/n)`, `Proceed with reload? [confirm]` and
-`Save? [yes/no]` are still refused.
 
 ### LT-377 — "Authenticating" covered two phases that fail for different reasons — 2026-09-21
 **Source:** debugging LT-375. An Aruba 2930M sat on **Authenticating** for a
@@ -1420,6 +1174,10 @@ showing a constant.
 
 ### LT-298 — IPAM Phase 2: devices, sites, tenants, bulk operations, reporting
 **Source:** the same specification, Phase 2.
+**Narrowed 2026-09-22:** "sites and tenants, linking devices to addresses,
+custom fields, a column chooser. though I don't want JSON import and export,
+and I don't want utilisation history." Those two are LT-396 and LT-397 in
+Declined; what is left here is the four he named.
 **Scope:** sites and tenants; devices and interfaces linked to addresses; tags
 and custom fields across objects; filtering, saved views, the column chooser,
 bulk selection and bulk actions; CSV and JSON import and export; the utilisation
@@ -1870,6 +1628,319 @@ pulled into Phase 1.*
 
 ## Done
 
+### LT-393 — **bug** A router's ARP entries collapse to one address — 2026-09-21
+
+Found while running the LT-391 parsers over the operator's real capture. His
+gateway — a firewall doing inter-VLAN routing — has one MAC against many
+addresses, which is what such a device looks like in every ARP table:
+
+```
+  <another subnet>   aabbcc-001122   dynamic Trk1
+  <the gateway>      aabbcc-001122   dynamic Trk1
+```
+
+`arp::parse_arp_table` returns `HashMap<MAC, address>` and documents "first
+wins … which is as good a tie-break as any and is stable". It is stable, and on
+this device it is wrong: the first line is on a subnet the crawl was never
+pointed at, so the gateway's real address is thrown away — and the gateway is
+the device he went looking for.
+
+**First is not as good as any.** An address inside the run's subnet limit is
+reachable and the others may not be. The map should keep every address for a
+MAC and the caller should prefer one the crawl can actually use.
+
+**Acceptance:** a MAC with two addresses keeps both; resolving prefers one
+inside the crawl's subnets; a MAC with one address behaves exactly as now.
+
+**Shipped 2026-09-22.** `arp::parse_arp_table_near`: every address a MAC
+answers for is kept while the table is read, and one is chosen with a stated
+order — inside the crawl's subnet limit first, then the one sharing the most
+leading bits with the device being visited, then the first listed. The crawl
+uses it for `show ip arp`, `show arp` and FortiOS's `get system arp`.
+`parse_arp_table` keeps its old meaning exactly (first wins), because a caller
+with nothing to prefer should not change.
+Checked that nothing else was hiding the firewall: `count_by_port` counts
+distinct MACs, so one MAC on eight VLANs on a trunk is one device on one port,
+not eight — it arrives as a single attached device with the right address.
+**Tested:** three cases shaped exactly like his gateway, with every value
+invented — the limit decides, nearness decides when there is no limit, and
+with nothing to go on the first still wins. Not yet run against his switch.
+
+### LT-392 — The debug log does not say when a crawl ended — 2026-09-21
+
+Found reading the first real log. It records every device, command and
+failure, but nothing for: a crawl finishing, how many neighbours a device's
+CDP or LLDP produced, or a neighbour dropped by the subnet limit or the hop
+limit. So a log that shows one device and then a ninety-second gap cannot be
+read: it is impossible to tell from the file whether the crawl was still
+running, whether neighbours were found and filtered, or whether something else
+opened the sessions that follow.
+
+That is exactly the question a debug log exists to answer, and this one could
+not.
+**Widened 2026-09-22:** "must expand the debug to capture failures and
+success if the checkbox is selected." So not only the gaps above: every
+outcome is written down, the ones that worked as well as the ones that did
+not.
+**Add:** the crawl's own start and end with a count, neighbours parsed
+per device per protocol, and every neighbour not followed with the reason.
+
+**Shipped 2026-09-22.** The crawl now writes, when the box is ticked:
+- its start — seeds, hop and device limits, concurrency, the per-device budget
+  and the subnet limit — and its end, with how long it took and every failure
+  by kind;
+- each device reached, with class, platform, how it was reached, and how many
+  neighbours, attached devices and port-channels it had, and its default route;
+- per device, how many neighbours CDP and LLDP each gave and **which way of
+  asking answered** — the Cisco command or the ArubaOS-Switch one;
+- **every neighbour, followed or not, with the reason**: past the hop limit,
+  not a kind the run logs into, outside the subnet limit, in an excluded
+  subnet or name, no address to dial, already reached, already tried;
+- a device reached a second time by another address, a device described by
+  another rather than logged into, and an SNMP identification standing in for
+  a failed SSH;
+- every command the device **rejected**, said outright rather than left to be
+  read off a byte count — which is how the whole Aruba diagnosis had to be
+  done. The device's message is not quoted (D-055).
+**One set of rules.** The reasons come from `DiscoveryFilter::why_not_crawled`,
+and `should_crawl` is now that function asking whether there was a reason, so
+the log cannot explain a decision the crawl did not make. The two outcome
+branches that each spelled out the follow rules now share `next_to_follow`.
+**Tested** against the fake network, which has one of every decision in it —
+a loop, a device found through ARP, an access point, a switch beyond the
+limit — and the password it logged in with is asserted absent.
+
+### LT-383 — **bug** The prompt was drawn and never seen — 2026-09-21
+
+**Source:** "please fix once and for all, can't have this, we've wasted many
+many hours on this we need it working now" — after a fourth failure against a
+**production** Aruba 2930M-48G-PoE+ (JL322A), not the lab.
+
+**Four rounds, each fixing something real, each hitting a new wall:** LT-375
+the unanswered banner, LT-377 the state that lied about which phase failed,
+LT-378 the `\n` that should have been `\r`, LT-379 the unanswered `ESC[6n`.
+**The pattern was the diagnosis and it was missed three times.**
+
+`find_prompt` judges the **raw** buffer:
+
+```rust
+let last = buffer.lines().rev().find(|l| !l.trim().is_empty())?;
+let line = last.trim_end();
+match line.chars().last()? { '#' => …, '>' | '$' => …, _ => return None }
+```
+
+The prompt has to be the last character of the last line **in raw bytes**. So
+`SW1#` followed by a repaint — `SW1#ESC[K` — ends in `K` and is not a prompt.
+`ESC[2KSW1#` puts `ESC [ 2 K` inside the hostname and fails
+`is_hostname_char`. And a device that positions the cursor instead of emitting
+newlines has **no line structure at all**: `buffer.lines()` sees one enormous
+line.
+
+ArubaOS-Switch does exactly that — `ESC[2J` `ESC[1;1H` `ESC[1;200r`
+`ESC[1920;1920H` `ESC[6n`, clear, set a scroll region, measure, repaint. **The
+prompt was arriving every time and was never recognised.** No amount of
+answering one more sequence was ever going to help.
+
+The asymmetry sits on two adjacent lines of the same loop: `continuation_reply`
+compares ANSI-**stripped** text through `visible_text` (`ssh.rs:483`),
+`find_prompt` compares **raw** text (`ssh.rs:486`). `visible_text` has existed
+since LT-378 and `find_prompt` was never pointed at it.
+
+**The fix is to render, not to read.** A new `screen.rs` keeps a grid, applies
+what the device sends to it, and the prompt is read off the rendered screen —
+the way PuTTY does, which is why PuTTY has always worked on this switch. The
+escape parser is not written from scratch: `sessionlog.rs` already has a
+correct, chunk-boundary-safe one, used only by the terminal's logging and never
+pointed at the crawler.
+
+**Acceptance:** a prompt wrapped in `ESC[2K` … `ESC[K` is found; a screen
+painted by cursor positioning yields real lines; `ESC[6n` is answered from the
+screen's actual cursor rather than by scanning for the last `CUP`; the devices
+that already worked still work.
+
+**Built 2026-09-21. Proven against a reproduction, not yet against his
+switch.** `screen.rs` keeps the grid; `cli::find_prompt_on_screen` reads the
+prompt off the cursor's own line; `find_prompt` itself now judges
+`visible_text` rather than raw bytes, which fixes the simpler half on every
+other code path. `cursor_reports` is gone — the screen tracks the cursor
+through relative moves, wrapping and scrolling, which a scan for the last
+`CUP` never could.
+
+**The test is a fake device that does all four things at once** — holds a
+banner on a keypress, wants `\r` and not `\n`, will not move past
+`ESC[1920;1920H ESC[6n`, and then paints its prompt at row 3 with a hint
+pinned to row 24 and no newline anywhere in the stream. That last part is what
+no stream reader can survive: read as text there is one enormous line whose
+tail is the bottom-of-screen hint run into the front of the prompt.
+`ssh_against_a_fake_device::a_device_that_paints_its_screen_reaches_a_prompt`.
+
+**It was checked that the test fails without the fix**, and the first version
+of it did not — it passed on the `visible_text` change alone, because the fake
+device was not painting hard enough to need a screen. That was worth finding:
+a test that cannot fail proves nothing. With the full-screen paint it fails
+without `find_prompt_on_screen` and passes with it.
+
+**No regression on hardware that already worked:** `try_commands` against the
+Cisco 2960CX at the operator's edge — prompt found, `show version` 61 lines,
+`show vlan brief` and `show ip interface brief` both clean.
+
+It stays in Now until the production 2930M reaches a prompt.
+
+**Done 2026-09-22, proven on the production 2930M.** The operator's debug log from the first run that worked: `holding on "Press any key to continue"; answered [13]` at 1457 ms, `it asked where the cursor was; answered row 200, column 14` at 1587 ms, and `prompt "…#", privileged` in the same millisecond. The prompt had been arriving that fast all along; the screen is what let it be seen.
+
+### LT-384 — The login transcript writes itself to disk — 2026-09-21
+
+**Source:** "lets caputre the error and log the error somewhere on the machine
+so i can copy here, i'm doing this from a differnt computer".
+
+Every round so far has been a guess, because **there is no raw capture on the
+crawl path at all.** `SshError::CommandTimeout` carries a 300-character tail
+with control bytes flattened to `·` — that is the single clue the app has ever
+produced, and it only appears on one of several failure paths.
+
+**What ships:** on a login failure the raw login bytes are written to a file
+**without being asked for**, one per device per run, as raw bytes plus an
+escaped rendering (`ESC` as `\x1b`) that survives being pasted into a chat
+window. The failure row shows the full path, with **Copy path** and **Open
+folder** beside it, because a path nobody can find is not a capture.
+
+**Login phase only, never command output.** The boundary is the one
+`last_seen_for` already draws: a command's output can hold a running-config,
+and on a production switch that is exactly what must not be written to disk
+(D-006).
+
+**Acceptance:** a failed login leaves a file; the path is on screen and
+copyable; a successful crawl writes nothing; no command output ever reaches
+the file.
+
+**Built 2026-09-21.** The sink is `SshOptions::login_transcript`, filled only
+while `command.is_none()`, capped at 256 KB. `VisitJob::run` makes it before
+the per-device budget wraps anything, which is what lets LT-385 carry it out.
+`discovery.rs` writes `%LOCALAPPDATA%\Coreview\logins\<address>-<stamp>.log`
+with a header saying what it is and why it exists, and the escaped rendering
+below it. The failure row shows the path with **Copy path** and **Open
+folder**.
+
+Tested: the recording (`a_device_that_never_prompts_leaves_what_it_sent`), the
+rendering (`escape_for_reading`, reversible and paste-safe), and the file
+(`transcript_tests`, including that an address cannot escape the folder it
+names a file in). Not yet seen on his machine, which is the only thing that
+proves the path is findable.
+
+**Moved to Done 2026-09-22 at the operator's instruction, and not yet seen on his machine.** Nothing wrong with it is known — the recording, the rendering and the file are all tested, including that an address cannot escape the folder — but the switch that prompted it now logs in, so no transcript has been written there. It will be seen the first time a device fails to reach a prompt.
+
+### LT-379 — **bug** The device was waiting on the terminal, not on the operator — 2026-09-21
+
+**Source:** the Aruba at `.10` still failed on the build with LT-378 in it —
+but LT-378 worked, and the new diagnostic is what proves it. The failure now
+quotes what the device sent:
+
+```
+any key to continue ESC[13;1H ESC[?25h ESC[200;27H ESC[?6l ESC[1;200r
+ESC[?7h ESC[2J ESC[1;1H ESC[1920;1920H ESC[6n ESC[1;1H Your previo…
+```
+
+Read it in order. `any key to continue` is the banner — and the device moved
+**past** it: it reset the screen and began printing `Your previous successful
+login…`. **The `\r` from LT-378 was accepted.** The banner is not the problem
+any more.
+
+**The problem is the last three sequences.** `ESC[1920;1920H` drives the
+cursor far beyond any real screen; `ESC[6n` then asks *"where is the cursor
+now?"*. That pair is the standard way a device measures the terminal it is
+talking to — drive the cursor off the end, ask where it landed, and the
+clamped answer **is** the width and height. The device then waits for a reply
+of the form `ESC[<row>;<col>R` before it will draw a prompt.
+
+Coreview never answered, so the switch waited until the command timeout. It is
+the whole reason **PuTTY and SecureCRT work and this did not**: a terminal
+emulator answers a cursor-position request as a matter of course, and this
+client is not a terminal emulator.
+
+**Why this is allowed under D-054.** The rule is that a device may be answered
+when it is *waiting* and never when it is *asking*. A cursor-position request
+is not a question put to the operator — nothing is decided, nothing is
+confirmed, no command runs. It is the terminal protocol asking the terminal
+about itself, and the app is the only thing that can answer it.
+
+**Corroborated by the app's own terminal.** `SshPanel` hands the stream to
+xterm.js and forwards everything xterm.js produces back down the channel
+(`SshPanel.tsx:496`), and xterm.js answers a cursor-position request itself. So
+the interactive terminal has always been able to log into this switch. Only the
+crawler, which is not a terminal emulator, could not — which is the same split
+as PuTTY working where this did not, seen from inside.
+
+**Acceptance:** a capture containing `ESC[1920;1920H ESC[6n` is answered with
+the cursor position clamped to the pty actually requested; the same request is
+answered once and not again on every later read; a `ESC[?6n` — a different
+request — is not answered; and the Aruba at `.10` reaches a prompt.
+
+**Built 2026-09-21, not yet met the device.** `cli::cursor_reports` is written
+and tested against the exact bytes the switch sent, and the SSH read loop
+answers by count. A live login through the changed path still works
+(`try_commands` against the Cisco 2960CX at the operator's edge: prompt found,
+`show version` returned 61 lines), so the change is safe where no request is
+made. **The round trip itself is unproven:** nothing reachable from this
+machine sends `ESC[6n`, and the Aruba that does is on the operator's network.
+It stays in Now until his crawl reaches a prompt.
+
+**Done 2026-09-22, proven on the production 2930M** by the same log: the cursor-position request was answered (row 200, column 14 — the screen's real cursor, not the 200;200 the first version would have sent) and the device drew its prompt immediately after.
+
+### LT-378 — **bug** The banner was answered with the wrong byte, and the app could not say so — 2026-09-21
+**Source:** LT-375 shipped, LT-377's new state proved the login was fine —
+**"Logged in, waiting for a prompt"** — and the device still never reached a
+prompt. Then: "i think we just need to send return seq to the device because
+thats what its telling us press enter to continue".
+**He was right, and it was one byte.** `continuation_reply` answered a banner
+with `\n`. **A line feed is not what the Enter key sends.** A terminal
+transmits `\r`, and a device reading raw keystrokes from a banner waits for the
+byte the key actually produces. So the app pressed something that was not
+Enter and the banner went on waiting, exactly as before the fix.
+**Two other things were wrong in the same place, both found while proving
+it.**
+- **The matcher compared the wrong text.** A banner arrives as instructions
+  for *drawing* a banner — `ESC [ 2 K` to clear the line, carriage returns to
+  overwrite, colour codes around the words. Matching the raw line compares a
+  phrase against the painting instructions for that phrase. `visible_text`
+  now strips them, so what is matched is what a person would read.
+- **The failure could not be diagnosed from outside.** "Gave up after 60
+  seconds" threw away the one fact that explains it: what the device had said.
+  `CommandTimeout` now carries the tail of it.
+**That diagnostic is deliberately limited to the login read.** `command` is
+`None` there and the buffer is a banner. A command's buffer can hold a
+running-config, and an error message is the wrong place for one — it ends up in
+logs and screenshots (D-006). A command timeout still says nothing about
+content.
+**The lesson worth keeping:** two rounds were spent guessing at what the device
+printed because the app never said. The diagnostic should have come first.
+**Then widened to the other vendors, at his asking** — "maybe we need to
+research if there are other vendors requiring something else". `CONTINUATIONS`
+is now an explicit table of `(phrase, reply, anchored-at-end)`, so a platform
+is one line and one test:
+- **Pagers**, answered with a space: Cisco `--More--`, ASA `<--- More --->`,
+  Comware and Huawei `---- More ----`, Junos `---(more)---` and
+  `---(more 47%)---`, AOS-CX and Brocade `-- MORE --, next page: Space`,
+  Extreme `Press <SPACE> to continue or <Q> to quit`.
+- **Banners**, answered with a carriage return: `Press any key to continue`,
+  `Press enter to continue`, `Press RETURN to continue`, and a reloaded Cisco
+  console's `Press RETURN to get started`.
+- **Two proven exceptions that take a line feed**: the FortiGate FIPS accept
+  line and FortiOS's own pager. Both have been answered that way on real
+  devices through `run()`, which sends `\n`, so the table matches what works
+  rather than what is tidy — and that they differ is exactly why each entry
+  carries its own reply.
+**Provenance is recorded beside the table.** The Aruba banner is from
+hardware; the two FortiOS lines were proven earlier; **the rest are from
+vendor documentation and have not met a device**, the same standing D-026
+gives the stacking parsers.
+**Why a wrong entry is cheap in one direction only:** one that never matches
+leaves behaviour exactly as it was, while one that matches wrongly sends a
+keystroke into somebody's session. Hence literals, never patterns — and a test
+asserting `Continue? (y/n)`, `Proceed with reload? [confirm]` and
+`Save? [yes/no]` are still refused.
+
+**Done 2026-09-22, proven on the production 2930M:** the banner was answered with `[13]`, a carriage return, and the device moved past it.
+
 ### LT-394 — Every installer again — 2026-09-22
 **Source:** "can you go ahead build all the installers".
 **Shipped:** the Linux leg (`.deb` and `.AppImage`) and its WebKit-free smoke
@@ -1879,6 +1950,9 @@ universal macOS `.dmg` are all back in `build.yml`. They were paused at LT-349
 his instruction. Nothing was deleted either time, so it was one edit per job.
 **Not run here:** CI builds them on the push. The macOS bundle cannot be
 tested from this machine at all, which is why it stays a job of its own.
+**Accepted untested, 2026-09-22, at the operator's instruction.** The
+macOS `.dmg` has not been run on any Mac. The first person to open it is its
+first test.
 
 ### LT-391 — **bug** The crawl speaks Cisco to an ArubaOS-Switch — 2026-09-21
 
@@ -8939,6 +9013,14 @@ This file, `docs/DECISIONS.md`, `docs/OPEN-QUESTIONS.md` and `CLAUDE.md`.
 
 *Explicitly ruled out by the operator. Kept with their IDs (never deleted),
 never to be built.*
+
+### LT-396 — IPAM: JSON import and export
+**Declined 2026-09-22:** "I don't want JSON import and export." Part of the
+LT-298 specification; CSV import and export already exist and stay.
+
+### LT-397 — IPAM: utilisation history
+**Declined 2026-09-22:** "I don't want utilisation history." The utilisation
+view stays; it answers for now, and keeps nothing over time.
 
 ### LT-006 — Lucidchart `.lcsl` import
 **Source:** asked 2026-08-30. File `Affinity-Native.lcsl`, 65 shapes.

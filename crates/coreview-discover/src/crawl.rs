@@ -586,6 +586,21 @@ pub async fn crawl_from(
             seed: seeds.join(", "),
         })
         .await;
+    let began = std::time::Instant::now();
+    crate::say!(
+        crate::debuglog::Area::Crawl,
+        "started from {} — at most {} hop(s) and {} device(s), {} at once, {}s per device; subnet limit: {}",
+        seeds.join(", "),
+        options.max_hops,
+        options.max_devices,
+        options.concurrency,
+        options.per_host_timeout.as_secs(),
+        if options.filter.subnets.is_empty() {
+            "none".to_string()
+        } else {
+            options.filter.subnets.iter().map(|c| format!("{}/{}", c.network(), c.prefix())).collect::<Vec<_>>().join(", ")
+        },
+    );
 
     let mut result = CrawlResult::default();
     let mut queue: VecDeque<(String, usize)> = VecDeque::new();
@@ -712,10 +727,24 @@ pub async fn crawl_from(
             }
             Outcome::Snmp { device, failure } => {
                 if !seen_hostnames.insert(device.hostname.clone()) {
+                    crate::say!(
+                        crate::debuglog::Area::Crawl,
+                        "{}: identified over SNMP as {}, which was already reached — counted as a failure of its own address",
+                        device.address,
+                        device.hostname,
+                    );
                     let _ = events.send(CrawlEvent::Failed { failure: failure.clone() }).await;
                     result.failures.push(failure);
                     continue;
                 }
+                crate::say!(
+                    crate::debuglog::Area::Crawl,
+                    "{}: reached over SNMP instead, as {} ({:?}), {} neighbour(s)",
+                    device.address,
+                    device.hostname,
+                    device.class,
+                    device.neighbors.len(),
+                );
                 // LT-134: a device reached over SNMP reports its LLDP
                 // neighbours, and they are followed like any other device's,
                 // within the same limits.
@@ -723,16 +752,15 @@ pub async fn crawl_from(
                     pending_neighbors
                         .entry(neighbor.short_name.clone())
                         .or_insert_with(|| neighbor.clone());
-                    if hops + 1 > options.max_hops
-                        || !options.filter.should_crawl(neighbor)
-                        || seen_hostnames.contains(&neighbor.short_name)
-                    {
-                        continue;
-                    }
-                    if let Some(next) = neighbor.probe_target(&options.address_preference) {
-                        if !tried_addresses.contains(next) {
-                            queue.push_back((next.to_string(), hops + 1));
-                        }
+                    if let Some(next) = next_to_follow(
+                        neighbor,
+                        &device.hostname,
+                        hops,
+                        &options,
+                        &seen_hostnames,
+                        &tried_addresses,
+                    ) {
+                        queue.push_back((next.to_string(), hops + 1));
                     }
                 }
                 let _ = events.send(CrawlEvent::Reached(device.clone())).await;
@@ -743,8 +771,32 @@ pub async fn crawl_from(
                 // The same device reached by a second address: record nothing
                 // new, and above all do not crawl its neighbours again.
                 if !seen_hostnames.insert(visit.device.hostname.clone()) {
+                    crate::say!(
+                        crate::debuglog::Area::Crawl,
+                        "{}: this is {} again, already reached by another address — its neighbours are not crawled twice",
+                        visit.device.address,
+                        visit.device.hostname,
+                    );
                     continue;
                 }
+                crate::say!(
+                    crate::debuglog::Area::Crawl,
+                    "{}: reached as {} ({:?}{}) over {} — {} neighbour(s), {} attached device(s), {} port-channel(s){}",
+                    visit.device.address,
+                    visit.device.hostname,
+                    visit.device.class,
+                    visit.device.platform.as_deref().map(|p| format!(", {p}")).unwrap_or_default(),
+                    format!("{:?}", visit.device.reached_by).to_ascii_uppercase(),
+                    visit.neighbors.len(),
+                    visit.device.attached.len(),
+                    visit.device.port_channels.len(),
+                    visit
+                        .device
+                        .default_next_hop
+                        .as_deref()
+                        .map(|g| format!(", default route via {g}"))
+                        .unwrap_or_default(),
+                );
 
                 for address in &visit.device.addresses {
                     tried_addresses.insert(address.ip.clone());
@@ -754,20 +806,15 @@ pub async fn crawl_from(
                     pending_neighbors
                         .entry(neighbor.short_name.clone())
                         .or_insert_with(|| neighbor.clone());
-
-                    if hops + 1 > options.max_hops {
-                        continue;
-                    }
-                    if !options.filter.should_crawl(neighbor) {
-                        continue;
-                    }
-                    if seen_hostnames.contains(&neighbor.short_name) {
-                        continue;
-                    }
-                    if let Some(next) = neighbor.probe_target(&options.address_preference) {
-                        if !tried_addresses.contains(next) {
-                            queue.push_back((next.to_string(), hops + 1));
-                        }
+                    if let Some(next) = next_to_follow(
+                        neighbor,
+                        &visit.device.hostname,
+                        hops,
+                        &options,
+                        &seen_hostnames,
+                        &tried_addresses,
+                    ) {
+                        queue.push_back((next.to_string(), hops + 1));
                     }
                 }
 
@@ -778,6 +825,12 @@ pub async fn crawl_from(
                     &options,
                     &tried_addresses,
                 ) {
+                    crate::say!(
+                        crate::debuglog::Area::Crawl,
+                        "{}: following the default route to {gateway}, hop {}",
+                        visit.device.hostname,
+                        hops + 1,
+                    );
                     queue.push_back((gateway.to_string(), hops + 1));
                 }
 
@@ -785,6 +838,7 @@ pub async fn crawl_from(
                     .send(CrawlEvent::Reached(Box::new(visit.device.clone())))
                     .await;
                 order_of.insert(visit.device.hostname.clone(), index);
+                let describer = visit.device.hostname.clone();
                 result.devices.push(visit.device);
 
                 // Devices described by the one just visited. They are not
@@ -795,6 +849,12 @@ pub async fn crawl_from(
                     if !seen_hostnames.insert(reported.hostname.clone()) {
                         continue;
                     }
+                    crate::say!(
+                        crate::debuglog::Area::Crawl,
+                        "{}: described by {describer} rather than logged into ({:?})",
+                        reported.hostname,
+                        reported.class,
+                    );
                     for neighbor in &reported.neighbors {
                         pending_neighbors
                             .entry(neighbor.short_name.clone())
@@ -827,6 +887,18 @@ pub async fn crawl_from(
         .collect();
     result.not_visited.sort_by(|a, b| a.short_name.cmp(&b.short_name));
 
+    crate::say!(
+        crate::debuglog::Area::Crawl,
+        "{} after {}s — {} reached, {} failed, {} seen but not logged into",
+        if result.cancelled { "stopped" } else { "finished" },
+        began.elapsed().as_secs(),
+        result.devices.len(),
+        result.failures.len(),
+        result.not_visited.len(),
+    );
+    for f in &result.failures {
+        crate::say!(crate::debuglog::Area::Crawl, "  failed: {} as {:?}", f.address, f.kind);
+    }
     let _ = events
         .send(CrawlEvent::Finished {
             reached: result.devices.len(),
@@ -835,6 +907,51 @@ pub async fn crawl_from(
         })
         .await;
     result
+}
+
+/// Whether a neighbour is followed and, in the debug log, why or why not
+/// (LT-392).
+///
+/// The same rules the two outcome branches used to spell out separately, in
+/// the same order, now in one place — so the decision and its explanation are
+/// the same code. Every neighbour gets exactly one line: followed, or not and
+/// why. A crawl that "missed" a device is almost always one that saw it and
+/// declined, and until now the log could not tell those two apart.
+fn next_to_follow<'a>(
+    neighbor: &'a Neighbor,
+    from: &str,
+    hops: usize,
+    options: &CrawlOptions,
+    seen_hostnames: &HashSet<String>,
+    tried_addresses: &HashSet<String>,
+) -> Option<&'a str> {
+    let name = &neighbor.short_name;
+    let why_not = if hops + 1 > options.max_hops {
+        Some(format!("it would be hop {}, past the limit of {}", hops + 1, options.max_hops))
+    } else if let Some(why) = options.filter.why_not_crawled(neighbor) {
+        Some(why)
+    } else if seen_hostnames.contains(name) {
+        Some("already reached".to_string())
+    } else {
+        None
+    };
+    if let Some(why) = why_not {
+        crate::say!(crate::debuglog::Area::Crawl, "{from}: not following {name} — {why}");
+        return None;
+    }
+    let Some(next) = neighbor.probe_target(&options.address_preference) else {
+        crate::say!(
+            crate::debuglog::Area::Crawl,
+            "{from}: not following {name} — none of its addresses suits the address preference",
+        );
+        return None;
+    };
+    if tried_addresses.contains(next) {
+        crate::say!(crate::debuglog::Area::Crawl, "{from}: not following {name} — {next} was already tried");
+        return None;
+    }
+    crate::say!(crate::debuglog::Area::Crawl, "{from}: following {name} at {next}, hop {}", hops + 1);
+    Some(next)
 }
 
 /// What one visit came to (LT-208).
@@ -1245,7 +1362,14 @@ async fn visit(
     // plenty do not — a FortiSwitch on the network this was built against is
     // named and classified correctly and has nowhere to connect. The switch
     // that sees it knows: the chassis id is a MAC, and this maps it.
-    let mut arp = crate::arp::parse_arp_table(&device.run("show ip arp").await.unwrap_or_default());
+    // LT-393: when one MAC answers for several addresses — a firewall routing
+    // between VLANs — keep the one the crawl can use: inside the subnet limit,
+    // then nearest to this device. Kept the first before, and on the
+    // operator's switch that threw his gateway's own address away.
+    let near: Option<std::net::Ipv4Addr> = address.parse().ok();
+    let inside = |ip: std::net::Ipv4Addr| options.filter.allows_address(&ip.to_string());
+    let read_arp = |text: &str| crate::arp::parse_arp_table_near(text, near, inside);
+    let mut arp = read_arp(&device.run("show ip arp").await.unwrap_or_default());
     // LT-391: ArubaOS-Switch spells it `show arp`, and until now every one of
     // these was asked in Cisco and answered with a rejection. The fallback is
     // by *result* rather than by platform string on purpose: a device that
@@ -1256,7 +1380,7 @@ async fn visit(
     // first MAC on each line rather than reading by position, and Aruba's
     // `aabbcc-001122` spelling is a MAC by that rule already.
     if arp.is_empty() {
-        arp = crate::arp::parse_arp_table(&device.run("show arp").await.unwrap_or_default());
+        arp = read_arp(&device.run("show arp").await.unwrap_or_default());
     }
     // What the switch has learned on each port. Discovery protocols only see
     // devices that speak them; a printer or a workstation announces nothing,
@@ -1378,7 +1502,7 @@ async fn visit(
         );
         // A FortiGate's own ARP table, which a FortiSwitch does not have.
         let forti_arp =
-            crate::arp::parse_arp_table(&device.run("get system arp").await.unwrap_or_default());
+            read_arp(&device.run("get system arp").await.unwrap_or_default());
         // LT-332: and what a FortiSwitch has learned on each port, which is
         // every endpoint that announces nothing about itself — most of what is
         // plugged into a switch. Asked only of a FortiSwitch: it is not a
@@ -1485,10 +1609,24 @@ async fn visit(
         });
     }
 
-    let mut neighbors = merge_neighbors(
-        cdp_neighbours(&cdp, &aruba_cdp),
-        lldp_neighbours(&lldp, &aruba_lldp),
+    let cdp_found = cdp_neighbours(&cdp, &aruba_cdp);
+    let lldp_found = lldp_neighbours(&lldp, &aruba_lldp);
+    // LT-392: what each protocol produced and which way of asking it
+    // answered. A switch with no neighbours on the diagram is either one that
+    // has none or one whose answer was not understood, and only this says
+    // which.
+    crate::say!(
+        crate::debuglog::Area::Crawl,
+        "{address}: CDP gave {} neighbour(s){}, LLDP gave {}{}; ARP {} entr(ies), MAC table {} entr(ies) on {} port(s)",
+        cdp_found.len(),
+        if aruba_cdp.is_empty() { "" } else { " from `show cdp neighbors`" },
+        lldp_found.len(),
+        if aruba_lldp.is_empty() { "" } else { " from `show lldp info remote-device`" },
+        arp.len(),
+        learned.len(),
+        crate::mac_table::count_by_port(&learned).len(),
     );
+    let mut neighbors = merge_neighbors(cdp_found, lldp_found);
 
     // Fill in an address for anything that did not advertise one. Only where
     // there is none: an address a device advertised about itself beats one

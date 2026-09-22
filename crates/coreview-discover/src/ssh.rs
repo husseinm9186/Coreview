@@ -486,11 +486,19 @@ impl Device {
         match &result {
             Ok((raw, _)) => crate::say!(
                 crate::debuglog::Area::Ssh,
-                "{}: ran `{command}` in {}ms, {} bytes, {} lines",
+                "{}: ran `{command}` in {}ms, {} bytes, {} lines{}",
                 self.host,
                 started.elapsed().as_millis(),
                 raw.len(),
                 raw.lines().count(),
+                // LT-392: said outright rather than left to be read off the
+                // byte count, which is how the whole Aruba diagnosis had to be
+                // done. The device's own message is not quoted (D-055).
+                if crate::cli::command_was_rejected(&extract_output(raw, command)).is_some() {
+                    " — the device rejected it"
+                } else {
+                    ""
+                },
             ),
             Err(e) => crate::say!(
                 crate::debuglog::Area::Ssh,

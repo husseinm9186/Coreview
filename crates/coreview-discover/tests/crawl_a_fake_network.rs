@@ -813,3 +813,51 @@ async fn cancelling_stops_visits_in_progress() {
     assert!(result.cancelled);
     assert!(started.elapsed() < Duration::from_secs(3), "{:?}", started.elapsed());
 }
+
+/// LT-392. The debug log has to answer the question a crawl that "missed"
+/// something always raises: did it not see the device, or see it and decline?
+/// The first real log could not say — one device, then a ninety-second gap.
+///
+/// This network has every kind of decision in it: a loop, a device found
+/// through ARP, an access point the crawl must never log into, and a switch
+/// outside the subnet limit. Each must appear, followed or declined, with its
+/// reason — and the password it logged in with must not.
+#[tokio::test]
+async fn the_debug_log_says_what_was_followed_and_why_the_rest_was_not() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("crawl.log");
+    coreview_discover::debuglog::start(&path, "Coreview test").expect("start the log");
+
+    let port = start_network().await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+    let result = crawl("127.0.0.1", creds(), options(port), store, tx, CancellationToken::new()).await;
+    coreview_discover::debuglog::stop();
+    let log = std::fs::read_to_string(&path).expect("the log is there");
+
+    // The run, from both ends.
+    assert!(log.contains("started from 127.0.0.1"), "{log}");
+    assert!(log.contains("subnet limit: 127.0.0.0/8"), "{log}");
+    assert!(
+        log.contains("finished after") && log.contains(&format!("{} reached", result.devices.len())),
+        "the end of the run and its count:\n{log}",
+    );
+
+    // Every device reached says so, with what it had.
+    for d in &result.devices {
+        assert!(log.contains(&format!("reached as {}", d.hostname)), "{} missing:\n{log}", d.hostname);
+    }
+    assert!(log.contains("CDP gave"), "per-protocol counts:\n{log}");
+
+    // Followed, and declined with the reason — the part that was missing.
+    assert!(log.contains("following SW2 at"), "{log}");
+    assert!(
+        log.contains("not following AP-FLOOR2 — an access point is not a kind this run logs into"),
+        "the access point, and why:\n{log}",
+    );
+    assert!(log.contains("outside the subnet limit"), "the switch beyond the limit, and why:\n{log}");
+    assert!(log.contains("already reached"), "the loop back to SW1, and why:\n{log}");
+
+    // D-055.
+    assert!(!log.contains("correct-horse"), "the password reached the log:\n{log}");
+}

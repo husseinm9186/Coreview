@@ -97,33 +97,44 @@ impl DiscoveryFilter {
     /// this check, and without it a crawl follows a WAN link into somebody
     /// else's network.
     pub fn should_crawl(&self, n: &Neighbor) -> bool {
+        self.why_not_crawled(n).is_none()
+    }
+
+    /// Why `should_crawl` said no, or `None` when it said yes (LT-392).
+    ///
+    /// **One set of rules, not two.** `should_crawl` is this function asking
+    /// whether there was a reason, so the debug log's "not followed, because"
+    /// cannot drift from the decision it is explaining — a second copy of these
+    /// rules written for the log would be right until the day somebody changed
+    /// the first one.
+    pub fn why_not_crawled(&self, n: &Neighbor) -> Option<String> {
         let allowed = if self.crawl_classes.is_empty() {
             DeviceClass::INFRASTRUCTURE.to_vec()
         } else {
             self.crawl_classes.clone()
         };
         if !allowed.contains(&n.class) {
-            return false;
+            return Some(format!("{} is not a kind this run logs into", with_article(n.class)));
         }
         if !self.exclude_subnets.is_empty() && self.has_address_in(n, &self.exclude_subnets) {
-            return false;
+            return Some("its address is in an excluded subnet".into());
         }
         let name_lower = n.short_name.to_ascii_lowercase();
-        if self
+        if let Some(e) = self
             .exclude_names
             .iter()
-            .any(|e| !e.is_empty() && name_lower.contains(&e.to_ascii_lowercase()))
+            .find(|e| !e.is_empty() && name_lower.contains(&e.to_ascii_lowercase()))
         {
-            return false;
+            return Some(format!("its name matches the exclusion {e:?}"));
         }
         // A device with no address cannot be crawled whatever the filter says.
         if n.addresses.is_empty() {
-            return false;
+            return Some("it advertised no address to dial".into());
         }
-        if self.subnets.is_empty() {
-            return true;
+        if self.subnets.is_empty() || self.has_address_in(n, &self.subnets) {
+            return None;
         }
-        self.has_address_in(n, &self.subnets)
+        Some("its address is outside the subnet limit".into())
     }
 
     /// Whether the crawl may dial a bare address that no neighbour described
@@ -172,6 +183,19 @@ pub fn count_by_class(all: &[Neighbor]) -> Vec<(DeviceClass, usize)> {
         .map(|c| (*c, all.iter().filter(|n| n.class == *c).count()))
         .filter(|(_, n)| *n > 0)
         .collect()
+}
+
+/// `AccessPoint` as "an access point", for a sentence a person reads.
+fn with_article(class: DeviceClass) -> String {
+    let mut words = String::new();
+    for (i, c) in format!("{class:?}").chars().enumerate() {
+        if c.is_ascii_uppercase() && i > 0 {
+            words.push(' ');
+        }
+        words.push(c.to_ascii_lowercase());
+    }
+    let article = if words.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+    format!("{article} {words}")
 }
 
 #[cfg(test)]

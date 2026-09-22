@@ -41,10 +41,37 @@ pub fn normalise_mac(raw: &str) -> Option<String> {
 /// Column order differs between IOS and NX-OS, so each line is read by finding
 /// the first thing that parses as an address and the first that parses as a
 /// MAC, rather than by position.
+///
+/// When one MAC answers for several addresses, the first one listed is kept.
+/// That is right for a caller with nothing better to go on; a crawl has
+/// something better, and uses [`parse_arp_table_near`].
 pub fn parse_arp_table(out: &str) -> HashMap<String, String> {
-    let mut map = HashMap::new();
+    parse_arp_table_near(out, None, |_| false)
+}
+
+/// MAC to address, choosing well when a MAC has more than one (LT-393).
+///
+/// A router or a firewall routing between VLANs answers ARP for every one of
+/// them from a single MAC, and that is exactly the device a crawl most wants
+/// an address for. "First wins" kept whichever the table happened to list
+/// first — on the operator's switch, an address on a subnet the crawl was
+/// never pointed at, while the gateway's own address, on the subnet it was,
+/// was thrown away.
+///
+/// So, in order: an address `inside` the crawl's limit beats one outside it;
+/// then the one sharing more leading bits with `near`, the device being
+/// visited, because that is the address on its own network; and only then the
+/// first listed. Every step is deterministic, so the same table always gives
+/// the same answer.
+pub fn parse_arp_table_near(
+    out: &str,
+    near: Option<Ipv4Addr>,
+    inside: impl Fn(Ipv4Addr) -> bool,
+) -> HashMap<String, String> {
+    // Every address each MAC answered for, in the order the table gave them.
+    let mut seen: Vec<(String, Vec<Ipv4Addr>)> = Vec::new();
     for line in out.lines() {
-        let mut ip: Option<String> = None;
+        let mut ip: Option<Ipv4Addr> = None;
         let mut mac: Option<String> = None;
         for token in line.split_whitespace() {
             if ip.is_none() {
@@ -52,7 +79,7 @@ pub fn parse_arp_table(out: &str) -> HashMap<String, String> {
                     // 0.0.0.0 and the broadcast address are not somewhere a
                     // device can be reached.
                     if !v.is_unspecified() && !v.is_broadcast() {
-                        ip = Some(v.to_string());
+                        ip = Some(v);
                         continue;
                     }
                 }
@@ -64,13 +91,29 @@ pub fn parse_arp_table(out: &str) -> HashMap<String, String> {
             }
         }
         if let (Some(ip), Some(mac)) = (ip, mac) {
-            // First wins: an ARP table can hold the same MAC on several
-            // interfaces, and the earlier entry is the one the device listed
-            // first, which is as good a tie-break as any and is stable.
-            map.entry(mac).or_insert(ip);
+            match seen.iter_mut().find(|(m, _)| *m == mac) {
+                Some((_, ips)) => ips.push(ip),
+                None => seen.push((mac, vec![ip])),
+            }
         }
     }
-    map
+
+    let rank = |ip: Ipv4Addr| {
+        let shared = near.map_or(0, |n| (u32::from(ip) ^ u32::from(n)).leading_zeros());
+        (inside(ip), shared)
+    };
+    seen.into_iter()
+        .map(|(mac, ips)| {
+            // Strictly better only, so a tie keeps the one listed first.
+            let mut best = ips[0];
+            for &ip in &ips[1..] {
+                if rank(ip) > rank(best) {
+                    best = ip;
+                }
+            }
+            (mac, best.to_string())
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -144,5 +187,45 @@ Address         Age       MAC Address     Interface       Flags
         // A pending ARP entry has no hardware address.
         let out = "Internet  192.168.77.9           0   Incomplete      ARPA   Vlan1";
         assert!(parse_arp_table(out).is_empty());
+    }
+    /// LT-393, the shape of the operator's own gateway with every value
+    /// invented (D-027). A firewall routing between VLANs answers ARP for all
+    /// of them from one MAC, and the table lists the other subnet first. "First
+    /// wins" kept that one and threw away the gateway — the address the
+    /// operator went looking for, on the subnet he pointed the crawl at.
+    const ROUTER_ON_MANY_VLANS: &str = "\
+  IP Address       MAC Address       Type    Port
+  ---------------  ----------------- ------- ----
+  198.51.100.254   aabbcc-001122     dynamic Trk1
+  192.0.2.1        aabbcc-001122     dynamic Trk1
+  192.0.2.3        ddeeff-334455     dynamic 1/4
+";
+
+    #[test]
+    fn a_router_keeps_the_address_the_crawl_can_use() {
+        let visiting: Ipv4Addr = "192.0.2.10".parse().unwrap();
+        let limit_is_192_0_2 = |ip: Ipv4Addr| ip.octets()[..3] == [192, 0, 2];
+        let map = parse_arp_table_near(ROUTER_ON_MANY_VLANS, Some(visiting), limit_is_192_0_2);
+        assert_eq!(map.get("aabbcc001122").map(String::as_str), Some("192.0.2.1"));
+        // A MAC with one address is untouched.
+        assert_eq!(map.get("ddeeff334455").map(String::as_str), Some("192.0.2.3"));
+    }
+
+    #[test]
+    fn with_no_subnet_limit_the_nearer_address_wins() {
+        // Nothing narrows the crawl, so every address is "inside". The one
+        // sharing more of its leading bits with the device being visited is
+        // on the same network as it, and is the one that can be reached.
+        let visiting: Ipv4Addr = "192.0.2.10".parse().unwrap();
+        let map = parse_arp_table_near(ROUTER_ON_MANY_VLANS, Some(visiting), |_| true);
+        assert_eq!(map.get("aabbcc001122").map(String::as_str), Some("192.0.2.1"));
+    }
+
+    #[test]
+    fn with_nothing_to_go_on_the_first_still_wins() {
+        // No device address and no limit: the old rule, unchanged, so every
+        // caller that never had a preference behaves exactly as before.
+        let map = parse_arp_table(ROUTER_ON_MANY_VLANS);
+        assert_eq!(map.get("aabbcc001122").map(String::as_str), Some("198.51.100.254"));
     }
 }

@@ -266,11 +266,16 @@ impl TelnetDevice {
             Ok(raw) => {
                 crate::say!(
                     crate::debuglog::Area::Telnet,
-                    "{}: ran `{command}` in {}ms, {} bytes, {} lines",
+                    "{}: ran `{command}` in {}ms, {} bytes, {} lines{}",
                     self.host,
                     started.elapsed().as_millis(),
                     raw.len(),
                     raw.lines().count(),
+                    if crate::cli::command_was_rejected(&extract_output(&raw, command)).is_some() {
+                        " — the device rejected it"
+                    } else {
+                        ""
+                    },
                 );
                 raw
             }
