@@ -1358,6 +1358,17 @@ async fn visit(
     };
     let brief = device.run("show ip interface brief").await.unwrap_or_default();
     let version = device.run("show version").await.unwrap_or_default();
+    // LT-407: Dell speaks three dialects and none of them is Cisco's. Known
+    // here, because everything that asks a Dell-shaped question comes after
+    // this line and nothing before it can know the platform.
+    let dell = crate::dell::detect(&version);
+    // Asked here, while the session is still open: the neighbours are merged
+    // further down, after it has been closed.
+    let dell_lldp = if dell.is_some() && parse_lldp_detail(&lldp).is_empty() {
+        device.run("show lldp neighbors").await.unwrap_or_default()
+    } else {
+        String::new()
+    };
     // LLDP does not require a device to advertise a management address, and
     // plenty do not — a FortiSwitch on the network this was built against is
     // named and classified correctly and has nowhere to connect. The switch
@@ -1393,6 +1404,18 @@ async fn visit(
             &device.run("show mac-address").await.unwrap_or_default(),
         );
     }
+    // LT-407: OS9 spells the same table with hyphens, and OS10 writes its
+    // ports as `ethernet1/1/6` rather than `Gi1/0/6`.
+    if learned.is_empty() {
+        if let Some(os) = dell {
+            let command = if os == crate::dell::DellOs::Os9 {
+                "show mac-address-table"
+            } else {
+                "show mac address-table"
+            };
+            learned = crate::dell::parse_mac_address_table(&device.run(command).await.unwrap_or_default());
+        }
+    }
     // What is aggregated (LT-009). FortiOS rejects the command harmlessly and
     // the parser reads an empty answer as no bundles.
     let mut port_channels = crate::etherchannel::parse_etherchannel_summary(
@@ -1420,6 +1443,11 @@ async fn visit(
     };
     if aruba_switch && port_channels.is_empty() {
         port_channels = crate::arubasw::parse_trunks(&device.run("show trunks").await.unwrap_or_default());
+    }
+    if dell.is_some() && port_channels.is_empty() {
+        port_channels = crate::dell::parse_port_channel_summary(
+            &device.run("show port-channel summary").await.unwrap_or_default(),
+        );
     }
 
     // LT-131: which way this device sends unknown traffic. One line, not a
@@ -1643,7 +1671,12 @@ async fn visit(
     }
 
     let cdp_found = cdp_neighbours(&cdp, &aruba_cdp);
-    let lldp_found = lldp_neighbours(&lldp, &aruba_lldp);
+    let mut lldp_found = lldp_neighbours(&lldp, &aruba_lldp);
+    // LT-407: OS10 answers `show lldp neighbors` with a four-column table
+    // rather than Cisco's paragraph per neighbour.
+    if lldp_found.is_empty() && !dell_lldp.is_empty() {
+        lldp_found = crate::dell::parse_lldp_neighbors(&dell_lldp);
+    }
     // LT-392: what each protocol produced and which way of asking it
     // answered. A switch with no neighbours on the diagram is either one that
     // has none or one whose answer was not understood, and only this says
@@ -1739,6 +1772,12 @@ async fn visit(
         // `show version`, which is an image stamp — and, before LT-402, an
         // image stamp still wrapped in the escapes that drew it.
         _ if aruba_switch => stack.as_ref().and_then(crate::arubasw::model_of),
+        // LT-407: and a Dell has no `Model number` line either — it says
+        // `System Type`, so the model fell through to the banner's first line
+        // and an S5248F-ON drew as a generic box.
+        _ if dell.is_some() => {
+            crate::dell::model_of(&version).or_else(|| platform_from_version(&version))
+        }
         _ => platform_from_version(&version),
     };
     let version_line = match forti_status {
@@ -1923,6 +1962,11 @@ async fn read_details(device: &mut Session, version: &str, wanted: DetailOptions
         if details.vlans.is_empty() {
             details.vlans =
                 crate::arubasw::parse_vlans(&device.run("show vlans").await.unwrap_or_default());
+        }
+        // LT-407: OS10's own `show vlan`, whose rows carry a code marker.
+        if details.vlans.is_empty() && crate::dell::detect(version).is_some() {
+            details.vlans =
+                crate::dell::parse_vlans(&device.run("show vlan").await.unwrap_or_default());
         }
         details.ports = crate::vlans::parse_interface_status(&status);
         // LT-395: ArubaOS-Switch answers `show interfaces status` too, in a

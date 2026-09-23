@@ -76,8 +76,20 @@ fn sw2_lldp() -> String {
         .into()
 }
 
+/// Which dialect a fake switch answers in.
+///
+/// LT-407: a Dell's answers are a different shape, and the crawl has to notice
+/// from `show version` alone. Testing the parsers proves they read Dell output;
+/// only this proves the crawl ever hands them any.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Flavour {
+    Cisco,
+    DellOs10,
+}
+
 #[derive(Clone)]
 struct FakeSwitch {
+    flavour: Flavour,
     hostname: String,
     cdp: String,
     lldp: String,
@@ -143,6 +155,15 @@ impl server::Handler for FakeSwitch {
     ) -> Result<(), Self::Error> {
         let line = String::from_utf8_lossy(data);
         let command = line.trim();
+
+        if self.flavour == Flavour::DellOs10 {
+            let body = dell_answer(command, self.hostname_address());
+            session.data(
+                channel,
+                format!("{command}\r\n{body}{}#", self.hostname).into_bytes(),
+            )?;
+            return Ok(());
+        }
 
         let body: String = match command {
             "terminal length 0" | "enable" => String::new(),
@@ -221,6 +242,7 @@ async fn start_network() -> u16 {
         "127.0.0.1",
         port,
         FakeSwitch {
+            flavour: Flavour::Cisco,
             hostname: "SW1".into(),
             cdp: sw1_cdp(),
             lldp: sw1_lldp(),
@@ -249,6 +271,7 @@ async fn start_network() -> u16 {
         "127.0.0.2",
         port,
         FakeSwitch {
+            flavour: Flavour::Cisco,
             hostname: "SW2".into(),
             cdp: sw2_cdp(),
             lldp: sw2_lldp(),
@@ -265,6 +288,7 @@ async fn start_network() -> u16 {
         "127.0.0.4",
         port,
         FakeSwitch {
+            flavour: Flavour::Cisco,
             hostname: "SILENT-SW".into(),
             cdp: String::new(),
             lldp: String::new(),
@@ -316,6 +340,51 @@ fn sw1_lldp() -> String {
         "Total entries displayed: 3\r\n",
     )
     .into()
+}
+
+/// How a Dell PowerSwitch on OS10 answers (LT-407).
+///
+/// The point of this is as much what it *refuses* as what it returns: a Dell
+/// has no CDP and does not know `show lldp neighbors detail`, so every Cisco
+/// question the crawl asks comes back as an error. If the crawl has no Dell
+/// arm, the device is reached, logged into, and yields nothing — which is a
+/// green test and a blank diagram.
+///
+/// Dell's shapes, invented values (D-027).
+fn dell_answer(command: &str, address: &str) -> String {
+    let invalid = "% Error: Invalid input at \"^\" marker.\r\n";
+    match command {
+        "terminal length 0" | "enable" => String::new(),
+        "show version" => concat!(
+            "Dell EMC Networking OS10 Enterprise\r\n",
+            "Copyright (c) 1999-2024 by Dell Inc. All Rights Reserved.\r\n",
+            "OS Version: 10.5.4.2\r\n",
+            "System Type: S5248F-ON\r\n",
+        )
+        .into(),
+        // OS10's LLDP table, which the Cisco reader cannot make sense of.
+        "show lldp neighbors" => concat!(
+            "Loc PortID          Rem Host Name   Rem Port Id            Rem Chassis Id\r\n",
+            "-------------------------------------------------------------------------\r\n",
+            "ethernet1/1/2       SW1             GigabitEthernet1/0/24  aa:bb:cc:00:22:01\r\n",
+        )
+        .into(),
+        "show mac address-table" => concat!(
+            "VlanId  Mac Address         Type       Interface\r\n",
+            "10      aa:bb:cc:00:22:01   dynamic    ethernet1/1/2\r\n",
+        )
+        .into(),
+        "show port-channel summary" => concat!(
+            "Group Port-Channel      Type   Protocol  Member Ports\r\n",
+            "10    port-channel10 (U) Eth    DYNAMIC   1/1/9(P) 1/1/10(P)\r\n",
+        )
+        .into(),
+        "show ip interface brief" => format!(
+            "Interface                Status     IP Address          Description\r\n\
+             ethernet1/1/1            up         {address}/8\r\n"
+        ),
+        _ => invalid.into(),
+    }
 }
 
 fn creds() -> Credentials {
@@ -860,4 +929,65 @@ async fn the_debug_log_says_what_was_followed_and_why_the_rest_was_not() {
 
     // D-055.
     assert!(!log.contains("correct-horse"), "the password reached the log:\n{log}");
+}
+
+#[tokio::test]
+async fn a_dell_answering_in_its_own_dialect_is_still_read() {
+    // LT-407. Every Cisco question this device is asked comes back as an
+    // error: no CDP, and no `show lldp neighbors detail`. Without the Dell arm
+    // the crawl logs in successfully and learns nothing — a device on the
+    // diagram with no links, which is the failure this test exists to catch.
+    let port = free_port().await;
+    start(
+        "127.0.0.2",
+        port,
+        FakeSwitch {
+            flavour: Flavour::DellOs10,
+            hostname: "LAB-DELL-1".into(),
+            cdp: String::new(),
+            lldp: String::new(),
+            loopback: "10.255.0.9".into(),
+            arp: String::new(),
+            macs: String::new(),
+        },
+    )
+    .await;
+
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+    let result = crawl(
+        "127.0.0.2",
+        creds(),
+        options(port),
+        store,
+        tx,
+        CancellationToken::new(),
+    )
+    .await;
+
+    assert_eq!(result.failures.len(), 0, "{:?}", result.failures);
+    assert_eq!(result.devices.len(), 1, "{:?}", result.devices);
+    let dell = &result.devices[0];
+    assert_eq!(dell.hostname, "LAB-DELL-1");
+    assert_eq!(dell.class, DeviceClass::Switch, "S5248F-ON is a switch");
+
+    // The neighbour came out of the four-column table, which means the crawl
+    // noticed the platform and asked the Dell question.
+    let seen: Vec<&str> = result
+        .not_visited
+        .iter()
+        .map(|n| n.short_name.as_str())
+        .collect();
+    assert!(seen.contains(&"SW1"), "the OS10 LLDP table was not read: {seen:?}");
+    let sw1 = result
+        .not_visited
+        .iter()
+        .find(|n| n.short_name == "SW1")
+        .expect("SW1");
+    assert_eq!(sw1.local_interface.as_deref(), Some("ethernet1/1/2"));
+    assert_eq!(
+        sw1.remote_interface.as_deref(),
+        Some("GigabitEthernet1/0/24"),
+        "a remote port id is read by column, not by splitting on spaces",
+    );
 }

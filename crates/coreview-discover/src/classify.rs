@@ -109,6 +109,26 @@ fn from_platform(s: &str) -> Option<DeviceClass> {
     if SWITCH.iter().any(|p| s.contains(p)) {
         return Some(DeviceClass::Switch);
     }
+    // LT-407: Dell, campus and data centre. Written as whole model prefixes
+    // rather than "starts with S or Z", because an estate full of PowerEdge
+    // would otherwise fill the diagram with switches: `R740` is a server.
+    const DELL: [&str; 10] = [
+        // Data centre: S-series leaves, Z-series spines, the MX blade fabric.
+        "S4048", "S4128", "S4148", "S5212", "S5248", "S5232", "Z9100", "Z9432",
+        "MX9116", "MX5108",
+    ];
+    if DELL.iter().any(|p| s.contains(p)) {
+        return Some(DeviceClass::Switch);
+    }
+    // Campus: the N-series and the PowerConnect it replaced. `N` and three
+    // digits, so a hostname like "N1" cannot match.
+    if s.contains("POWERCONNECT")
+        || s.contains("FORCE10")
+        || (s.starts_with('N') && s.len() > 4 && s[1..5].chars().all(|c| c.is_ascii_digit()))
+    {
+        return Some(DeviceClass::Switch);
+    }
+
     // "Nexus" and "Catalyst" spelled out, as NX-OS version strings do.
     if s.contains("NEXUS") || s.contains("CATALYST") {
         return Some(DeviceClass::Switch);
@@ -441,5 +461,30 @@ mod tests {
         assert_eq!(classify(Some("PA-440 switch"), &[], None), DeviceClass::Firewall);
         // And a word on its own is not a model.
         assert_eq!(classify(Some("switchboard"), &[], None), DeviceClass::Unknown);
+    }
+    /// LT-407. Dell's campus and data-centre lines, which named themselves by
+    /// model and matched nothing: an S5248F-ON is a leaf switch and a Z9432F
+    /// is a spine, and both drew as generic boxes.
+    #[test]
+    fn dell_switches_are_switches_campus_and_data_centre_alike() {
+        for model in [
+            // Data centre: S-series leaves, Z-series spines, MX blade fabric.
+            "S4048-ON", "S4148F-ON", "S5248F-ON", "S5232F-ON", "Z9100-ON", "Z9432F-ON",
+            "MX9116n Fabric Switching Engine", "MX5108n Ethernet Switch",
+            // Campus: N-series and the PowerConnect it replaced.
+            "N3048EP-ON", "N2048", "N1148T-ON", "PowerConnect 5548",
+            // Force10, which is where the S-series came from.
+            "Force10 S4810",
+        ] {
+            assert_eq!(classify(Some(model), &[], None), DeviceClass::Switch, "{model}");
+        }
+    }
+
+    #[test]
+    fn a_dell_server_is_not_a_dell_switch() {
+        // The same estate is full of PowerEdge, and "R740" must not become a
+        // switch because it starts with a letter and a number.
+        assert_ne!(classify(Some("PowerEdge R740"), &[], None), DeviceClass::Switch);
+        assert_ne!(classify(Some("iDRAC9"), &[], None), DeviceClass::Switch);
     }
 }

@@ -51,6 +51,7 @@ pub mod routes;
 pub mod seeds;
 pub mod arubasw;
 pub mod debuglog;
+pub mod dell;
 pub mod screen;
 pub mod sessionlog;
 pub mod overlay;

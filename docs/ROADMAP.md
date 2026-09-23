@@ -78,6 +78,66 @@ rather than my assumption:**
    layered over a derived view — and that is what Phase 1 builds, but it changes
    D-035 and is recorded as such.
 
+### LT-407 — Dell switches, campus and data centre — 2026-09-23
+
+**Source:** "add support to dell switches and dell data center switches. check
+on the internet for all referances you need".
+
+**Three families answer to the name Dell**, and none of them answers like a
+Cisco:
+- **SmartFabric OS10** — the PowerSwitch line: S4048-ON, S5248F-ON, Z9100-ON,
+  the MX blade switches. *Nearly* Cisco-shaped, which is the dangerous kind:
+  its `show lldp neighbors` is a four-column table rather than a paragraph per
+  neighbour, and its ports are `ethernet1/1/5`.
+- **OS9 / Force10 (FTOS)** — S4810, Z9500, the MXL blades. `show
+  mac-address-table`, with hyphens where Cisco has a space.
+- **N-series and PowerConnect** — FASTPATH, whose `show switch` the stacking
+  reader already knew.
+
+**Shipped 2026-09-23:** `dell.rs` — `show lldp neighbors`, the MAC table in
+both spellings, `show vlan` and `show port-channel summary` — chosen by
+platform from `show version`, so a Cisco pays nothing for any of it. Dell
+models also classify now, campus and data centre alike; an `S5248F-ON` drew as
+a generic box before.
+
+**Two things the documented output would catch nobody out on twice.** A remote
+port id can contain a space (`fortyGigE 0/56`), so a row cannot be split on
+whitespace — it is read by the header's own column positions. And a neighbour
+that advertises no name says `Not Advertised`, which is not a name: taken
+literally it would put a device called "Not Advertised" on the diagram, once
+per port.
+
+**Written from vendor documentation (D-026), and it says so.**
+`dell::verified_against_hardware()` is false. There is no Dell on this network
+or in the lab; the operator asked for the support anyway and for the
+references to build it from. Every fixture is invented — the shapes are Dell's,
+the values are not (D-027).
+
+**References** (Dell's own documentation): SmartFabric OS10 User Guide 10.5.0
+`show lldp neighbors`; 10.5.0/10.5.2 `show mac address-table`; 10.5.3 `show
+vlan`; 10.5.1/10.5.3 `show port-channel summary`; OS9 C9010 CLI Reference 9.14
+`show mac-address-table`.
+
+**The parsers were the easy half.** A fake OS10 switch in
+`crawl_a_fake_network.rs` — one that answers every Cisco question with
+`% Error: Invalid input`, because that is what a Dell does — caught a bug no
+unit test could: **an S5248F-ON classified as `Unknown` and drew as a generic
+box.** The crawl reads a model from Cisco's `Model number` line, a Dell has no
+such line, and the model fell through to the banner's first line, "Dell EMC
+Networking OS10 Enterprise", which classifies as nothing. `dell::model_of`
+reads `System Type` (OS10 and OS9), `Machine Model` (FASTPATH, which pads its
+labels with dots instead of ending them) and `System Description` as a last
+resort. The lesson is the one LT-403 already taught on the Aruba, on a second
+vendor: testing a parser proves it can read the output, never that the crawl
+hands it any.
+
+`show vlan` also keeps its port list now. The column was being located and
+discarded, and a wrapped list — a 48-port switch does not fit on one line —
+belongs to the VLAN above it, the same rule the Cisco reader follows.
+
+**To finish it:** one Dell answering. `examples/try_commands.rs` against an
+S-series or an N-series, and the captures replace the invented fixtures.
+
 ### LT-404 — Meraki: the Dashboard API, in Settings, by customer and network — 2026-09-23
 
 **Source:** "I want the dashboard API for meraki please make sure it goes to
@@ -109,6 +169,23 @@ what this is built from. What is *not* proven is Coreview's own client: there
 is no Meraki key on this machine, so nothing here has had an answer from
 `api.meraki.com`. It reports itself unverified, the way the stack parsers do
 (D-051), until he runs it.
+
+**Where it has got to, 2026-09-23 — half, and not the half you can see.** The
+client is built and tested: `crates/coreview-meraki`, GET-only by
+construction, rate gate, 429 and 5xx retries, `Link: rel=next` paging,
+organisations, networks and devices, seven tests against a real HTTP server on
+loopback. **None of it is reachable from the app.** There is no Meraki tab,
+because the crate is not yet a dependency of `src-tauri`, there are no IPC
+commands, and nothing is drawn in Settings. He went to Tools · Settings
+looking for it, which is exactly where it was asked to be.
+
+**What is left, in order:** make `coreview-meraki` a dependency of
+`src-tauri`; the key into the vault beside the SSH and SNMP logins; the IPC
+commands — save the key, list organisations, list networks — each with a
+fixture in `src-tauri/fixtures/ipc/` and the isolation frame's command table
+updated (LT-258); then the Settings section itself, the customer picker and
+the network picker, filled from what the key returns. Then LT-405 and LT-406
+have somewhere to hang.
 
 ### LT-405 — Meraki: the configuration backup — 2026-09-23
 
@@ -208,6 +285,33 @@ damage.
 **Fix:** one soffice at a time — a mutex the three share, or a `-env:UserInstallation`
 per test so each gets its own profile, which is the supported way and does not
 serialise them. Not the timeout: the conversion is not slow, it is excluded.
+
+**2026-09-23 — one hypothesis tested and disproved, and it was the plan above.**
+The `-env:UserInstallation` fix was already in `convert_batch` (it came in with
+LT-070), so the suspicion moved to the *probe*: `soffice_available()` shelled out
+`soffice --version` against the **default** profile, three times over on
+parallel threads. Testable, so it was tested — eight concurrent
+`soffice --version` against one shared profile, on LibreOffice 26.2.5.2, and all
+eight exit 0. `--version` does not take the profile lock. **That is not the
+cause.**
+
+Two changes stand anyway, neither claimed as the fix:
+- The probe is asked once per process and remembered, and takes a private
+  profile like the conversion does. Three processes for one boolean was waste
+  whatever the cause is.
+- **A batch that converts nothing now says who failed.** It returned
+  `Ok(vec![])`, and the caller turned that into "LibreOffice could not draw
+  it", once per file — blaming the file. soffice's own output was read and
+  thrown away. It now travels with the failure, so the next occurrence names
+  its cause instead of arriving as a count assertion about the wrong thing.
+
+**Still open, and still the same bar:** five consecutive clean
+`cargo test -p coreview --bins` runs is not a reproduction, and this has failed
+twice in months. What is left to suspect is memory — three LibreOffice instances
+at once on a 3.2 GB VM — and `scan()`'s working directory, which is
+`coreview-conv-{pid}` and therefore **shared by every parallel test in the
+process**. Neither is proven. The next failure should now arrive with
+LibreOffice's own words attached, which is what D-020 needs before a fix.
 
 **Acceptance:** twenty consecutive `cargo test --workspace` runs, green.
 
@@ -1527,26 +1631,6 @@ MAC tables, stacks, the default route, sweeps and crawls from a seed.*
 - **LT-229** — Local OS notifications. Blocked on D-030 being accepted.
 
 **Phase 4 — UX and workflow.**
-- **LT-381** — **bug** `--good` is a colour that does not exist. Three rules
-  read it — `.cv-lab-said`, `.cv-pill-subnet`, `.cv-diff-in` — and it is
-  declared in no block: not `:root`, not `.is-contrast`, not `@media print`.
-  Each of those elements therefore inherits whatever colour its parent happens
-  to carry, so a "found in the lab" note, a subnet pill and an added line in a
-  diff are all painted by accident. Found while looking for a green for
-  LT-380, which used `--healthy` instead. The fix is to decide what those
-  three should be and say so; `groundTokens.test.ts` parses the stylesheet
-  already and could be taught to fail on a `var()` that resolves to nothing,
-  which is what would have caught this. Not folded into LT-380: it changes how
-  three existing pieces of interface look, and that is a decision, not a
-  side effect.
-
-*The rest of Phase 4 is done; see Done.*
-
-**Phase 5 — import and export.** *All done; see Done.*
-
-**Phase 6 — reporting.** *All done; see Done.*
-
-**Phase 7 — security hardening.**
 - **LT-261** — Optional encrypted database (SQLCipher) keyed from the OS
   keychain. Blocked on Q-012: SQLCipher needs OpenSSL built into every
   installer, which is a build-time and CI-cost decision.
@@ -1564,6 +1648,31 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-381 — **bug** Three colours the stylesheet asks for and never defines — 2026-09-23
+
+`--good` was one of three. The other two were `--muted`, on two section
+headings and the italic "not set" path, and `--surface-2`, behind the
+dashboard's bars. None was declared in any block — not `:root`, not
+`.is-contrast`, not `@media print`.
+
+**Why nothing caught it:** a `var(--nothing)` is not an error. The declaration
+is dropped and the element keeps what it inherited, so a label meant to be dim
+comes out the same colour as the text above it and the page still looks like a
+page. Somebody had already half-noticed: `.cv-hostkeys h2` read
+`var(--muted, var(--text-faint))`, which fixes that one rule and leaves the
+identical rule ten lines away broken.
+
+**Shipped:** the three now read `--healthy`, `--text-faint` and `--panel-2` —
+tokens that already exist in every block, rather than three new ones to keep in
+step across four. And the redundant fallback is gone, because a fallback on a
+token the file *does* define is how the next missing one hides.
+
+`src/lib/cssVariables.test.ts` is what makes it stay fixed: it parses the
+stylesheet, fails on a `var()` naming a variable nothing declares, and fails on
+a fallback propping up a variable that is declared. It fails on all three of
+these without the fix, which is how they were found — the roadmap knew about
+one.
 
 ### LT-403 — ArubaOS-Switch: the model and the serial numbers — 2026-09-23
 

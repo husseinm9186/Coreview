@@ -695,14 +695,39 @@ fn scale_path_d(d: &str, sx: f64, sy: f64, tx: f64, ty: f64) -> String {
 }
 
 /// Whether `soffice` is runnable here.
+///
+/// Asked once per process and remembered. LT-382: this is the other half of the
+/// race `convert_batch` already fixed. `soffice --version` is a soffice, and it
+/// was starting against the *default* user profile, so three tests asking at
+/// once on parallel threads fought over one lock — and a probe that loses that
+/// fight reports LibreOffice as missing on a machine that has it. It gets its
+/// own profile for the same reason the conversion does, and the answer cannot
+/// change while the process runs.
 pub fn soffice_available() -> bool {
-    std::process::Command::new("soffice")
-        .arg("--version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    static ANSWER: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ANSWER.get_or_init(|| {
+        let profile = unique_profile_dir();
+        let _ = std::fs::create_dir_all(&profile);
+        let ok = std::process::Command::new("soffice")
+            .arg(profile_arg(&profile))
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        let _ = std::fs::remove_dir_all(&profile);
+        ok
+    })
+}
+
+/// The argument that hands soffice a profile of its own.
+///
+/// It takes a URL, not a path, and gets it wrong silently: a plain path is
+/// accepted and ignored, which puts the process back on the shared profile with
+/// nothing said.
+fn profile_arg(profile: &Path) -> String {
+    format!("-env:UserInstallation=file://{}", profile.display())
 }
 
 /// Convert a batch of EMF/WMF files to SVG in `out_dir`, one soffice call for
@@ -718,14 +743,14 @@ pub fn convert_batch(files: &[PathBuf], out_dir: &Path) -> Result<Vec<PathBuf>, 
     let profile = unique_profile_dir();
     let _ = std::fs::create_dir_all(&profile);
     let mut cmd = std::process::Command::new("soffice");
-    cmd.arg(format!("-env:UserInstallation=file://{}", profile.display()))
+    cmd.arg(profile_arg(&profile))
         .args(["--headless", "--convert-to", "svg", "--outdir"])
         .arg(out_dir);
     for f in files {
         cmd.arg(f);
     }
     let result = cmd.output().map_err(|e| format!("soffice failed to start: {e}"));
-    let produced = files
+    let produced: Vec<PathBuf> = files
         .iter()
         .filter_map(|f| {
             let candidate = out_dir.join(f.file_stem()?).with_extension("svg");
@@ -733,8 +758,41 @@ pub fn convert_batch(files: &[PathBuf], out_dir: &Path) -> Result<Vec<PathBuf>, 
         })
         .collect();
     let _ = std::fs::remove_dir_all(&profile);
-    result?;
+    let output = result?;
+
+    // LT-382: a batch that produced nothing is LibreOffice failing, not the
+    // files being undrawable, and it has always been reported as the latter —
+    // "could not draw it", once per file, with no cause. Whatever soffice said
+    // was read and thrown away. It is the only witness there is, so it travels
+    // with the failure.
+    if produced.is_empty() && !files.is_empty() {
+        let said = complaint(&output);
+        return Err(match said {
+            Some(said) => format!("LibreOffice converted none of {} file(s): {said}", files.len()),
+            None => format!(
+                "LibreOffice converted none of {} file(s) and said nothing about why",
+                files.len()
+            ),
+        });
+    }
     Ok(produced)
+}
+
+/// What soffice complained about, short enough to put in front of a person.
+///
+/// It writes to both streams depending on what went wrong, and pads its output
+/// with blank lines and a banner; what is wanted is the last thing it actually
+/// said.
+fn complaint(output: &std::process::Output) -> Option<String> {
+    let mut said = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if said.is_empty() {
+        said = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    }
+    let last = said.lines().rev().find(|l| !l.trim().is_empty())?.trim();
+    if last.is_empty() {
+        return None;
+    }
+    Some(last.chars().take(300).collect())
 }
 
 /// A temp directory unique to this invocation, for a soffice profile that no
@@ -760,6 +818,94 @@ pub fn tidy_converted(svg: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// LT-382 (bug): three tests shelling out to LibreOffice at once.
+    ///
+    /// The conversion had been given a private profile; the *probe* had not,
+    /// and `soffice --version` is a soffice. Eight threads asking at once is
+    /// the shape `cargo test --workspace` produces, and before the fix they
+    /// could disagree — one gets the profile lock, the others are refused and
+    /// report LibreOffice as absent, which then empties an icon library and
+    /// fails an assertion about counting.
+    ///
+    /// The answer has to be the same for all of them whether soffice is
+    /// installed here or not, so this runs everywhere rather than skipping.
+    #[test]
+    fn asking_whether_soffice_exists_from_many_threads_gives_one_answer() {
+        let answers: Vec<bool> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..8)
+                .map(|_| scope.spawn(soffice_available))
+                .collect();
+            handles.into_iter().map(|h| h.join().expect("thread")).collect()
+        });
+        assert_eq!(answers.len(), 8);
+        assert!(
+            answers.iter().all(|&a| a == answers[0]),
+            "the probe disagreed with itself across threads: {answers:?}",
+        );
+    }
+
+    /// LT-382: what a batch that converted nothing reports.
+    ///
+    /// It used to report nothing at all — `Ok(vec![])` — and the caller turned
+    /// that into "could not draw it" once per file, which blames the file. The
+    /// cause is LibreOffice's to explain, and this is the check that it is
+    /// asked to.
+    #[test]
+    fn a_batch_that_converted_nothing_says_libreoffice_failed_not_the_files() {
+        if !soffice_available() {
+            eprintln!("skipping: soffice not installed here");
+            return;
+        }
+        let dir = tempfile::tempdir().expect("tempdir");
+        // A file that is not a drawing at all. soffice either refuses it or
+        // writes nothing; either way no SVG appears.
+        let junk = dir.path().join("not-a-drawing.emf");
+        std::fs::write(&junk, b"this is not an enhanced metafile").expect("write");
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).expect("outdir");
+
+        match convert_batch(&[junk], &out) {
+            Ok(produced) => {
+                // If this LibreOffice does draw something from it, the batch
+                // did not fail and there is nothing to report.
+                assert!(!produced.is_empty(), "an empty batch must not come back as success");
+            }
+            Err(why) => {
+                assert!(why.contains("LibreOffice"), "the failure must name who failed: {why}");
+                assert!(!why.contains("could not draw it"), "that blames the file: {why}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_complaint_is_the_last_thing_soffice_actually_said() {
+        let out = |err: &str, stdout: &str| std::process::Output {
+            status: std::process::Command::new("true").status().expect("true"),
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: err.as_bytes().to_vec(),
+        };
+        assert_eq!(
+            complaint(&out("\nError: source file could not be loaded\n\n", "")).as_deref(),
+            Some("Error: source file could not be loaded"),
+        );
+        // It uses whichever stream it felt like.
+        assert_eq!(complaint(&out("", "convert failed")).as_deref(), Some("convert failed"));
+        assert_eq!(complaint(&out("   \n\n", "  ")), None);
+    }
+
+    #[test]
+    fn every_soffice_gets_a_profile_of_its_own() {
+        // Two invocations must not share a directory, or they share the lock
+        // that was the whole problem.
+        let (a, b) = (unique_profile_dir(), unique_profile_dir());
+        assert_ne!(a, b);
+        // And soffice wants a URL. A plain path is accepted and ignored, which
+        // silently puts it back on the shared profile.
+        let arg = profile_arg(&a);
+        assert!(arg.starts_with("-env:UserInstallation=file://"), "{arg}");
+        assert!(arg.ends_with(&a.display().to_string()), "{arg}");
+    }
 
     /// LT-085 (bug): found in the same investigation as LT-084, against the
     /// same real master — a second, unrelated way to end up with an
