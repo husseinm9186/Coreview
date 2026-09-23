@@ -139,3 +139,27 @@ until asked:
 
 None of these are started. The first two are the ones that change whether the
 numbers can be trusted; the rest are convenience.
+
+### Q-018 — Should LibreOffice stop being a dependency at all
+Raised 2026-09-23: "no I don't want liberOffice / so skip LT382". The second
+half is unambiguous and done — LT-382 is in the Icebox. The first half might
+mean more than that, and guessing either way is expensive.
+
+**What LibreOffice is used for here, and only here:** LT-003. A vendor shape
+arrives as an EMF or WMF more often than as an SVG, and `soffice` is what draws
+it. `shapeconv.rs` converts at scan time so those files become palette icons
+instead of being counted and refused.
+
+**If the dependency goes:** an icon folder holding EMF or WMF files reports
+them as unusable, and the operator converts them himself before importing.
+Nothing else in the app changes — it is not used for PDF, export, or reporting.
+Visio `.vsdx` reading is separate and unaffected; `.vss` (LT-012) is *not*, as
+it goes through the same libvisio.
+
+**If it stays:** nothing to do. It is already optional at runtime — the scan
+reports "install libreoffice-draw" and carries on when soffice is absent, so
+nobody is forced to have it installed.
+
+**Why it was not assumed:** removing it would delete working behaviour the
+operator asked for in LT-003, over a sentence that was most likely about the
+flaky test. Waiting on his word.

@@ -263,58 +263,6 @@ checks, including that a named VRF draws no path at all.
 simulation removed it from the path, so its own checkbox unmounted and could
 never be unticked. The candidate list now only grows.
 
-### LT-382 — **bug** Three tests race each other for one LibreOffice — 2026-09-21
-
-`icons::folder_tests::a_real_emf_becomes_a_palette_icon` fails under a full
-`cargo test --workspace` and passes every time it is run on its own. It failed
-that way once in the previous session too, and was reported as a flake rather
-than hidden; it has now done it twice, which makes it a defect and not luck.
-
-**The cause is not the assertion.** Three tests shell out to `soffice` —
-`icons.rs:597`, `icons.rs:1170` and `shapeconv.rs:937` — and `cargo test` runs
-them on parallel threads. **LibreOffice will not run two instances against one
-user profile**: the second either attaches to the first and returns before it
-has written anything, or gives up. On a 3.2 GB VM it can also simply be starved.
-The conversion produces nothing, `lib.icons` is empty, and the count assertion
-is what reports it — accurately, and about the wrong thing.
-
-**What it costs:** a red workspace run that has nothing to do with whatever was
-being changed. That trains the eye to ignore the suite, which is the real
-damage.
-
-**Fix:** one soffice at a time — a mutex the three share, or a `-env:UserInstallation`
-per test so each gets its own profile, which is the supported way and does not
-serialise them. Not the timeout: the conversion is not slow, it is excluded.
-
-**2026-09-23 — one hypothesis tested and disproved, and it was the plan above.**
-The `-env:UserInstallation` fix was already in `convert_batch` (it came in with
-LT-070), so the suspicion moved to the *probe*: `soffice_available()` shelled out
-`soffice --version` against the **default** profile, three times over on
-parallel threads. Testable, so it was tested — eight concurrent
-`soffice --version` against one shared profile, on LibreOffice 26.2.5.2, and all
-eight exit 0. `--version` does not take the profile lock. **That is not the
-cause.**
-
-Two changes stand anyway, neither claimed as the fix:
-- The probe is asked once per process and remembered, and takes a private
-  profile like the conversion does. Three processes for one boolean was waste
-  whatever the cause is.
-- **A batch that converts nothing now says who failed.** It returned
-  `Ok(vec![])`, and the caller turned that into "LibreOffice could not draw
-  it", once per file — blaming the file. soffice's own output was read and
-  thrown away. It now travels with the failure, so the next occurrence names
-  its cause instead of arriving as a count assertion about the wrong thing.
-
-**Still open, and still the same bar:** five consecutive clean
-`cargo test -p coreview --bins` runs is not a reproduction, and this has failed
-twice in months. What is left to suspect is memory — three LibreOffice instances
-at once on a 3.2 GB VM — and `scan()`'s working directory, which is
-`coreview-conv-{pid}` and therefore **shared by every parallel test in the
-process**. Neither is proven. The next failure should now arrive with
-LibreOffice's own words attached, which is what D-020 needs before a fix.
-
-**Acceptance:** twenty consecutive `cargo test --workspace` runs, green.
-
 ### LT-377 — "Authenticating" covered two phases that fail for different reasons — 2026-09-21
 **Source:** debugging LT-375. An Aruba 2930M sat on **Authenticating** for a
 full minute and then failed, and the state gave no way to tell whether the
@@ -9480,6 +9428,74 @@ internal COREVIEW-FGT-Root-CA cannot and never will.
 ---
 
 ## Icebox
+
+### LT-382 — **bug** Three tests race each other for one LibreOffice — 2026-09-21
+
+`icons::folder_tests::a_real_emf_becomes_a_palette_icon` fails under a full
+`cargo test --workspace` and passes every time it is run on its own. It failed
+that way once in the previous session too, and was reported as a flake rather
+than hidden; it has now done it twice, which makes it a defect and not luck.
+
+**The cause is not the assertion.** Three tests shell out to `soffice` —
+`icons.rs:597`, `icons.rs:1170` and `shapeconv.rs:937` — and `cargo test` runs
+them on parallel threads. **LibreOffice will not run two instances against one
+user profile**: the second either attaches to the first and returns before it
+has written anything, or gives up. On a 3.2 GB VM it can also simply be starved.
+The conversion produces nothing, `lib.icons` is empty, and the count assertion
+is what reports it — accurately, and about the wrong thing.
+
+**What it costs:** a red workspace run that has nothing to do with whatever was
+being changed. That trains the eye to ignore the suite, which is the real
+damage.
+
+**Fix:** one soffice at a time — a mutex the three share, or a `-env:UserInstallation`
+per test so each gets its own profile, which is the supported way and does not
+serialise them. Not the timeout: the conversion is not slow, it is excluded.
+
+**2026-09-23 — one hypothesis tested and disproved, and it was the plan above.**
+The `-env:UserInstallation` fix was already in `convert_batch` (it came in with
+LT-070), so the suspicion moved to the *probe*: `soffice_available()` shelled out
+`soffice --version` against the **default** profile, three times over on
+parallel threads. Testable, so it was tested — eight concurrent
+`soffice --version` against one shared profile, on LibreOffice 26.2.5.2, and all
+eight exit 0. `--version` does not take the profile lock. **That is not the
+cause.**
+
+Two changes stand anyway, neither claimed as the fix:
+- The probe is asked once per process and remembered, and takes a private
+  profile like the conversion does. Three processes for one boolean was waste
+  whatever the cause is.
+- **A batch that converts nothing now says who failed.** It returned
+  `Ok(vec![])`, and the caller turned that into "LibreOffice could not draw
+  it", once per file — blaming the file. soffice's own output was read and
+  thrown away. It now travels with the failure, so the next occurrence names
+  its cause instead of arriving as a count assertion about the wrong thing.
+
+**Still open, and still the same bar:** five consecutive clean
+`cargo test -p coreview --bins` runs is not a reproduction, and this has failed
+twice in months. What is left to suspect is memory — three LibreOffice instances
+at once on a 3.2 GB VM — and `scan()`'s working directory, which is
+`coreview-conv-{pid}` and therefore **shared by every parallel test in the
+process**. Neither is proven. The next failure should now arrive with
+LibreOffice's own words attached, which is what D-020 needs before a fix.
+
+**Acceptance:** twenty consecutive `cargo test --workspace` runs, green.
+
+**Iceboxed 2026-09-23 — "no I don't want liberOffice / so skip LT382".**
+Not fixed, and not pretending to be. The flake is real and the cause is still
+unknown; what changed is that it is no longer worth chasing. It stays here
+whole, with the disproved hypothesis, so that if it ever matters again nobody
+starts from the beginning.
+
+**It does not close LT-029.** A known bug parked is still a known bug. What it
+does close is the question of whether anyone spends another session on it.
+
+**The larger thing he said is not this item.** "I don't want LibreOffice" may
+mean the *dependency* should go, not just the flaky test — which is LT-003, the
+EMF/WMF conversion in the icon library, and would mean vendor shapes in those
+formats stop being converted and go back to being refused with a count. That is
+a feature decision, not a test decision, and it is **Q-018** rather than an
+assumption made here.
 
 
 ### LT-307 — Selling Coreview per seat — dropped 2026-09-18
