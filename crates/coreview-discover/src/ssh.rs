@@ -494,7 +494,7 @@ impl Device {
                 // LT-392: said outright rather than left to be read off the
                 // byte count, which is how the whole Aruba diagnosis had to be
                 // done. The device's own message is not quoted (D-055).
-                if crate::cli::command_was_rejected(&extract_output(raw, command)).is_some() {
+                if crate::cli::command_was_rejected(&extract_output(&crate::cli::readable(raw), command)).is_some() {
                     " — the device rejected it"
                 } else {
                     ""
@@ -508,7 +508,10 @@ impl Device {
             ),
         }
         let (raw, _) = result?;
-        Ok(extract_output(&raw, command))
+        // LT-402: as text, before anything reads it. A device that paints its
+        // screen wraps the echo in cursor moves, and an echo that cannot be
+        // found is an echo that is never removed.
+        Ok(extract_output(&crate::cli::readable(&raw), command))
     }
 
     /// Reads until the device draws its prompt, returning the prompt itself.

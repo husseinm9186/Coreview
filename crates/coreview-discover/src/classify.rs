@@ -113,6 +113,16 @@ fn from_platform(s: &str) -> Option<DeviceClass> {
     if s.contains("NEXUS") || s.contains("CATALYST") {
         return Some(DeviceClass::Switch);
     }
+    // LT-403: a model that says what it is. Every rule above is a family
+    // prefix, and an estate has families nobody here has heard of — the
+    // operator's `Aruba JL322A 2930M-48G-PoE+ Switch` matched none of them and
+    // was drawn as a generic box. Last, so everything specific still wins: a
+    // FortiAP saying "Switch" is an access point, and stays one.
+    //
+    // A whole word, so "switchboard" is not a switch.
+    if s.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| w == "SWITCH") {
+        return Some(DeviceClass::Switch);
+    }
 
     None
 }
@@ -405,5 +415,31 @@ mod tests {
         // A wrong class is worse than an honest one: it makes a filter lie.
         assert_eq!(classify(None, &[], None), DeviceClass::Unknown);
         assert_eq!(classify(Some(""), &caps("IGMP"), None), DeviceClass::Unknown);
+    }
+    /// LT-403. The operator's 2930M reported
+    /// `Aruba JL322A 2930M-48G-PoE+ Switch` and was drawn as a generic
+    /// device, because every switch rule was a model *prefix* and none of
+    /// them was his.
+    #[test]
+    fn a_model_that_says_switch_is_a_switch() {
+        for model in [
+            "Aruba JL322A 2930M-48G-PoE+ Switch",
+            "Aruba JL693A 2930F-24G-PoE+ Switch",
+            "HP 5406Rzl2 Switch",
+        ] {
+            assert_eq!(classify(Some(model), &[], None), DeviceClass::Switch, "{model}");
+        }
+    }
+
+    #[test]
+    fn the_word_switch_does_not_outrank_what_a_thing_actually_is() {
+        // A FortiAP advertises "Switch" among its capabilities, and plenty of
+        // gear has the word in a description. The specific rules run first and
+        // must keep winning.
+        assert_eq!(classify(Some("FortiAP-231F Switch"), &[], None), DeviceClass::AccessPoint);
+        assert_eq!(classify(Some("AIR-CT5520 switch"), &[], None), DeviceClass::WirelessController);
+        assert_eq!(classify(Some("PA-440 switch"), &[], None), DeviceClass::Firewall);
+        // And a word on its own is not a model.
+        assert_eq!(classify(Some("switchboard"), &[], None), DeviceClass::Unknown);
     }
 }

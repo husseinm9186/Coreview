@@ -564,6 +564,52 @@ pub fn parse_stacking_detail(out: &str) -> Option<crate::stacking::StackInfo> {
     (!members.is_empty()).then(|| crate::stacking::StackInfo::backplane(members))
 }
 
+/// What `show system` says about the switch (LT-403).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct System {
+    pub name: Option<String>,
+    pub software_revision: Option<String>,
+    pub base_mac: Option<String>,
+    /// One per stack member, in member order; one for a standalone switch.
+    pub serials: Vec<String>,
+}
+
+/// `show system`.
+///
+/// `show version` on this platform is an image stamp and a boot ROM — no
+/// model and no serial — so the fields every other vendor puts in `show
+/// version` are read from here instead. A stack prints a `Member :n` block
+/// each; a standalone switch prints one serial and no blocks.
+pub fn parse_system(out: &str) -> System {
+    if !out.contains("General System Information") {
+        return System::default();
+    }
+    let mut found = System::default();
+    for line in out.lines() {
+        let Some((key, value)) = line.split_once(':') else { continue };
+        let value = value.trim();
+        if value.is_empty() {
+            continue;
+        }
+        match key.trim().to_ascii_lowercase().as_str() {
+            "system name" => found.name = Some(value.to_string()),
+            "software revision" => found.software_revision = Some(value.to_string()),
+            "base mac addr" => found.base_mac = Some(value.to_string()),
+            "serial number" => found.serials.push(value.to_string()),
+            _ => {}
+        }
+    }
+    found
+}
+
+/// The model a stack reports, which is the same box for every member.
+///
+/// The one place this platform states its model at all: not `show version`,
+/// and not `show system`.
+pub fn model_of(stack: &crate::stacking::StackInfo) -> Option<String> {
+    stack.members.iter().find_map(|m| m.model.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -916,5 +962,75 @@ Serial Number    : LAB0000002
         assert!(parse_trunks(PORTS).is_empty());
         assert!(parse_show_ip(TRUNKS).is_empty());
         assert!(parse_interfaces_brief(SHOW_IP).is_empty());
+    }
+    /// LT-403. `show version` on this platform is an image stamp and a boot
+    /// ROM: no model, no serial. `show system` is where the serials are, one
+    /// per stack member. Invented values, the operator's shapes (D-027).
+    const SYSTEM: &str = "
+ Status and Counters - General System Information
+
+  System Name        : LAB-STACK-1                                     
+  System Contact     : 
+  System Location    : 
+  MAC Age Time (sec) : 300    
+  Time Zone          : -360 
+
+  Software revision  : WC.16.10.0009      
+  Base MAC Addr      : aabbcc-000007    
+
+ Member :1
+
+  ROM Version        : WC.17.02.0006                 
+  Up Time            : 11 days        
+  CPU Util (%)       : 7           
+  MAC Addr           : aabbcc-000000    
+  Serial Number      : LAB0000001                              
+  Memory   - Total   : 339,329,536 
+             Free    : 175,113,984 
+
+ Member :2
+
+  ROM Version        : WC.17.02.0007                 
+  Up Time            : 45 hours       
+  CPU Util (%)       : 0           
+  MAC Addr           : aabbcc-000100    
+  Serial Number      : LAB0000002                              
+";
+
+    #[test]
+    fn the_serials_come_from_show_system_one_per_member() {
+        let system = parse_system(SYSTEM);
+        assert_eq!(system.serials, vec!["LAB0000001", "LAB0000002"]);
+        assert_eq!(system.name.as_deref(), Some("LAB-STACK-1"));
+        assert_eq!(system.software_revision.as_deref(), Some("WC.16.10.0009"));
+        assert_eq!(system.base_mac.as_deref(), Some("aabbcc-000007"));
+    }
+
+    #[test]
+    fn a_standalone_switch_has_one_serial_and_no_member_blocks() {
+        let one = "
+ Status and Counters - General System Information
+
+  System Name        : LAB-SW-9
+  Software revision  : WC.16.10.0009
+  Base MAC Addr      : aabbcc-000900
+  Serial Number      : LAB0000009
+";
+        assert_eq!(parse_system(one).serials, vec!["LAB0000009"]);
+    }
+
+    #[test]
+    fn something_that_is_not_this_table_yields_nothing() {
+        let cisco = "Cisco IOS Software, Version 15.2(7)E\nSystem Serial Number : FOC0000000A\n";
+        let found = parse_system(cisco);
+        assert!(found.serials.is_empty() && found.name.is_none(), "{found:?}");
+    }
+
+    #[test]
+    fn the_model_is_the_one_the_stack_reports() {
+        // `show version` has no model at all, so the stack's own table is
+        // where it comes from — every member is the same box.
+        let stack = parse_stacking_detail(STACK).expect("a stack");
+        assert_eq!(model_of(&stack).as_deref(), Some("Aruba JL322A 2930M-48G-PoE+ Switch"));
     }
 }

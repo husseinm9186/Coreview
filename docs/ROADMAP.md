@@ -1502,6 +1502,74 @@ pulled into Phase 1.*
 
 ## Done
 
+### LT-403 — ArubaOS-Switch: the model and the serial numbers — 2026-09-23
+
+**Source:** the same screenshot — Model wrong, Serial empty — and the commands
+he then captured: `show system` and `show modules`.
+
+`show version` on this platform is an image stamp and a boot ROM. It carries
+no model and no serial, so `platform_from_version` and `serials_in_version`
+find nothing true. The switch keeps them elsewhere:
+- **`show system`** — the software revision, the base MAC, and per stack
+  member the ROM version, MAC, uptime and **serial number**.
+- **`show stacking`** — the model, per member: `Aruba JL322A 2930M-48G-PoE+
+  Switch`.
+- **`show modules`** — the stacking modules and their own serials, which are
+  parts rather than the switch.
+
+**Acceptance:** the Model field reads the switch's model, the Serial field both
+members' serials, and neither carries an escape sequence.
+
+**Shipped 2026-09-23.**
+- **Serials** from `show system`, one per stack member — `parse_system` also
+  reads the system name, the software revision and the base MAC.
+- **The model** from the stack's own table, the only place this platform
+  states one: `Aruba JL322A 2930M-48G-PoE+ Switch`.
+- **And it is a switch now.** Every switch rule in `classify` was a model
+  prefix and none of them was his, so a correctly-read model would still have
+  been drawn as a generic box. A model that says the whole word `Switch` is
+  one — last, after the access-point, controller and firewall rules, so a
+  FortiAP advertising "Switch" stays an access point and `switchboard` stays
+  nothing.
+- `show modules` is not read: it lists the stacking modules and their own
+  serials, which are parts rather than the switch.
+**Verified against his real output:** model, both serials, the class, the
+system name and the revision, and the painted `show version` now reading as
+`Image stamp: …` rather than as cursor moves. Not yet run through a crawl on
+the switch.
+
+### LT-402 — **bug** A command's output keeps the escape sequences that drew it — 2026-09-23
+
+**Source:** "the model and sn and the infor needed from the aruba switch must
+be correct", with a screenshot: the device's **Model** field reads
+`[200;14Hshow versi[200;14H[?25h[200;24H…`.
+
+That is the echo of `show version` with the cursor moves that drew it. LT-383
+taught the *prompt* to be read off a rendered screen; the **output** is still
+taken from the raw buffer, and on a platform that paints, the raw buffer is
+full of sequences.
+
+**What it breaks, in order.** `extract_output` drops everything up to the echo
+of the command by finding that echo as a line. Wrapped in escapes it is not
+found, so nothing is dropped and the whole painted buffer is returned as the
+answer. `platform_from_version` then falls through to `first_line(version)`,
+and the first line is the painted echo — which is what reached the Model field.
+Anything else parsing this platform's output is reading the same soup.
+
+**Fix:** strip terminal control sequences from a command's output before it is
+extracted. `sessionlog::SessionLog` already does exactly that, chunk-safe,
+tested, and used only by the terminal's log file since LT-324. The interactive
+shell keeps every byte — it *is* a terminal — but a captured command is text.
+
+**Shipped 2026-09-23.** `cli::readable` runs a command's answer through
+`sessionlog::SessionLog` before `extract_output` sees it, so the echo is found
+and dropped, and no escape reaches a parser or a field. The interactive shell
+is untouched — it is a terminal and keeps every byte.
+**Tested:** the painted shape from his switch, echo and prompt removed and the
+answer kept; and a plain Cisco answer asserted byte-for-byte identical either
+way, because a fix that changes the devices that already worked costs more
+than it buys.
+
 ### LT-401 — **bug** On a Mac, the app's data is in a folder Finder will not show — 2026-09-22
 
 **Source:** "I can't find the debug data file in the macos".

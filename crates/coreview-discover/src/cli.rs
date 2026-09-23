@@ -313,6 +313,26 @@ pub fn escape_for_reading(bytes: &[u8]) -> String {
     out
 }
 
+/// A command's answer as text, with the sequences that drew it taken out
+/// (LT-402).
+///
+/// A platform that paints its screen wraps everything — the echo, each line,
+/// the prompt after it — in cursor moves and line erases. `extract_output`
+/// looks for the echo as a line and cannot find it in that state, so it drops
+/// nothing and returns the whole painted buffer as the answer. On the
+/// operator's switch that answer became a device's Model field, escape
+/// sequences and all.
+///
+/// [`crate::sessionlog::SessionLog`] already turns a terminal stream into text
+/// and has since LT-324, chunk-safe and tested; it was only ever pointed at
+/// the terminal's log file. A captured command is text, so it is pointed here
+/// too. The interactive shell keeps every byte, because that one *is* a
+/// terminal.
+pub fn readable(raw: &str) -> String {
+    let mut shaper = crate::sessionlog::SessionLog::new();
+    String::from_utf8_lossy(&shaper.feed(raw.as_bytes())).into_owned()
+}
+
 /// Removes the paging markers a device left in captured output.
 ///
 /// When paging happens anyway, the device writes `--More--`, then erases it
@@ -852,5 +872,40 @@ SW1#";
         assert_eq!(escape_for_reading(b"a\x07b\\c"), r"a\x07b\\c");
         // High bytes are bytes; a transcript records what arrived.
         assert_eq!(escape_for_reading("é".as_bytes()), r"\xc3\xa9");
+    }
+    /// LT-402, from the operator's screenshot: the Model field of a device on
+    /// his diagram read `[200;14Hshow versi[200;14H[?25h…`.
+    ///
+    /// A platform that paints its screen echoes the command with the cursor
+    /// moves that drew it. `extract_output` finds the echo as a *line*, does
+    /// not find it wrapped in escapes, drops nothing, and hands the whole
+    /// painted buffer back as the answer — which is then read as a model.
+    #[test]
+    fn a_painted_answer_is_read_as_text() {
+        let painted = concat!(
+            "\x1b[200;14Hshow version\x1b[200;14H\x1b[?25h\x1b[200;24H\r\n",
+            "\x1b[2KImage stamp:    /ws/swbuildm/rel_example/code/build/bom\r\n",
+            "\x1b[2K                WC.16.10.0009\r\n",
+            "Boot ROM Version:    WC.17.02.0006\r\n",
+            "\x1b[2KLAB-SW-1# ",
+        );
+        let out = extract_output(&readable(painted), "show version");
+        assert!(out.starts_with("Image stamp:"), "the echo is gone: {out:?}");
+        assert!(!out.contains('\x1b'), "an escape survived: {out:?}");
+        assert!(!out.contains("show version"), "the echo survived: {out:?}");
+        assert!(!out.contains("LAB-SW-1#"), "the prompt survived: {out:?}");
+        assert!(out.contains("WC.16.10.0009"), "the answer itself is kept: {out:?}");
+    }
+
+    #[test]
+    fn a_plain_answer_is_unchanged_by_being_made_readable() {
+        // Every device that never painted anything must read exactly as it
+        // did before, or this fix costs more than it buys.
+        let plain = "show version\r\nCisco IOS Software, Version 15.2(7)E\r\nSW1#";
+        assert_eq!(
+            extract_output(&readable(plain), "show version"),
+            extract_output(plain, "show version"),
+        );
+        assert_eq!(readable("nothing to do here\n"), "nothing to do here\n");
     }
 }

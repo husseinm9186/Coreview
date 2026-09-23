@@ -1410,6 +1410,14 @@ async fn visit(
     } else {
         String::new()
     };
+    // LT-403: `show version` on this platform carries no model and no serial,
+    // so the fields every other vendor puts there are read from `show system`
+    // and from the stack's own table.
+    let aruba_system = if aruba_switch {
+        crate::arubasw::parse_system(&device.run("show system").await.unwrap_or_default())
+    } else {
+        crate::arubasw::System::default()
+    };
     if aruba_switch && port_channels.is_empty() {
         port_channels = crate::arubasw::parse_trunks(&device.run("show trunks").await.unwrap_or_default());
     }
@@ -1726,6 +1734,11 @@ async fn visit(
     let forti_status = forti.as_ref().map(|f| &f.status);
     let platform = match forti_status {
         Some(s) if s.model.is_some() => s.model.clone(),
+        // LT-403: the stack's table is the only place this platform states a
+        // model. Without it the model fell through to the first line of
+        // `show version`, which is an image stamp — and, before LT-402, an
+        // image stamp still wrapped in the escapes that drew it.
+        _ if aruba_switch => stack.as_ref().and_then(crate::arubasw::model_of),
         _ => platform_from_version(&version),
     };
     let version_line = match forti_status {
@@ -1793,7 +1806,11 @@ async fn visit(
             probe_target,
             class,
             platform,
-            serial: serial_field(&serials_in_version(&version)),
+            serial: if aruba_switch {
+                serial_field(&aruba_system.serials)
+            } else {
+                serial_field(&serials_in_version(&version))
+            },
             version: first_line(&version).map(str::to_string),
             neighbors: neighbors.clone(),
             hops,
