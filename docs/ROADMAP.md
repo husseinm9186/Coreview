@@ -78,6 +78,69 @@ rather than my assumption:**
    layered over a derived view — and that is what Phase 1 builds, but it changes
    D-035 and is recorded as such.
 
+### LT-404 — Meraki: the Dashboard API, in Settings, by customer and network — 2026-09-23
+
+**Source:** "I want the dashboard API for meraki please make sure it goes to
+the settings at the top menu with options to select the customers and
+networks", with two of his own scripts attached as the specification:
+`meraki-backup.py` and `meraki_healthcheck.py`.
+
+**Why it is needed at all:** Meraki MR, MS and MX have no CLI. A crawl can
+never log into one. Everything Coreview can know about a Meraki estate comes
+from the Dashboard API or from what a neighbouring switch says about it.
+
+**Shape:**
+- A **read-only** client: GET only, by construction, like his script. Rate
+  limited under the 5 requests/second per-organisation limit, with `Retry-After`
+  honoured on 429, retries on 5xx, and `Link: rel=next` paging.
+- The API key lives in the **vault**, never in the document and never in an
+  export (D-006).
+- **Settings, from the top menu**: the key, then the organisations it can see —
+  the *customers* — and the networks under the chosen one, picked from lists
+  the key itself returns rather than typed.
+
+**Decided with it:** D-056, because this is the first time the app talks to
+anything but the operator's own network.
+
+**What is proven and what is not.** "the script I provided you has been tested
+and working" — so the endpoints, the field names and the paging are evidence
+from a working program against the live API, not documentation, and they are
+what this is built from. What is *not* proven is Coreview's own client: there
+is no Meraki key on this machine, so nothing here has had an answer from
+`api.meraki.com`. It reports itself unverified, the way the stack parsers do
+(D-051), until he runs it.
+
+### LT-405 — Meraki: the configuration backup — 2026-09-23
+
+**Source:** "I need option to include the Merki backup", with
+`meraki-backup.py` as the specification.
+
+Per network, what that script collects: the network itself, VLAN settings and
+VLANs, the L3 firewall rules, the SSIDs, and per MS switch its ports and
+routing interfaces. Written as one file, the way a configuration backup is
+written today (LT-151), so it sits with the rest of the estate's backups and is
+named by the same pattern.
+
+**Not a config *push*.** Read-only, like everything else here.
+
+### LT-406 — Meraki: the health check — 2026-09-23
+
+**Source:** "I need option to include the … Meraki health checker", with
+`meraki_healthcheck.py` — 3,300 lines — as the specification.
+
+The interesting part of that script is not the API calls; it is the grading.
+An evaluator raises a stable **code** for what it found, and a **profile** —
+small business, education, healthcare, high security — decides whether that is
+an action or an advisory. The same finding is graded differently for a church
+and for a CMMC enclave, and nothing is hidden: it is ranked.
+
+**Agreed 2026-09-23:** the findings render **on screen** first and export
+through the PDF engine that already exists. Not `.docx`: the script writes one,
+Coreview has no `.docx` writer, and building one is days of work before a single
+check is written. Revisit once the findings can be seen.
+
+**Depends on** LT-404 for the client and the selection.
+
 ### LT-346 — Trace Path: where a packet would actually go — 2026-09-20
 **Source:** asked 2026-09-20 — "Implement a new Path Intelligence feature …
 select a source and destination and visualize the actual routing/forwarding

@@ -3,7 +3,10 @@
 A local-first desktop app for network engineers: draw a topology, point it at
 real addresses, and watch the links while you work. Tauri 2 + React + TypeScript
 + Vite on the front, Rust behind. Everything stays on the machine — no account,
-no telemetry, no cloud.
+no telemetry, nothing phoned home. Nothing leaves the machine unless the
+operator asked for that particular thing: the one integration with a vendor's
+cloud, Meraki's Dashboard API, is read-only, started by hand, and keyed on his
+own credentials (D-056).
 
 ## Standing rules
 
@@ -103,6 +106,9 @@ crates/
                      terminal (LT-320), and `sessionlog` (LT-324)
   coreview-probe     ICMP/TCP/DNS probing and the ping sweep's identification
                      (names over LLMNR/NetBIOS/mDNS, MAC, OUI, ports); no Tauri
+  coreview-meraki    The Meraki Dashboard API, read-only and GET-only, to one
+                     named host (LT-404, D-056). Meraki has no CLI, so this is
+                     the only way to see such an estate from the inside.
 src-tauri/           Commands, SQLite, credential vault, icon library scan;
                      `terminal.rs` holds the live SSH sessions, which belong
                      to the window and are never written down (D-047), and

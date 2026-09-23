@@ -1007,3 +1007,35 @@ accident needs something that fails the build.
 
 **Off by default.** A log nobody asked for is a file nobody is guarding.
 
+### D-056 — Coreview may call a vendor's cloud, when the operator asks it to — 2026-09-23
+**Asked for:** "I want the dashboard API for meraki".
+
+**The conflict, stated plainly.** The first lines of `CLAUDE.md` say the app
+keeps everything on the machine — *no account, no telemetry, no cloud*. The
+Meraki Dashboard API is a cloud service. Building this without saying so would
+quietly make that sentence untrue.
+
+**Decision:** an integration with a vendor's cloud is allowed when all of these
+hold, and is refused when any one of them does not:
+- **The operator starts it.** No background poll, no call on launch, nothing on
+  a timer. A button he pressed, or a run he asked for.
+- **It is his own account and his own data.** The key is his, the
+  organisations are his customers', and nothing about *him* is sent anywhere.
+- **Read-only, by construction.** GET only. The client has no method that can
+  change a customer's configuration, so no amount of misuse can.
+- **The key lives in the vault** (D-006), never in the document, never in an
+  export, never in a debug log (D-055).
+- **It is named.** `api.meraki.com` and nothing else; a general-purpose HTTP
+  client that could be pointed anywhere is not what this allows.
+
+**What the promise still means.** No telemetry, no account *with us*, nothing
+phoned home, and nothing leaves the machine unless the operator asked for that
+specific thing. The wording in `CLAUDE.md` is narrowed to say that rather than
+left to be contradicted by the code.
+
+**Why not refuse.** Meraki has no CLI. Without this, a Meraki estate can only
+ever be what a neighbouring switch happens to say about it, which is a fraction
+of what he already gets from a script on his own laptop. Refusing would not
+keep the data local; it would just make the app less useful than the two files
+he already has.
+

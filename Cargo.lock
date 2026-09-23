@@ -1005,6 +1005,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "coreview-meraki"
+version = "2.4.9"
+dependencies = [
+ "rustls",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-rustls",
+ "webpki-roots",
+]
+
+[[package]]
 name = "coreview-probe"
 version = "2.4.9"
 dependencies = [
