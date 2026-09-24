@@ -218,6 +218,158 @@ pub async fn meraki_health_check(
     Ok(checks::run(&collected, &profile))
 }
 
+/// Reads a Meraki estate onto the diagram (LT-411).
+///
+/// "we need to discover the meraki the same way we are discovering any other
+/// networks" — so what comes back is a [`CrawlResult`], the same type a crawl
+/// returns, and it goes through the same reconcile and review path. Nothing
+/// downstream needs to know the devices came from an API rather than a
+/// command line.
+///
+/// Every device is `ReachedBy::Reported`, and that is the honest word for it:
+/// **nothing here was logged into.** A Meraki has no command line to log into.
+/// Presenting these as reached would claim a verification that did not happen.
+#[tauri::command]
+pub async fn meraki_discover(
+    state: State<'_, AppState>,
+    credential_id: String,
+    organization_id: String,
+    network_ids: Vec<String>,
+) -> CmdResult<Discovered> {
+    let client = client_for(&state, &credential_id, "meraki discovery")?;
+    let organization = client
+        .organizations()
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|o| o.id == organization_id)
+        .ok_or("That organisation is not one this key can see.")?;
+
+    let all = client.networks(&organization_id).await.map_err(|e| e.to_string())?;
+    let chosen: Vec<Network> = if network_ids.is_empty() {
+        all
+    } else {
+        all.into_iter().filter(|n| network_ids.contains(&n.id)).collect()
+    };
+    if chosen.is_empty() {
+        return Err("None of the chosen networks are in that organisation.".into());
+    }
+
+    let found = client.discover(&organization, &chosen, |_, _, _| {}).await;
+    Ok(as_crawl_result(found))
+}
+
+/// What a Meraki discovery hands the page.
+///
+/// `devices` is exactly what the crawl's review path already consumes, so the
+/// diagram merge is shared rather than re-implemented. `notes` says what could
+/// not be read, because a thin estate and an unreadable one look identical
+/// otherwise.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Discovered {
+    pub devices: Vec<coreview_discover::crawl::CrawledDevice>,
+    pub links: usize,
+    pub notes: Vec<String>,
+}
+
+/// Maps what the Dashboard said into the shape a crawl produces.
+///
+/// Split out so it can be tested without a key: the mapping is where a
+/// discovery would quietly go wrong, not the HTTP.
+fn as_crawl_result(found: coreview_meraki::discover::Found) -> Discovered {
+    use coreview_discover::crawl::{CrawledDevice, DeviceDetails, ReachedBy};
+    use coreview_discover::types::{DeviceAddress, DeviceClass, Neighbor, Protocol};
+
+    let class_of = |kind: &str| match kind {
+        "appliance" => DeviceClass::Firewall,
+        "switch" => DeviceClass::Switch,
+        "wireless" => DeviceClass::AccessPoint,
+        "camera" => DeviceClass::Camera,
+        _ => DeviceClass::Unknown,
+    };
+
+    // Serial to name, so a link can be drawn between the names on the diagram
+    // rather than between serials nobody recognises.
+    let name_of = |serial: &str| {
+        found
+            .devices
+            .iter()
+            .find(|d| d.serial == serial)
+            .map(|d| d.name.clone())
+            .unwrap_or_else(|| serial.to_string())
+    };
+
+    let devices = found
+        .devices
+        .iter()
+        .map(|d| {
+            let addresses: Vec<DeviceAddress> = d
+                .address
+                .iter()
+                .map(|ip| DeviceAddress { ip: ip.clone(), interface: None, is_management: true })
+                .collect();
+            // Its own end of every link the estate reported.
+            let neighbors: Vec<Neighbor> = found
+                .links
+                .iter()
+                .filter_map(|l| {
+                    let (mine, theirs, my_port, their_port) = if l.from_serial == d.serial {
+                        (&l.from_serial, &l.to_serial, &l.from_port, &l.to_port)
+                    } else if l.to_serial == d.serial {
+                        (&l.to_serial, &l.from_serial, &l.to_port, &l.from_port)
+                    } else {
+                        return None;
+                    };
+                    let _ = mine;
+                    let device_id = name_of(theirs);
+                    Some(Neighbor {
+                        short_name: device_id.clone(),
+                        device_id,
+                        serial: Some(theirs.clone()),
+                        addresses: Vec::new(),
+                        local_interface: my_port.clone(),
+                        remote_interface: their_port.clone(),
+                        platform: None,
+                        capabilities: Vec::new(),
+                        version: None,
+                        class: DeviceClass::Unknown,
+                        // The estate's own layer-two topology is built from
+                        // LLDP and CDP, and saying so is more honest than
+                        // inventing a protocol name for it.
+                        discovered_by: Protocol::Lldp,
+                        vendor: None,
+                        chassis_id: None,
+                    })
+                })
+                .collect();
+
+            CrawledDevice {
+                hostname: d.name.clone(),
+                address: d.address.clone().unwrap_or_default(),
+                probe_target: d.address.clone().unwrap_or_default(),
+                addresses,
+                class: class_of(&d.kind),
+                platform: d.model.clone(),
+                serial: Some(d.serial.clone()),
+                version: d.firmware.clone(),
+                neighbors,
+                hops: 0,
+                // Never logged into, because there is nothing to log into.
+                reached_by: ReachedBy::Reported,
+                attached: Vec::new(),
+                port_channels: Vec::new(),
+                default_next_hop: None,
+                stack: None,
+                details: DeviceDetails::default(),
+                dns_name: None,
+            }
+        })
+        .collect();
+
+    Discovered { devices, links: found.links.len(), notes: found.notes.clone() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -293,6 +445,78 @@ mod tests {
         assert_eq!(has_backup(Some(root), "Contoso", "HQ"), Some(true), "by name");
         assert_eq!(has_backup(Some(root), "Contoso", "N_2"), Some(false), "a network not in it");
         assert_eq!(has_backup(Some(root), "Someone Else", "N_1"), None, "no folder at all");
+    }
+
+    /// LT-411: the mapping is where a discovery quietly goes wrong — a device
+    /// that arrives with no class draws as a grey box, and a link whose ends
+    /// do not match a device draws as nothing at all.
+    #[test]
+    fn an_estate_becomes_devices_and_links_the_diagram_can_use() {
+        use coreview_discover::types::DeviceClass;
+        use coreview_meraki::discover::{Found, FoundDevice, FoundLink};
+
+        let device = |serial: &str, name: &str, kind: &str, ip: Option<&str>| FoundDevice {
+            name: name.into(),
+            serial: serial.into(),
+            model: Some("MS120-8".into()),
+            mac: None,
+            address: ip.map(str::to_string),
+            kind: kind.into(),
+            status: Some("online".into()),
+            firmware: Some("MS 15.21".into()),
+            network: "Site".into(),
+            notes: None,
+        };
+        let found = Found {
+            devices: vec![
+                device("Q1", "Core switch", "switch", Some("192.0.2.10")),
+                device("Q2", "Front desk AP", "wireless", None),
+                device("Q3", "Gateway", "appliance", Some("192.0.2.1")),
+            ],
+            links: vec![FoundLink {
+                from_serial: "Q1".into(),
+                to_serial: "Q2".into(),
+                from_port: Some("12".into()),
+                to_port: Some("wired0".into()),
+            }],
+            notes: vec!["one network's topology could not be read".into()],
+        };
+
+        let out = as_crawl_result(found);
+        assert_eq!(out.devices.len(), 3);
+        assert_eq!(out.links, 1);
+        assert_eq!(out.notes.len(), 1, "what could not be read travels with it");
+
+        // Each kind draws as the right thing rather than a grey box.
+        let class = |name: &str| out.devices.iter().find(|d| d.hostname == name).expect(name).class;
+        assert_eq!(class("Core switch"), DeviceClass::Switch);
+        assert_eq!(class("Front desk AP"), DeviceClass::AccessPoint);
+        assert_eq!(class("Gateway"), DeviceClass::Firewall);
+
+        // Nothing was logged into, and it says so.
+        assert!(out.devices.iter().all(|d| matches!(d.reached_by, coreview_discover::crawl::ReachedBy::Reported)));
+
+        // The link appears from both ends, named by hostname rather than by a
+        // serial nobody recognises, with each end's own port.
+        let core = out.devices.iter().find(|d| d.hostname == "Core switch").expect("core");
+        assert_eq!(core.neighbors.len(), 1);
+        assert_eq!(core.neighbors[0].device_id, "Front desk AP");
+        assert_eq!(core.neighbors[0].local_interface.as_deref(), Some("12"));
+        assert_eq!(core.neighbors[0].remote_interface.as_deref(), Some("wired0"));
+
+        let ap = out.devices.iter().find(|d| d.hostname == "Front desk AP").expect("ap");
+        assert_eq!(ap.neighbors.len(), 1, "a cable is seen from both ends");
+        assert_eq!(ap.neighbors[0].device_id, "Core switch");
+        assert_eq!(ap.neighbors[0].local_interface.as_deref(), Some("wired0"), "its own port, not the switch's");
+
+        // A device the dashboard gave no address is still a device.
+        assert_eq!(ap.address, "");
+        assert!(ap.addresses.is_empty());
+        assert_eq!(ap.serial.as_deref(), Some("Q2"));
+
+        // And the gateway is on nothing, because nothing reported a link to it.
+        let gw = out.devices.iter().find(|d| d.hostname == "Gateway").expect("gw");
+        assert!(gw.neighbors.is_empty(), "a link nobody reported is not invented");
     }
 
     #[test]

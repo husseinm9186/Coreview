@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { t } from '../i18n';
+import { activePage } from '../lib/pages';
+import { reconcile } from '../lib/reconcile';
+import { buildTopology } from '../lib/topology';
 import {
   ipc,
   type CredentialSummary,
@@ -9,6 +12,7 @@ import {
   type MerakiProfile,
   type MerakiReport,
 } from '../lib/ipc';
+import { useStore } from '../state/store';
 import { MerakiReportView } from './MerakiReport';
 
 /**
@@ -34,7 +38,7 @@ export function MerakiSettings({ credentials }: { credentials: CredentialSummary
   const [networkId, setNetworkId] = useState('');
   const [profiles, setProfiles] = useState<MerakiProfile[]>([]);
   const [profileId, setProfileId] = useState('smb');
-  const [busy, setBusy] = useState<'' | 'organizations' | 'networks' | 'backup' | 'health'>('');
+  const [busy, setBusy] = useState<'' | 'organizations' | 'networks' | 'backup' | 'health' | 'discover'>('');
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [report, setReport] = useState<MerakiReport | null>(null);
@@ -140,6 +144,59 @@ export function MerakiSettings({ credentials }: { credentials: CredentialSummary
     }
   }, [credentialId, organizationId, networkId, profileId]);
 
+  /**
+   * LT-411: the estate onto the diagram, through the same path a crawl takes.
+   *
+   * `buildTopology` then `reconcile` then `applyCrawlChanges` — the three
+   * functions the crawl review uses, in the same order. A Meraki device is
+   * placed, updated and deduplicated by exactly the rules everything else is,
+   * because it is the same code rather than a second implementation of it.
+   */
+  const runDiscover = useCallback(async () => {
+    const store = useStore.getState();
+    if (!credentialId || !organizationId || !store.meta) return;
+    const chosen = networkId ? [networkId] : networks.map((n) => n.id);
+    if (chosen.length === 0) return;
+    setBusy('discover');
+    setError('');
+    setNote('');
+    try {
+      const found = await ipc.merakiDiscover(credentialId, organizationId, chosen);
+      if (found.devices.length === 0) {
+        setNote(t('meraki.discoverNothing'));
+        return;
+      }
+      const page = activePage(store.doc);
+      const bottom = page.nodes.reduce((m, n) => Math.max(m, n.position.y + 120), 0);
+      const topo = buildTopology({ devices: found.devices, notVisited: [] }, store.meta.id, {
+        origin: { x: 80, y: bottom + 80 },
+        // A second read updates the diagram rather than drawing the estate
+        // again beside it.
+        existingNodes: page.nodes,
+        existingEdges: page.edges,
+      });
+      // Additions and updates only: a device the Dashboard stopped reporting
+      // is not evidence it was removed from the network.
+      // Additions and changes only. A device the Dashboard stopped reporting
+      // is not evidence it was removed from the network, and a `moved` is a
+      // decision about the drawing rather than about the estate.
+      const changes = reconcile({ page, topo, devices: found.devices, inScope: null }).filter(
+        (c) => c.kind === 'added' || c.kind === 'changed',
+      );
+      const added = store.applyCrawlChanges(changes);
+      setNote(
+        `${t('meraki.discoverDone', {
+          devices: t('meraki.devices', { count: added.length }),
+          links: t('meraki.links', { count: found.links }),
+        })}${found.notes.length > 0 ? ` — ${found.notes.join('; ')}` : ''}`,
+      );
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy('');
+    }
+  }, [credentialId, organizationId, networkId, networks]);
+
   const profile = profiles.find((p) => p.id === profileId);
 
   return (
@@ -218,6 +275,17 @@ export function MerakiSettings({ credentials }: { credentials: CredentialSummary
 
           {organizationId && (
             <>
+              <div className="cv-meraki-row">
+                <button
+                  type="button"
+                  onClick={() => void runDiscover()}
+                  disabled={busy !== '' || networks.length === 0}
+                >
+                  {busy === 'discover' ? t('meraki.discoverRunning') : t('meraki.discover')}
+                </button>
+                <span className="cv-help">{t('meraki.discoverHint')}</span>
+              </div>
+
               <div className="cv-meraki-row">
                 <button
                   type="button"

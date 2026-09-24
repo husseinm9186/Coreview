@@ -1487,8 +1487,8 @@ async fn visit(
 
     // LT-200, LT-202–204: the tables beyond identity and neighbours, from the
     // same session. Asked only of a platform whose output has been captured
-    // and parsed — FortiOS is not one yet, and gets nothing rather than a
-    // misreading.
+    // and parsed — FortiOS answers none of these commands, so it is served by
+    // its own arm below instead (LT-409), rather than by a misreading here.
     let details = if crate::fortios::rejected_command(&version) {
         DeviceDetails::default()
     } else {
@@ -1622,6 +1622,22 @@ async fn visit(
             if !forti_neighbors.iter().any(|n| n.device_id == m.device_id) {
                 forti_neighbors.push(m);
             }
+        }
+        // LT-409: a FortiSwitch's own ports and VLANs. Until this it arrived
+        // on the diagram with neither, because `read_details` skips FortiOS
+        // entirely and these two commands are not in its vocabulary. Asked
+        // only of a FortiSwitch — a FortiGate answers `get switch vlan` with a
+        // parse error, and two wasted round trips on every firewall in an
+        // estate add up.
+        //
+        // Read from a FortiSwitch-224E on 7.6.1 rather than from a manual.
+        if is_fortiswitch(&status) {
+            details.vlans = crate::fortios::parse_switch_vlans(
+                &device.run("get switch vlan").await.unwrap_or_default(),
+            );
+            details.ports = crate::fortios::parse_physical_ports(
+                &device.run("get switch physical-port").await.unwrap_or_default(),
+            );
         }
         Some(FortiFacts {
             addresses: crate::fortios::parse_system_interface(&ifaces),
@@ -1983,6 +1999,18 @@ async fn read_details(device: &mut Session, version: &str, wanted: DetailOptions
         details.counters = crate::counters::parse_interface_counters(&interfaces);
     }
     details
+}
+
+/// Whether this is a FortiSwitch rather than a FortiGate.
+///
+/// The two share a command language and disagree about most of it: a
+/// FortiSwitch has ports and VLANs of its own, a FortiGate has managed
+/// switches and access points, and each rejects the other's questions.
+fn is_fortiswitch(status: &crate::fortios::SystemStatus) -> bool {
+    status
+        .model
+        .as_deref()
+        .is_some_and(|m| m.to_ascii_lowercase().contains("fortiswitch"))
 }
 
 /// What a FortiOS device answered, once it has been asked in its own language.

@@ -468,25 +468,32 @@ pub struct Eval {
     pub observations: Vec<String>,
     #[serde(default)]
     pub details: Vec<Detail>,
+    /// What to do about it, as numbered steps.
+    ///
+    /// One sentence of advice is a verdict with a suggestion attached; a
+    /// numbered list is something an engineer can work through on site. "Re-seat
+    /// both ends of the patch lead, clear the counters, then watch for an hour"
+    /// is the difference, and it is the whole reason his report is useful and a
+    /// list of verdicts is not.
     #[serde(default)]
-    pub action: Option<String>,
+    pub steps: Vec<String>,
     #[serde(default)]
     pub findings: Vec<Finding>,
 }
 
 impl Eval {
     pub fn pass(summary: impl Into<String>) -> Eval {
-        Eval { status: Status::Pass, summary: summary.into(), observations: Vec::new(), details: Vec::new(), action: None, findings: Vec::new() }
+        Eval { status: Status::Pass, summary: summary.into(), observations: Vec::new(), details: Vec::new(), steps: Vec::new(), findings: Vec::new() }
     }
 
     /// The API returned nothing for this item.
     pub fn manual(summary: impl Into<String>) -> Eval {
-        Eval { status: Status::Manual, summary: summary.into(), observations: Vec::new(), details: Vec::new(), action: Some(MANUAL_HINT.into()), findings: Vec::new() }
+        Eval { status: Status::Manual, summary: summary.into(), observations: Vec::new(), details: Vec::new(), steps: vec![MANUAL_HINT.into()], findings: Vec::new() }
     }
 
     /// The check does not apply to this network.
     pub fn na(summary: impl Into<String>) -> Eval {
-        Eval { status: Status::Na, summary: summary.into(), observations: Vec::new(), details: Vec::new(), action: None, findings: Vec::new() }
+        Eval { status: Status::Na, summary: summary.into(), observations: Vec::new(), details: Vec::new(), steps: Vec::new(), findings: Vec::new() }
     }
 
     /// Graded from what an evaluator raised.
@@ -496,7 +503,7 @@ impl Eval {
             summary: summary.into(),
             observations: Vec::new(),
             details: Vec::new(),
-            action: None,
+            steps: Vec::new(),
             findings: flags.into_findings(),
         }
     }
@@ -511,9 +518,37 @@ impl Eval {
         self
     }
 
-    pub fn to_do(mut self, action: impl Into<String>) -> Eval {
-        self.action = Some(action.into());
+    /// The numbered steps for putting it right.
+    pub fn to_do(mut self, steps: &[&str]) -> Eval {
+        self.steps = steps.iter().map(|s| s.to_string()).collect();
         self
+    }
+}
+
+/// Which part of the estate a check belongs to.
+///
+/// His document is three checklists, not one flat list, and a reader looks for
+/// "the switch findings" as a group. The section is part of the item's
+/// identity, not decoration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Section {
+    Firewall,
+    Wireless,
+    Switching,
+}
+
+impl Section {
+    pub fn title(self) -> &'static str {
+        match self {
+            Section::Firewall => "Firewall (MX) Health Check",
+            Section::Wireless => "Wireless Health Check",
+            Section::Switching => "Switch Health Check",
+        }
+    }
+
+    pub fn all() -> &'static [Section] {
+        &[Section::Firewall, Section::Wireless, Section::Switching]
     }
 }
 
@@ -522,10 +557,17 @@ impl Eval {
 #[serde(rename_all = "camelCase")]
 pub struct CheckResult {
     pub id: String,
+    pub section: Section,
     pub num: String,
     pub title: String,
     /// Where in the Meraki dashboard this is visible.
     pub navigation: String,
+    /// What this item covers, in the words of the checklist it comes from.
+    ///
+    /// Printed **before** the verdict. A reader who can see what was assessed
+    /// can tell the difference between "this was checked and is fine" and
+    /// "this was never looked at", which a verdict alone cannot say.
+    pub checklist: Vec<String>,
     #[serde(flatten)]
     pub eval: Eval,
 }
@@ -679,7 +721,7 @@ mod tests {
         let e = Eval::manual("Content filtering could not be read.");
         assert_eq!(e.status, Status::Manual);
         assert_eq!(e.status.label(), "Not reported");
-        assert_eq!(e.action.as_deref(), Some(MANUAL_HINT));
+        assert_eq!(e.steps, vec![MANUAL_HINT.to_string()]);
         assert!(e.findings.is_empty(), "nothing was found, so nothing is graded");
     }
 
@@ -695,7 +737,15 @@ mod tests {
     }
 
     fn check(id: &str, eval: Eval) -> CheckResult {
-        CheckResult { id: id.into(), num: "1".into(), title: id.into(), navigation: "Dashboard".into(), eval }
+        CheckResult {
+            id: id.into(),
+            section: Section::Firewall,
+            num: "1".into(),
+            title: id.into(),
+            navigation: "Dashboard".into(),
+            checklist: Vec::new(),
+            eval,
+        }
     }
 
     #[test]

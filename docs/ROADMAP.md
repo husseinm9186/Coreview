@@ -1161,12 +1161,11 @@ gone from the working tree long ago, and on 2026-09-18 the published history was
 replaced by a single commit (LT-314), so they are gone from that too.
 **Confirmed by the operator, 2026-09-13:** LT-107 and LT-108 — "LT-107 and
 LT-108: confimed". Nothing is held pending his eyes.
-**One known bug is parked rather than fixed, 2026-09-23.** LT-382 — three
-tests racing each other for one LibreOffice — is in the Icebox at the
-operator's word ("skip LT382"). It is **not** closed and **not** fixed: the
-cause is still unknown, and the one hypothesis that was testable was tested and
-disproved. It is recorded here because a parked bug is still a known bug, and
-this bar is worth nothing if it quietly stops counting the awkward one.
+**LT-382 is closed, 2026-09-24**, having been parked the day before. It was
+not LibreOffice: `scan()` named its conversion directory by process id alone
+and deleted it when it finished, so two scans at once destroyed each other's
+output. A real product bug, found because the failure had been made to report
+itself in the failing thing's own words instead of as a count.
 
 **Known bugs, closed:** LT-137, LT-030, LT-031, LT-003, LT-044, LT-004, LT-005,
 LT-082, LT-083, LT-084, LT-085, LT-091, LT-101, LT-128, LT-129, LT-132,
@@ -1225,6 +1224,329 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-408 — The FortiGate show commands, checked against a FortiGate — 2026-09-24
+
+**Source:** "Fortigate is … you should test and validate the show commands",
+with a login for one on his bench. **The login is not written here** — LT-137
+is what happens when a real credential reaches this repository, and a roadmap
+entry is as permanent as a fixture (D-006).
+
+`fortios.rs` has been read against real output before, but the command *set*
+the crawl sends has grown since and has never been run end to end against a
+device. The gateway on the bench answers SSH.
+
+**Acceptance:** every command the crawl sends a FortiOS device is run against
+the real one; each is recorded as answered, rejected or empty; anything the
+parser reads wrongly becomes its own bug item with a failing test first (D-020).
+**The credentials he gave are for validation only and never reach a commit**
+(D-006), and neither does a line of the output (D-027).
+
+**Done 2026-09-24 — run against the FortiGate, and it was already right.**
+
+`probe_fortios.rs` is the tool that says so: it sends exactly what `crawl.rs`
+sends, in the same order, and prints **what each parser made of the answer** —
+because a command that answers and a parser that reads nothing look identical
+from the crawl's side.
+
+Against the gateway on the bench, a FortiGate-60F on 7.6.7: **7 of 11
+answered, and every parser read its answer correctly** — model, version,
+serial and hostname; the uptime; twenty interface addresses with the
+management one identified; one managed switch; three access points;
+thirty-three ARP entries; forty-four DHCP leases.
+
+**The four refusals are all correct.** `get switch lldp neighbors-*` is a
+*FortiSwitch* command and a FortiGate answers "ambiguous command before
+'lldp'" — confirmed by walking the tree: `get system lldp` exists but has no
+neighbour table, so a FortiGate has none to give. `diagnose switch
+mac-address list` is FortiSwitch-only and already guarded by model.
+`diagnose user-device-store` needs super_admin. `show version` is refused, and
+that refusal is what selects the FortiOS arm in the first place.
+
+**No bug found, and that is the finding.** The one improvement available is
+two round trips: the LLDP pair is sent to every FortiOS device including
+firewalls that always refuse it, and could be guarded by model the way the MAC
+command is. Noted, not done — it costs 440 ms per firewall and changing a
+working command path to save it is the wrong trade today.
+
+**Credentials and output: validation only.** Neither reached a commit (D-006,
+D-027).
+
+### LT-409 — FortiSwitch, from a device on the bench — 2026-09-24
+
+**Source:** "something for Forti switch … also SSH is enabled", with the
+address of one on his bench. The address stays on his machine (D-027).
+
+A FortiSwitch is not a FortiGate: managed standalone it has its own CLI, and
+`get switch ...` / `diagnose switch ...` are where its facts live rather than
+the `get system ...` tree `fortios.rs` already reads. Reachable from the build
+machine on 22 and 443, so for once this can be written the way CLAUDE.md
+actually asks — **against captured output from real hardware**, not from
+documentation.
+
+**Acceptance:** captures taken with `examples/try_commands.rs`, parsers written
+against them, and `verified_against_hardware()` true because it has met one.
+No capture reaches a commit (D-027).
+
+**Shipped 2026-09-24, and earned the ordinary way** — written against captured
+output from a real FortiSwitch-224E on 7.6.1, not from a manual. It is one of
+the few parsers in this tree that has met its hardware before shipping rather
+than after.
+
+**Before: a FortiSwitch arrived on the diagram with 0 VLANs and 0 ports.**
+`read_details` skips FortiOS entirely — every Cisco command it sends is refused
+— and nothing had ever been put in its place. After: **13 VLANs and 29 ports**,
+confirmed by a real crawl of the device.
+
+`get switch vlan` and `get switch physical-port`, asked **only of a
+FortiSwitch**: a FortiGate refuses both, and two wasted round trips on every
+firewall in an estate add up. `is_fortiswitch` is the model test, written once.
+
+**Two things the real output taught that a manual would not have:**
+- A VLAN with no description says `(null)` **in words**. Taken literally it
+  would put a VLAN called "(null)" on a diagram.
+- **`status` and `link-status` mean opposite kinds of thing.** `status` is
+  administratively enabled; `link-status` is whether anything is plugged in.
+  Reading `status` — the column a Cisco reader expects — would draw all 24
+  ports of an empty switch as connected.
+
+**And a trap in the reading of it**, caught by its own test: `link-status:`
+*contains* `status:`, so searching the line for the latter lands inside the
+former and returns the wrong value. Every empty port came out `disabled` until
+the fields were paired by walking tokens instead of by `find()`.
+
+**No capture, hostname, VLAN name or serial reached a commit** (D-027). Every
+fixture is invented; only the shapes are the device's.
+
+### LT-410 — **bug** The Meraki health report is not the document he asked for — 2026-09-24
+
+**Source:** "the health report for meraki is no close to the script I had
+provided you / tool should not be mentioned in the report, and details liek the
+docx i'm providing you", with a generated `.docx` attached as the standard.
+
+**What LT-406 shipped was the grading model, and that part is right.** The
+codes, the profiles, the thresholds and the "an evaluator never decides
+urgency" rule all match. What is wrong is the **document**: it is a list of
+twenty one-line verdicts, and his is a twenty-six item assessment a customer
+can act on without asking anybody what it means.
+
+**The gap, read off his own output:**
+
+1. **Three sections, not one flat list** — *Firewall (MX)*, *Wireless*,
+   *Switch* — each with its own numbered items. Twenty-six in total against
+   this app's twenty.
+2. **Every item carries a `Navigation:` line and a `Checklist`** — what that
+   item covers, in the words of the health-check list it comes from, *before*
+   the verdict. A reader sees what was assessed, not only what was concluded.
+3. **`Observed` is a labelled block**, not loose sentences.
+4. **`Recommended action` is numbered steps**, not one line. "Re-seat both ends
+   of the patch lead, clear the counters, then watch for an hour" is the
+   difference between a report and a to-do list. An advisory gets
+   *Suggested improvement* instead, same shape.
+5. **Front matter**: a Customer / Networks assessed / Date generated table; a
+   *How to read this report* key explaining each verdict; the product types and
+   the item count; *Results at a glance*; then **Action items** and
+   **Advisories** as two tables of `#`, `Area`, `Recommended action`, so the
+   first page is the whole job.
+6. **No tool name anywhere.** His script says it outright, and this one fails
+   it in four places: two summaries, a `Navigation` reading "Coreview › Tools ›
+   Settings", and the wording of the backup check. **The report is the
+   customer's document, not this application's advertisement.**
+
+**Acceptance:** the same network read by both produces documents of the same
+shape — sections, items, checklists, observations, evidence tables and numbered
+steps — and the word Coreview appears nowhere in it.
+
+**Shipped 2026-09-24.** The report is his document now, not a list of verdicts.
+
+**Twenty-six items in three sections** — Firewall (MX) 9, Wireless 7, Switch
+10 — with the health-check list's own titles, its own `Navigation:` lines and
+its own `Checklist` wording, so a reader who knows the list can find each item
+in it. Several items share an evaluator, deliberately: the firewall's event log
+and the switch's are one reading of one log, and the *document* has
+twenty-six places a reader looks even where two of them are answered by one
+question to the API.
+
+**Every item now carries**: what it covers, before the verdict; `Observed` as
+its own block; the evidence tables; and **numbered steps** rather than a line
+of advice. "Re-seat both ends of the patch lead, clear the counters, then watch
+for an hour" is the difference between a report and a to-do list.
+
+**Front matter**: a Customer / Networks assessed / Date generated table; a
+*How to read this report* key; the product types and the item count; *Results
+at a glance*; then **Action items** and **Advisories** as two tables, so the
+first page is the whole job. The PDF carries all of it.
+
+**The tool is not named anywhere in it.** It was, in four places — two
+summaries, a `Navigation` reading "Coreview › Tools › Settings", and the
+backup check's wording. `nothing_in_the_report_names_the_tool_that_made_it`
+reads every string of a filled-in report and fails on the next one, and the
+PDF has the same test.
+
+**What did not change, because it was right:** the 37 codes, the four
+profiles, every threshold, the five verdicts, and the rule the whole thing
+rests on — an evaluator raises a code, the profile grades it, and the wording
+does not move between them.
+
+**NO HARDWARE TESTED.** Still no Meraki key on this machine. The shape is
+proven against the document he supplied and a stubbed bridge; the content is
+not proven against a live Dashboard.
+
+### LT-411 — Meraki devices are discovered like everything else — 2026-09-24
+
+**Source:** "also we need to discover the meraki the same way we are
+discovering any other networks".
+
+Today the Dashboard API is a **screen**: it reads an estate and writes a backup
+or a report. It does not put anything on the diagram. Everything else Coreview
+finds — over CDP, LLDP, ARP, SNMP, a ping sweep — becomes a device and a link.
+A Meraki estate should too.
+
+**Why it cannot simply reuse the crawler:** MR, MS and MX have no command line,
+so there is nothing to log into and no `show` to parse. The discovery is a
+*different source of the same facts*, and the shape it produces has to be the
+same shape a crawl produces — devices with a name, a model, a class, addresses
+and a serial, and links from what the estate itself reports.
+
+**What it becomes:** an organisation's networks chosen the way the backup
+already chooses them, then devices from `/networks/{id}/devices` and links from
+`/networks/{id}/topology/linkLayer`, merged into the diagram through the same
+path the crawl and the sweep already share (LT-126).
+
+**Not a crawl of the Meraki cloud.** It is one read, started by hand, of the
+operator's own estate (D-056 stands unchanged).
+
+**Shipped 2026-09-24 — and it really is the same way.**
+
+`meraki_discover` returns devices in the **same shape a crawl returns**, and
+the page puts them on the diagram through the same three functions the crawl
+review uses: `buildTopology`, then `reconcile`, then `applyCrawlChanges`. Not a
+second implementation of placement — the same code, so a Meraki device is
+placed, updated and deduplicated by exactly the rules everything else is, and a
+second read updates the diagram instead of drawing the estate again beside it.
+
+**Devices** from `/networks/{id}/devices`, classed by model — an MX draws as a
+firewall, an MS as a switch, an MR as an access point. **Links** from
+`/networks/{id}/topology/linkLayer`, which is the estate's own observed
+topology; a link Meraki cannot see is left undrawn rather than inferred
+(D-050). The same cable is reported from both ends and is drawn once.
+
+**Every device is `ReachedBy::Reported`, and that is the honest word.** Nothing
+here was logged into, because a Meraki has no command line to log into.
+Presenting them as reached would claim a verification that did not happen.
+
+**A link to something that is not a device is dropped** rather than drawn to a
+stub, and a device the Dashboard names only by serial keeps its serial rather
+than becoming a blank label.
+
+**NO HARDWARE TESTED.** No live Dashboard has answered this. The mapping — the
+place a discovery quietly goes wrong — is unit tested, and `e2e/meraki.mjs`
+drives the real button and asserts the devices are **on the canvas** with the
+link drawn between them, which is the failure this feature was most likely to
+have.
+
+### LT-382 — **bug** Three tests race each other for one LibreOffice — 2026-09-21
+
+`icons::folder_tests::a_real_emf_becomes_a_palette_icon` fails under a full
+`cargo test --workspace` and passes every time it is run on its own. It failed
+that way once in the previous session too, and was reported as a flake rather
+than hidden; it has now done it twice, which makes it a defect and not luck.
+
+**The cause is not the assertion.** Three tests shell out to `soffice` —
+`icons.rs:597`, `icons.rs:1170` and `shapeconv.rs:937` — and `cargo test` runs
+them on parallel threads. **LibreOffice will not run two instances against one
+user profile**: the second either attaches to the first and returns before it
+has written anything, or gives up. On a 3.2 GB VM it can also simply be starved.
+The conversion produces nothing, `lib.icons` is empty, and the count assertion
+is what reports it — accurately, and about the wrong thing.
+
+**What it costs:** a red workspace run that has nothing to do with whatever was
+being changed. That trains the eye to ignore the suite, which is the real
+damage.
+
+**Fix:** one soffice at a time — a mutex the three share, or a `-env:UserInstallation`
+per test so each gets its own profile, which is the supported way and does not
+serialise them. Not the timeout: the conversion is not slow, it is excluded.
+
+**2026-09-23 — one hypothesis tested and disproved, and it was the plan above.**
+The `-env:UserInstallation` fix was already in `convert_batch` (it came in with
+LT-070), so the suspicion moved to the *probe*: `soffice_available()` shelled out
+`soffice --version` against the **default** profile, three times over on
+parallel threads. Testable, so it was tested — eight concurrent
+`soffice --version` against one shared profile, on LibreOffice 26.2.5.2, and all
+eight exit 0. `--version` does not take the profile lock. **That is not the
+cause.**
+
+Two changes stand anyway, neither claimed as the fix:
+- The probe is asked once per process and remembered, and takes a private
+  profile like the conversion does. Three processes for one boolean was waste
+  whatever the cause is.
+- **A batch that converts nothing now says who failed.** It returned
+  `Ok(vec![])`, and the caller turned that into "LibreOffice could not draw
+  it", once per file — blaming the file. soffice's own output was read and
+  thrown away. It now travels with the failure, so the next occurrence names
+  its cause instead of arriving as a count assertion about the wrong thing.
+
+**Still open, and still the same bar:** five consecutive clean
+`cargo test -p coreview --bins` runs is not a reproduction, and this has failed
+twice in months. What is left to suspect is memory — three LibreOffice instances
+at once on a 3.2 GB VM — and `scan()`'s working directory, which is
+`coreview-conv-{pid}` and therefore **shared by every parallel test in the
+process**. Neither is proven. The next failure should now arrive with
+LibreOffice's own words attached, which is what D-020 needs before a fix.
+
+**Acceptance:** twenty consecutive `cargo test --workspace` runs, green.
+
+**Iceboxed 2026-09-23 — "no I don't want liberOffice / so skip LT382".**
+Not fixed, and not pretending to be. The flake is real and the cause is still
+unknown; what changed is that it is no longer worth chasing. It stays here
+whole, with the disproved hypothesis, so that if it ever matters again nobody
+starts from the beginning.
+
+**It does not close LT-029.** A known bug parked is still a known bug. What it
+does close is the question of whether anyone spends another session on it.
+
+**The larger thing he said is not this item.** "I don't want LibreOffice" may
+mean the *dependency* should go, not just the flaky test — which is LT-003, the
+EMF/WMF conversion in the icon library, and would mean vendor shapes in those
+formats stop being converted and go back to being refused with a count. That is
+a feature decision, not a test decision, and it is **Q-018** rather than an
+assumption made here.
+
+**Fixed 2026-09-24 — and it was never about LibreOffice.**
+
+It surfaced again during LT-410's validation, and this time the diagnostic
+added above named it: LibreOffice's own words said it had written
+`…/coreview-conv-1777311/edge-router.svg`, and the file was not there.
+
+**`scan()` named its conversion directory by process id alone
+(`coreview-conv-{pid}`) and removed it when it finished.** Two scans in one
+process therefore shared one directory, and whichever ended first deleted it —
+taking the other's freshly converted SVGs with it, between the conversion and
+the read. That is why it only ever failed under a full parallel run, why it
+passed every time it was run alone, and why the count assertion was the thing
+that reported it.
+
+**It is a product bug, not a test artifact.** Two library scans at once in the
+app do exactly the same thing. The tests only made it likely.
+
+**The fix is the one `convert_batch` has had since LT-070**, applied to the
+output directory as well as the profile: `unique_work_dir` gives each
+invocation its own. `two_conversions_at_once_do_not_share_a_working_directory`
+is the reproduction, and it needs no LibreOffice — it is about two callers
+being handed the same path.
+
+**Five consecutive full runs of the suite that used to flake: clean.**
+
+**On the two changes made while the cause was still unknown.** The probe's
+private profile and its caching were never the fix and were not claimed as
+one; they stand as tidiness. The batch-level error message *was* what found
+this, which is the argument for reporting a failure in the failing thing's own
+words rather than as a count.
+
+**Taken out of the Icebox rather than left there.** The operator's "skip
+LT382" was about not spending another session chasing an unknown cause. The
+cause took two minutes once the evidence arrived, and the fix is one line.
 
 ### LT-404 — Meraki: the Dashboard API, in Settings, by customer and network — 2026-09-23
 
@@ -9569,75 +9891,6 @@ internal COREVIEW-FGT-Root-CA cannot and never will.
 ---
 
 ## Icebox
-
-### LT-382 — **bug** Three tests race each other for one LibreOffice — 2026-09-21
-
-`icons::folder_tests::a_real_emf_becomes_a_palette_icon` fails under a full
-`cargo test --workspace` and passes every time it is run on its own. It failed
-that way once in the previous session too, and was reported as a flake rather
-than hidden; it has now done it twice, which makes it a defect and not luck.
-
-**The cause is not the assertion.** Three tests shell out to `soffice` —
-`icons.rs:597`, `icons.rs:1170` and `shapeconv.rs:937` — and `cargo test` runs
-them on parallel threads. **LibreOffice will not run two instances against one
-user profile**: the second either attaches to the first and returns before it
-has written anything, or gives up. On a 3.2 GB VM it can also simply be starved.
-The conversion produces nothing, `lib.icons` is empty, and the count assertion
-is what reports it — accurately, and about the wrong thing.
-
-**What it costs:** a red workspace run that has nothing to do with whatever was
-being changed. That trains the eye to ignore the suite, which is the real
-damage.
-
-**Fix:** one soffice at a time — a mutex the three share, or a `-env:UserInstallation`
-per test so each gets its own profile, which is the supported way and does not
-serialise them. Not the timeout: the conversion is not slow, it is excluded.
-
-**2026-09-23 — one hypothesis tested and disproved, and it was the plan above.**
-The `-env:UserInstallation` fix was already in `convert_batch` (it came in with
-LT-070), so the suspicion moved to the *probe*: `soffice_available()` shelled out
-`soffice --version` against the **default** profile, three times over on
-parallel threads. Testable, so it was tested — eight concurrent
-`soffice --version` against one shared profile, on LibreOffice 26.2.5.2, and all
-eight exit 0. `--version` does not take the profile lock. **That is not the
-cause.**
-
-Two changes stand anyway, neither claimed as the fix:
-- The probe is asked once per process and remembered, and takes a private
-  profile like the conversion does. Three processes for one boolean was waste
-  whatever the cause is.
-- **A batch that converts nothing now says who failed.** It returned
-  `Ok(vec![])`, and the caller turned that into "LibreOffice could not draw
-  it", once per file — blaming the file. soffice's own output was read and
-  thrown away. It now travels with the failure, so the next occurrence names
-  its cause instead of arriving as a count assertion about the wrong thing.
-
-**Still open, and still the same bar:** five consecutive clean
-`cargo test -p coreview --bins` runs is not a reproduction, and this has failed
-twice in months. What is left to suspect is memory — three LibreOffice instances
-at once on a 3.2 GB VM — and `scan()`'s working directory, which is
-`coreview-conv-{pid}` and therefore **shared by every parallel test in the
-process**. Neither is proven. The next failure should now arrive with
-LibreOffice's own words attached, which is what D-020 needs before a fix.
-
-**Acceptance:** twenty consecutive `cargo test --workspace` runs, green.
-
-**Iceboxed 2026-09-23 — "no I don't want liberOffice / so skip LT382".**
-Not fixed, and not pretending to be. The flake is real and the cause is still
-unknown; what changed is that it is no longer worth chasing. It stays here
-whole, with the disproved hypothesis, so that if it ever matters again nobody
-starts from the beginning.
-
-**It does not close LT-029.** A known bug parked is still a known bug. What it
-does close is the question of whether anyone spends another session on it.
-
-**The larger thing he said is not this item.** "I don't want LibreOffice" may
-mean the *dependency* should go, not just the flaky test — which is LT-003, the
-EMF/WMF conversion in the icon library, and would mean vendor shapes in those
-formats stop being converted and go back to being refused with a count. That is
-a feature decision, not a test decision, and it is **Q-018** rather than an
-assumption made here.
-
 
 ### LT-307 — Selling Coreview per seat — dropped 2026-09-18
 Asked and designed the same day, then dropped the same day: "forget about the

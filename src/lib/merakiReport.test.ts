@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import type { MerakiCheck, MerakiProfile, MerakiReport, MerakiStatus } from './ipc';
-import { actionItems, reportFilename, reportSvg, statusLabel, tally, STATUS_ORDER } from './merakiReport';
+import type { MerakiCheck, MerakiProfile, MerakiReport, MerakiSection, MerakiStatus } from './ipc';
+import {
+  actionItems,
+  advisoryItems,
+  reportFilename,
+  reportSvg,
+  sectionTitle,
+  statusLabel,
+  tally,
+  STATUS_ORDER,
+} from './merakiReport';
 
 const profile: MerakiProfile = {
   id: 'smb',
@@ -17,13 +26,15 @@ const profile: MerakiProfile = {
 
 function check(over: Partial<MerakiCheck> & { id: string; status: MerakiStatus }): MerakiCheck {
   return {
-    num: '1.1',
+    section: 'firewall' as MerakiSection,
+    num: '1',
     title: 'A check',
-    navigation: 'Dashboard › Somewhere',
+    navigation: 'Security & SD-WAN > Somewhere',
+    checklist: ['What this item covers'],
     summary: 'Something was found.',
     observations: [],
     details: [],
-    action: null,
+    steps: [],
     findings: [],
     ...over,
   };
@@ -62,16 +73,31 @@ describe('the Meraki health report (LT-406)', () => {
     ]);
   });
 
-  it('lists only actions as action items, and still keeps advisories in the report', () => {
+  it('separates actions from advisories, and hides neither', () => {
     const r = report([
-      check({ id: 'a', status: 'attention', title: 'Uplinks', findings: [{ code: 'uplink.down', severity: 'action' }] }),
-      check({ id: 'b', status: 'advisory', title: 'IDS', findings: [{ code: 'ids.disabled', severity: 'advisory' }] }),
+      check({ id: 'a', status: 'attention', title: 'Uplinks', steps: ['Check the WAN lead.', 'Then the ISP.'] }),
+      check({ id: 'b', status: 'advisory', title: 'IDS', steps: ['Set IDS to prevention.'] }),
+      check({ id: 'c', status: 'pass', title: 'Licensing' }),
     ]);
     const actions = actionItems(r);
     expect(actions).toHaveLength(1);
-    expect(actions[0]!.check).toBe('Uplinks');
-    // Nothing is hidden: the advisory is still one of the report's checks.
-    expect(r.checks).toHaveLength(2);
+    expect(actions[0]!.check.title).toBe('Uplinks');
+    // The first step is what the summary table shows — it is the one a
+    // reader acts on before opening the item.
+    expect(actions[0]!.step).toBe('Check the WAN lead.');
+
+    const advisories = advisoryItems(r);
+    expect(advisories).toHaveLength(1);
+    expect(advisories[0]!.check.title).toBe('IDS');
+
+    // Nothing is hidden: all three are still in the report.
+    expect(r.checks).toHaveLength(3);
+  });
+
+  it('names the three checklists the way the health check list does', () => {
+    expect(sectionTitle('firewall')).toBe('Firewall (MX) Health Check');
+    expect(sectionTitle('wireless')).toBe('Wireless Health Check');
+    expect(sectionTitle('switching')).toBe('Switch Health Check');
   });
 
   it('says "Not reported" rather than anything that sounds like homework', () => {
@@ -109,7 +135,11 @@ describe('the Meraki health report (LT-406)', () => {
       expect(svg).toContain('Uplinks');
       expect(svg).toContain('Licensing');
       // The window each number was read over travels with it.
-      expect(svg).toContain('What this is built from');
+      expect(svg).toContain('Data used:');
+      // And the document's own front matter.
+      expect(svg).toContain('How to read this report');
+      expect(svg).toContain('Results at a glance');
+      expect(svg).toContain('Networks assessed');
     });
 
     it('escapes a customer name that would otherwise break the XML', () => {
@@ -139,7 +169,43 @@ describe('the Meraki health report (LT-406)', () => {
       // report, and it must still be a page.
       const svg = reportSvg(report([]));
       expect(svg.startsWith('<svg')).toBe(true);
-      expect(svg).toContain('Action items: none');
+      expect(svg).toContain('Nothing in this network needs attention');
+    });
+
+    it('carries what each item covers and what to do, not only the verdict', () => {
+      const svg = reportSvg(
+        report([
+          check({
+            id: 'a',
+            section: 'switching',
+            num: '2',
+            status: 'attention',
+            title: 'Port Status and Utilization',
+            navigation: 'Switch > Switch ports',
+            checklist: ['Errors: CRCs, collisions, STP changes'],
+            summary: 'Two ports are reporting errors.',
+            observations: ['Both are on the same switch.'],
+            steps: ['Re-seat both ends of the patch lead, clear the counters, then watch for an hour.'],
+          }),
+        ]),
+      );
+      expect(svg).toContain('Switch Health Check');
+      expect(svg).toContain('Navigation:');
+      expect(svg).toContain('Checklist');
+      expect(svg).toContain('Errors: CRCs, collisions, STP changes');
+      expect(svg).toContain('Observed');
+      expect(svg).toContain('Recommended action');
+      expect(svg).toContain('Re-seat both ends');
+    });
+
+    it('never names the tool that made it', () => {
+      // His script says it outright: the document carries the customer's
+      // names and nothing else. It is the customer's report.
+      const svg = reportSvg(
+        report([check({ id: 'a', status: 'attention', steps: ['Do the thing.'] })]),
+      );
+      expect(svg).not.toContain('Coreview');
+      expect(svg).not.toContain('coreview');
     });
   });
 });

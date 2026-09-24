@@ -795,6 +795,21 @@ fn complaint(output: &std::process::Output) -> Option<String> {
     Some(last.chars().take(300).collect())
 }
 
+/// A temp directory unique to this invocation of anything.
+///
+/// The profile has needed one since LT-070; the *output* directory turned out
+/// to need one for the same reason and did not have it (LT-382).
+pub fn unique_work_dir(prefix: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!("{prefix}-{}-{}-{}", std::process::id(), n, nanos))
+}
+
 /// A temp directory unique to this invocation, for a soffice profile that no
 /// other soffice shares. Process id plus a monotonic counter and the clock is
 /// enough for the concurrency this sees.
@@ -892,6 +907,51 @@ mod tests {
         // It uses whichever stream it felt like.
         assert_eq!(complaint(&out("", "convert failed")).as_deref(), Some("convert failed"));
         assert_eq!(complaint(&out("   \n\n", "  ")), None);
+    }
+
+    /// LT-382, the actual cause — found while validating something else, and
+    /// not a test artifact.
+    ///
+    /// `scan()` named its conversion directory by process id alone and removed
+    /// it when it finished. Two scans at once therefore shared one directory,
+    /// and whichever ended first deleted the other's converted files between
+    /// the conversion and the read. In the app that is two library scans; in
+    /// the suite it is two tests, which is why it only ever failed under a
+    /// full parallel run.
+    ///
+    /// This is the shape of it, without needing LibreOffice: two directories
+    /// handed out for the same purpose must not be the same directory, or one
+    /// caller's cleanup destroys the other's work.
+    #[test]
+    fn two_conversions_at_once_do_not_share_a_working_directory() {
+        let a = unique_work_dir("coreview-conv");
+        let b = unique_work_dir("coreview-conv");
+        assert_ne!(a, b, "two scans would share one directory and delete each other's output");
+
+        std::fs::create_dir_all(&a).expect("a");
+        std::fs::create_dir_all(&b).expect("b");
+        std::fs::write(a.join("icon.svg"), "<svg/>").expect("write");
+
+        // What the loser of the race used to do to the winner.
+        let _ = std::fs::remove_dir_all(&b);
+        assert!(
+            a.join("icon.svg").exists(),
+            "one scan's cleanup removed another scan's converted file",
+        );
+        let _ = std::fs::remove_dir_all(&a);
+    }
+
+    /// And the same from several threads, which is how it actually happens.
+    #[test]
+    fn working_directories_are_distinct_across_threads() {
+        let dirs: Vec<std::path::PathBuf> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..16).map(|_| scope.spawn(|| unique_work_dir("coreview-conv"))).collect();
+            handles.into_iter().map(|h| h.join().expect("thread")).collect()
+        });
+        let mut unique = dirs.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), dirs.len(), "two threads were handed the same directory");
     }
 
     #[test]

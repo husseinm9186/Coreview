@@ -1230,6 +1230,95 @@ end
     }
 }
 
+
+/// `get switch vlan` on a FortiSwitch (LT-409).
+///
+/// ```text
+/// == [ 210 ]
+/// id: 210   description: Office
+/// == [ 1118 ]
+/// id: 1118   description: (null)
+/// ```
+///
+/// Read from a real FortiSwitch-224E on 7.6.1. Two things it does that a
+/// Cisco does not: the id is stated twice, once in the `== [ ]` banner and
+/// once in the row, and a VLAN with no description says `(null)` in words —
+/// which is not a name, and putting it on a diagram as one would be worse
+/// than leaving it blank.
+pub fn parse_switch_vlans(out: &str) -> Vec<crate::vlans::Vlan> {
+    out.lines()
+        .filter_map(|line| {
+            let t = line.trim();
+            let rest = t.strip_prefix("id:")?;
+            let (id_text, description) = match rest.split_once("description:") {
+                Some((a, b)) => (a, b.trim()),
+                None => (rest, ""),
+            };
+            let id: u16 = id_text.trim().parse().ok()?;
+            let name = if description.eq_ignore_ascii_case("(null)") { "" } else { description };
+            Some(crate::vlans::Vlan {
+                id,
+                name: name.to_string(),
+                status: "active".into(),
+                ports: Vec::new(),
+            })
+        })
+        .collect()
+}
+
+/// `get switch physical-port` on a FortiSwitch (LT-409).
+///
+/// ```text
+/// == [ port1 ]
+/// name: port1    link-status: down   status: up
+/// ```
+///
+/// **`status` and `link-status` mean opposite kinds of thing**, which is the
+/// trap here. `status` is whether the port is administratively enabled;
+/// `link-status` is whether anything is plugged into it. A reader of Cisco
+/// output expects one column that means both, and taking `status` would draw
+/// every empty port as connected.
+pub fn parse_physical_ports(out: &str) -> Vec<crate::vlans::PortStatus> {
+    out.lines()
+        .filter_map(|line| {
+            let t = line.trim();
+            if !t.starts_with("name:") {
+                return None;
+            }
+            // Paired by walking the tokens, not by searching for the key:
+            // `link-status:` *contains* `status:`, so a find() for the latter
+            // lands inside the former and reads the wrong value. That is not
+            // hypothetical — it is what this did first, and every empty port
+            // came out `disabled`.
+            let tokens: Vec<&str> = t.split_whitespace().collect();
+            let field = |key: &str| -> Option<String> {
+                let at = tokens.iter().position(|token| *token == key)?;
+                tokens.get(at + 1).map(|v| v.to_string())
+            };
+            let port = field("name:")?;
+            let link = field("link-status:").unwrap_or_default();
+            let admin = field("status:").unwrap_or_default();
+            // Cisco's vocabulary, because everything downstream speaks it.
+            let status = if admin.eq_ignore_ascii_case("down") {
+                "disabled"
+            } else if link.eq_ignore_ascii_case("up") {
+                "connected"
+            } else {
+                "notconnect"
+            };
+            Some(crate::vlans::PortStatus {
+                port,
+                description: String::new(),
+                status: status.into(),
+                vlan: String::new(),
+                duplex: String::new(),
+                speed: String::new(),
+                media: String::new(),
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod wtp_status_tests {
     use super::*;
@@ -1397,5 +1486,67 @@ WTP: LAB_AP431F_0002  0-192.168.77.141:5246
     fn no_access_points_is_not_a_panic() {
         assert!(parse_wtp_status("").is_empty());
         assert!(parse_wtp_status("WTP: \n").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod fortiswitch_tests {
+    use super::*;
+
+    /// The shapes are a FortiSwitch-224E's on 7.6.1; the values are invented
+    /// (D-027). A real switch's VLAN names are a customer's own words.
+    #[test]
+    fn vlans_are_read_and_a_null_description_is_not_a_name() {
+        let out = "\
+== [ 210 ]
+id: 210   description: Office
+== [ 1118 ]
+id: 1118   description: (null)
+== [ 8 ]
+id: 8   description: Lab-Eight
+";
+        let vlans = parse_switch_vlans(out);
+        assert_eq!(vlans.len(), 3, "{vlans:#?}");
+        assert_eq!((vlans[0].id, vlans[0].name.as_str()), (210, "Office"));
+        // `(null)` is the switch saying there is no description. Taken
+        // literally it would put a VLAN called "(null)" on the diagram.
+        assert_eq!(vlans[1].id, 1118);
+        assert_eq!(vlans[1].name, "", "a null description is not a name");
+        assert_eq!(vlans[2].id, 8);
+    }
+
+    #[test]
+    fn a_vlan_list_from_another_platform_is_not_read_as_a_fortiswitch_one() {
+        // The Cisco table, which has no `id:` rows at all.
+        let cisco = "VLAN Name                             Status    Ports\n1    default                          active    Gi1/0/1\n";
+        assert!(parse_switch_vlans(cisco).is_empty());
+        assert!(parse_switch_vlans("").is_empty());
+    }
+
+    #[test]
+    fn an_empty_port_is_not_reported_as_connected() {
+        // The trap: `status` is admin state, `link-status` is whether
+        // anything is plugged in. Reading `status` would draw all 24 ports of
+        // an empty switch as live.
+        let out = "\
+== [ port1 ]
+name: port1    link-status: down   status: up
+== [ port13 ]
+name: port13    link-status: up   status: up
+== [ port24 ]
+name: port24    link-status: down   status: down
+";
+        let ports = parse_physical_ports(out);
+        assert_eq!(ports.len(), 3, "{ports:#?}");
+        assert_eq!(ports[0].port, "port1");
+        assert_eq!(ports[0].status, "notconnect", "enabled but nothing plugged in");
+        assert_eq!(ports[1].status, "connected", "enabled and live");
+        assert_eq!(ports[2].status, "disabled", "shut down by an administrator");
+    }
+
+    #[test]
+    fn nothing_is_read_from_output_that_has_no_ports_in_it() {
+        assert!(parse_physical_ports("").is_empty());
+        assert!(parse_physical_ports("== [ port1 ]\n").is_empty(), "a banner alone is not a port");
     }
 }

@@ -163,3 +163,7 @@ nobody is forced to have it installed.
 **Why it was not assumed:** removing it would delete working behaviour the
 operator asked for in LT-003, over a sentence that was most likely about the
 flaky test. Waiting on his word.
+
+**2026-09-24:** the flaky test is fixed, and it was never LibreOffice's fault
+(LT-382). So the sentence's most likely meaning has gone away, and this
+question is now only about whether the EMF/WMF conversion is wanted at all.

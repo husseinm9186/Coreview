@@ -637,16 +637,23 @@ export type MerakiDetail = { label: string; columns: string[]; rows: string[][] 
  *  what could be read, never a task handed back to the reader. */
 export type MerakiStatus = 'attention' | 'advisory' | 'manual' | 'pass' | 'na';
 
+/** Which of the three checklists an item belongs to. */
+export type MerakiSection = 'firewall' | 'wireless' | 'switching';
+
 export type MerakiCheck = {
   id: string;
+  section: MerakiSection;
   num: string;
   title: string;
   navigation: string;
+  /** What the item covers, shown before the verdict. */
+  checklist: string[];
   status: MerakiStatus;
   summary: string;
   observations: string[];
   details: MerakiDetail[];
-  action: string | null;
+  /** What to do about it, numbered. */
+  steps: string[];
   findings: MerakiFinding[];
 };
 
@@ -657,6 +664,17 @@ export type MerakiReport = {
   profile: MerakiProfile;
   checks: MerakiCheck[];
   dataWindows: string;
+};
+
+/** What a Meraki discovery found. `devices` is the same shape a crawl's are,
+ *  which is what lets them go through the same review and reconcile path. */
+export type MerakiDiscovered = {
+  devices: CrawledDevice[];
+  /** How many cables the estate itself reported. */
+  links: number;
+  /** What could not be read — a thin estate and an unreadable one look the
+   *  same without this. */
+  notes: string[];
 };
 
 export type MerakiBackupWritten = {
@@ -1268,6 +1286,11 @@ export const ipc = {
   },
   merakiHealthCheck(credentialId: string, organizationId: string, networkId: string, profile: string) {
     return invoke<MerakiReport>('meraki_health_check', { credentialId, organizationId, networkId, profile });
+  },
+  /** LT-411: the estate as devices the diagram can take, in the same shape a
+   *  crawl returns so the merge path is shared. */
+  merakiDiscover(credentialId: string, organizationId: string, networkIds: string[]) {
+    return invoke<MerakiDiscovered>('meraki_discover', { credentialId, organizationId, networkIds });
   },
   revealCredential(id: string) {
     return invoke<RevealedCredential>('reveal_credential', { id });

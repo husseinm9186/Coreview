@@ -21,7 +21,7 @@ use serde_json::Value;
 
 use crate::api::DeviceKind;
 use crate::collect::Collected;
-use crate::health::{CheckResult, Code, Detail, Eval, Flags, Profile, Report, DATA_WINDOWS};
+use crate::health::{CheckResult, Code, Detail, Eval, Flags, Profile, Report, Section, Status, DATA_WINDOWS};
 
 /// A cell, with the same em dash his script uses for "nothing here".
 fn s(v: Option<&Value>) -> String {
@@ -104,7 +104,12 @@ fn device_status(c: &Collected, p: &Profile) -> Eval {
     let mut eval = Eval::graded(flags, summary);
     if !rows.is_empty() {
         eval = eval.showing(detail("Devices not online", &["Kind", "Name", "Model", "Status"], rows));
-        eval = eval.to_do("Check power and upstream connectivity for each device listed.");
+        eval = eval.to_do(&[
+            "Open the appliance status page and select the device or uplink reported as down.",
+            "Confirm the cable to the modem or ISP handoff is seated and the modem shows a link light.",
+            "If the interface uses DHCP, check the ISP is handing out an address; if it is static, re-check the address, mask and gateway.",
+            "If that WAN port is a spare with nothing plugged into it, disable it so it stops reporting as failed.",
+        ]);
     }
     eval
 }
@@ -346,7 +351,17 @@ fn threat_protection(c: &Collected, p: &Profile) -> Eval {
     } else {
         "Malware protection and intrusion prevention are both on.".to_string()
     };
-    Eval::graded(flags, summary).showing(detail("Threat protection", &["Setting", "Value"], rows))
+    let mut eval = Eval::graded(flags, summary)
+        .showing(detail("Threat protection", &["Setting", "Value"], rows));
+    if eval.status != Status::Pass {
+        eval = eval.to_do(&[
+            "Open Security & SD-WAN > Threat protection.",
+            "Set Advanced Malware Protection to enabled.",
+            "Set intrusion detection to Prevention so an attack is stopped rather than only recorded.",
+            "Change the ruleset to Security, then watch for false positives for a week — it is the most aggressive of the three.",
+        ]);
+    }
+    eval
 }
 
 /// What the appliance actually saw, and whether it stopped it.
@@ -427,7 +442,12 @@ fn firewall(c: &Collected, p: &Profile) -> Eval {
     if !rows.is_empty() {
         eval = eval
             .showing(detail("Any-to-any allows", &["Policy", "Source", "Destination", "Protocol", "Comment"], rows))
-            .to_do("Narrow these rules to the sources and destinations that need them.");
+            .to_do(&[
+                "Open the firewall rules and find the any-to-any allow listed above.",
+                "Replace the source or destination with the addresses that actually need the access.",
+                "Turn on logging for the rule first if you are unsure who uses it, and read the hit counts for a week.",
+                "Remove rules that have never been hit rather than leaving them narrowed.",
+            ]);
     }
     eval
 }
@@ -458,7 +478,16 @@ fn content_filtering(c: &Collected, p: &Profile) -> Eval {
     } else {
         format!("{} blocked.", plural(blocked.len(), "URL category"))
     };
-    Eval::graded(flags, summary).showing(detail("Content filtering", &["Setting", "Count"], rows))
+    let mut eval = Eval::graded(flags, summary)
+        .showing(detail("Content filtering", &["Setting", "Count"], rows));
+    if eval.status != Status::Pass {
+        eval = eval.to_do(&[
+            "Open Security & SD-WAN > Content filtering.",
+            "Select the category groups that match what this site is for, rather than blocking everything.",
+            "Review any allow-list entries and remove the ones nobody can account for.",
+        ]);
+    }
+    eval
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -502,7 +531,12 @@ fn alerting(c: &Collected, p: &Profile) -> Eval {
     };
     let mut eval = Eval::graded(flags, summary).showing(detail("Alerting", &["Setting", "Value"], rows));
     if flags_had(&eval, Code::AlertsNoRecipients) {
-        eval = eval.to_do("Add at least one email recipient, SNMP trap destination or webhook.");
+        eval = eval.to_do(&[
+            "Open Network-wide > Alerts.",
+            "Turn on the alert types shown as missing in the coverage table above.",
+            "Add at least one monitored recipient address, SNMP trap destination or webhook.",
+            "Send a test alert and confirm it arrives.",
+        ]);
     }
     eval
 }
@@ -549,7 +583,17 @@ fn firmware(c: &Collected, p: &Profile) -> Eval {
     } else {
         "Every product is on the newest stable firmware offered.".to_string()
     };
-    Eval::graded(flags, summary).showing(detail("Firmware", &["Product", "Running", "Newer stable"], rows))
+    let mut eval = Eval::graded(flags, summary)
+        .showing(detail("Firmware", &["Product", "Running", "Newer stable"], rows));
+    if eval.status != Status::Pass {
+        eval = eval.to_do(&[
+            "Open Organization > Firmware upgrades and read the release notes for the version on offer.",
+            "Schedule the upgrade for a maintenance window, not during working hours.",
+            "If there are several sites, do one first and leave it a week.",
+            "Confirm every device comes back online afterwards.",
+        ]);
+    }
+    eval
 }
 
 /// Traffic analysis — can anyone see what is on the network?
@@ -566,7 +610,15 @@ fn traffic_analysis(c: &Collected, p: &Profile) -> Eval {
         "disabled" => "Traffic analysis is off, so application visibility is unavailable.".to_string(),
         other => format!("Traffic analysis is set to \"{other}\"."),
     };
-    Eval::graded(flags, summary).showing(detail("Traffic analysis", &["Setting", "Value"], vec![vec!["Mode".into(), mode]]))
+    let mut eval = Eval::graded(flags, summary)
+        .showing(detail("Traffic analysis", &["Setting", "Value"], vec![vec!["Mode".into(), mode]]));
+    if eval.status != Status::Pass {
+        eval = eval.to_do(&[
+            "Open Network-wide > General and set traffic analysis to collect destination hostnames.",
+            "Leave it a week, then read Network-wide > Traffic analytics to see what is actually using the link.",
+        ]);
+    }
+    eval
 }
 
 /// Is there a configuration backup of this network?
@@ -577,20 +629,24 @@ fn traffic_analysis(c: &Collected, p: &Profile) -> Eval {
 /// backup sits on the same disk would be worse than not asking.
 fn backup(c: &Collected, p: &Profile) -> Eval {
     let Some(has) = c.has_backup else {
-        return Eval::manual("Coreview did not check for a saved backup of this network.");
+        return Eval::manual("No check was made for a saved configuration backup of this network.");
     };
     let mut flags = Flags::new(p);
     if !has {
         flags.add(Code::BackupMissing);
     }
     let summary = if has {
-        "Coreview holds a configuration backup of this network.".to_string()
+        "A configuration backup of this network has been taken and is held locally.".to_string()
     } else {
         "No configuration backup of this network has been taken.".to_string()
     };
     let mut eval = Eval::graded(flags, summary);
     if !has {
-        eval = eval.to_do("Run the Meraki backup from Tools · Settings to keep a copy of this network's configuration.");
+        eval = eval.to_do(&[
+            "Take a configuration backup of this network and keep it somewhere outside the dashboard.",
+            "Repeat it after any change worth being able to undo.",
+            "Confirm the backup holds the VLANs, firewall rules and switch port settings, not just the device list.",
+        ]);
     }
     eval
 }
@@ -680,6 +736,15 @@ fn switch_ports(c: &Collected, p: &Profile) -> Eval {
     };
 
     let mut eval = Eval::graded(flags, summary);
+    if eval.status != Status::Pass {
+        eval = eval.to_do(&[
+            "Open Switch > Switch ports and filter to the ports reporting errors.",
+            "Re-seat both ends of the patch lead, clear the counters, then watch for an hour.",
+            "If errors come back, replace the patch lead. If they persist, test the cabling in the wall.",
+            "For fibre links, clean or swap the transceiver and the fibre patch lead.",
+            "For a port at half duplex, set both the switch port and the device's network card back to auto-negotiate — a speed hard-set on one end only is the usual cause.",
+        ]);
+    }
     for (label, columns, rows) in [
         ("Ports reporting errors", vec!["Switch", "Port", "Errors"], errors),
         ("Half duplex", vec!["Switch", "Port", "Duplex", "Speed"], duplex),
@@ -765,7 +830,17 @@ fn spanning_tree(c: &Collected, p: &Profile) -> Eval {
     } else {
         "RSTP is on and the topology is quiet.".to_string()
     };
-    Eval::graded(flags, summary).showing(detail("Spanning tree", &["Setting", "Value"], rows))
+    let mut eval = Eval::graded(flags, summary)
+        .showing(detail("Spanning tree", &["Setting", "Value"], rows));
+    if eval.status != Status::Pass {
+        eval = eval.to_do(&[
+            "Enable RSTP, and pin the bridge priority so the core switch is the root rather than whichever switch booted first.",
+            "Open Network-wide > Event log and filter to the spanning tree entries.",
+            "Note which switch and port keep appearing — a flapping link or a loop is almost always the cause.",
+            "Once it is stable, enable loop protection on access ports so it cannot happen again.",
+        ]);
+    }
+    eval
 }
 
 /// Layer-two topology: any link the dashboard itself calls broken.
@@ -1048,38 +1123,570 @@ fn signal(c: &Collected, p: &Profile) -> Eval {
     Eval::graded(flags, summary).showing(detail("Signal over 24 hours", &["Measure", "Value"], rows))
 }
 
+/// Two readings of one item, as one verdict.
+///
+/// Several items on his list ask about two things at once — "uplink and VPN
+/// performance", "firmware and licensing". Answering them separately and
+/// showing two verdicts under one heading would be this application's
+/// structure leaking into his document.
+fn both(a: Eval, b: Eval) -> Eval {
+    // The worse verdict wins, except that Na yields to anything real: an item
+    // half of which does not apply is answered by the half that does.
+    let status = match (a.status, b.status) {
+        (Status::Na, other) | (other, Status::Na) => other,
+        (x, y) if x <= y => x,
+        (_, y) => y,
+    };
+    let summary = match (a.summary.trim(), b.summary.trim()) {
+        ("", other) | (other, "") => other.to_string(),
+        (x, y) if x == y => x.to_string(),
+        (x, y) => format!("{x} {y}"),
+    };
+    let mut findings = a.findings;
+    for f in b.findings {
+        if !findings.iter().any(|existing| existing.code == f.code) {
+            findings.push(f);
+        }
+    }
+    let mut steps = a.steps;
+    for step in b.steps {
+        if !steps.contains(&step) {
+            steps.push(step);
+        }
+    }
+    Eval {
+        status,
+        summary,
+        observations: [a.observations, b.observations].concat(),
+        details: [a.details, b.details].concat(),
+        steps,
+        findings,
+    }
+}
+
+/// Item 3 on the firewall list: the uplinks and the VPN, together.
+fn uplinks_and_vpn(c: &Collected, p: &Profile) -> Eval {
+    both(uplinks(c, p), vpn(c, p))
+}
+
+/// The event log and whether anyone would be told — one item on two of his
+/// lists.
+fn events_and_alerts(c: &Collected, p: &Profile) -> Eval {
+    both(event_log(c, p), alerting(c, p))
+}
+
+/// Firmware and licensing, which his list pairs on every one of the three.
+fn firmware_and_licensing(c: &Collected, p: &Profile) -> Eval {
+    both(firmware(c, p), licensing(c, p))
+}
+
+/// Alerting and the configuration backup, the last switch item.
+fn alerts_and_backup(c: &Collected, p: &Profile) -> Eval {
+    both(alerting(c, p), backup(c, p))
+}
+
+/// Devices of one kind, up or down — the overview items.
+fn devices_of_kind(c: &Collected, p: &Profile, kind: DeviceKind, what: &str, code: Code) -> Eval {
+    let all = c.devices_of(kind);
+    if all.is_empty() {
+        return Eval::na(format!("No {what}s in this network."));
+    }
+    if c.statuses.is_empty() {
+        return Eval::manual("Device statuses were not returned for this organisation.");
+    }
+    let down = c.offline(kind);
+    let mut flags = Flags::new(p);
+    if !down.is_empty() {
+        flags.add(code);
+    }
+    let rows: Vec<Vec<String>> = all
+        .iter()
+        .map(|d| {
+            vec![
+                d.name.clone().unwrap_or_else(|| d.serial.clone()),
+                d.model.clone().unwrap_or_else(|| "—".into()),
+                c.status_of(&d.serial).unwrap_or("not reported").into(),
+                d.lan_ip.clone().unwrap_or_else(|| "—".into()),
+            ]
+        })
+        .collect();
+    let summary = if down.is_empty() {
+        format!("{}, all online.", plural(all.len(), what))
+    } else {
+        format!("{} of {} not online.", plural(down.len(), what), all.len())
+    };
+    let mut eval = Eval::graded(flags, summary)
+        .showing(detail("Devices", &["Name", "Model", "Status", "Address"], rows));
+    if !down.is_empty() {
+        eval = eval.to_do(&[
+            "Confirm the device has power and that its uplink port is live.",
+            "Check the switch port it is plugged into for errors, and re-seat both ends of the lead.",
+            "If it is powered over Ethernet, confirm the port is still supplying power.",
+            "If it stays offline with a good link, raise it with the vendor with the serial above.",
+        ]);
+    }
+    eval
+}
+
+/// Wireless item 1.
+fn access_point_overview(c: &Collected, p: &Profile) -> Eval {
+    if !c.network.as_ref().is_some_and(|n| n.has("wireless")) {
+        return Eval::na("No wireless in this network.");
+    }
+    devices_of_kind(c, p, DeviceKind::Wireless, "access point", Code::DeviceApOffline)
+}
+
+/// Switch item 1.
+fn switch_summary(c: &Collected, p: &Profile) -> Eval {
+    if !c.network.as_ref().is_some_and(|n| n.has("switch")) {
+        return Eval::na("No switches in this network.");
+    }
+    devices_of_kind(c, p, DeviceKind::Switch, "switch", Code::DeviceSwitchOffline)
+}
+
+/// Wireless item 3: each access point's own load.
+fn access_point_status(c: &Collected, p: &Profile) -> Eval {
+    if !c.network.as_ref().is_some_and(|n| n.has("wireless")) {
+        return Eval::na("No wireless in this network.");
+    }
+    let aps = c.devices_of(DeviceKind::Wireless);
+    if aps.is_empty() {
+        return Eval::na("No access points in this network.");
+    }
+    let Some(clients) = c.clients.as_ref() else {
+        return Eval::manual("The client list was not returned, so per-AP load could not be read.");
+    };
+
+    // Clients per access point, from the client list's own recent device.
+    let mut flags = Flags::new(p);
+    let rows: Vec<Vec<String>> = aps
+        .iter()
+        .map(|ap| {
+            let serial = ap.serial.as_str();
+            let count = clients
+                .iter()
+                .filter(|cl| field(cl, "recentDeviceSerial") == serial)
+                .count();
+            vec![
+                ap.name.clone().unwrap_or_else(|| serial.to_string()),
+                ap.model.clone().unwrap_or_else(|| "—".into()),
+                c.status_of(serial).unwrap_or("not reported").into(),
+                count.to_string(),
+            ]
+        })
+        .collect();
+    if !c.offline(DeviceKind::Wireless).is_empty() {
+        flags.add(Code::DeviceApOffline);
+    }
+
+    let total: usize = clients.len();
+    let summary = format!(
+        "{} carrying {} over the last 24 hours.",
+        plural(aps.len(), "access point"),
+        plural(total, "client"),
+    );
+    Eval::graded(flags, summary)
+        .showing(detail("Access points", &["Name", "Model", "Status", "Clients"], rows))
+}
+
+/// Switch item 5: PoE.
+fn poe(c: &Collected, p: &Profile) -> Eval {
+    if !c.network.as_ref().is_some_and(|n| n.has("switch")) {
+        return Eval::na("No switches in this network.");
+    }
+    if c.port_statuses.is_empty() {
+        return Eval::manual("Port statuses were not returned, so PoE draw could not be read.");
+    }
+
+    let mut flags = Flags::new(p);
+    let mut rows = Vec::new();
+    let mut dark = Vec::new();
+    for (serial, statuses) in &c.port_statuses {
+        let config = c.ports.iter().find(|(s, _)| s == serial).map(|(_, v)| v);
+        let mut total = 0.0;
+        let mut powered = 0usize;
+        for port in array(Some(statuses)) {
+            let draw = port.get("powerUsageInWh").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            if draw > 0.0 {
+                powered += 1;
+                total += draw;
+            }
+            let id = field(port, "portId");
+            let poe_enabled = array(config)
+                .into_iter()
+                .find(|cfg| field(cfg, "portId") == id)
+                .and_then(|cfg| cfg.get("poeEnabled").and_then(|v| v.as_bool()));
+            if poe_enabled == Some(true)
+                && field(port, "status").eq_ignore_ascii_case("Connected")
+                && draw == 0.0
+            {
+                flags.add(Code::PoeDarkPort);
+                dark.push(vec![serial.clone(), id]);
+            }
+        }
+        rows.push(vec![serial.clone(), powered.to_string(), format!("{total:.1} W")]);
+    }
+
+    let summary = if dark.is_empty() {
+        "Every PoE port with something plugged into it is drawing power.".to_string()
+    } else {
+        format!("{} configured for PoE and drawing nothing.", plural(dark.len(), "port"))
+    };
+    let mut eval = Eval::graded(flags, summary)
+        .showing(detail("Power drawn per switch", &["Switch", "Ports powered", "Total draw"], rows));
+    if !dark.is_empty() {
+        eval = eval
+            .showing(detail("PoE ports drawing nothing", &["Switch", "Port"], dark))
+            .to_do(&[
+                "Confirm the device on that port expects power over Ethernet rather than its own supply.",
+                "Check the port's PoE setting is still enabled and not capped below what the device needs.",
+                "Re-seat the lead at both ends; a partly seated plug links at data and not at power.",
+                "Try the device on a known-good PoE port to tell a port fault from a device fault.",
+            ]);
+    }
+    eval
+}
+
+/// Switch item 7: what is actually on the network.
+fn clients(c: &Collected, p: &Profile) -> Eval {
+    let Some(clients) = c.clients.as_ref() else {
+        return Eval::manual("The client list was not returned.");
+    };
+    if clients.is_empty() {
+        return Eval::pass("No clients were seen in the last 24 hours.");
+    }
+
+    // Busiest first: the question this item is asked to answer.
+    let mut by_usage: Vec<&Value> = clients.iter().collect();
+    let sent = |cl: &Value| {
+        cl.get("usage")
+            .and_then(|u| u.get("sent").and_then(|s| s.as_f64()).zip(u.get("recv").and_then(|r| r.as_f64())))
+            .map(|(a, b)| a + b)
+            .unwrap_or(0.0)
+    };
+    by_usage.sort_by(|a, b| sent(b).partial_cmp(&sent(a)).unwrap_or(std::cmp::Ordering::Equal));
+
+    let rows: Vec<Vec<String>> = by_usage
+        .iter()
+        .take(10)
+        .map(|cl| {
+            vec![
+                field(cl, "description"),
+                field(cl, "ip"),
+                field(cl, "vlan"),
+                field(cl, "switchport"),
+                format!("{:.1} MB", sent(cl) / 1024.0),
+            ]
+        })
+        .collect();
+
+    let flags = Flags::new(p);
+    Eval::graded(flags, format!("{} seen in the last 24 hours.", plural(clients.len(), "client")))
+        .showing(detail("Busiest clients", &["Client", "Address", "VLAN", "Port", "Usage"], rows))
+}
+
 /// Every check, in the order they are reported.
 type Evaluator = fn(&Collected, &Profile) -> Eval;
 
 struct Definition {
     id: &'static str,
+    section: Section,
     num: &'static str,
     title: &'static str,
     navigation: &'static str,
+    /// What this item covers, in the words of the checklist it comes from.
+    checklist: &'static [&'static str],
     run: Evaluator,
 }
 
+/// The twenty-six items, in his three sections.
+///
+/// The titles, the navigation and the checklists are the health-check list's
+/// own words, not a paraphrase: a reader who knows the list has to be able to
+/// find each item in it. Several items are answered by the same evaluator —
+/// the firewall's event log and the switch's are one reading of one log — and
+/// that is deliberate: the *document* has twenty-six places a reader looks,
+/// even where two of them are satisfied by one question to the API.
 const CHECKS: &[Definition] = &[
-    Definition { id: "device-status", num: "1.1", title: "Device status", navigation: "Organization › Overview", run: device_status },
-    Definition { id: "uplinks", num: "1.2", title: "WAN uplinks", navigation: "Security & SD-WAN › Appliance status", run: uplinks },
-    Definition { id: "vpn", num: "1.3", title: "Site-to-site VPN", navigation: "Security & SD-WAN › VPN status", run: vpn },
-    Definition { id: "licensing", num: "1.4", title: "Licensing", navigation: "Organization › License info", run: licensing },
-    Definition { id: "threat-protection", num: "2.1", title: "Threat protection", navigation: "Security & SD-WAN › Threat protection", run: threat_protection },
-    Definition { id: "security-events", num: "2.2", title: "Security events", navigation: "Security & SD-WAN › Security center", run: security_events },
-    Definition { id: "firewall", num: "2.3", title: "Firewall rules", navigation: "Security & SD-WAN › Firewall", run: firewall },
-    Definition { id: "content-filtering", num: "2.4", title: "Content filtering", navigation: "Security & SD-WAN › Content filtering", run: content_filtering },
-    Definition { id: "alerting", num: "3.1", title: "Alerting", navigation: "Network-wide › Alerts", run: alerting },
-    Definition { id: "firmware", num: "3.2", title: "Firmware", navigation: "Organization › Firmware upgrades", run: firmware },
-    Definition { id: "traffic-analysis", num: "3.3", title: "Traffic analysis", navigation: "Network-wide › General", run: traffic_analysis },
-    Definition { id: "backup", num: "3.4", title: "Configuration backup", navigation: "Coreview › Tools › Settings", run: backup },
-    Definition { id: "switch-ports", num: "4.1", title: "Switch ports", navigation: "Switching › Switch ports", run: switch_ports },
-    Definition { id: "stacks", num: "4.2", title: "Switch stacks", navigation: "Switching › Switch stacks", run: stacks },
-    Definition { id: "spanning-tree", num: "4.3", title: "Spanning tree", navigation: "Switching › Switch settings", run: spanning_tree },
-    Definition { id: "topology", num: "4.4", title: "Topology", navigation: "Network-wide › Topology", run: topology },
-    Definition { id: "event-log", num: "4.5", title: "Event log", navigation: "Network-wide › Event log", run: event_log },
-    Definition { id: "wireless-health", num: "5.1", title: "Wireless health", navigation: "Wireless › Wireless health", run: wireless_health },
-    Definition { id: "radio-environment", num: "5.2", title: "Radio environment", navigation: "Wireless › RF spectrum", run: radio_environment },
-    Definition { id: "signal", num: "5.3", title: "Client signal", navigation: "Wireless › Wireless health", run: signal },
+    // ── Firewall (MX)
+    Definition {
+        id: "mx-device-status", section: Section::Firewall, num: "1",
+        title: "Device Status and Connectivity",
+        navigation: "Security & SD-WAN > Appliance status",
+        checklist: &[
+            "Uplink status (WAN 1, WAN 2 – online, latency, loss)",
+            "Review Recent Events for reboots or failovers",
+        ],
+        run: device_status,
+    },
+    Definition {
+        id: "mx-security-center", section: Section::Firewall, num: "2",
+        title: "Security Center Review",
+        navigation: "Security & SD-WAN > Security center",
+        checklist: &[
+            "Threat detection summary (malware, phishing, intrusion attempts)",
+            "Top clients generating threats",
+            "Blocked threats and threat types (IDS/IPS data)",
+        ],
+        run: security_events,
+    },
+    Definition {
+        id: "mx-uplink-vpn", section: Section::Firewall, num: "3",
+        title: "Uplink and VPN Performance",
+        navigation: "Security & SD-WAN > VPN Status",
+        checklist: &[
+            "WAN link health: review latency, jitter and packet loss",
+            "Auto VPN status: check tunnel health, latency and stability",
+            "Ensure non-Meraki VPN peers are connected if applicable",
+        ],
+        run: uplinks_and_vpn,
+    },
+    Definition {
+        id: "mx-firewall-rules", section: Section::Firewall, num: "4",
+        title: "Firewall Rules Audit",
+        navigation: "Security & SD-WAN > Firewall",
+        checklist: &[
+            "L3 firewall rules (both outbound and inbound)",
+            "Geo-IP restrictions, if needed",
+            "Remove unused or overly permissive rules",
+        ],
+        run: firewall,
+    },
+    Definition {
+        id: "mx-threat-protection", section: Section::Firewall, num: "5",
+        title: "Threat Protection Configuration",
+        navigation: "Security & SD-WAN > Threat protection",
+        checklist: &[
+            "Advanced Malware Protection (AMP)",
+            "Intrusion Detection and Prevention (IDS/IPS) — set to Prevention and the Security rule set",
+        ],
+        run: threat_protection,
+    },
+    Definition {
+        id: "mx-content-filtering", section: Section::Firewall, num: "6",
+        title: "Content Filtering",
+        navigation: "Security & SD-WAN > Content filtering",
+        checklist: &[
+            "Ensure appropriate category-based filtering is enabled",
+            "Check for any whitelist/blacklist entries and their validity",
+        ],
+        run: content_filtering,
+    },
+    Definition {
+        id: "mx-traffic-analytics", section: Section::Firewall, num: "7",
+        title: "Traffic Analytics",
+        navigation: "Network-wide > Traffic analytics",
+        checklist: &["Top applications", "Top clients and bandwidth users", "Unusual or unwanted traffic patterns"],
+        run: traffic_analysis,
+    },
+    Definition {
+        id: "mx-events-alerts", section: Section::Firewall, num: "8",
+        title: "Event Logs & Alerts",
+        navigation: "Network-wide > Event log and Network-wide > Alerts",
+        checklist: &[
+            "Review logs for denied traffic, VPN issues and security events",
+            "Set alerts for WAN failure, high CPU/memory, threat detection and VPN tunnel down",
+        ],
+        run: events_and_alerts,
+    },
+    Definition {
+        id: "mx-firmware-licensing", section: Section::Firewall, num: "9",
+        title: "Firmware & Licensing",
+        navigation: "Firmware: Organization > Firmware upgrades · Licensing: Organization > License info",
+        checklist: &[
+            "Ensure you are running the latest stable firmware",
+            "Verify firewall licensing (Enterprise or Advanced Security)",
+        ],
+        run: firmware_and_licensing,
+    },
+
+    // ── Wireless
+    Definition {
+        id: "wifi-overview", section: Section::Wireless, num: "1",
+        title: "Dashboard Access & Overview",
+        navigation: "Wireless > Access Points",
+        checklist: &[
+            "View the list of APs",
+            "Check for APs in alert status, offline devices, or unusual behaviour",
+        ],
+        run: access_point_overview,
+    },
+    Definition {
+        id: "wifi-health", section: Section::Wireless, num: "2",
+        title: "Wireless Health Tool",
+        navigation: "Wireless > Wireless Health",
+        checklist: &[
+            "Client connection failures (authentication, DHCP, DNS)",
+            "Latency and signal quality",
+            "Failed connection stages",
+        ],
+        run: wireless_health,
+    },
+    Definition {
+        id: "wifi-ap-status", section: Section::Wireless, num: "3",
+        title: "Access Point Status",
+        navigation: "Wireless > Access Points > (individual AP)",
+        checklist: &[
+            "Channel utilization (avoid high usage)",
+            "Clients connected — see if it is unusually high",
+            "Throughput and signal strength metrics",
+        ],
+        run: access_point_status,
+    },
+    Definition {
+        id: "wifi-rf", section: Section::Wireless, num: "4",
+        title: "RF Spectrum & Channel Planning",
+        navigation: "Wireless > RF Spectrum · Wireless > Radio Settings",
+        checklist: &[
+            "Identify channel interference or noise",
+            "Review channel and power settings",
+            "Consider enabling auto channel/power if not already",
+        ],
+        run: radio_environment,
+    },
+    Definition {
+        id: "wifi-clients", section: Section::Wireless, num: "5",
+        title: "Client Performance",
+        navigation: "Network-wide > Clients · Wireless > Wireless Health > Clients",
+        checklist: &[
+            "Look for clients with repeated failures",
+            "Review bandwidth usage and signal strength",
+            "Ideal RSSI for roaming is −60 dBm to −67 dBm; below −67 dBm a device should move to another AP",
+        ],
+        run: signal,
+    },
+    Definition {
+        id: "wifi-events-alerts", section: Section::Wireless, num: "6",
+        title: "Event Logs & Alerts",
+        navigation: "Wireless > Event Log · Network-wide > Alerts",
+        checklist: &[
+            "Authentication failures",
+            "AP reboots or firmware updates",
+            "Alerts for an AP going offline, and for high usage or performance issues",
+        ],
+        run: events_and_alerts,
+    },
+    Definition {
+        id: "wifi-firmware-licensing", section: Section::Wireless, num: "7",
+        title: "Firmware & Licensing",
+        navigation: "Organization > Firmware Upgrades · Organization > License Info",
+        checklist: &["Ensure devices are up to date", "Confirm licensing is current and sufficient"],
+        run: firmware_and_licensing,
+    },
+
+    // ── Switching
+    Definition {
+        id: "sw-summary", section: Section::Switching, num: "1",
+        title: "Switch Summary and Status",
+        navigation: "Switch > Switches",
+        checklist: &[
+            "Online status",
+            "Model, uptime and firmware version",
+            "Alerts (temperature, power supply, port errors)",
+        ],
+        run: switch_summary,
+    },
+    Definition {
+        id: "sw-ports", section: Section::Switching, num: "2",
+        title: "Port Status and Utilization",
+        navigation: "Switch > Switch ports",
+        checklist: &[
+            "Status (up/down)",
+            "Connected devices (clients, other switches, APs)",
+            "Speed and duplex settings",
+            "Errors: CRCs, collisions, STP changes, high utilization",
+        ],
+        run: switch_ports,
+    },
+    Definition {
+        id: "sw-detail", section: Section::Switching, num: "3",
+        title: "Switch Detail Page",
+        navigation: "Switch > Switches > (individual switch)",
+        checklist: &[
+            "Uplink status: confirm a stable connection to the gateway",
+            "Stacking, if applicable: the health of stack members",
+            "Port summary: any blocked or errored ports",
+            "LLDP/CDP neighbours: verify topology",
+        ],
+        run: stacks,
+    },
+    Definition {
+        id: "sw-topology", section: Section::Switching, num: "4",
+        title: "Topology Review",
+        navigation: "Network-wide > Topology",
+        checklist: &[
+            "Confirm expected switch-to-switch and switch-to-AP/client connections",
+            "Identify single points of failure",
+            "Look for broken or misconfigured links",
+        ],
+        run: topology,
+    },
+    Definition {
+        id: "sw-poe", section: Section::Switching, num: "5",
+        title: "PoE Budget and Usage",
+        navigation: "Switch > Switches > [Select a Switch] > Power",
+        checklist: &[
+            "Total PoE budget against usage",
+            "Power draw per port",
+            "Any ports not providing power as expected",
+        ],
+        run: poe,
+    },
+    Definition {
+        id: "sw-events", section: Section::Switching, num: "6",
+        title: "Event Logs",
+        navigation: "Network-wide > Event log",
+        checklist: &[
+            "STP changes",
+            "Port status changes",
+            "Power failures or overloads",
+            "Unauthorized access attempts, if 802.1X is used",
+        ],
+        run: event_log,
+    },
+    Definition {
+        id: "sw-clients", section: Section::Switching, num: "7",
+        title: "Client & Traffic Analysis",
+        navigation: "Network-wide > Clients",
+        checklist: &[
+            "Sort by switch port or client name",
+            "Bandwidth usage",
+            "VLAN assignment",
+            "Device type",
+        ],
+        run: clients,
+    },
+    Definition {
+        id: "sw-vlans-stp", section: Section::Switching, num: "8",
+        title: "VLANs and Spanning Tree (STP)",
+        navigation: "Switch > Configure > Routing and DHCP · Switch > Configure > STP",
+        checklist: &[
+            "Ensure the correct VLANs are assigned and properly routed",
+            "Check the STP root bridge location",
+            "Identify blocked or erratically changing ports (loops)",
+        ],
+        run: spanning_tree,
+    },
+    Definition {
+        id: "sw-firmware-licensing", section: Section::Switching, num: "9",
+        title: "Firmware and Licensing",
+        navigation: "Firmware: Organization > Firmware upgrades · Licensing: Organization > License info",
+        checklist: &[
+            "Confirm switches are on the latest stable firmware",
+            "Verify licensing status",
+        ],
+        run: firmware_and_licensing,
+    },
+    Definition {
+        id: "sw-alerts-backup", section: Section::Switching, num: "10",
+        title: "Alerts & Configuration Backup",
+        navigation: "Network-wide > Alerts",
+        checklist: &[
+            "Alerts for a switch going offline, high PoE usage, high port utilization, cable or port errors",
+            "Configuration backup",
+        ],
+        run: alerts_and_backup,
+    },
 ];
 
 /// Runs every check against what was collected.
@@ -1088,9 +1695,11 @@ pub fn run(collected: &Collected, profile: &Profile) -> Report {
         .iter()
         .map(|d| CheckResult {
             id: d.id.into(),
+            section: d.section,
             num: d.num.into(),
             title: d.title.into(),
             navigation: d.navigation.into(),
+            checklist: d.checklist.iter().map(|c| c.to_string()).collect(),
             eval: (d.run)(collected, profile),
         })
         .collect();
@@ -1114,7 +1723,7 @@ pub fn count() -> usize {
 mod tests {
     use super::*;
     use crate::api::Network;
-    use crate::health::{profile, Severity, Status};
+    use crate::health::{profile, Severity};
     use serde_json::json;
 
     fn network(products: &[&str]) -> Network {
@@ -1134,6 +1743,86 @@ mod tests {
 
     fn find<'a>(report: &'a Report, id: &str) -> &'a CheckResult {
         report.checks.iter().find(|c| c.id == id).expect("check exists")
+    }
+
+    /// LT-410: the document's shape, which is what he compared and found
+    /// wanting. Twenty-six items in three sections, each with somewhere to
+    /// look and a list of what it covers.
+    #[test]
+    fn the_report_has_the_twenty_six_items_of_the_health_check_list() {
+        let report = run(&base(&["appliance", "wireless", "switch"]), &profile("smb"));
+        assert_eq!(report.checks.len(), 26, "the list has twenty-six items");
+
+        let of = |section: Section| report.checks.iter().filter(|c| c.section == section).count();
+        assert_eq!(of(Section::Firewall), 9);
+        assert_eq!(of(Section::Wireless), 7);
+        assert_eq!(of(Section::Switching), 10);
+
+        for check in &report.checks {
+            assert!(!check.navigation.is_empty(), "{} has nowhere to look", check.id);
+            assert!(!check.checklist.is_empty(), "{} says nothing about what it covers", check.id);
+            assert!(!check.title.is_empty());
+        }
+
+        // Items are numbered within their section, the way the list is.
+        let firewall: Vec<&str> = report
+            .checks
+            .iter()
+            .filter(|c| c.section == Section::Firewall)
+            .map(|c| c.num.as_str())
+            .collect();
+        assert_eq!(firewall, vec!["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+    }
+
+    /// The report is the customer's document, not this application's
+    /// advertisement — and his script says so outright. It failed this in
+    /// four places before LT-410.
+    #[test]
+    fn nothing_in_the_report_names_the_tool_that_made_it() {
+        let mut c = base(&["appliance", "wireless", "switch"]);
+        // Every branch that has something to say, so the wording is reached.
+        c.has_backup = Some(false);
+        c.intrusion = Some(serde_json::json!({"mode": "disabled"}));
+        c.malware = Some(serde_json::json!({"mode": "disabled"}));
+        c.content_filtering = Some(serde_json::json!({"blockedUrlCategories": []}));
+        let report = run(&c, &profile("regulated"));
+
+        let mut text = String::new();
+        for check in &report.checks {
+            text.push_str(&check.title);
+            text.push_str(&check.navigation);
+            text.push_str(&check.eval.summary);
+            text.push_str(&check.checklist.join(" "));
+            text.push_str(&check.eval.observations.join(" "));
+            text.push_str(&check.eval.steps.join(" "));
+            for d in &check.eval.details {
+                text.push_str(&d.label);
+            }
+        }
+        for banned in ["Coreview", "coreview"] {
+            assert!(!text.contains(banned), "the report names the tool: {banned}");
+        }
+    }
+
+    /// An item that needs attention has to say what to do about it, in steps.
+    #[test]
+    fn a_finding_carries_numbered_steps_rather_than_one_line_of_advice() {
+        let mut c = base(&["appliance"]);
+        c.l3_firewall_rules = Some(serde_json::json!({"rules": [
+            {"policy": "allow", "srcCidr": "any", "destCidr": "any", "protocol": "any", "comment": "temporary"}
+        ]}));
+        // An any-to-any allow is an advisory for a small business and an
+        // action for a regulated one — and **both** get the steps. An advisory
+        // is a real finding graded as not urgent, not a finding withheld.
+        for (id, expected) in [("smb", Status::Advisory), ("regulated", Status::Attention)] {
+            let e = find(&run(&c, &profile(id)), "mx-firewall-rules").eval.clone();
+            assert_eq!(e.status, expected, "under {id}");
+            assert!(e.steps.len() >= 3, "one line is a verdict, not a plan: {:?}", e.steps);
+            // Each step is an instruction, not a heading.
+            for step in &e.steps {
+                assert!(step.len() > 20, "too short to act on: {step:?}");
+            }
+        }
     }
 
     #[test]
@@ -1156,7 +1845,7 @@ mod tests {
         // The rule the whole module is written around.
         let c = base(&["appliance"]);
         let report = run(&c, &profile("regulated"));
-        let cf = find(&report, "content-filtering");
+        let cf = find(&report, "mx-content-filtering");
         assert_eq!(cf.eval.status, Status::Manual, "unread must not be a pass or a finding");
         assert!(cf.eval.findings.is_empty());
         assert_eq!(cf.eval.status.label(), "Not reported");
@@ -1165,10 +1854,10 @@ mod tests {
     #[test]
     fn a_product_the_network_does_not_have_is_not_applicable() {
         let report = run(&base(&["switch"]), &profile("smb"));
-        assert_eq!(find(&report, "firewall").eval.status, Status::Na);
-        assert_eq!(find(&report, "wireless-health").eval.status, Status::Na);
+        assert_eq!(find(&report, "mx-firewall-rules").eval.status, Status::Na);
+        assert_eq!(find(&report, "wifi-health").eval.status, Status::Na);
         // But the switch checks do apply, and have no data.
-        assert_eq!(find(&report, "switch-ports").eval.status, Status::Manual);
+        assert_eq!(find(&report, "sw-ports").eval.status, Status::Manual);
     }
 
     #[test]
@@ -1181,7 +1870,7 @@ mod tests {
         c.statuses = vec![json!({"serial": "Q1", "status": "online"}), json!({"serial": "Q2", "status": "offline"})];
 
         let report = run(&c, &profile("smb"));
-        let status = find(&report, "device-status");
+        let status = find(&report, "mx-device-status");
         assert_eq!(status.eval.status, Status::Attention, "a device down is an action everywhere");
         assert!(status.eval.findings.iter().any(|f| f.code == Code::DeviceSwitchOffline));
         // And it says which one, rather than a count.
@@ -1200,7 +1889,7 @@ mod tests {
         let shop = run(&c, &profile("smb"));
         let clinic = run(&c, &profile("healthcare"));
 
-        let (a, b) = (find(&shop, "threat-protection"), find(&clinic, "threat-protection"));
+        let (a, b) = (find(&shop, "mx-threat-protection"), find(&clinic, "mx-threat-protection"));
         assert_eq!(a.eval.summary, b.eval.summary, "the observation must not move");
         assert_eq!(a.eval.status, Status::Advisory);
         assert_eq!(b.eval.status, Status::Attention);
@@ -1217,7 +1906,7 @@ mod tests {
             {"policy": "allow", "srcCidr": "192.0.2.0/24", "destCidr": "any", "protocol": "tcp", "comment": "fine"}
         ]}));
         let report = run(&c, &profile("smb"));
-        let fw = find(&report, "firewall");
+        let fw = find(&report, "mx-firewall-rules");
         assert!(fw.eval.findings.iter().any(|f| f.code == Code::FwAnyAny));
         // Only the one rule, and it is shown.
         assert_eq!(fw.eval.details[0].rows.len(), 1);
@@ -1230,7 +1919,7 @@ mod tests {
         c.l3_firewall_rules = Some(json!({"rules": [
             {"policy": "deny", "srcCidr": "any", "destCidr": "any", "protocol": "any", "comment": "default"}
         ]}));
-        let fw = find(&run(&c, &profile("regulated")), "firewall").eval.clone();
+        let fw = find(&run(&c, &profile("regulated")), "mx-firewall-rules").eval.clone();
         assert_eq!(fw.status, Status::Pass);
         assert!(fw.summary.contains("none allowing any to any"), "{}", fw.summary);
     }
@@ -1245,10 +1934,10 @@ mod tests {
             "alerts": [{"type": "gatewayDown", "enabled": true, "alertDestinations": {"emails": []}}]
         }));
         let report = run(&c, &profile("smb"));
-        let a = find(&report, "alerting");
+        let a = find(&report, "mx-events-alerts");
         assert!(a.eval.findings.iter().any(|f| f.code == Code::AlertsNoRecipients));
         assert!(!a.eval.findings.iter().any(|f| f.code == Code::AlertsMissing), "alerts are enabled");
-        assert!(a.eval.action.is_some(), "it should say what to do");
+        assert!(!a.eval.steps.is_empty(), "it should say what to do");
     }
 
     #[test]
@@ -1256,11 +1945,12 @@ mod tests {
         // Meraki always lists available versions, including the running one.
         // Counting them all would report every network as out of date.
         let mut c = base(&["switch"]);
+        c.licenses = Some(json!({"status": "OK"}));
         c.firmware = Some(json!({"products": {"switch": {
             "currentVersion": {"shortName": "MS 15.21"},
             "availableVersions": [{"shortName": "MS 15.21", "releaseType": "stable"}]
         }}}));
-        let up_to_date = find(&run(&c, &profile("smb")), "firmware").eval.clone();
+        let up_to_date = find(&run(&c, &profile("smb")), "mx-firmware-licensing").eval.clone();
         assert_eq!(up_to_date.status, Status::Pass, "{}", up_to_date.summary);
 
         c.firmware = Some(json!({"products": {"switch": {
@@ -1271,7 +1961,7 @@ mod tests {
                 {"shortName": "MS 17.0", "releaseType": "beta"}
             ]
         }}}));
-        let behind = find(&run(&c, &profile("smb")), "firmware").eval.clone();
+        let behind = find(&run(&c, &profile("smb")), "mx-firmware-licensing").eval.clone();
         assert!(behind.findings.iter().any(|f| f.code == Code::FirmwareUpdateAvailable));
         // The beta does not count.
         assert_eq!(behind.details[0].rows[0][2], "1");
@@ -1283,14 +1973,14 @@ mod tests {
         c.security_events = Some(vec![
             json!({"ts": "2026-09-20T10:00:00Z", "eventType": "IDS Alert", "blocked": true, "message": "stopped"}),
         ]);
-        let ok = find(&run(&c, &profile("regulated")), "security-events").eval.clone();
+        let ok = find(&run(&c, &profile("regulated")), "mx-security-center").eval.clone();
         assert_eq!(ok.status, Status::Pass, "{}", ok.summary);
 
         c.security_events = Some(vec![
             json!({"ts": "2026-09-20T10:00:00Z", "eventType": "IDS Alert", "blocked": true, "message": "stopped"}),
             json!({"ts": "2026-09-21T11:00:00Z", "eventType": "IDS Alert", "blocked": false, "message": "allowed", "clientName": "laptop"}),
         ]);
-        let bad = find(&run(&c, &profile("smb")), "security-events").eval.clone();
+        let bad = find(&run(&c, &profile("smb")), "mx-security-center").eval.clone();
         assert!(bad.findings.iter().any(|f| f.code == Code::ThreatsUnblocked));
         assert!(bad.summary.contains("1 event of 2"), "{}", bad.summary);
     }
@@ -1301,28 +1991,37 @@ mod tests {
         let mut c = base(&["wireless"]);
         c.connection_stats = Some(json!({"assoc": 6, "auth": 3, "dhcp": 2, "dns": 1, "success": 88}));
 
-        let shop = find(&run(&c, &profile("smb")), "wireless-health").eval.clone();
-        let clinic = find(&run(&c, &profile("healthcare")), "wireless-health").eval.clone();
+        let shop = find(&run(&c, &profile("smb")), "wifi-health").eval.clone();
+        let clinic = find(&run(&c, &profile("healthcare")), "wifi-health").eval.clone();
         assert_eq!(shop.status, Status::Pass, "12% is under the SMB bar of 15%: {}", shop.summary);
         assert_eq!(clinic.status, Status::Attention, "12% is over the healthcare bar of 7%");
         assert!(clinic.findings.iter().any(|f| f.code == Code::WifiConnFailures));
     }
 
     #[test]
-    fn a_backup_coreview_already_holds_is_not_reported_as_missing() {
-        // The check his script cannot make, because only Coreview knows.
-        let mut c = base(&["appliance"]);
+    fn a_backup_already_held_is_not_reported_as_missing() {
+        // The check a standalone script cannot make, because only the tool
+        // that took the backup knows it exists.
+        //
+        // This item covers alerting as well, so alerting is supplied too —
+        // otherwise the merged verdict is "not reported" and says nothing
+        // about the backup either way.
+        let mut c = base(&["appliance", "switch"]);
+        c.alert_settings = Some(json!({
+            "defaultDestinations": {"emails": ["ops@example.invalid"], "snmp": false, "httpServerIds": []},
+            "alerts": [{"type": "gatewayDown", "enabled": true}]
+        }));
         c.has_backup = Some(true);
-        assert_eq!(find(&run(&c, &profile("regulated")), "backup").eval.status, Status::Pass);
+        assert_eq!(find(&run(&c, &profile("regulated")), "sw-alerts-backup").eval.status, Status::Pass);
 
         c.has_backup = Some(false);
-        let missing = find(&run(&c, &profile("regulated")), "backup").eval.clone();
+        let missing = find(&run(&c, &profile("regulated")), "sw-alerts-backup").eval.clone();
         assert!(missing.findings.iter().any(|f| f.code == Code::BackupMissing));
-        assert!(missing.action.is_some());
+        assert!(!missing.steps.is_empty());
 
         // And when nobody looked, it says so rather than guessing either way.
         c.has_backup = None;
-        assert_eq!(find(&run(&c, &profile("smb")), "backup").eval.status, Status::Manual);
+        assert_eq!(find(&run(&c, &profile("smb")), "sw-alerts-backup").eval.status, Status::Manual);
     }
 
     #[test]
@@ -1364,11 +2063,17 @@ mod tests {
         };
 
         let mut c = base(&["appliance"]);
+        // The item pairs firmware with licensing, so firmware is answered too
+        // and the verdict is about the licence rather than about a gap.
+        c.firmware = Some(json!({"products": {"appliance": {
+            "currentVersion": {"shortName": "MX 18.2"},
+            "availableVersions": [{"shortName": "MX 18.2", "releaseType": "stable"}]
+        }}}));
         // 40 days out: past the SMB's 30-day bar, inside the regulated 90.
         c.licenses = Some(json!({"status": "OK", "expirationDate": expires(40)}));
 
-        let smb = find(&run(&c, &profile("smb")), "licensing").eval.clone();
-        let reg = find(&run(&c, &profile("regulated")), "licensing").eval.clone();
+        let smb = find(&run(&c, &profile("smb")), "mx-firmware-licensing").eval.clone();
+        let reg = find(&run(&c, &profile("regulated")), "mx-firmware-licensing").eval.clone();
         assert_eq!(smb.status, Status::Pass, "40 days is fine at 30: {}", smb.summary);
         assert!(
             reg.findings.iter().any(|f| f.code == Code::LicenceExpiring),
@@ -1381,7 +2086,7 @@ mod tests {
     fn a_licence_status_that_is_not_ok_is_a_finding_on_its_own() {
         let mut c = base(&["appliance"]);
         c.licenses = Some(json!({"status": "License Problem"}));
-        let e = find(&run(&c, &profile("smb")), "licensing").eval.clone();
+        let e = find(&run(&c, &profile("smb")), "mx-firmware-licensing").eval.clone();
         assert!(e.findings.iter().any(|f| f.code == Code::LicenceStatusNotOk));
         assert!(e.summary.contains("License Problem"), "{}", e.summary);
     }
@@ -1409,7 +2114,7 @@ mod tests {
             ]),
         )];
 
-        let e = find(&run(&c, &profile("smb")), "switch-ports").eval.clone();
+        let e = find(&run(&c, &profile("smb")), "sw-ports").eval.clone();
         assert!(e.findings.iter().any(|f| f.code == Code::PoeDarkPort), "{}", e.summary);
         let dark = e.details.iter().find(|d| d.label == "PoE ports drawing nothing").expect("the table");
         assert_eq!(dark.rows.len(), 1, "only the PoE port with no draw: {:?}", dark.rows);
@@ -1425,7 +2130,7 @@ mod tests {
             "Q1".into(),
             json!([{"portId": "1", "status": "Disconnected", "powerUsageInWh": 0.0}]),
         )];
-        let e = find(&run(&c, &profile("regulated")), "switch-ports").eval.clone();
+        let e = find(&run(&c, &profile("regulated")), "sw-ports").eval.clone();
         assert!(!e.findings.iter().any(|f| f.code == Code::PoeDarkPort), "{}", e.summary);
     }
 
@@ -1452,7 +2157,7 @@ mod tests {
         let mut c = base(&["switch"]);
         c.stacks = Some(json!([{"name": "Core stack", "serials": ["Q1", "Q2"]}]));
         c.statuses = vec![json!({"serial": "Q1", "status": "online"}), json!({"serial": "Q2", "status": "offline"})];
-        let s = find(&run(&c, &profile("smb")), "stacks").eval.clone();
+        let s = find(&run(&c, &profile("smb")), "sw-detail").eval.clone();
         assert!(s.findings.iter().any(|f| f.code == Code::SwitchStackMemberDown));
         assert_eq!(s.details[0].rows.len(), 2, "both members are shown, not just the broken one");
     }

@@ -600,7 +600,13 @@ pub fn scan_excluding(dir: &str, skip: &[String]) -> Result<IconLibrary, String>
                 found.convertible.len()
             ));
         } else {
-            let work = std::env::temp_dir().join(format!("coreview-conv-{}", std::process::id()));
+            // LT-382: unique per *invocation*, not per process. Named by pid
+            // alone, two scans running at once shared one directory — and the
+            // first to finish deleted it at the end, taking the other's
+            // freshly converted SVGs with it between the conversion and the
+            // read. LibreOffice said it had written the file and the file was
+            // not there, which is exactly what the flake looked like.
+            let work = crate::shapeconv::unique_work_dir("coreview-conv");
             let _ = std::fs::create_dir_all(&work);
             for batch in found.convertible.chunks(25) {
                 if icons.len() >= MAX_ICONS {

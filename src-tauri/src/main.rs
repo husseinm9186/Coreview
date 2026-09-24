@@ -232,6 +232,7 @@ fn main() {
             meraki::meraki_profiles,
             meraki::meraki_backup,
             meraki::meraki_health_check,
+            meraki::meraki_discover,
             vault_commands::list_credentials,
             vault_commands::reveal_credential,
             vault_commands::export_vault,

@@ -55,6 +55,7 @@
     list_icon_library: ["dir"],
     list_projects: [],
     meraki_backup: ["credentialId", "organizationId", "networkIds", "stamp"],
+    meraki_discover: ["credentialId", "organizationId", "networkIds"],
     meraki_health_check: ["credentialId", "organizationId", "networkId", "profile"],
     meraki_networks: ["credentialId", "organizationId"],
     meraki_organizations: ["credentialId"],

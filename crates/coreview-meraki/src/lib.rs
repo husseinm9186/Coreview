@@ -24,6 +24,7 @@ pub mod api;
 pub mod backup;
 pub mod checks;
 pub mod collect;
+pub mod discover;
 pub mod health;
 mod http;
 
