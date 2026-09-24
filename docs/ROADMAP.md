@@ -78,146 +78,6 @@ rather than my assumption:**
    layered over a derived view — and that is what Phase 1 builds, but it changes
    D-035 and is recorded as such.
 
-### LT-407 — Dell switches, campus and data centre — 2026-09-23
-
-**Source:** "add support to dell switches and dell data center switches. check
-on the internet for all referances you need".
-
-**Three families answer to the name Dell**, and none of them answers like a
-Cisco:
-- **SmartFabric OS10** — the PowerSwitch line: S4048-ON, S5248F-ON, Z9100-ON,
-  the MX blade switches. *Nearly* Cisco-shaped, which is the dangerous kind:
-  its `show lldp neighbors` is a four-column table rather than a paragraph per
-  neighbour, and its ports are `ethernet1/1/5`.
-- **OS9 / Force10 (FTOS)** — S4810, Z9500, the MXL blades. `show
-  mac-address-table`, with hyphens where Cisco has a space.
-- **N-series and PowerConnect** — FASTPATH, whose `show switch` the stacking
-  reader already knew.
-
-**Shipped 2026-09-23:** `dell.rs` — `show lldp neighbors`, the MAC table in
-both spellings, `show vlan` and `show port-channel summary` — chosen by
-platform from `show version`, so a Cisco pays nothing for any of it. Dell
-models also classify now, campus and data centre alike; an `S5248F-ON` drew as
-a generic box before.
-
-**Two things the documented output would catch nobody out on twice.** A remote
-port id can contain a space (`fortyGigE 0/56`), so a row cannot be split on
-whitespace — it is read by the header's own column positions. And a neighbour
-that advertises no name says `Not Advertised`, which is not a name: taken
-literally it would put a device called "Not Advertised" on the diagram, once
-per port.
-
-**Written from vendor documentation (D-026), and it says so.**
-`dell::verified_against_hardware()` is false. There is no Dell on this network
-or in the lab; the operator asked for the support anyway and for the
-references to build it from. Every fixture is invented — the shapes are Dell's,
-the values are not (D-027).
-
-**References** (Dell's own documentation): SmartFabric OS10 User Guide 10.5.0
-`show lldp neighbors`; 10.5.0/10.5.2 `show mac address-table`; 10.5.3 `show
-vlan`; 10.5.1/10.5.3 `show port-channel summary`; OS9 C9010 CLI Reference 9.14
-`show mac-address-table`.
-
-**The parsers were the easy half.** A fake OS10 switch in
-`crawl_a_fake_network.rs` — one that answers every Cisco question with
-`% Error: Invalid input`, because that is what a Dell does — caught a bug no
-unit test could: **an S5248F-ON classified as `Unknown` and drew as a generic
-box.** The crawl reads a model from Cisco's `Model number` line, a Dell has no
-such line, and the model fell through to the banner's first line, "Dell EMC
-Networking OS10 Enterprise", which classifies as nothing. `dell::model_of`
-reads `System Type` (OS10 and OS9), `Machine Model` (FASTPATH, which pads its
-labels with dots instead of ending them) and `System Description` as a last
-resort. The lesson is the one LT-403 already taught on the Aruba, on a second
-vendor: testing a parser proves it can read the output, never that the crawl
-hands it any.
-
-`show vlan` also keeps its port list now. The column was being located and
-discarded, and a wrapped list — a 48-port switch does not fit on one line —
-belongs to the VLAN above it, the same rule the Cisco reader follows.
-
-**To finish it:** one Dell answering. `examples/try_commands.rs` against an
-S-series or an N-series, and the captures replace the invented fixtures.
-
-### LT-404 — Meraki: the Dashboard API, in Settings, by customer and network — 2026-09-23
-
-**Source:** "I want the dashboard API for meraki please make sure it goes to
-the settings at the top menu with options to select the customers and
-networks", with two of his own scripts attached as the specification:
-`meraki-backup.py` and `meraki_healthcheck.py`.
-
-**Why it is needed at all:** Meraki MR, MS and MX have no CLI. A crawl can
-never log into one. Everything Coreview can know about a Meraki estate comes
-from the Dashboard API or from what a neighbouring switch says about it.
-
-**Shape:**
-- A **read-only** client: GET only, by construction, like his script. Rate
-  limited under the 5 requests/second per-organisation limit, with `Retry-After`
-  honoured on 429, retries on 5xx, and `Link: rel=next` paging.
-- The API key lives in the **vault**, never in the document and never in an
-  export (D-006).
-- **Settings, from the top menu**: the key, then the organisations it can see —
-  the *customers* — and the networks under the chosen one, picked from lists
-  the key itself returns rather than typed.
-
-**Decided with it:** D-056, because this is the first time the app talks to
-anything but the operator's own network.
-
-**What is proven and what is not.** "the script I provided you has been tested
-and working" — so the endpoints, the field names and the paging are evidence
-from a working program against the live API, not documentation, and they are
-what this is built from. What is *not* proven is Coreview's own client: there
-is no Meraki key on this machine, so nothing here has had an answer from
-`api.meraki.com`. It reports itself unverified, the way the stack parsers do
-(D-051), until he runs it.
-
-**Where it has got to, 2026-09-23 — half, and not the half you can see.** The
-client is built and tested: `crates/coreview-meraki`, GET-only by
-construction, rate gate, 429 and 5xx retries, `Link: rel=next` paging,
-organisations, networks and devices, seven tests against a real HTTP server on
-loopback. **None of it is reachable from the app.** There is no Meraki tab,
-because the crate is not yet a dependency of `src-tauri`, there are no IPC
-commands, and nothing is drawn in Settings. He went to Tools · Settings
-looking for it, which is exactly where it was asked to be.
-
-**What is left, in order:** make `coreview-meraki` a dependency of
-`src-tauri`; the key into the vault beside the SSH and SNMP logins; the IPC
-commands — save the key, list organisations, list networks — each with a
-fixture in `src-tauri/fixtures/ipc/` and the isolation frame's command table
-updated (LT-258); then the Settings section itself, the customer picker and
-the network picker, filled from what the key returns. Then LT-405 and LT-406
-have somewhere to hang.
-
-### LT-405 — Meraki: the configuration backup — 2026-09-23
-
-**Source:** "I need option to include the Merki backup", with
-`meraki-backup.py` as the specification.
-
-Per network, what that script collects: the network itself, VLAN settings and
-VLANs, the L3 firewall rules, the SSIDs, and per MS switch its ports and
-routing interfaces. Written as one file, the way a configuration backup is
-written today (LT-151), so it sits with the rest of the estate's backups and is
-named by the same pattern.
-
-**Not a config *push*.** Read-only, like everything else here.
-
-### LT-406 — Meraki: the health check — 2026-09-23
-
-**Source:** "I need option to include the … Meraki health checker", with
-`meraki_healthcheck.py` — 3,300 lines — as the specification.
-
-The interesting part of that script is not the API calls; it is the grading.
-An evaluator raises a stable **code** for what it found, and a **profile** —
-small business, education, healthcare, high security — decides whether that is
-an action or an advisory. The same finding is graded differently for a church
-and for a CMMC enclave, and nothing is hidden: it is ranked.
-
-**Agreed 2026-09-23:** the findings render **on screen** first and export
-through the PDF engine that already exists. Not `.docx`: the script writes one,
-Coreview has no `.docx` writer, and building one is days of work before a single
-check is written. Revisit once the findings can be seen.
-
-**Depends on** LT-404 for the client and the selection.
-
 ### LT-346 — Trace Path: where a packet would actually go — 2026-09-20
 **Source:** asked 2026-09-20 — "Implement a new Path Intelligence feature …
 select a source and destination and visualize the actual routing/forwarding
@@ -973,60 +833,6 @@ manifest. The roadmap's record of a past `0.2.0` build is history and stays.
 the workspace, and `clippy -D warnings` — all clean. The e2e harnesses need a
 running dev server and were not run.
 
-### LT-352 — Arista, Junos and FortiOS, built from the documentation — 2026-09-20
-**Source:** "build these per the latest documentations and knowlage bases and
-articals", 2026-09-20, naming Arista EOS, Junos, FortiOS multi-VDOM, IOS-XE
-`show vrf` and a real stack.
-**Built under D-051, and every one of them says so.** `verified_against_hardware()`
-stays **false** for Arista, Junos and FortiOS, and the fixtures say
-"documentation-shaped, not captured" in as many words. NX-OS is the reason to
-expect these to be wrong somewhere: three of its four parsers were, and that
-was the platform the guides describe best.
-**Junos needed a routing-table parser of its own** — it shares nothing with
-either of the other two. The prefix and its paths are on separate lines,
-`[Protocol/preference]` is the code and the distance together, `metric N` is
-where the metric is, `> to X via Y` is a next hop and a second `to` under one
-prefix is ECMP, and `Direct` is what it calls a connected route. `AS path: …`
-and `validation-state: …` sit among the paths and carry numbers, and reading
-either as a hop is the obvious way to get this wrong; both are skipped by
-name. Picked by shape (`destinations,` and `routes (`), not by asking the
-caller what the platform is.
-**FortiOS needed almost nothing, which is worth saying.** Its table is the IOS
-shape under a different header (`Routing table for VRF=0`), so the parser that
-already existed reads it once that line is skipped. What it *did* need is a
-VDOM listing, because a VDOM is configuration rather than a table — `== [ CORP ]`
-or `edit "CORP"`, both read.
-**FortiOS VDOM tables are deliberately left uncollected.** A VDOM is *entered*
-(`config vdom`, `edit CORP`, the command, `end`), so no single line reads one
-from outside it. `reads_tables_by_name()` says so and the crawl skips them:
-the path engine then reports "no table held for that VRF" rather than an empty
-one. A VDOM full of routes reported as empty would be the worse kind of wrong
-(D-050).
-**Arista needed three small things and one real parser.** `show vrf` heads its
-first column `Vrf` with no Name column at all — the third heading in a row
-that rule read as zero VRFs. Its `show ip route vrf` is IOS-shaped and needed
-nothing. `show vxlan vni` and `show vxlan vtep` fell out of the existing
-parsers. `show bgp evpn` did not: Arista names the route type in words
-(`mac-ip`, `ip-prefix`, `imet`) where NX-OS brackets it, so `parse_evpn_arista`
-reads that and skips `imet` for the same reason `[3]` is skipped — it places
-no address anywhere.
-**Junos EVPN, and the trap in it.** The NLRI is one colon-separated string,
-and the VTEP a route came from is `from <address>` on the attribute line —
-**not** the `to X via Y` under it, which is the underlay hop. Reading that as
-the VTEP draws the tunnel to the wrong end, and there is a test that says so.
-Junos also prints this device's own VTEP (`SVTEP-IP`) above the remote ones,
-so reading every address on the page lists the device as its own peer; the
-peer parser starts at `RVTEP-IP`.
-**One more thing the Arista table taught the VRF parser:** `ipv4,ipv6` and
-`v4:routing` start with a letter and contain a digit, which was enough to be
-read as interface names. No interface has a comma or a colon in it.
-**IOS-XE was already covered** — its `show vrf` is the Name/RD/Protocols/
-Interfaces table the existing fixture is built from — and is still unverified
-for the same reason as the rest.
-**The stack parsers (LT-139) are unchanged.** They were already built from the
-guides under D-026 and cannot be earned from more documentation; they need
-`probe_stack` against a real stack.
-
 ### LT-351 — One command for every VRF table — 2026-09-20
 **Source:** the operator ran `show ip route vrf all` on a Nexus leaf and
 brought back the output, which is what asked for.
@@ -1327,6 +1133,410 @@ Gi0/7, VLAN 14`. Observed is not intended (D-052), and the note is what keeps
 the two apart when somebody reads the register a year later.
 **Checked:** 10 unit tests; `e2e/ipam` and `e2e/ipamlab` stay green.
 
+### LT-029 — No known bugs
+**Source:** asked 2026-08-30 — "I don't want any bugs".
+**Acceptance:** a standing bar rather than a task that finishes.
+- Every bug you report gets its own roadmap item the moment it is reported,
+  with the symptom in your words. It is not folded into whatever else is being
+  worked on.
+- A bug is not fixed until it has been *reproduced* first — by a test that
+  fails without the fix — and then verified by running it. "It compiles" is
+  not "it works", and neither is "I changed the thing that looked wrong".
+- The known-bug list is the items below tagged **bug**. When that list is
+  empty, this item says so with a date. It goes back to Now the moment
+  anything lands on it.
+- Where a bug cannot be fixed, it says why in plain words rather than being
+  quietly closed.
+
+**Known bugs, open:** none, as of 2026-09-20 — but the count that day is worth
+recording. Seven were found and fixed: LT-355 and LT-356 from a report and from
+reading; LT-358, LT-359 and LT-364 from three different platforms silently
+dropping their uptime; and LT-361, LT-362 and LT-363 from pointing the VRF
+parsers at a real IOS router and a real Nexus for the first time. **Five of the
+seven were found by hardware, not by reading**, and none of them could have
+been: every fixture in the repository used the one shape that already worked.
+LT-357 and LT-360 remain open by choice and are described where they sit.
+**LT-137 is now closed outright** rather than accepted: the credentials were
+gone from the working tree long ago, and on 2026-09-18 the published history was
+replaced by a single commit (LT-314), so they are gone from that too.
+**Confirmed by the operator, 2026-09-13:** LT-107 and LT-108 — "LT-107 and
+LT-108: confimed". Nothing is held pending his eyes.
+**One known bug is parked rather than fixed, 2026-09-23.** LT-382 — three
+tests racing each other for one LibreOffice — is in the Icebox at the
+operator's word ("skip LT382"). It is **not** closed and **not** fixed: the
+cause is still unknown, and the one hypothesis that was testable was tested and
+disproved. It is recorded here because a parked bug is still a known bug, and
+this bar is worth nothing if it quietly stops counting the awkward one.
+
+**Known bugs, closed:** LT-137, LT-030, LT-031, LT-003, LT-044, LT-004, LT-005,
+LT-082, LT-083, LT-084, LT-085, LT-091, LT-101, LT-128, LT-129, LT-132,
+LT-133, LT-141, LT-144, LT-273.
+
+### LT-010 — Verify against Catalyst 9000 / IOS-XE 17
+**Source:** asked 2026-08-29.
+**Blocked on:** access to a Catalyst 9000. The CDP and LLDP parsers are written
+against a C2960CX, a FortiSwitch and a FortiGate only. Operator has a 9300 he
+will power on to test against (2026-08-30).
+
+### LT-012 — Legacy binary `.vss` stencils
+**Source:** raised 2026-08-30; deferred by the operator, then unblocked by him
+the same day: `libvisio-tools` is installed (vss2xhtml and friends on PATH),
+and LibreOffice itself reads Visio through the same libvisio. Folded into
+LT-045's converter work — the .vss route lands there.
+
+## Next
+
+*Phases 2–8 of the mission set 2026-09-16, one item per ask, not started. Each
+gets its full acceptance when it is picked up. Standing constraints: parsers are
+written against captured output from real hardware (D-026 is the only
+exception); fixtures and samples are invented (D-027); no network call the
+operator did not start.*
+
+**Phase 2 — discovery.** *Already built: SNMP v1/v2c/v3, LLDP and CDP, ARP and
+MAC tables, stacks, the default route, sweeps and crawls from a seed.*
+- **LT-201** — BGP peer and OSPF neighbour collection. Blocked on Q-011: no
+  router in the lab peers, so there is no output to write it against.
+- **LT-205** — NETCONF/RESTCONF, read-only, optional. RESTCONF is HTTP:
+  blocked on Q-008.
+
+**Phase 3 — validation and live operations.**
+- **LT-218** — HTTP/HTTPS HEAD probe, opt-in and clearly labelled. Blocked on
+  Q-008.
+- **LT-221** — BGP/OSPF neighbour-state probe. Blocked on Q-011, with LT-201: no
+  router in the lab to write it against.
+- **LT-223** — Scheduled validation sessions. Blocked on D-030 being accepted.
+- **LT-229** — Local OS notifications. Blocked on D-030 being accepted.
+
+**Phase 4 — UX and workflow.**
+- **LT-261** — Optional encrypted database (SQLCipher) keyed from the OS
+  keychain. Blocked on Q-012: SQLCipher needs OpenSSL built into every
+  installer, which is a build-time and CI-cost decision.
+- **LT-263** — Optional hardware-backed key derivation (TPM / Secure Enclave).
+  Blocked on Q-013: nothing here has a TPM or a Secure Enclave to build it
+  against.
+- **LT-281** — Upgrade vite and vitest past their advisories (GHSA-67mh-4wv8-2f99,
+  GHSA-82fw-gwwq-j7x9). Development-only — nothing ships in an installer — and
+  both fixes are major versions (vite 8, vitest 5), so it is its own change with
+  the whole gate re-run. Found by LT-265.
+
+**Phase 8 — quality and developer experience.** *LT-190's canvas benchmark was
+pulled into Phase 1.*
+- **LT-269** — CI matrix: Windows 10/11, macOS 12+, Ubuntu 22.04/24.04. Cost:
+  Q-010.
+
+## Done
+
+### LT-404 — Meraki: the Dashboard API, in Settings, by customer and network — 2026-09-23
+
+**Source:** "I want the dashboard API for meraki please make sure it goes to
+the settings at the top menu with options to select the customers and
+networks", with two of his own scripts attached as the specification:
+`meraki-backup.py` and `meraki_healthcheck.py`.
+
+**Why it is needed at all:** Meraki MR, MS and MX have no CLI. A crawl can
+never log into one. Everything Coreview can know about a Meraki estate comes
+from the Dashboard API or from what a neighbouring switch says about it.
+
+**Shape:**
+- A **read-only** client: GET only, by construction, like his script. Rate
+  limited under the 5 requests/second per-organisation limit, with `Retry-After`
+  honoured on 429, retries on 5xx, and `Link: rel=next` paging.
+- The API key lives in the **vault**, never in the document and never in an
+  export (D-006).
+- **Settings, from the top menu**: the key, then the organisations it can see —
+  the *customers* — and the networks under the chosen one, picked from lists
+  the key itself returns rather than typed.
+
+**Decided with it:** D-056, because this is the first time the app talks to
+anything but the operator's own network.
+
+**What is proven and what is not.** "the script I provided you has been tested
+and working" — so the endpoints, the field names and the paging are evidence
+from a working program against the live API, not documentation, and they are
+what this is built from. What is *not* proven is Coreview's own client: there
+is no Meraki key on this machine, so nothing here has had an answer from
+`api.meraki.com`. It reports itself unverified, the way the stack parsers do
+(D-051), until he runs it.
+
+**Where it has got to, 2026-09-23 — half, and not the half you can see.** The
+client is built and tested: `crates/coreview-meraki`, GET-only by
+construction, rate gate, 429 and 5xx retries, `Link: rel=next` paging,
+organisations, networks and devices, seven tests against a real HTTP server on
+loopback. **None of it is reachable from the app.** There is no Meraki tab,
+because the crate is not yet a dependency of `src-tauri`, there are no IPC
+commands, and nothing is drawn in Settings. He went to Tools · Settings
+looking for it, which is exactly where it was asked to be.
+
+**What is left, in order:** make `coreview-meraki` a dependency of
+`src-tauri`; the key into the vault beside the SSH and SNMP logins; the IPC
+commands — save the key, list organisations, list networks — each with a
+fixture in `src-tauri/fixtures/ipc/` and the isolation frame's command table
+updated (LT-258); then the Settings section itself, the customer picker and
+the network picker, filled from what the key returns. Then LT-405 and LT-406
+have somewhere to hang.
+
+**Shipped 2026-09-23 — and it is reachable now, which is what was missing.**
+Tools · Settings carries a Meraki section: the key is chosen from the vault,
+**Connect** lists the organisations the key can see, choosing one lists its
+networks. Both are picked from what the key returns, never typed — a network id
+is an `L_` followed by eighteen digits, and asking anyone to type one is
+asking for a support call.
+
+- `coreview-meraki` is a dependency of `src-tauri`; five commands
+  (`meraki_organizations`, `meraki_networks`, `meraki_profiles`,
+  `meraki_backup`, `meraki_health_check`) are registered and in the isolation
+  frame's table, which `isolationRules.test.ts` checks against the Rust.
+- **The key is an ordinary vault credential**, kind `meraki`, sealed with
+  everything else. No new storage, no new export path, and `list_credential_use`
+  records each time it is opened, the same as an SSH login (LT-264). The page
+  passes a credential *id*; the key never crosses the bridge in either
+  direction, and `e2e/meraki.mjs` asserts it.
+- A credential of any other kind is **refused** by `key_of`. An SSH password
+  posted to `api.meraki.com` would be a password disclosed to a third party,
+  and "the caller passed the wrong id" is exactly how that happens.
+
+**NO HARDWARE TESTED.** There is no Meraki key on this machine, so Coreview's
+own client has never had an answer from `api.meraki.com`. Everything above is
+proven against a real HTTP server on loopback and a stubbed bridge — the paging,
+the rate limit, a 429 with `Retry-After`, a refused key, and that every request
+is a GET. What is *not* proven is the live Dashboard.
+`Client::verified_against_api()` returns **false** and the Settings screen says
+so on the page, in as many words. The first real run is a test, and it should be
+treated as one.
+
+### LT-405 — Meraki: the configuration backup — 2026-09-23
+
+**Source:** "I need option to include the Merki backup", with
+`meraki-backup.py` as the specification.
+
+Per network, what that script collects: the network itself, VLAN settings and
+VLANs, the L3 firewall rules, the SSIDs, and per MS switch its ports and
+routing interfaces. Written as one file, the way a configuration backup is
+written today (LT-151), so it sits with the rest of the estate's backups and is
+named by the same pattern.
+
+**Not a config *push*.** Read-only, like everything else here.
+
+**Shipped 2026-09-23.** Per network: the network, its VLAN settings and VLANs,
+the L3 firewall rules, the SSIDs, and for each MS switch its ports and routing
+interfaces — his script's endpoints, call for call. Written as one JSON file
+into the backup folder under `Meraki <organisation>`, stamped, so it sits with
+the device backups and is found the same way (LT-151).
+
+**Better than the script in one way that matters.** Every section records
+whether it was *read* or why it could not be, rather than writing an empty list
+either way. "This network has no firewall rules" and "the key was refused" are
+different facts, and a restore plan built on the wrong one is wrong (D-050).
+The result says `9 of 10 sections were readable with this key` rather than
+looking complete.
+
+**The file never carries the key.** There is a test asserting the field does not
+even appear in the JSON, because a backup file is a thing people email.
+
+**NO HARDWARE TESTED.** No live Dashboard has answered this. The shapes are
+Meraki's; every fixture is invented (D-027).
+
+### LT-406 — Meraki: the health check — 2026-09-23
+
+**Source:** "I need option to include the … Meraki health checker", with
+`meraki_healthcheck.py` — 3,300 lines — as the specification.
+
+The interesting part of that script is not the API calls; it is the grading.
+An evaluator raises a stable **code** for what it found, and a **profile** —
+small business, education, healthcare, high security — decides whether that is
+an action or an advisory. The same finding is graded differently for a church
+and for a CMMC enclave, and nothing is hidden: it is ranked.
+
+**Agreed 2026-09-23:** the findings render **on screen** first and export
+through the PDF engine that already exists. Not `.docx`: the script writes one,
+Coreview has no `.docx` writer, and building one is days of work before a single
+check is written. Revisit once the findings can be seen.
+
+**Depends on** LT-404 for the client and the selection.
+
+**Shipped 2026-09-23 — the grading model, which was the interesting part.**
+37 finding codes, four profiles, and the rule his script is built on:
+**an evaluator never decides urgency.** It raises a stable code for what it
+found; the profile decides whether that is an action or an advisory. The
+observation text is identical either way. Nothing is hidden; it is ranked.
+
+Twenty checks across device status, uplinks, VPN, licensing, threat protection,
+security events, firewall rules, content filtering, alerting, firmware, traffic
+analysis, backup, switch ports, stacks, spanning tree, topology, the event log,
+wireless health, the radio environment and client signal.
+
+**Three rules every check obeys, and they are tested:**
+1. **Not read is not "none found".** An endpoint that did not answer is
+   *Not reported*, never a pass. A report that grades an unread endpoint as
+   healthy is worse than no report, because it will be believed.
+2. **Not applicable is its own answer.** A network with no appliance has no
+   firewall rules.
+3. **Every verdict shows its evidence**, so a reader can disagree with it.
+
+**On screen first, then the PDF** through the engine that already exists, as
+agreed. Not `.docx`.
+
+**Three improvements on the script, since he asked for them if there were any:**
+- **An unknown finding code cannot be written.** His `Flags.add` raises a
+  `ValueError` at runtime for a code not in the lists; here `Code` is an enum,
+  so the compiler settles it and the failure cannot reach a run.
+- **`backup.missing` is answered rather than assumed.** Coreview knows whether
+  *it* holds a backup of this network, because LT-405 writes them. A standalone
+  script cannot know that. When nothing looked, it says *Not reported* instead
+  of guessing either way.
+- **The verdict labels exist once.** His script carries a comment about
+  "Manual review" surviving a rename because it was spelled out in six places;
+  here the page and the PDF read one table, and the Rust reads its own.
+- **A check nothing can raise is now a build failure.** This defect appeared
+  twice while writing it: `licence.expiring` sat behind an expression that
+  always yielded `None`, and `poe.dark_port` was a loop that computed a value
+  and threw it away. Both compiled, both passed every test, and both meant the
+  report silently never made that check. `every_finding_code_can_actually_be_raised`
+  reads the source and fails on the next one.
+
+**`poe.dark_port` needed both halves to be honest about it.** A PoE port
+drawing nothing is only interesting if something is plugged into it *and* the
+port is configured for PoE — that is "the access point will not come on". A
+data port at 0 W is a data port, and judging on the draw alone would have
+reported every one of them.
+
+**NO HARDWARE TESTED.** Every check is proven against captured-shaped JSON in
+unit tests and a stubbed bridge in `e2e/meraki.mjs`; none has been run against a
+live Dashboard. The thresholds and the gradings are his script's, which he has
+run — that is evidence about *Meraki*, not about this code.
+
+### LT-407 — Dell switches, campus and data centre — 2026-09-23
+
+**Source:** "add support to dell switches and dell data center switches. check
+on the internet for all referances you need".
+
+**Three families answer to the name Dell**, and none of them answers like a
+Cisco:
+- **SmartFabric OS10** — the PowerSwitch line: S4048-ON, S5248F-ON, Z9100-ON,
+  the MX blade switches. *Nearly* Cisco-shaped, which is the dangerous kind:
+  its `show lldp neighbors` is a four-column table rather than a paragraph per
+  neighbour, and its ports are `ethernet1/1/5`.
+- **OS9 / Force10 (FTOS)** — S4810, Z9500, the MXL blades. `show
+  mac-address-table`, with hyphens where Cisco has a space.
+- **N-series and PowerConnect** — FASTPATH, whose `show switch` the stacking
+  reader already knew.
+
+**Shipped 2026-09-23:** `dell.rs` — `show lldp neighbors`, the MAC table in
+both spellings, `show vlan` and `show port-channel summary` — chosen by
+platform from `show version`, so a Cisco pays nothing for any of it. Dell
+models also classify now, campus and data centre alike; an `S5248F-ON` drew as
+a generic box before.
+
+**Two things the documented output would catch nobody out on twice.** A remote
+port id can contain a space (`fortyGigE 0/56`), so a row cannot be split on
+whitespace — it is read by the header's own column positions. And a neighbour
+that advertises no name says `Not Advertised`, which is not a name: taken
+literally it would put a device called "Not Advertised" on the diagram, once
+per port.
+
+**Written from vendor documentation (D-026), and it says so.**
+`dell::verified_against_hardware()` is false. There is no Dell on this network
+or in the lab; the operator asked for the support anyway and for the
+references to build it from. Every fixture is invented — the shapes are Dell's,
+the values are not (D-027).
+
+**References** (Dell's own documentation): SmartFabric OS10 User Guide 10.5.0
+`show lldp neighbors`; 10.5.0/10.5.2 `show mac address-table`; 10.5.3 `show
+vlan`; 10.5.1/10.5.3 `show port-channel summary`; OS9 C9010 CLI Reference 9.14
+`show mac-address-table`.
+
+**The parsers were the easy half.** A fake OS10 switch in
+`crawl_a_fake_network.rs` — one that answers every Cisco question with
+`% Error: Invalid input`, because that is what a Dell does — caught a bug no
+unit test could: **an S5248F-ON classified as `Unknown` and drew as a generic
+box.** The crawl reads a model from Cisco's `Model number` line, a Dell has no
+such line, and the model fell through to the banner's first line, "Dell EMC
+Networking OS10 Enterprise", which classifies as nothing. `dell::model_of`
+reads `System Type` (OS10 and OS9), `Machine Model` (FASTPATH, which pads its
+labels with dots instead of ending them) and `System Description` as a last
+resort. The lesson is the one LT-403 already taught on the Aruba, on a second
+vendor: testing a parser proves it can read the output, never that the crawl
+hands it any.
+
+`show vlan` also keeps its port list now. The column was being located and
+discarded, and a wrapped list — a 48-port switch does not fit on one line —
+belongs to the VLAN above it, the same rule the Cisco reader follows.
+
+**To finish it:** one Dell answering. `examples/try_commands.rs` against an
+S-series or an N-series, and the captures replace the invented fixtures.
+
+**Moved to Done 2026-09-23 at the operator's instruction** — "finish the rest
+and ship then, move them to done but, flag as no hardware tested".
+
+**NO HARDWARE TESTED.** `dell::verified_against_hardware()` returns **false**
+and will keep returning false until a Dell answers. Nothing downstream may
+present what these parsers produce as a fact observed on hardware. The item is
+Done because the work is done and shipped, not because it has met a device —
+`examples/try_commands.rs` against an S-series or an N-series is still what
+would earn that, and the invented fixtures are still invented.
+
+### LT-352 — Arista, Junos and FortiOS, built from the documentation — 2026-09-20
+**Source:** "build these per the latest documentations and knowlage bases and
+articals", 2026-09-20, naming Arista EOS, Junos, FortiOS multi-VDOM, IOS-XE
+`show vrf` and a real stack.
+**Built under D-051, and every one of them says so.** `verified_against_hardware()`
+stays **false** for Arista, Junos and FortiOS, and the fixtures say
+"documentation-shaped, not captured" in as many words. NX-OS is the reason to
+expect these to be wrong somewhere: three of its four parsers were, and that
+was the platform the guides describe best.
+**Junos needed a routing-table parser of its own** — it shares nothing with
+either of the other two. The prefix and its paths are on separate lines,
+`[Protocol/preference]` is the code and the distance together, `metric N` is
+where the metric is, `> to X via Y` is a next hop and a second `to` under one
+prefix is ECMP, and `Direct` is what it calls a connected route. `AS path: …`
+and `validation-state: …` sit among the paths and carry numbers, and reading
+either as a hop is the obvious way to get this wrong; both are skipped by
+name. Picked by shape (`destinations,` and `routes (`), not by asking the
+caller what the platform is.
+**FortiOS needed almost nothing, which is worth saying.** Its table is the IOS
+shape under a different header (`Routing table for VRF=0`), so the parser that
+already existed reads it once that line is skipped. What it *did* need is a
+VDOM listing, because a VDOM is configuration rather than a table — `== [ CORP ]`
+or `edit "CORP"`, both read.
+**FortiOS VDOM tables are deliberately left uncollected.** A VDOM is *entered*
+(`config vdom`, `edit CORP`, the command, `end`), so no single line reads one
+from outside it. `reads_tables_by_name()` says so and the crawl skips them:
+the path engine then reports "no table held for that VRF" rather than an empty
+one. A VDOM full of routes reported as empty would be the worse kind of wrong
+(D-050).
+**Arista needed three small things and one real parser.** `show vrf` heads its
+first column `Vrf` with no Name column at all — the third heading in a row
+that rule read as zero VRFs. Its `show ip route vrf` is IOS-shaped and needed
+nothing. `show vxlan vni` and `show vxlan vtep` fell out of the existing
+parsers. `show bgp evpn` did not: Arista names the route type in words
+(`mac-ip`, `ip-prefix`, `imet`) where NX-OS brackets it, so `parse_evpn_arista`
+reads that and skips `imet` for the same reason `[3]` is skipped — it places
+no address anywhere.
+**Junos EVPN, and the trap in it.** The NLRI is one colon-separated string,
+and the VTEP a route came from is `from <address>` on the attribute line —
+**not** the `to X via Y` under it, which is the underlay hop. Reading that as
+the VTEP draws the tunnel to the wrong end, and there is a test that says so.
+Junos also prints this device's own VTEP (`SVTEP-IP`) above the remote ones,
+so reading every address on the page lists the device as its own peer; the
+peer parser starts at `RVTEP-IP`.
+**One more thing the Arista table taught the VRF parser:** `ipv4,ipv6` and
+`v4:routing` start with a letter and contain a digit, which was enough to be
+read as interface names. No interface has a comma or a colon in it.
+**IOS-XE was already covered** — its `show vrf` is the Name/RD/Protocols/
+Interfaces table the existing fixture is built from — and is still unverified
+for the same reason as the rest.
+**The stack parsers (LT-139) are unchanged.** They were already built from the
+guides under D-026 and cannot be earned from more documentation; they need
+`probe_stack` against a real stack.
+
+**Moved to Done 2026-09-23 at the operator's instruction** — "finish the rest
+and ship then, move them to done but, flag as no hardware tested".
+
+**NO HARDWARE TESTED.** Built from the documentation under D-051, and every one
+of them reports `verified_against_hardware() == false`. Arista EOS, Junos and
+the FortiOS additions have not had a device answer them. Done means written,
+reviewed and shipped; it does not mean confirmed, and the code says which.
+
 ### LT-139 — Stacks and virtual chassis, built from the vendor guides
 **Source:** asked 2026-09-12 — "for teh stacking build it based on the guides
 and make sure its ready to be tested for all of tehm", after supplying the
@@ -1430,6 +1640,15 @@ names and RFC 5737 addresses only. `verified_against_hardware()` flips per
 family on that evidence, and the entry records which families were proven,
 not where.
 
+**Moved to Done 2026-09-23 at the operator's instruction** — "finish the rest
+and ship then, move them to done but, flag as no hardware tested".
+
+**NO HARDWARE TESTED.** These were built from the vendor guides under D-026 and
+report `verified_against_hardware() == false`. `examples/probe_stack.rs` against
+a real stack is what would change that, and the text output of
+`show vsx status`, `sh vsf topology` and `show switch` is still what is needed.
+Done here means shipped and honest about itself, not confirmed.
+
 ### LT-136 — Stacks, chassis pairs and virtual switches are one device
 **Source:** asked 2026-09-12 — "also this app should count for Port channel
 but not sure if we ever addressed stackwize virtual, and switch stacking and
@@ -1511,91 +1730,13 @@ he sent are images, and a parser here is written against captured text, not a
 picture of it. Text output of `show vsx status`, `sh vsf topology` and
 `show switch` from a real stack is what unblocks each one.
 
-### LT-029 — No known bugs
-**Source:** asked 2026-08-30 — "I don't want any bugs".
-**Acceptance:** a standing bar rather than a task that finishes.
-- Every bug you report gets its own roadmap item the moment it is reported,
-  with the symptom in your words. It is not folded into whatever else is being
-  worked on.
-- A bug is not fixed until it has been *reproduced* first — by a test that
-  fails without the fix — and then verified by running it. "It compiles" is
-  not "it works", and neither is "I changed the thing that looked wrong".
-- The known-bug list is the items below tagged **bug**. When that list is
-  empty, this item says so with a date. It goes back to Now the moment
-  anything lands on it.
-- Where a bug cannot be fixed, it says why in plain words rather than being
-  quietly closed.
+**Moved to Done 2026-09-23 at the operator's instruction** — "finish the rest
+and ship then, move them to done but, flag as no hardware tested".
 
-**Known bugs, open:** none, as of 2026-09-20 — but the count that day is worth
-recording. Seven were found and fixed: LT-355 and LT-356 from a report and from
-reading; LT-358, LT-359 and LT-364 from three different platforms silently
-dropping their uptime; and LT-361, LT-362 and LT-363 from pointing the VRF
-parsers at a real IOS router and a real Nexus for the first time. **Five of the
-seven were found by hardware, not by reading**, and none of them could have
-been: every fixture in the repository used the one shape that already worked.
-LT-357 and LT-360 remain open by choice and are described where they sit.
-**LT-137 is now closed outright** rather than accepted: the credentials were
-gone from the working tree long ago, and on 2026-09-18 the published history was
-replaced by a single commit (LT-314), so they are gone from that too.
-**Confirmed by the operator, 2026-09-13:** LT-107 and LT-108 — "LT-107 and
-LT-108: confimed". Nothing is held pending his eyes.
-**Known bugs, closed:** LT-137, LT-030, LT-031, LT-003, LT-044, LT-004, LT-005,
-LT-082, LT-083, LT-084, LT-085, LT-091, LT-101, LT-128, LT-129, LT-132,
-LT-133, LT-141, LT-144, LT-273.
-
-### LT-010 — Verify against Catalyst 9000 / IOS-XE 17
-**Source:** asked 2026-08-29.
-**Blocked on:** access to a Catalyst 9000. The CDP and LLDP parsers are written
-against a C2960CX, a FortiSwitch and a FortiGate only. Operator has a 9300 he
-will power on to test against (2026-08-30).
-
-### LT-012 — Legacy binary `.vss` stencils
-**Source:** raised 2026-08-30; deferred by the operator, then unblocked by him
-the same day: `libvisio-tools` is installed (vss2xhtml and friends on PATH),
-and LibreOffice itself reads Visio through the same libvisio. Folded into
-LT-045's converter work — the .vss route lands there.
-
-## Next
-
-*Phases 2–8 of the mission set 2026-09-16, one item per ask, not started. Each
-gets its full acceptance when it is picked up. Standing constraints: parsers are
-written against captured output from real hardware (D-026 is the only
-exception); fixtures and samples are invented (D-027); no network call the
-operator did not start.*
-
-**Phase 2 — discovery.** *Already built: SNMP v1/v2c/v3, LLDP and CDP, ARP and
-MAC tables, stacks, the default route, sweeps and crawls from a seed.*
-- **LT-201** — BGP peer and OSPF neighbour collection. Blocked on Q-011: no
-  router in the lab peers, so there is no output to write it against.
-- **LT-205** — NETCONF/RESTCONF, read-only, optional. RESTCONF is HTTP:
-  blocked on Q-008.
-
-**Phase 3 — validation and live operations.**
-- **LT-218** — HTTP/HTTPS HEAD probe, opt-in and clearly labelled. Blocked on
-  Q-008.
-- **LT-221** — BGP/OSPF neighbour-state probe. Blocked on Q-011, with LT-201: no
-  router in the lab to write it against.
-- **LT-223** — Scheduled validation sessions. Blocked on D-030 being accepted.
-- **LT-229** — Local OS notifications. Blocked on D-030 being accepted.
-
-**Phase 4 — UX and workflow.**
-- **LT-261** — Optional encrypted database (SQLCipher) keyed from the OS
-  keychain. Blocked on Q-012: SQLCipher needs OpenSSL built into every
-  installer, which is a build-time and CI-cost decision.
-- **LT-263** — Optional hardware-backed key derivation (TPM / Secure Enclave).
-  Blocked on Q-013: nothing here has a TPM or a Secure Enclave to build it
-  against.
-- **LT-281** — Upgrade vite and vitest past their advisories (GHSA-67mh-4wv8-2f99,
-  GHSA-82fw-gwwq-j7x9). Development-only — nothing ships in an installer — and
-  both fixes are major versions (vite 8, vitest 5), so it is its own change with
-  the whole gate re-run. Found by LT-265.
-
-**Phase 8 — quality and developer experience.** *LT-190's canvas benchmark was
-pulled into Phase 1.*
-- **LT-269** — CI matrix: Windows 10/11, macOS 12+, Ubuntu 22.04/24.04. Cost:
-  Q-010.
-
-## Done
+**NO HARDWARE TESTED.** The same stack and virtual-chassis readers as LT-139,
+and the same flag: unverified until a device answers. The screenshots the
+operator sent are images, and a parser here is written against captured text,
+not a picture of it.
 
 ### LT-381 — **bug** Three colours the stylesheet asks for and never defines — 2026-09-23
 

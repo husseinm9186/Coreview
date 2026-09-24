@@ -959,6 +959,7 @@ version = "2.4.9"
 dependencies = [
  "base64 0.22.1",
  "coreview-discover",
+ "coreview-meraki",
  "coreview-probe",
  "flate2",
  "keyring",

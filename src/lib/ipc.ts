@@ -591,6 +591,82 @@ export type CredentialSummary = {
   hasSecondSecret: boolean;
 };
 
+/* ── Meraki (LT-404–406). What the Dashboard answers with, as Rust hands it
+ *    on. Every one of these is read-only data; nothing here can change a
+ *    customer's configuration, because nothing in the Rust client can. */
+
+/** An organisation — a customer, in the operator's words. */
+export type MerakiOrganization = { id: string; name: string; url?: string | null };
+
+export type MerakiNetwork = {
+  id: string;
+  name: string;
+  productTypes: string[];
+  organizationId?: string | null;
+  timeZone?: string | null;
+  tags: string[];
+};
+
+/** The bars a profile judges against. */
+export type MerakiThresholds = {
+  latencyMs: number;
+  lossPct: number;
+  chanUtilPct: number;
+  nonWifiPct: number;
+  wifiFailPct: number;
+  clientFailCount: number;
+  licenceDays: number;
+  stpEventCount: number;
+};
+
+/** The same facts, graded for the environment they live in. */
+export type MerakiProfile = {
+  id: string;
+  label: string;
+  summary: string;
+  thresholds: MerakiThresholds;
+  defaultSeverity: 'action' | 'advisory';
+  actions: string[];
+};
+
+export type MerakiFinding = { code: string; severity: 'action' | 'advisory' };
+
+export type MerakiDetail = { label: string; columns: string[]; rows: string[][] };
+
+/** `manual` means the API returned nothing for this item — a statement about
+ *  what could be read, never a task handed back to the reader. */
+export type MerakiStatus = 'attention' | 'advisory' | 'manual' | 'pass' | 'na';
+
+export type MerakiCheck = {
+  id: string;
+  num: string;
+  title: string;
+  navigation: string;
+  status: MerakiStatus;
+  summary: string;
+  observations: string[];
+  details: MerakiDetail[];
+  action: string | null;
+  findings: MerakiFinding[];
+};
+
+export type MerakiReport = {
+  takenAt: string;
+  organization: string;
+  network: string;
+  profile: MerakiProfile;
+  checks: MerakiCheck[];
+  dataWindows: string;
+};
+
+export type MerakiBackupWritten = {
+  path: string;
+  networks: number;
+  /** Sections read, against sections asked for. */
+  read: number;
+  asked: number;
+};
+
 /** Only ever returned by revealCredential, which is the one call that hands
  *  back a stored secret. */
 export type RevealedCredential = {
@@ -1173,6 +1249,25 @@ export const ipc = {
   },
   listCredentials() {
     return isDesktop ? invoke<CredentialSummary[]>('list_credentials') : Promise.resolve([]);
+  },
+
+  // ── Meraki (LT-404, LT-405, LT-406). Read-only, and every call carries the
+  // id of a vault credential rather than a key: the key never reaches the
+  // page, in either direction.
+  merakiOrganizations(credentialId: string) {
+    return invoke<MerakiOrganization[]>('meraki_organizations', { credentialId });
+  },
+  merakiNetworks(credentialId: string, organizationId: string) {
+    return invoke<MerakiNetwork[]>('meraki_networks', { credentialId, organizationId });
+  },
+  merakiProfiles() {
+    return isDesktop ? invoke<MerakiProfile[]>('meraki_profiles') : Promise.resolve([]);
+  },
+  merakiBackup(credentialId: string, organizationId: string, networkIds: string[], stamp: string) {
+    return invoke<MerakiBackupWritten>('meraki_backup', { credentialId, organizationId, networkIds, stamp });
+  },
+  merakiHealthCheck(credentialId: string, organizationId: string, networkId: string, profile: string) {
+    return invoke<MerakiReport>('meraki_health_check', { credentialId, organizationId, networkId, profile });
   },
   revealCredential(id: string) {
     return invoke<RevealedCredential>('reveal_credential', { id });

@@ -21,6 +21,10 @@
 //! somebody changes it after watching it work.
 
 pub mod api;
+pub mod backup;
+pub mod checks;
+pub mod collect;
+pub mod health;
 mod http;
 
 use std::sync::Mutex;
@@ -249,6 +253,31 @@ impl Client {
     ) -> Option<T> {
         self.get(path, query).await.ok()
     }
+}
+
+/// The time now, as ISO 8601 UTC.
+///
+/// Hand-rolled from the civil-date algorithm rather than carrying `chrono` for
+/// one timestamp. A backup file's stamp is read by people, and it has to sort.
+pub fn now_iso8601() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+    let (h, m, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    // Howard Hinnant's civil_from_days, which is exact and short.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let mth = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if mth <= 2 { y + 1 } else { y };
+    format!("{year:04}-{mth:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
 }
 
 /// The `next` URL out of a `Link` header, if there is one.

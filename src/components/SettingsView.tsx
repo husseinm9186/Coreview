@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { t } from '../i18n';
 import { CredentialOverride } from './CredentialOverride';
+import { MerakiSettings } from './MerakiSettings';
 import { credentialsUsedBy } from '../lib/credentialScope';
 import { ipc, isDesktop, type CredentialSummary } from '../lib/ipc';
 import { useStore } from '../state/store';
@@ -167,6 +168,12 @@ export function SettingsView() {
           <p className="cv-help">{t('settings.everythingHint')}</p>
           {everything && <VaultSettings />}
         </details>
+      </section>
+
+      {/* LT-404: "make sure it goes to the settings at the top menu with
+          options to select the customers and networks". */}
+      <section className="cv-settings-block" data-region="meraki">
+        <MerakiSettings credentials={saved} />
       </section>
     </div>
   );

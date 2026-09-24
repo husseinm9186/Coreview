@@ -20,6 +20,7 @@ mod commands;
 mod discovery;
 mod terminal;
 mod vault_commands;
+mod meraki;
 mod db;
 
 use std::sync::{Arc, Mutex};
@@ -226,6 +227,11 @@ fn main() {
             vault_commands::lock_vault,
             vault_commands::discard_vault,
             vault_commands::save_credential,
+            meraki::meraki_organizations,
+            meraki::meraki_networks,
+            meraki::meraki_profiles,
+            meraki::meraki_backup,
+            meraki::meraki_health_check,
             vault_commands::list_credentials,
             vault_commands::reveal_credential,
             vault_commands::export_vault,

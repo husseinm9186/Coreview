@@ -2644,3 +2644,47 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-dash .cv-pill.cv-band-full { color: var(--down); border-color: var(--down); }
 .cv-dash .cv-pill.cv-band-busy { color: var(--warning); border-color: var(--warning); }
 .cv-dash .cv-pill.cv-band-light { color: var(--healthy); border-color: var(--healthy); }
+
+/* Meraki, on the Settings screen (LT-404–406). Chrome tokens only: this is
+   chrome, and only the canvas follows the ground toggle (LT-315). */
+.cv-meraki-row {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin: 10px 0;
+}
+.cv-meraki-row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.cv-meraki-count { font-size: 12px; color: var(--text-faint); align-self: center; }
+
+.cv-meraki-report { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.cv-meraki-report-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.cv-meraki-report-head h3 { margin: 0; font-size: 15px; }
+
+.cv-meraki-tally { display: flex; gap: 10px; list-style: none; padding: 0; margin: 12px 0; flex-wrap: wrap; }
+.cv-meraki-tile {
+  display: flex; flex-direction: column; gap: 2px; min-width: 92px;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2);
+}
+.cv-meraki-tile strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.cv-meraki-tile span { font-size: 11px; color: var(--text-faint); }
+.cv-meraki-tile.is-attention strong { color: var(--down); }
+.cv-meraki-tile.is-advisory strong { color: var(--accent); }
+.cv-meraki-tile.is-manual strong { color: var(--warning); }
+.cv-meraki-tile.is-pass strong { color: var(--healthy); }
+.cv-meraki-tile.is-na strong { color: var(--unknown); }
+
+.cv-meraki-checks { list-style: none; padding: 0; margin: 12px 0; display: flex; flex-direction: column; gap: 8px; }
+.cv-meraki-check { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.cv-meraki-check.is-attention { border-left: 3px solid var(--down); }
+.cv-meraki-check.is-advisory { border-left: 3px solid var(--accent); }
+.cv-meraki-check.is-manual { border-left: 3px solid var(--warning); }
+.cv-meraki-check.is-pass { border-left: 3px solid var(--healthy); }
+.cv-meraki-check.is-na { border-left: 3px solid var(--unknown); }
+.cv-meraki-check-head {
+  display: flex; gap: 10px; align-items: center; width: 100%;
+  background: none; border: 0; padding: 0; cursor: pointer; text-align: left; color: var(--text);
+}
+.cv-meraki-num { font-variant-numeric: tabular-nums; color: var(--text-faint); font-size: 11px; min-width: 28px; }
+.cv-meraki-check-title { font-weight: 600; font-size: 13px; flex: 1; }
+.cv-meraki-summary { margin: 4px 0 0 38px; font-size: 12px; color: var(--text-dim); }
+.cv-meraki-check-body { margin: 8px 0 0 38px; display: flex; flex-direction: column; gap: 8px; overflow-x: auto; }
+.cv-meraki-check-body h5 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
+.cv-meraki-action { font-size: 12px; color: var(--warning); margin: 0; }
+.cv-meraki-actions { margin: 8px 0; }

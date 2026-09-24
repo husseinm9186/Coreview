@@ -29,7 +29,7 @@ use crate::db;
 
 type CmdResult<T> = Result<T, String>;
 
-fn db_err(e: impl std::fmt::Display) -> String {
+pub fn db_err(e: impl std::fmt::Display) -> String {
     format!("Local database error: {e}")
 }
 
@@ -547,7 +547,7 @@ pub fn snmp_credentials(state: &AppState, id: &str) -> CmdResult<SnmpAuth> {
     })
 }
 
-fn open_secret(key: &VaultKey, parts: &(Vec<u8>, Vec<u8>)) -> CmdResult<String> {
+pub fn open_secret(key: &VaultKey, parts: &(Vec<u8>, Vec<u8>)) -> CmdResult<String> {
     vault::open(
         key,
         &SealedSecret {

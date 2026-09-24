@@ -221,6 +221,37 @@ fn dechunk(mut rest: &[u8]) -> io::Result<Vec<u8>> {
 mod tests {
     use super::*;
 
+    /// D-056 says this integration is read-only **by construction** — not
+    /// "does not currently send a POST". That is a claim about the source, so
+    /// it is checked against the source.
+    ///
+    /// If a write is ever genuinely wanted, this test is the conversation: it
+    /// fails, and whoever wants it has to change a decision rather than add a
+    /// line.
+    #[test]
+    fn this_module_can_issue_no_method_but_get() {
+        // The real code only: not this test, and not the prose above it, both
+        // of which name the verbs in order to forbid them.
+        let source = include_str!("http.rs");
+        let code: String = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("the code before the tests")
+            .lines()
+            .map(str::trim_start)
+            .filter(|l| !l.starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert_eq!(code.matches("GET {}").count(), 1, "the request line moved or multiplied");
+        for verb in ["POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"] {
+            assert!(
+                !code.contains(verb),
+                "{verb} appears in the HTTP module's code; D-056 says this cannot write",
+            );
+        }
+    }
+
     #[test]
     fn a_url_comes_apart_the_way_a_request_needs_it() {
         let u = Url::parse("https://api.meraki.com/api/v1/organizations").expect("parsed");
