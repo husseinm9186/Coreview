@@ -1243,6 +1243,73 @@ pulled into Phase 1.*
 
 ## Done
 
+### LT-418 — **bug** Every Catalyst 9000 comes back as "Unknown" — 2026-09-25
+
+**Source:** "the switches kind is unkown", with a review table of 210 devices
+— 9500s, 9300s, a 9800 wireless controller — every row reading **KIND:
+Unknown** and **PLATFORM: IOS-XE**.
+
+**The platform is the clue, and it is not a platform.** `platform_from_version`
+looks for a model in `show version` and has a heuristic for Cisco's banner:
+the word after `cisco ` is the model, as in `cisco WS-C2960X-24TS-L (PowerPC405)
+processor`. On IOS-XE the first line is **`Cisco IOS-XE Software, Version …`**,
+so the word after `cisco ` is `IOS-XE` — six characters, longer than the
+three-character guard that exists to skip `IOS`, so it is taken as the model.
+The real `Model Number : C9500-48Y4C` line further down is never reached,
+because the banner is line one.
+
+`classify` then looks up `IOS-XE`, finds nothing — `C9300` and `C9500` are both
+in its switch list and would have matched — and answers Unknown.
+
+**This is worse than a wrong icon, which is what the classifier's own doc
+comment says the cost is.** *Infrastructure only* ticks rows by class. With
+every switch Unknown, that button selects none of them — so the one button a
+person presses to place the network places no network. On his estate it reads
+*Infrastructure only (168)* against 210 devices, and the 9500 that is the core
+is not among them. **That is a second, independent route to the diagram he
+reported in LT-417**, and unlike the first it fits an estate whose devices all
+have names.
+
+**LT-010 is the standing item for "verify against Catalyst 9000 / IOS-XE 17"
+and it is still blocked on hardware.** It is no longer theoretical: 210 of them
+are in front of him.
+
+**Acceptance:** a Catalyst 9000 on IOS-XE 17 classifies as a switch, a 9800 as
+a wireless controller, and a model is never taken from a line that is naming
+software. A test from real banner text, failing first (D-020).
+
+**Fixed 2026-09-25.** The word after `cisco ` is taken as a model only if it
+**looks like one**, and the rule is that a model has a number in it:
+`WS-C2960X-24TS-L`, `C9500-48Y4C`, `ASR1001-X`, `N9K-C93180YC-EX` — every one
+of them. The software does not: `IOS-XE`, `IOS-XR`, `NX-OS`, `Adaptive`.
+
+That is a better rule than a list of names to exclude, because it needs no
+maintenance when Cisco names the next operating system. The old guard was
+"longer than three characters", which existed to skip `IOS` and let `IOS-XE`
+straight through.
+
+With the banner line rejected, the loop reaches `Model Number : C9500-48Y4C`
+further down and the classifier — which has had `C9300`, `C9400`, `C9500` and
+`C9800` in its lists all along — answers Switch, and Wireless controller for
+the 9800.
+
+**Three tests, from real banner text:** a 9500 on 17.9, a 9800, and the rule
+itself against four Cisco operating systems at once.
+
+**It very likely closes the operator's LT-417 report as well.** His devices all
+have names, so the name-against-label mismatch fixed there did not explain his
+case — but *Infrastructure only* ticking by class does, and with every switch
+Unknown it ticked none of them. His own screenshot shows it: *Infrastructure
+only (168)* against 210 devices, with the 9500 that is the core not among
+them. Unconfirmed until he runs it, and said here as a likelihood rather than
+a finding.
+
+**LT-010 stays open.** This was found by reading a screenshot, not by meeting a
+Catalyst 9000, and the fixtures here are written from the banner's published
+shape rather than captured from his estate (D-027 — none of his output is in
+the repository). A real 17.x device answering `examples/try_commands.rs` is
+still what would earn it.
+
 ### LT-412 — **bug** Every project's logins are offered in every project's picker — 2026-09-25
 
 **Source:** "the projects need to be separate from each other / for example I

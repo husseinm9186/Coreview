@@ -2342,6 +2342,24 @@ pub fn serial_field(serials: &[String]) -> Option<String> {
     (!serials.is_empty()).then(|| serials.join(", "))
 }
 
+/// Whether the word after `cisco` is a model rather than the name of the
+/// software (LT-418).
+///
+/// The banner's first line is `Cisco IOS-XE Software, Version …` on every
+/// Catalyst 9000, and the old guard — longer than three characters, which
+/// exists to skip `IOS` — let `IOS-XE` through as the model. `classify` then
+/// found nothing called IOS-XE and answered Unknown for all 210 switches in
+/// an estate, which also made *Infrastructure only* tick none of them.
+///
+/// **A model has a number in it.** `WS-C2960X-24TS-L`, `C9500-48Y4C`,
+/// `ASR1001-X`, `N9K-C93180YC-EX` — every one. The software does not:
+/// `IOS-XE`, `IOS-XR`, `NX-OS`, `Adaptive`. That is the whole rule, and it is
+/// a better one than a list of names to exclude because it needs no
+/// maintenance when Cisco names the next one.
+fn looks_like_a_model(word: &str) -> bool {
+    word.len() > 3 && word.chars().any(|c| c.is_ascii_digit())
+}
+
 /// Pulls a model out of a `show version` banner, for classification.
 fn platform_from_version(version: &str) -> Option<String> {
     // A `show version` on a Catalyst runs to sixty lines and puts "Model
@@ -2364,7 +2382,7 @@ fn platform_from_version(version: &str) -> Option<String> {
         if let Some(offset) = lower.strip_prefix("cisco ").map(|_| "cisco ".len()) {
             let rest = &t[offset..];
             if let Some(model) = rest.split_whitespace().next() {
-                if model.len() > 3 {
+                if looks_like_a_model(model) {
                     return Some(model.to_string());
                 }
             }
@@ -2646,6 +2664,94 @@ System image file is \"flash:/c2960cx-universalk9-mz.152-7.E.bin\"
             crate::classify::classify(Some(&platform), &[], Some(banner)),
             DeviceClass::Switch,
             "platform was {platform:?}"
+        );
+    }
+
+    /// LT-418: a Catalyst 9000 on IOS-XE 17, which is what 210 devices in the
+    /// operator's estate are.
+    ///
+    /// The banner's first line is `Cisco IOS-XE Software, Version …`, so the
+    /// "word after `cisco`" heuristic took **IOS-XE** as the model — six
+    /// characters, past the three-character guard that exists to skip `IOS` —
+    /// and the real `Model Number` line below was never reached. Every switch
+    /// then classified as Unknown, which also made *Infrastructure only* tick
+    /// none of them.
+    #[test]
+    fn a_catalyst_9000_is_a_switch_and_not_its_operating_system() {
+        let banner = "\
+Cisco IOS-XE Software, Version 17.09.04a
+Cisco IOS Software [Cupertino], Catalyst L3 Switch Software (CAT9K_IOSXE), Version 17.9.4a, RELEASE SOFTWARE (fc4)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2023 by Cisco Systems, Inc.
+
+LAB-CORE-1 uptime is 21 weeks, 3 days
+System image file is \"flash:cat9k_iosxe.17.09.04a.SPA.bin\"
+
+Technology Package License Information:
+Switch/Stack  Model        License Level
+------------------------------------------
+*1  C9500-48Y4C          network-advantage
+
+Model Number                          : C9500-48Y4C
+System Serial Number                  : FXS0000X0AA
+";
+        let platform = platform_from_version(banner).unwrap();
+        assert!(
+            !platform.eq_ignore_ascii_case("IOS-XE"),
+            "the operating system was taken for a model: {platform:?}",
+        );
+        assert_eq!(
+            crate::classify::classify(Some(&platform), &[], Some(banner)),
+            DeviceClass::Switch,
+            "platform was {platform:?}",
+        );
+    }
+
+    /// The 9800 in the same estate is a wireless controller, not a switch.
+    #[test]
+    fn a_catalyst_9800_is_a_wireless_controller() {
+        let banner = "\
+Cisco IOS-XE Software, Version 17.09.04a
+Cisco IOS Software [Cupertino], C9800 Software (C9800_IOSXE), Version 17.9.4a
+LAB-WLC uptime is 3 weeks
+
+Model Number                          : C9800-40-K9
+";
+        let platform = platform_from_version(banner).unwrap();
+        assert_eq!(
+            crate::classify::classify(Some(&platform), &[], Some(banner)),
+            DeviceClass::WirelessController,
+            "platform was {platform:?}",
+        );
+    }
+
+    /// The heuristic that caused it, stated as a rule: a model has a number in
+    /// it. Software names do not.
+    #[test]
+    fn a_word_after_cisco_is_only_a_model_if_it_looks_like_one() {
+        for software in [
+            "Cisco IOS-XE Software, Version 17.09.04a\n",
+            "Cisco IOS-XR Software, Version 7.5.2\n",
+            "Cisco NX-OS Software, Version 9.3(8)\n",
+            "Cisco Adaptive Security Appliance Software Version 9.16\n",
+        ] {
+            let got = platform_from_version(software);
+            // Falling back to the whole first line is fine — it is honest, and
+            // the classifier reads the version too. Taking a fragment of it and
+            // calling it a model is not.
+            let got = got.unwrap_or_default();
+            for wrong in ["IOS-XE", "IOS-XR", "NX-OS", "Adaptive"] {
+                assert_ne!(got, wrong, "took {wrong:?} for a model out of {software:?}");
+            }
+        }
+        // And a real model still comes through.
+        assert_eq!(
+            platform_from_version("cisco WS-C2960X-24TS-L (APM86XXX) processor\n").as_deref(),
+            Some("WS-C2960X-24TS-L"),
+        );
+        assert_eq!(
+            platform_from_version("cisco C9300-48P (X86) processor with 1331521K bytes\n").as_deref(),
+            Some("C9300-48P"),
         );
     }
 
