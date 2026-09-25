@@ -2706,3 +2706,19 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 
 /* Reaching the rest of the machine's vault, deliberately (LT-412). */
 .cv-cred-elsewhere { align-self: flex-start; margin-top: 4px; }
+
+/* A device holding a folded branch (LT-421). */
+.react-flow__node.is-collapsed { filter: drop-shadow(0 0 0 transparent); }
+.react-flow__node.is-collapsed::after {
+  content: '+'; position: absolute; top: -6px; right: -6px;
+  width: 16px; height: 16px; line-height: 15px; text-align: center;
+  font-size: 13px; font-weight: 700; border-radius: 50%;
+  background: var(--accent); color: var(--on-status);
+  border: 1px solid var(--panel); pointer-events: none;
+}
+
+/* Filtering by type from the canvas toolbar (LT-419). */
+.cv-type-filter { position: relative; }
+.cv-type-filter-menu { max-height: 60vh; overflow-y: auto; min-width: 210px; }
+.cv-type-filter-menu .cv-check { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.cv-type-count { margin-left: auto; color: var(--text-faint); font-variant-numeric: tabular-nums; }

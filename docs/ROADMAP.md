@@ -1243,6 +1243,119 @@ pulled into Phase 1.*
 
 ## Done
 
+### LT-419 — Filter by type from the canvas itself — 2026-09-25
+
+**Source:** "after I discover and add the devices to the diagram I need to
+filter based on type, like switches, wireless, routers, firewalls, phones,
+endpoints...etc with selection make the filter at the top next to the PEN, and
+Eraser."
+
+LT-415 built the thing this needs — a filter that **hides** rather than dims —
+but it lives in the top bar's Filter dropdown, behind a disclosure, beside
+eight other criteria. He has asked twice for filtering by type, which says the
+control is in the wrong place for the one question that gets asked most.
+
+**To ship:** a type chooser on the **canvas toolbar**, next to Pen and Eraser,
+listing the kinds actually on the page — switch, access point, router,
+firewall, phone, endpoint — each with its count, picked by clicking. Hiding is
+what it does, because that is what he asked it for both times.
+
+It writes the same `canvasFilter` the dropdown does, so the two are one filter
+seen from two places and cannot disagree. Clearing is one click and the
+dropdown's *Clear the filter* still clears it.
+
+**Shipped 2026-09-25.** A **Types** chooser on the canvas toolbar, next to Pen
+and Eraser, listing only the kinds actually on the page with a count each.
+Picking any turns hiding on, because that is what it was asked for both times —
+"I want to see only switches" is not answered by fading eighty hosts.
+
+**It writes the same `canvasFilter` the dropdown does**, so the two are one
+filter seen from two places rather than two to keep in step; the dropdown's
+own *Clear the filter* still clears it, and clearing the types here leaves
+any other criteria the dropdown set alone.
+
+The button says how many are hidden while any are, and *Show every kind* puts
+them back. Nothing is deleted, and the menu says so.
+
+### LT-420 — The page does not follow the diagram's size — 2026-09-25
+
+**Source:** "the page needs to render and automatically shrink when I resize
+the diagrams", with a screenshot of a 209-device topology spilling far outside
+the drawn page boundary.
+
+A discovered estate is placed wherever the layout puts it, and the page — the
+paper the diagram is drawn on, which is what export and print use — keeps
+whatever size it had. So the boundary sits in the middle of the drawing,
+meaning nothing, and an export crops.
+
+**To ship:** the page grows and shrinks to the drawing it holds. Automatic,
+because the operator is not going to choose a paper size after every crawl,
+and reversible for anyone who wants a fixed size for printing.
+
+**Shipped 2026-09-25**, and it is worth saying what was *not* changed.
+
+The sheet has always grown automatically and never shrunk, for a reason
+written down beside `sheetRect`: **a sheet that snaps smaller mid-drag makes
+the layout jump under the pointer.** That reasoning is about dragging, and it
+still holds — dragging is untouched.
+
+Rearranging is not dragging. It is the one moment the drawing's size certainly
+changed, and after a crawl places two hundred devices the sheet is left far
+larger than what is on it — so the boundary sits in the middle of the diagram
+meaning nothing, and an export crops. **Arrange top to bottom** and **Tidy the
+layout** now fit the sheet to what they just laid out, through the same
+`pageForContent` the manual *Fit page to content* uses.
+
+So: automatic where he asked for it, unchanged where the original reasoning
+applies, and one function computing the rect rather than three.
+
+### LT-421 — Collapse a device and what hangs off it — 2026-09-25
+
+**Source:** "I need to select device and collops, anything connected to it
+gets collapsed, when I expand everhting expands."
+
+On a 209-device estate a distribution switch with forty access points under it
+is forty icons of noise when you are looking at something else. Collapsing it
+should fold them into it; expanding should bring them back.
+
+**What "hangs off it" has to mean, and it is the whole design.** Everything
+*further from the root* than the device collapsed — its subtree, not its
+neighbours. Collapsing an access switch must not take the core with it. The
+crawl already knows which way is down: the hop distance it recorded, and the
+link direction evidence LT-145 and LT-146 are built on.
+
+**A view, never the document.** Collapsing hides; it does not delete, and
+nothing about the project changes. The device says how many it is holding, or
+a collapsed branch is indistinguishable from a device that was never
+connected to anything.
+
+**Shipped 2026-09-25** as `collapseBranch.ts`, deliberately **not** in
+`collapse.ts` — that one folds a *grouped site* into one box and is a
+different feature with a confusingly similar name. Both work, and they can be
+used together.
+
+**"Anything connected to it" is read as what hangs below it**, which is the
+whole of the design. Taken literally it would swallow the core when an access
+switch is collapsed. Which way is down comes from `tiersFor` — the layout's
+own answer, built from the link direction the crawl proved (LT-145) and what a
+MAC table showed is plugged into what (LT-146) — so a branch folds the same way
+the diagram is already drawn rather than inventing a second opinion about
+hierarchy.
+
+**Fifteen tests, and four of them are the ones that matter:** a ring that comes
+back round to the core is *not* folded, because it is beside the device rather
+than hanging off it; an island elsewhere on the page is untouched; a collapsed
+device inside another collapsed branch stays visible, or there is nothing left
+to click to get it back; and the answer does not depend on the order the ids
+came in.
+
+The menu item counts before it acts — *Collapse — 40 devices* — and is offered
+only where there is something to fold. A collapsed device is marked, and
+*Expand everything* appears once anything is folded.
+
+**A view, never the document.** Nothing is deleted or moved, and the collapsed
+set is not saved with the project.
+
 ### LT-418 — **bug** Every Catalyst 9000 comes back as "Unknown" — 2026-09-25
 
 **Source:** "the switches kind is unkown", with a review table of 210 devices

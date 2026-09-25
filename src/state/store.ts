@@ -41,6 +41,7 @@ import type { CommentThread } from '../lib/comments';
 import { MAX_RACK_UNITS, placementProblem, rackableOf, racksFromDevices, spanOf, type Rack, type RackFace, type Rackable } from '../lib/rack';
 import { deviceColor as computeDeviceColor } from '../theme';
 import { activePage, allEdges, allNodes, duplicatePage as duplicatePageIn, newPage, renamePage as renamePageIn, reorderPages as reorderPagesIn, setActivePage as setActivePageIn, withNewPage, withoutPage, withPage, nodeById, edgeById } from '../lib/pages';
+import { pageForContent } from '../lib/pageRect';
 import type { ColourBy } from '../lib/tinting';
 import {
   linkStatus as computeLinkStatus,
@@ -455,6 +456,11 @@ interface Store {
   /** LT-232, LT-233: what is dimmed. View state, not saved with the project. */
   canvasFilter: CanvasFilter | null;
   setCanvasFilter: (f: CanvasFilter | null) => void;
+  /** LT-421: devices whose branch is folded away. A view, never the
+   *  document — nothing here is saved with the project. */
+  collapsed: string[];
+  toggleCollapsed: (id: string) => void;
+  expandAll: () => void;
   focus: { ids: string[]; hops: number } | null;
   /** LT-238: the ink tool in hand, if any, and its colour and width. */
   inkTool: { mode: 'pen' | 'eraser'; color: string; width: number } | null;
@@ -1050,6 +1056,7 @@ export const useStore = create<Store>((set, get) => ({
   printing: false,
   panelRequest: null,
   canvasFilter: null,
+  collapsed: [],
   focus: null,
   inkTool: null,
   inkDraft: null,
@@ -1311,6 +1318,16 @@ export const useStore = create<Store>((set, get) => ({
       const p = activePage(s.doc);
       return { doc: withPage(s.doc, { canvas: { ...p.canvas, ink: (p.canvas.ink ?? []).filter((x) => x.id !== id) } }), dirty: true };
     });
+  },
+
+  toggleCollapsed(id) {
+    set((s) => ({
+      collapsed: s.collapsed.includes(id) ? s.collapsed.filter((x) => x !== id) : [...s.collapsed, id],
+    }));
+  },
+
+  expandAll() {
+    set({ collapsed: [] });
   },
 
   setCanvasFilter(f) {
@@ -2381,15 +2398,14 @@ export const useStore = create<Store>((set, get) => ({
     const locked = nodes.filter((n) => (n.data as { locked?: boolean }).locked).length;
     if (moved.size === 0) return { moved: 0, rows, locked };
     get().commit('Tidy layout');
-    set((state) => ({
-      doc: withPage(state.doc, {
-        nodes: activePage(state.doc).nodes.map((n) => {
-          const at = moved.get(n.id);
-          return at ? ({ ...n, position: at } as TopoNode) : n;
-        }),
-      }),
-      dirty: true,
-    }));
+    set((state) => {
+      const nodes = activePage(state.doc).nodes.map((n) => {
+        const at = moved.get(n.id);
+        return at ? ({ ...n, position: at } as TopoNode) : n;
+      });
+      // LT-420: the sheet follows, for the same reason it does after Arrange.
+      return { doc: withPage(state.doc, { nodes, canvas: { ...activePage(state.doc).canvas, sheetRect: pageForContent(nodes) } }), dirty: true };
+    });
     return { moved: moved.size, rows, locked };
   },
 
@@ -2474,15 +2490,22 @@ export const useStore = create<Store>((set, get) => ({
     );
     if (moved.size === 0) return { moved: 0, tiers, locked };
     get().commit('Arrange top to bottom');
-    set((state) => ({
-      doc: withPage(state.doc, {
-        nodes: activePage(state.doc).nodes.map((n) => {
-          const at = moved.get(n.id);
-          return at ? ({ ...n, position: at } as TopoNode) : n;
-        }),
-      }),
-      dirty: true,
-    }));
+    set((state) => {
+      const nodes = activePage(state.doc).nodes.map((n) => {
+        const at = moved.get(n.id);
+        return at ? ({ ...n, position: at } as TopoNode) : n;
+      });
+      // LT-420: the sheet follows the drawing it holds.
+      //
+      // Growth has always been automatic and shrinking was not, for a good
+      // reason written down beside `sheetRect`: a sheet that snaps smaller
+      // *mid-drag* makes the layout jump under the pointer. Rearranging is
+      // not a drag — it is the one moment the diagram's size certainly
+      // changed, and after a crawl places two hundred devices the sheet is
+      // left far larger than the drawing, so the boundary means nothing and
+      // an export crops.
+      return { doc: withPage(state.doc, { nodes, canvas: { ...activePage(state.doc).canvas, sheetRect: pageForContent(nodes) } }), dirty: true };
+    });
     return { moved: moved.size, tiers, locked };
   },
 

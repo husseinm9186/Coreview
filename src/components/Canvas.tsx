@@ -29,6 +29,7 @@ import { ShortcutHelp } from './ShortcutHelp';
 import { GuidePanel } from './GuidePanel';
 import { CommandPalette, type PaletteCommand } from './CommandPalette';
 import { hidingUnmatched, litNodes } from '../lib/canvasFilter';
+import { collapseLabel, foldedCount, hiddenByAll, worthCollapsing } from '../lib/collapseBranch';
 import { nearestInDirection, nearestTo, type Direction } from '../lib/spatialNav';
 import { edgeAriaLabel, nodeAriaLabel } from '../lib/ariaLabels';
 import { InkStrokes, InkTools } from './InkLayer';
@@ -442,6 +443,39 @@ export function Canvas() {
       })),
       ...(primaryTarget
         ? [{ label: 'Traceroute', onSelect: () => setTracerouteTarget(primaryTarget) }]
+        : []),
+      // LT-421: fold what hangs off this device into it. Offered only when
+      // there is something to fold — a leaf holds nothing, and an action that
+      // does nothing is worse than an absent one. The label counts first, so
+      // nobody has to try it to find out what it takes.
+      ...(node?.type === 'device' &&
+      (collapsed.includes(nodeId) || worthCollapsing(nodeId, pg.nodes, pg.edges))
+        ? [
+            {
+              label: collapseLabel(nodeId, pg.nodes, pg.edges, new Set(collapsed)),
+              onSelect: () => {
+                const was = collapsed.includes(nodeId);
+                const n = hiddenByAll([nodeId], pg.nodes, pg.edges).size;
+                store.toggleCollapsed(nodeId);
+                store.setStatusMessage(
+                  was
+                    ? `Expanded — ${n} device${n === 1 ? '' : 's'} back on the page.`
+                    : `Collapsed — ${n} device${n === 1 ? '' : 's'} folded into this one. Nothing was deleted.`,
+                );
+              },
+            },
+          ]
+        : []),
+      ...(collapsed.length > 0
+        ? [
+            {
+              label: `Expand everything — ${collapsed.length} collapsed`,
+              onSelect: () => {
+                store.expandAll();
+                store.setStatusMessage('Everything is expanded.');
+              },
+            },
+          ]
         : []),
       // LT-320: a shell on this device, in the panel, beside the others.
       // LT-321: or in the terminal the machine already has. Which one the
@@ -1288,11 +1322,22 @@ export function Canvas() {
   // back. A section (zone) always matches, so the backdrop never vanishes from
   // under the devices standing on it.
   const hiding = hidingUnmatched(canvasFilter) && lit !== null;
-  const shownNodes = useMemo(
-    () => (hiding && lit ? view.nodes.filter((n) => lit.has(n.id)) : view.nodes),
-    [view.nodes, hiding, lit],
+  // LT-421: and whatever is folded away behind a collapsed device. The two
+  // are independent — a device can be filtered out, folded away, or both —
+  // so they are one set of ids to leave out of the drawing.
+  const collapsed = useStore((s) => s.collapsed);
+  const foldedBranches = useMemo(
+    () => (collapsed.length > 0 ? hiddenByAll(collapsed, view.nodes, view.edges) : null),
+    [collapsed, view.nodes, view.edges],
   );
-  const derived = useRef(new WeakMap<TopoNode, { zIndex: number; locked: boolean; dimmed: boolean; out: TopoNode }>());
+  const shownNodes = useMemo(
+    () =>
+      view.nodes.filter(
+        (n) => !(hiding && lit && !lit.has(n.id)) && !(foldedBranches && foldedBranches.has(n.id)),
+      ),
+    [view.nodes, hiding, lit, foldedBranches],
+  );
+  const derived = useRef(new WeakMap<TopoNode, { zIndex: number; locked: boolean; dimmed: boolean; holding: number; out: TopoNode }>());
   const nodes = useMemo(
     () =>
       shownNodes.map((n, i) => {
@@ -1316,16 +1361,24 @@ export function Canvas() {
         // Nothing on the page is dimmed while hiding: what would have been
         // faint is simply not here.
         const dimmed = !hiding && lit !== null && !lit.has(n.id);
+        const holding = collapsed.includes(n.id) ? foldedCount(n.id, view.nodes, view.edges) : 0;
         const was = derived.current.get(n);
-        if (was && was.zIndex === zIndex && was.locked === locked && was.dimmed === dimmed) return was.out;
+        if (was && was.zIndex === zIndex && was.locked === locked && was.dimmed === dimmed && was.holding === holding) return was.out;
         // LT-241: what a screen reader says for it.
         const ariaLabel = nodeAriaLabel(n, (t) => DEVICE_LABEL[t as DeviceType] ?? t);
         const base = locked ? { ...n, draggable: false, zIndex, ariaLabel } : { ...n, zIndex, ariaLabel };
-        const out = dimmed ? { ...base, className: `${n.className ?? ''} is-dimmed`.trim() } : base;
-        derived.current.set(n, { zIndex, locked, dimmed, out });
+        // LT-421: a collapsed device is marked, or a folded branch is
+        // indistinguishable from a device that was never connected to
+        // anything. How many it holds is in the menu item and the status
+        // line, where there is room to say it in words.
+        const classes = [n.className, dimmed ? 'is-dimmed' : '', holding > 0 ? 'is-collapsed' : '']
+          .filter(Boolean)
+          .join(' ');
+        const out = dimmed || holding > 0 ? { ...base, className: classes } : base;
+        derived.current.set(n, { zIndex, locked, dimmed, holding, out });
         return out;
       }),
-    [shownNodes, pg.canvas.layers, lit, hiding],
+    [shownNodes, pg.canvas.layers, lit, hiding, collapsed, view.nodes, view.edges],
   );
   // LT-241 names each link for a screen reader; LT-232 dims some. The copy is
   // kept per link object and reused while its label and dimming are unchanged,
@@ -1336,7 +1389,9 @@ export function Canvas() {
     const names = new Map(view.nodes.map((n) => [n.id, (n.data as { label?: string; title?: string }).label ?? (n.data as { title?: string }).title ?? 'a note']));
     const nameOf = (id: string) => names.get(id) ?? 'a device';
     // A link with a hidden end has nowhere to land, so it goes with it.
-    const edges = hiding && lit ? view.edges.filter((e) => lit.has(e.source) && lit.has(e.target)) : view.edges;
+    const onPage = new Set(shownNodes.map((n) => n.id));
+    // A link with an end that is not drawn has nowhere to land.
+    const edges = view.edges.filter((e) => onPage.has(e.source) && onPage.has(e.target));
     return edges.map((e) => {
       const ariaLabel = edgeAriaLabel(e, nameOf);
       const dimmed = !hiding && lit !== null && !(lit.has(e.source) && lit.has(e.target));
@@ -1346,7 +1401,7 @@ export function Canvas() {
       derivedEdges.current.set(e, { ariaLabel, dimmed, out });
       return out;
     });
-  }, [view.edges, view.nodes, lit, hiding]);
+  }, [view.edges, view.nodes, lit, hiding, shownNodes]);
 
   const boxOf = (n: TopoNode): Box => ({
     id: n.id,

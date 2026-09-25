@@ -13,6 +13,7 @@ import { useReactFlow, ViewportPortal } from '@xyflow/react';
 import { uid } from '../lib/id';
 import { hitsStroke, safeStroke, simplifyStroke, strokePath, type InkStroke } from '../lib/ink';
 import { activePage } from '../lib/pages';
+import { CanvasTypeFilter } from './CanvasTypeFilter';
 import { useStore } from '../state/store';
 
 const COLOURS: [string, string][] = [
@@ -73,7 +74,10 @@ export function InkTools() {
 
   return (
     <>
-      <div className="cv-ink-bar" role="toolbar" aria-label="Ink">
+      <div className="cv-ink-bar" role="toolbar" aria-label="Drawing and filtering">
+        {/* LT-419: where he asked for it — "make the filter at the top next to
+            the PEN, and Eraser". */}
+        <CanvasTypeFilter />
         <button type="button" className={`cv-btn cv-btn-small${tool?.mode === 'pen' ? ' is-on' : ''}`} aria-pressed={tool?.mode === 'pen'} onClick={() => pick('pen')} title="Draw freehand (Escape to stop)">
           ✎ Pen
         </button>
