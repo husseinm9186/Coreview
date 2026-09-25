@@ -2719,6 +2719,11 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 
 /* Filtering by type from the canvas toolbar (LT-419). */
 .cv-type-filter { position: relative; }
+/* LT-422: this one is at the *left* edge of the canvas, not on the right of
+   the top bar like every other dropdown, so the shared `right: 0` opened it
+   out of the window — the labels were off-screen and only the counts showed.
+   It opens rightwards, into the room it actually has. */
+.cv-type-filter .cv-dropdown-menu { left: 0; right: auto; }
 .cv-type-filter-menu { max-height: 60vh; overflow-y: auto; min-width: 210px; }
 .cv-type-filter-menu .cv-check { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .cv-type-count { margin-left: auto; color: var(--text-faint); font-variant-numeric: tabular-nums; }

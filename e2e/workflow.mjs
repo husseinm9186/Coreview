@@ -306,6 +306,45 @@ await page.keyboard.press("Escape");
 await page.waitForTimeout(150);
 check("Escape puts the tool down", (await page.locator(".cv-ink-sheet").count()) === 0);
 
+// --------------------------------------------- LT-419/LT-422 the type filter
+//
+// The toolbar sits at the far left of the canvas, so a menu anchored the way
+// the top bar's dropdowns are anchored opens *out of the window* — which is
+// what LT-422 was: the counts showed and every label was off-screen. Measured
+// rather than eyeballed, and measured with the palette hidden too, because
+// that moves the toolbar further left and is how it was noticed.
+const typeFilter = page.locator(".cv-type-filter");
+check("the canvas toolbar offers a type filter", (await typeFilter.count()) === 1);
+
+for (const withPalette of [true, false]) {
+  if (!withPalette) {
+    await st(() => window.__cvStore.getState().setPaletteOpen(false));
+    await page.waitForTimeout(300);
+  }
+  await typeFilter.locator("summary").click();
+  await page.waitForTimeout(250);
+  const menu = await typeFilter.locator(".cv-dropdown-menu").boundingBox();
+  const view = page.viewportSize();
+  check(
+    `the type menu opens inside the window (palette ${withPalette ? "shown" : "hidden"})`,
+    Boolean(menu) && menu.x >= 0 && menu.y >= 0 && menu.x + menu.width <= view.width,
+    JSON.stringify(menu),
+  );
+  // And its labels are actually readable, not just its counts.
+  const labels = await typeFilter.locator(".cv-dropdown-menu .cv-check").allTextContents();
+  check(
+    `the type menu shows what each row is (palette ${withPalette ? "shown" : "hidden"})`,
+    labels.length > 0 && labels.every((t) => t.trim().length > 2),
+    JSON.stringify(labels.slice(0, 3)),
+  );
+  await typeFilter.locator("summary").click();
+  await page.waitForTimeout(150);
+}
+// Put the palette back: what follows checks how focus moves between the
+// window's regions, and one of them would be missing.
+await st(() => window.__cvStore.getState().setPaletteOpen(true));
+await page.waitForTimeout(300);
+
 // -------------------------------------------------------- LT-239 comments
 await st(() => {
   const s = window.__cvStore.getState();

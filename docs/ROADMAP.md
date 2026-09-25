@@ -1243,6 +1243,37 @@ pulled into Phase 1.*
 
 ## Done
 
+### LT-422 — **bug** The type filter's menu opens off the side of the window — 2026-09-25
+
+**Source:** "the filter cutout when the sidebar is hidden?", with a screenshot
+of the Types menu showing its counts — 133, 32, 27, 13, 2, 2 — and none of the
+labels beside them, because the menu is hanging off the left edge of the
+window.
+
+**Mine, from the same day.** `.cv-dropdown-menu` is anchored `right: 0`, which
+is correct for every other thing that uses it: they are buttons on the **right**
+of the top bar, so their menus open leftwards into the window. LT-419 put a
+dropdown at the **far left** of the canvas and inherited that rule, so it opens
+leftwards out of the window. Hiding the palette moves the toolbar further left
+and makes it plain.
+
+**Acceptance:** the menu opens inside the window wherever the toolbar is, with
+the palette shown or hidden, and a check that fails if it ever hangs off an
+edge again.
+
+**Fixed 2026-09-25**, one line: this dropdown opens `left: 0` rather than
+inheriting the shared `right: 0`. Every other user of `.cv-dropdown-menu` is a
+button on the right of the top bar, where anchoring right is what keeps the
+menu *inside* the window; this one is at the opposite corner and needed the
+opposite rule.
+
+**Measured rather than eyeballed**, in `e2e/workflow.mjs`: the menu is opened
+with the palette shown and again with it hidden, and its bounding box has to
+be inside the viewport. Reverting the one line makes that check fail with
+`x: -139.6` — the menu 139 pixels off the left edge, which is the screenshot.
+It also checks the rows have labels and not only counts, because that is what
+the operator actually saw.
+
 ### LT-419 — Filter by type from the canvas itself — 2026-09-25
 
 **Source:** "after I discover and add the devices to the diagram I need to
