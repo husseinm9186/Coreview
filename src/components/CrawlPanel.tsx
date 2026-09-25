@@ -31,7 +31,7 @@ import { reduceCrawlTable, stateCounts, STATE_LABEL, tableRows, type CrawlTable 
 import { SubnetList } from './SubnetList';
 import { failureAdvice, failureHeading, reasonWithoutAddress } from '../lib/failures';
 import { newProbe } from '../lib/probes';
-import { buildTopology } from '../lib/topology';
+import { buildTopology, identitiesOfNode, identity } from '../lib/topology';
 import { ChangeReport } from './ChangeReport';
 import { inferredSwitches, selectAttached, vendorCounts } from '../lib/attached';
 import type { DeviceNodeData } from '../types/domain';
@@ -603,7 +603,20 @@ export function CrawlPanel({
 
   const build = () => {
     if (!result || !store.meta) return;
-    const keep = new Set(picked.map((r) => r.key.toLowerCase()));
+    // LT-417: the ticked rows, by every identity each one has.
+    //
+    // This used to be a set of row keys — hostnames — matched against the
+    // node's drawn **label**. Those agree only while a device has a name. A
+    // device the crawl reached but could not name is labelled with its
+    // address, its row key is the empty string it was given, and it is
+    // dropped here after the topology had correctly placed it. When that
+    // device is the seed, and the seed is the core, every distribution switch
+    // below it becomes an island — which is what the operator reported and
+    // what his screenshot showed.
+    //
+    // Identity is the thing both sides already agree on: `identity()` is what
+    // the topology keys devices by, and `identitiesOfNode` is its inverse.
+    const keep = new Set(picked.flatMap((r) => [identity(r.name, r.address), `a:${r.address.trim()}`]).filter((k) => k && k !== 'a:'));
     const page = activePage(store.doc);
     const bottom = page.nodes.reduce((m, n) => Math.max(m, n.position.y + 120), 0);
 
@@ -624,10 +637,11 @@ export function CrawlPanel({
       },
     });
 
-    // The ticks in the table decide what is placed. Matching on the drawn
-    // label keeps that honest without the builder having to know about rows.
+    // The ticks in the table decide what is placed. A node is wanted when any
+    // identity it carries — its MAC, any of its addresses, or its name — is
+    // one a ticked row carries too.
     const wanted = (n: TopoNode) =>
-      keep.size === 0 || keep.has(String((n.data as DeviceNodeData).label).toLowerCase());
+      keep.size === 0 || identitiesOfNode(n).some((k) => keep.has(k));
 
     // LT-216: nothing is written yet. The crawl's changes are listed for
     // review — additions and updates ticked, removals and moves not — and
@@ -642,7 +656,17 @@ export function CrawlPanel({
     const changes = reconcile({ page, topo, devices: result.devices, inScope })
       .filter((c) => !(c.kind === 'added' && c.subject === 'device' && c.addNodes?.some((n) => !wanted(n))))
       // A link to a device left unticked in the table has nowhere to land.
-      .filter((c) => !(c.kind === 'added' && c.subject === 'link' && c.addEdges?.some((e) => !page.nodes.some((n) => n.id === e.source) && !topo.nodes.some((n) => n.id === e.source && wanted(n)))));
+      //
+      // LT-417: **both** ends, which this used to check only for the source.
+      // A link whose target was dropped survived the review, was applied, and
+      // then vanished when React Flow found no node at one end — so the device
+      // was missing *and* so was any sign that it should have been there.
+      .filter((c) => {
+        if (c.kind !== 'added' || c.subject !== 'link') return true;
+        const lands = (id: string) =>
+          page.nodes.some((n) => n.id === id) || topo.nodes.some((n) => n.id === id && wanted(n));
+        return !c.addEdges?.some((e) => !lands(e.source) || !lands(e.target));
+      });
     setReview({ changes, ticked: new Set(changes.filter((c) => c.accept).map((c) => c.id)), dangling: topo.danglingLinks });
   };
 

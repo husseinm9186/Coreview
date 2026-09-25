@@ -1161,6 +1161,24 @@ gone from the working tree long ago, and on 2026-09-18 the published history was
 replaced by a single commit (LT-314), so they are gone from that too.
 **Confirmed by the operator, 2026-09-13:** LT-107 and LT-108 — "LT-107 and
 LT-108: confimed". Nothing is held pending his eyes.
+**Four reported together, 2026-09-25, and all four were leaks of the same
+kind.** LT-412, LT-413 and LT-414 are one complaint — "the projects need to be
+separate from each other" — arriving as three mechanisms: the credential
+pickers offered the whole machine vault, every project listed every project's
+backups, and fifteen settings including a discovery's seed and subnets
+followed whoever opened the app into the next project. **None of it was a
+design gap.** D-038 had already ruled on it in 2026-09-18, and LT-335 had
+already written the fix down in `credentialScope.ts` — and applied it to the
+Settings screen only, missing the two pickers where a login is actually chosen
+for a run against a customer's estate. A rule written once and applied in one
+place is how this reappears; the e2e harness now asserts it from outside.
+
+**LT-417 is the one to learn from.** It looked like a layout problem, was
+reported as a layout problem, and was neither: the seed was built into the
+topology correctly and then dropped by the review, because the ticked rows
+were keyed by hostname and matched against the drawn label. Those agree only
+while a device has a name.
+
 **LT-382 is closed, 2026-09-24**, having been parked the day before. It was
 not LibreOffice: `scan()` named its conversion directory by process id alone
 and deleted it when it finished, so two scans at once destroyed each other's
@@ -1224,6 +1242,250 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-412 — **bug** Every project's logins are offered in every project's picker — 2026-09-25
+
+**Source:** "the projects need to be separate from each other / for example I
+can still see the passwords from other projects", with the Backups tab's
+Credentials list open on a screenshot showing four entries from three
+different projects.
+
+**This is not a design gap. It is a regression against D-038**, which says it
+in as many words: *"opening a second project and finding the first one's login
+in the form is wrong, and on a tool an engineer points at several customers'
+networks it is worse than wrong."*
+
+**LT-335 fixed this exact leak — on the Settings screen only.** It even left
+the doctrine behind, written down, in `src/lib/credentialScope.ts`: the vault
+is one store per machine on purpose, what must not be shared is *the view*, and
+"its own" is derivable with no new storage because a project refers to the
+credentials it uses. `SettingsView` was taught that. **`CredentialPicker` and
+`SavedCredentialSelect` were not**, and they are the two that matter more —
+they are where a login is chosen for a run against a customer's estate.
+
+**Two faults, and the second is worse than it looks:**
+1. Both pickers call `listCredentials()` and offer the **whole machine vault**.
+2. A credential's label is frozen at save time as
+   `${projectName} — ${username}`, and falls back to the literal words
+   **"This project"** when the project has no name. So a credential made in one
+   project is offered in another under a label claiming it belongs to the one
+   you are looking at. The screenshot shows two of them.
+
+**Acceptance:** a picker offers what this project refers to. The rest of the
+vault is reachable deliberately and says plainly that it is the whole machine —
+the pattern LT-335 already chose. No label asserts a relationship it cannot
+know.
+
+**Not in scope:** the vault itself stays one encrypted store per machine
+(D-034). Nothing here moves a secret.
+
+**Fixed 2026-09-25.** Both pickers now offer what this project refers to —
+`credentialsUsedBy`, the helper LT-335 left behind and never wired here — with
+the rest of the vault behind one button that says what it is: *Show 3 saved
+elsewhere on this computer*.
+
+**Two refinements the work turned up:**
+- **A credential you just touched stays on offer.** Scoping purely by what the
+  project refers to broke *Forget for this project*: forgetting removed the
+  reference, the credential left the list, and it could not be chosen again —
+  while its own tooltip promised it stays in the vault. Anything chosen while
+  the form has been open is still offered.
+- **The label no longer lies.** It was `${projectName || 'This project'} — user`,
+  and the fallback froze the literal words *This project* into the vault, so a
+  credential made in an unnamed project was offered everywhere under a label
+  claiming to belong to whatever you were looking at. A named project may still
+  say its name; an unnamed one says only who the login is for.
+
+**Asserted end to end**, because the leak is invisible from inside one project:
+`e2e/scansettings.mjs` puts another customer's login in the vault, checks it is
+not offered, clicks the disclosure and checks it then is.
+
+**The vault is unchanged.** One encrypted store per machine (D-034); no secret
+moved.
+
+### LT-413 — **bug** Every project's backups are listed in every project — 2026-09-25
+
+**Source:** the same message — "i can still see what's been backed up from
+other projects" — with a screenshot of a **brand-new, empty** project reporting
+*Nothing to back up — the diagram has no devices with addresses yet* directly
+beside a **Backups taken** list naming two switches from two *other*
+customers. (Their names are not written here — that is the whole point of
+D-027, and a roadmap entry is as permanent as a fixture.)
+
+**Cause:** `backupFolder` is a single machine-wide setting, and every listing
+walks it — `list_backup_devices`, `list_backup_runs`, `list_device_captures`,
+`compare_backup_runs`. Captures are filed per *device*, so two customers' kit
+lands in one pile and each project shows the whole pile.
+
+**What makes it worse than untidy:** the folder in the screenshot is a
+customer's own path. A second customer's project displays the first customer's
+device names, and a before-and-after comparison offers their runs.
+
+**Acceptance:** a project lists the backups taken for *that* project and no
+others; a new project shows none.
+
+**Fixed 2026-09-25.** `backupFolder` is a project setting, and `backup_root`
+reads this project's — so `list_backup_devices`, `list_backup_runs`,
+`list_device_captures`, `read_capture`, `diff_captures`, `compare_backup_runs`
+and `run_backup_checks` all answer for the project asking. A project with no
+folder chosen is told so, rather than being shown somebody else's.
+
+Writing is scoped the same way: `start_backup` and the Meraki backup file
+both write under the project's own folder.
+
+### LT-414 — **bug** Backup settings follow you from one project to the next — 2026-09-25
+
+**Source:** "what I saved on the 1st project i see it when I start a new
+project from ip address, users, settings..etc / we need separation and projects
+don't share passowrds, settings ..etc".
+
+**Cause:** `app_settings` is `key TEXT PRIMARY KEY` — one flat machine-wide
+table — and project-shaped configuration is kept in it: `backupFolder`,
+`exportFolder`, `backupChecks`, `backupCommandSets`, `backupFilePattern`,
+`backupGroups`, `backupPaging`, `backupShowCommands`. Opening a new project
+inherits the last one's command sets, file naming, collection groups and
+checks.
+
+**Which of these are genuinely machine-wide, and stay:** `iconLibraryDir` is a
+folder of artwork on this computer, and the keychain setting is about this
+computer's OS. Those are properties of the machine, not of the work.
+
+**The rest are properties of the work** and belong to a project. They are local
+paths and run configuration, so they go in a `project_settings` table rather
+than into the document — the document travels (D-034's reasoning), and a
+customer's folder path must not travel with it.
+
+**Migration, and why it is not a fallback:** the honest move is to copy what
+exists to the projects that exist, once, so nothing is lost — and then stop.
+A *fallback* to the machine-wide value would leave a new project inheriting the
+last one's settings, which is the bug.
+
+**Acceptance:** a new project starts with no backup folder, no command sets and
+no file pattern; an existing project opens with exactly what it had.
+
+**Fixed 2026-09-25.** A `project_settings(project_id, key, value)` table, and
+fifteen keys moved into it — the two folders, the six that shape a backup run,
+and **the seven a discovery is set up with, including the seed and the
+subnets**. Those last are addresses on a customer's network, and they were the
+half of the report that said "i see it when I start a new project from ip
+address".
+
+**What stayed machine-wide, and why:** the icon library folder and the nine
+terminal preferences. Their own comment in the code already said it — *"about
+reading and working, so they live on the machine and not in a project"* — and
+that was right; they are properties of this computer, not of the work.
+
+**Migration, not fallback.** Schema 2 copies what existed to every project that
+existed, once, then deletes it from the shared table. Every existing project
+opens with exactly what it had; a project made afterwards starts with nothing.
+A fallback would have been less code and would have kept the bug.
+
+**Threaded once, not forty times.** The IPC layer knows which project is open
+(`setCurrentProject`, set by `openProject` and cleared by `closeProject`) and
+says so on every call that needs it, rather than relying on nobody forgetting
+a call site. Closing a project also clears the folders out of the form, so
+nothing is left for the next one to inherit.
+
+### LT-415 — The canvas filter can dim, but it cannot hide — 2026-09-25
+
+**Source:** "I also need a filter to the diagram so I can filter by device type
+for example I want to see only switches or only firewalls or only access
+ports. or filter to hide hosts or access points".
+
+**Most of this exists and he could not use it.** `CanvasFilterMenu` (LT-232)
+already filters by type, vendor, role, VLAN, subnet, status, how discovery met
+the device, tag and text, filled in from what the page actually has. What it
+does with the result is the problem, and the panel says so in its own words:
+*"What does not match is dimmed, not hidden."*
+
+**Dimming is the wrong answer to the question he is asking.** On the diagram in
+his screenshot — thirty devices shoulder to shoulder — dimming the hosts leaves
+them exactly where they were, still taking the space, still crossed by every
+link. "I want to see only switches" means the rest should not be on the page.
+
+**To ship:** a *Hide what does not match* choice beside the filter, off by
+default so the existing behaviour is what it was. Hidden is a **view** state,
+never a document one: nothing is deleted, the page is unchanged, and clearing
+the filter brings everything back. A hidden device's links hide with it, or
+they draw to nothing.
+
+**And it must say so**, because a diagram that is quietly missing devices is
+worse than one that is cluttered: while anything is hidden the filter button
+says how many.
+
+**Shipped 2026-09-25.** A **Hide what does not match** tick beside the filter.
+The match is the one that was already there — the same `litNodes` the dimming
+uses — so the two can never disagree about what matched; what changes is
+whether the rest fades or leaves.
+
+- A link with a hidden end goes with it, rather than drawing to nothing.
+- A section (zone) always matches, so the backdrop never vanishes from under
+  the devices standing on it.
+- **The button says how many are off the page** — *Filter — 62 hidden*. A
+  diagram quietly missing devices is worse than a crowded one.
+- Ticking the box on its own hides nothing: it is a modifier, not a criterion,
+  and `filterActive` deliberately does not count it. Otherwise the tick alone
+  would empty the diagram.
+
+**A view and nothing more.** No node is deleted, the document is untouched,
+and clearing the filter brings everything back — the panel says so under the
+tick.
+
+### LT-417 — **bug** The seed device never reaches the diagram — 2026-09-25
+
+**Source:** "the seed device is not added to the diagram and if that the cores
+switch of the network then the the diagram will show cut and little diagrmas
+of each distro".
+
+**Why this is the worst of the ones reported so far.** The seed is usually the
+core — it is what somebody points the crawl at *because* everything hangs off
+it. Leave it out and every distribution switch becomes an island: the links
+that would have joined them all landed on a device that is not on the page. The
+diagram is not merely missing one box, it is missing its shape.
+
+It also explains a screenshot from earlier in the day that was read as a layout
+problem: devices strung in a row with links swooping across to nothing much.
+That is what a topology looks like when its root is absent.
+
+**To find out:** whether the seed is missing from the crawl's *result*, from
+the *review* list, or only from what `buildTopology` places. Those are three
+different bugs with three different fixes, and the crawl plainly reaches the
+device — it is the one it logged into first.
+
+**Acceptance:** a crawl seeded at a core switch draws that switch, with its
+neighbours hanging off it, as one connected diagram. A test that fails without
+the fix, before the fix (D-020).
+
+**Fixed 2026-09-25, and the cause was in the review rather than the layout.**
+
+Traced through all three stages. The crawl's result carries the seed —
+`crawl_a_fake_network.rs` has always asserted it. `buildTopology` places it,
+with its neighbours hanging off it, which two new tests now pin. **The review
+dropped it.**
+
+**The ticked rows were keyed by hostname and matched against the node's drawn
+label.** Those agree only while a device has a name. A device the crawl
+reached but could not name is labelled with its *address* while its row key is
+the empty string it was given — so it never matched, and was silently dropped
+after the topology had correctly placed it. When that device is the seed, and
+the seed is the core, every distribution switch beneath it becomes an island.
+
+Both sides now match on **identity** — the MAC, any address, or the name —
+which is what `identity()` and `identitiesOfNode` already existed to do, and
+removes the whole class of name-against-label mismatch rather than this one
+instance of it.
+
+**A second defect beside it:** the filter that drops a link whose device was
+not ticked checked only `e.source`, never `e.target`. A link whose far end had
+been dropped survived the review, was applied, and then vanished when React
+Flow found no node at one end — so the device was missing *and* so was any
+sign that it should have been there. Both ends are checked now.
+
+**Honest about what is proven.** This is a bug that produces exactly the
+reported symptom, reproduced by a test that fails without the fix (D-020).
+Whether it is the one the operator hit is not established: his core may well
+have a name, in which case something else is also at work. The question that
+settles it is whether the core appeared as a row in the review table.
 
 ### LT-408 — The FortiGate show commands, checked against a FortiGate — 2026-09-24
 
@@ -9891,6 +10153,49 @@ internal COREVIEW-FGT-Root-CA cannot and never will.
 ---
 
 ## Icebox
+
+### LT-416 — After a discovery the devices sit in one endless row — 2026-09-25
+
+**Source:** "right now after discover they look like they are setting on top of
+each other / I need to option to resort them so they show better view", with a
+screenshot of about thirty switches in a single row across the page and links
+swooping underneath it.
+
+**Two separate faults, and only one of them is the layout.**
+
+1. **A tier is drawn as one row, however wide it gets.** `hierarchicalLayout`
+   files each device into a tier by hop distance and lays the tier out left to
+   right with no wrap. Thirty access switches are all one hop from the same
+   core, so they are all in one tier, so they are one row thirty devices wide —
+   which is what the screenshot is. Nothing is actually overlapping; the page
+   is simply far wider than a screen, and the parts that *do* overlap are the
+   labels.
+2. **Re-arranging is already built and he could not find it.** *Tidy the
+   layout* and *Arrange top to bottom* both exist, and both are in the canvas
+   **right-click menu** and the command palette. Neither is on the toolbar,
+   and nothing offers them at the moment they are wanted — the end of a
+   discovery, which is the one time the diagram is certainly unarranged.
+
+**To ship:** a tier wider than the page wraps into rows; and the two arrange
+actions are reachable without knowing to right-click, including from where a
+crawl finishes.
+
+**Not a new layout engine.** The existing one is good and the direction
+evidence behind it (LT-145, LT-146) is hard-won. This is a wrap and a button.
+
+**Iceboxed the same day — "you are right the arrange does exist perfect, i
+just need the filter".** He was shown the two actions and they do what he
+wanted, so the discoverability half is closed by him finding them.
+
+**The wrapping observation stands and is left here on purpose.** A tier really
+is drawn as one row however wide it gets, and thirty sibling switches really
+are one row thirty devices across. It has not been built because the person it
+affects has said it is not a problem — a diagram that is wide and correct beats
+a diagram that is square and guessed at, and he can pan. If a wider estate ever
+makes it one, the cause is already written down here and the fix is a wrap in
+`hierarchicalLayout`, not a new engine.
+
+**What he actually wants is LT-415**, which is the filter.
 
 ### LT-307 — Selling Coreview per seat — dropped 2026-09-18
 Asked and designed the same day, then dropped the same day: "forget about the

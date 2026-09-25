@@ -2699,3 +2699,10 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-meraki-checklist { margin: 0 0 4px 16px; padding: 0; font-size: 12px; color: var(--text-dim); }
 .cv-meraki-steps { margin: 0 0 4px 16px; padding: 0; font-size: 12px; color: var(--text-dim); display: flex; flex-direction: column; gap: 4px; }
 .cv-meraki-steps li { line-height: 1.45; }
+
+/* The filter's hide tick and its count (LT-415). */
+.cv-filter-hide { margin-top: 6px; }
+.cv-filter-menu .cv-help { max-width: 280px; }
+
+/* Reaching the rest of the machine's vault, deliberately (LT-412). */
+.cv-cred-elsewhere { align-self: flex-start; margin-top: 4px; }

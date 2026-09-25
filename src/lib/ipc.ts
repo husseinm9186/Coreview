@@ -796,17 +796,44 @@ export type StoredSettings = Partial<{
   sshPasteOnRight: string;
 }>;
 
+/**
+ * Which project is open, for the calls that belong to one (LT-413, LT-414).
+ *
+ * Settings and backups are a property of the work, not of the computer — a
+ * customer's backup folder, the commands a run sends, the addresses a
+ * discovery was pointed at. Rather than thread a project id through forty call
+ * sites and rely on nobody forgetting one, the layer that talks to the backend
+ * knows which project is open and says so on every call that needs it.
+ *
+ * `null` when no project is open, and the backend refuses those calls rather
+ * than falling back to a shared value — falling back is the bug.
+ */
+let currentProjectId: string | null = null;
+
+/** Told by the store when a project opens or closes. */
+export function setCurrentProject(id: string | null) {
+  currentProjectId = id?.trim() || null;
+}
+
+export function currentProject(): string | null {
+  return currentProjectId;
+}
+
+/** The project a call belongs to, or an empty string so the backend gives the
+ *  proper refusal rather than this throwing somewhere less explicable. */
+const forProject = () => currentProjectId ?? '';
+
 export const ipc = {
   /** Every stored preference. Browser mode has no backend, so none. */
   async getSettings(): Promise<StoredSettings> {
     if (!isDesktop) return {};
-    return invoke<StoredSettings>('get_settings');
+    return invoke<StoredSettings>('get_settings', { projectId: forProject() });
   },
 
   /** Stores a preference, or clears it when value is null. */
   async setSetting(key: keyof StoredSettings, value: string | null): Promise<void> {
     if (!isDesktop) return;
-    await invoke('set_setting', { key, value });
+    await invoke('set_setting', { key, value, projectId: forProject() });
   },
 
   /** Picking a folder is not the same as being able to write into it: a
@@ -1207,7 +1234,7 @@ export const ipc = {
     credentials: CredentialInput,
     stamp: string,
   ) {
-    return invoke<void>('start_backup', { input: backupInput(input), credentials: credentialInput(credentials), stamp });
+    return invoke<void>('start_backup', { input: backupInput(input), credentials: credentialInput(credentials), stamp, projectId: forProject() });
   },
   cancelBackup() {
     return invoke<void>('cancel_backup');
@@ -1282,10 +1309,10 @@ export const ipc = {
     return isDesktop ? invoke<MerakiProfile[]>('meraki_profiles') : Promise.resolve([]);
   },
   merakiBackup(credentialId: string, organizationId: string, networkIds: string[], stamp: string) {
-    return invoke<MerakiBackupWritten>('meraki_backup', { credentialId, organizationId, networkIds, stamp });
+    return invoke<MerakiBackupWritten>('meraki_backup', { credentialId, organizationId, networkIds, stamp, projectId: forProject() });
   },
   merakiHealthCheck(credentialId: string, organizationId: string, networkId: string, profile: string) {
-    return invoke<MerakiReport>('meraki_health_check', { credentialId, organizationId, networkId, profile });
+    return invoke<MerakiReport>('meraki_health_check', { credentialId, organizationId, networkId, profile, projectId: forProject() });
   },
   /** LT-411: the estate as devices the diagram can take, in the same shape a
    *  crawl returns so the merge path is shared. */
@@ -1381,28 +1408,28 @@ export const ipc = {
 
   /** Devices with backups on disk. */
   listBackupDevices() {
-    return isDesktop ? invoke<BackupDevice[]>('list_backup_devices') : Promise.resolve([]);
+    return isDesktop ? invoke<BackupDevice[]>('list_backup_devices', { projectId: forProject() }) : Promise.resolve([]);
   },
   listDeviceCaptures(device: string) {
-    return invoke<string[]>('list_device_captures', { device });
+    return invoke<string[]>('list_device_captures', { device, projectId: forProject() });
   },
   readCapture(device: string, filename: string) {
-    return invoke<string>('read_capture', { device, filename });
+    return invoke<string>('read_capture', { device, filename, projectId: forProject() });
   },
   diffCaptures(device: string, before: string, after: string) {
-    return invoke<DiffLine[]>('diff_captures', { device, before, after });
+    return invoke<DiffLine[]>('diff_captures', { device, before, after, projectId: forProject() });
   },
   /** LT-152: every run in the backup folder, newest first. */
   listBackupRuns() {
-    return isDesktop ? invoke<BackupRunSummary[]>('list_backup_runs') : Promise.resolve([]);
+    return isDesktop ? invoke<BackupRunSummary[]>('list_backup_runs', { projectId: forProject() }) : Promise.resolve([]);
   },
   /** LT-152: two runs compared per device, and per command for show commands. */
   compareBackupRuns(before: string, after: string) {
-    return invoke<ComparedDevice[]>('compare_backup_runs', { before, after });
+    return invoke<ComparedDevice[]>('compare_backup_runs', { before, after, projectId: forProject() });
   },
   /** LT-153: checks against one run's show-command captures. Reads files only. */
   runBackupChecks(stamp: string, checks: BackupCheck[]) {
-    return invoke<CheckResult[]>('run_backup_checks', { stamp, checks: checks.map(backupCheck) });
+    return invoke<CheckResult[]>('run_backup_checks', { stamp, checks: checks.map(backupCheck), projectId: forProject() });
   },
   /** LT-124: a gateway's ARP table over SNMP, with a saved credential. The
    *  optional step after a sweep; the sweep itself stays credential-free. */

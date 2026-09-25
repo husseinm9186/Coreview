@@ -401,6 +401,43 @@ check("so no password is asked for a second time",
   (await loginForm.locator('.cv-field', { has: page.locator('span:text-is("Password")') }).count()) === 0,
   `${await loginForm.locator('.cv-field', { has: page.locator('span:text-is("Password")') }).count()} field(s)`);
 
+// LT-412: another project's login must not be on offer here.
+//
+// The vault is shared by every project on this computer and that is
+// deliberate (D-034). What must not be shared is the *view* — D-038: "opening
+// a second project and finding the first one's login in the form is wrong,
+// and on a tool an engineer points at several customers' networks it is worse
+// than wrong."
+await page.evaluate(() => {
+  const v = JSON.parse(localStorage.getItem("cv.e2e.vault"));
+  v.creds.push({
+    id: "cred-elsewhere",
+    label: "Another Customer — admin",
+    kind: "ssh",
+    username: "admin",
+    detail: "",
+    hasSecondSecret: false,
+    secret: "not-this-project's",
+  });
+  localStorage.setItem("cv.e2e.vault", JSON.stringify(v));
+  window.__cvStore.getState().bumpVault();
+});
+await page.waitForTimeout(500);
+
+const offered = await field("Credentials").locator("option").allTextContents();
+check("a login this project does not use is not offered",
+  !offered.join(" ").includes("Another Customer"), JSON.stringify(offered));
+
+// And it is reachable on purpose, saying plainly what it is.
+const elsewhere = page.locator("button", { hasText: /saved elsewhere on this computer/ }).first();
+check("the rest of the machine's vault is one deliberate click away",
+  (await elsewhere.count()) === 1);
+await elsewhere.click();
+await page.waitForTimeout(300);
+const afterShowing = await field("Credentials").locator("option").allTextContents();
+check("and then it is there", afterShowing.join(" ").includes("Another Customer"),
+  JSON.stringify(afterShowing));
+
 await browser.close();
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

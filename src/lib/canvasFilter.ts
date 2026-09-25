@@ -1,11 +1,23 @@
 /**
  * Filtering the canvas (LT-232) and focusing on part of it (LT-233).
  *
- * Both answer "show me only…", and both **dim** rather than hide: the devices
- * that do not match stay where they are, faint, so the drawing keeps its shape
- * and nobody wonders where half the network went. A filter matches on what a
- * device is and what is known about it; focus keeps a selection and its
- * neighbours a chosen number of links out.
+ * Both answer "show me only…". By default both **dim** rather than hide: the
+ * devices that do not match stay where they are, faint, so the drawing keeps
+ * its shape and nobody wonders where half the network went. A filter matches
+ * on what a device is and what is known about it; focus keeps a selection and
+ * its neighbours a chosen number of links out.
+ *
+ * **LT-415: dimming is not always the answer.** On a discovered estate —
+ * eighty devices, most of them hosts and access points — dimming the ones you
+ * did not ask for leaves them exactly where they were, still taking the room
+ * and still crossed by every link. "I want to see only switches" means the
+ * rest should be off the page. So `hide` turns the same match into a
+ * disappearance.
+ *
+ * It is a **view** state and nothing more: no node is deleted, the document is
+ * untouched, and clearing the filter brings everything back. What is hidden is
+ * derived from the same `litNodes` the dimming uses, so the two can never
+ * disagree about what matched.
  */
 import type { TopoEdge, TopoNode } from '../state/store';
 import type { DeviceNodeData, HealthStatus, LinkData, NoteNodeData } from '../types/domain';
@@ -23,10 +35,26 @@ export interface CanvasFilter {
   tag?: string;
   /** Text in a device's notes or a note's body. */
   text?: string;
+  /** LT-415: take what does not match off the page instead of dimming it.
+   *  A modifier, not a criterion — on its own it filters nothing. */
+  hide?: boolean;
 }
 
 export function filterActive(f: CanvasFilter | null | undefined): boolean {
-  return Boolean(f && Object.values(f).some((v) => (Array.isArray(v) ? v.length > 0 : typeof v === 'string' && v.trim() !== '')));
+  // `hide` is deliberately not counted: it says what to do with a match, not
+  // what to match. Counting it would make ticking the box on its own hide the
+  // entire diagram.
+  return Boolean(
+    f &&
+      Object.entries(f).some(
+        ([k, v]) => k !== 'hide' && (Array.isArray(v) ? v.length > 0 : typeof v === 'string' && v.trim() !== ''),
+      ),
+  );
+}
+
+/** Whether what does not match should come off the page rather than fade. */
+export function hidingUnmatched(f: CanvasFilter | null | undefined): boolean {
+  return Boolean(f?.hide) && filterActive(f);
 }
 
 const has = (hay: string | undefined, needle: string | undefined) => !needle?.trim() || (hay ?? '').toLowerCase().includes(needle.trim().toLowerCase());

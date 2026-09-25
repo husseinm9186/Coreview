@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Edge, Node } from '@xyflow/react';
 import { applyEdgeChanges, applyNodeChanges, type EdgeChange, type NodeChange } from '@xyflow/react';
 
-import { ipc, isDesktop, type ProbeResultDto, type IconLibEntry, type StoredSettings } from '../lib/ipc';
+import { ipc, isDesktop, type ProbeResultDto, type IconLibEntry, type StoredSettings, setCurrentProject } from '../lib/ipc';
 import { staleCredentials, withoutStaleCredentials } from '../lib/credentialScope';
 import { uid } from '../lib/id';
 import { newProbe } from '../lib/probes';
@@ -1089,6 +1089,13 @@ export const useStore = create<Store>((set, get) => ({
       set({ statusMessage: 'That project could not be found in local storage.' });
       return;
     }
+    // LT-413/LT-414: from here on, settings and backups are this project's.
+    // Set before anything reads them, and cleared by `closeProject`.
+    setCurrentProject(id);
+    // And read again, because the first read happened on the project list
+    // where there was no project — so it saw this computer's preferences and
+    // none of this project's.
+    await get().loadSettings();
     // Wraps a pre-LT-094 document into a single page, then (LT-065) brings an
     // old document's device glyphs onto square bounds so the selection ring
     // and corners hug them. Marks the doc dirty only when it actually
@@ -1167,6 +1174,11 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   async closeProject() {
+    // Nothing that follows may read another project's settings or backups —
+    // and what this one chose is dropped rather than left in the form for the
+    // next project to inherit, which is the whole of LT-414.
+    setCurrentProject(null);
+    set((s) => ({ settings: { ...s.settings, backupFolder: null, exportFolder: null } }));
     if (recoveryTimer) {
       clearInterval(recoveryTimer);
       recoveryTimer = null;

@@ -1401,3 +1401,111 @@ describe('joining a sweep to a crawl', () => {
     expect(identitiesOfNode(bare as never)).toEqual(['n:lonely']);
   });
 });
+
+/**
+ * LT-417: the seed is the core, and the core has to be on the diagram.
+ *
+ * The operator's report: "the seed device is not added to the diagram and if
+ * that the cores switch of the network then the the diagram will show cut and
+ * little diagrmas of each distro". His screenshot is eight separate trees,
+ * each a distribution switch with its hosts under it and nothing joining them
+ * — which is what a topology looks like when its root is absent.
+ */
+describe('the seed device (LT-417)', () => {
+  const core = device('CORE-SW', '192.0.2.1', [
+    neighbor('DIST-1', 'Gi1/0/1', 'Gi0/24'),
+    neighbor('DIST-2', 'Gi1/0/2', 'Gi0/24'),
+  ]);
+  const dist1 = device('DIST-1', '192.0.2.11', [neighbor('CORE-SW', 'Gi0/24', 'Gi1/0/1')], { hops: 1 });
+  const dist2 = device('DIST-2', '192.0.2.12', [neighbor('CORE-SW', 'Gi0/24', 'Gi1/0/2')], { hops: 1 });
+
+  it('is placed, with the distribution switches hanging off it', () => {
+    const t = buildTopology({ devices: [core, dist1, dist2], notVisited: [] }, 'p');
+    const labels = t.nodes.map((n) => String((n.data as DeviceNodeData).label));
+    expect(labels).toContain('CORE-SW');
+    expect(labels).toContain('DIST-1');
+    expect(labels).toContain('DIST-2');
+  });
+
+  it('leaves one connected diagram rather than an island each', () => {
+    const t = buildTopology({ devices: [core, dist1, dist2], notVisited: [] }, 'p');
+    const idOf = (label: string) =>
+      t.nodes.find((n) => String((n.data as DeviceNodeData).label) === label)?.id;
+    const coreId = idOf('CORE-SW');
+    expect(coreId).toBeTruthy();
+
+    // Every distribution switch reaches the core directly.
+    for (const label of ['DIST-1', 'DIST-2']) {
+      const id = idOf(label);
+      const joined = t.edges.some(
+        (e) => (e.source === coreId && e.target === id) || (e.source === id && e.target === coreId),
+      );
+      expect(joined, `${label} is an island — nothing joins it to the core`).toBe(true);
+    }
+  });
+
+  it('is placed even when only it was reached and the rest are hearsay', () => {
+    // A crawl stopped at one hop: the core is the only device logged into.
+    const t = buildTopology({ devices: [core], notVisited: [] }, 'p');
+    const labels = t.nodes.map((n) => String((n.data as DeviceNodeData).label));
+    expect(labels).toContain('CORE-SW');
+  });
+});
+
+/**
+ * LT-417, the rest of the path: the review is what actually places devices,
+ * and it filters the built topology by the ticked rows. A device the
+ * topology placed can still be dropped here.
+ */
+describe('the seed survives the review (LT-417)', () => {
+  const core = device('CORE-SW', '192.0.2.1', [neighbor('DIST-1', 'Gi1/0/1', 'Gi0/24')]);
+  const dist1 = device('DIST-1', '192.0.2.11', [neighbor('CORE-SW', 'Gi0/24', 'Gi1/0/1')], { hops: 1 });
+
+  it('is offered as a change to accept, like every other crawled device', async () => {
+    const { reconcile } = await import('./reconcile');
+    const topo = buildTopology({ devices: [core, dist1], notVisited: [] }, 'p');
+    const changes = reconcile({ page: { nodes: [], edges: [] }, topo, devices: [core, dist1], inScope: null });
+
+    const added = changes.filter((c) => c.kind === 'added' && c.subject === 'device');
+    const titles = added.map((c) => c.title).join(' | ');
+    expect(titles, 'the seed is not offered for placing').toMatch(/CORE-SW/);
+    expect(titles).toMatch(/DIST-1/);
+  });
+
+  /**
+   * The panel keeps the ticked rows by **hostname** and then filters the built
+   * nodes by their **label**. The two agree only while a device has a name —
+   * a device the crawl reached but could not name is labelled by its address,
+   * and its row key is the empty string it was given.
+   */
+  it('is kept by the panel rule even when the crawl could not name it', () => {
+    const unnamed = device('', '192.0.2.1', [neighbor('DIST-1', 'Gi1/0/1', 'Gi0/24')]);
+    const topo = buildTopology({ devices: [unnamed, dist1], notVisited: [] }, 'p');
+
+    // What CrawlPanel does: the ticked rows contribute every identity they
+    // carry, and a node is wanted when it shares one.
+    const rows = [
+      { name: unnamed.hostname, address: unnamed.address },
+      { name: dist1.hostname, address: dist1.address },
+    ];
+    const keep = new Set(
+      rows.flatMap((r) => [identity(r.name, r.address), `a:${r.address.trim()}`]).filter((k) => k && k !== 'a:'),
+    );
+    const wanted = (n: Parameters<typeof identitiesOfNode>[0]) =>
+      keep.size === 0 || identitiesOfNode(n).some((k) => keep.has(k));
+
+    const seedNode = topo.nodes.find((n) => {
+      const d = n.data as DeviceNodeData;
+      return (d.addresses ?? []).some((a) => a.address === '192.0.2.1');
+    });
+    expect(seedNode, 'the seed is not in the built topology at all').toBeTruthy();
+    expect(wanted(seedNode!), 'the seed was dropped by the review filter').toBe(true);
+    // And the named one is still kept, so the fix did not simply keep
+    // everything.
+    const distNode = topo.nodes.find((n) => String((n.data as DeviceNodeData).label) === 'DIST-1');
+    expect(wanted(distNode!)).toBe(true);
+    // A device nobody ticked is still left out.
+    const stranger = { type: 'device', data: { label: 'NOT-TICKED', addresses: [{ address: '198.51.100.9' }] } };
+    expect(wanted(stranger as never)).toBe(false);
+  });
+});

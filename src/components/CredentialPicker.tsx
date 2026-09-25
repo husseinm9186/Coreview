@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { credentialsUsedBy } from '../lib/credentialScope';
 import { ipc, isDesktop, type CredentialSummary } from '../lib/ipc';
 import { useStore } from '../state/store';
 import { VaultPassphraseForm } from './VaultGate';
@@ -63,6 +64,31 @@ export function CredentialPicker({
 
   const projectName = useStore((s) => s.meta?.name ?? '');
   const defaults = useStore((s) => s.doc.credentialDefaults);
+  // LT-412: this project's, not the machine's.
+  //
+  // D-038 settled what this should be — "opening a second project and finding
+  // the first one's login in the form is wrong, and on a tool an engineer
+  // points at several customers' networks it is worse than wrong" — and
+  // LT-335 wrote the rule down in `credentialScope`. It was applied to the
+  // Settings screen and not to the two pickers, which are where a login is
+  // actually chosen for a run against a customer's estate.
+  //
+  // The vault is still one store per machine (D-034). What changes is the
+  // view: the rest of it is one disclosure away and says what it is.
+  const doc = useStore((s) => s.doc);
+  const mine = useMemo(() => credentialsUsedBy(doc), [doc]);
+  const [showEverything, setShowEverything] = useState(false);
+  // Anything chosen while this form has been open stays on offer, even after
+  // the project stops referring to it.
+  //
+  // **Forget for this project** says in its own tooltip that the credential
+  // stays in the vault. Scoping the list by what the project refers to made
+  // that a lie: forgetting removed the reference, so the credential left the
+  // list and could not be chosen again without going hunting. Something you
+  // touched a moment ago is not another project's business leaking in — it is
+  // the one you were just using.
+  const touched = useRef<Set<string>>(new Set());
+  if (chosen) touched.current.add(chosen);
   // LT-330: SNMP too. A project keeps a list of SNMP credentials because a
   // scan tries each in turn; the first is the one everything falls back to.
   const wanted = remember ? (kind === 'ssh' ? defaults?.ssh : defaults?.snmp?.[0]) : undefined;
@@ -102,11 +128,22 @@ export function CredentialPicker({
    * (`planSsh`): one device is not an estate, and nothing is sent until the
    * session is asked for.
    */
+  // What this project refers to, plus whatever is chosen right now so a
+  // deliberate choice never vanishes from under the person who made it.
+  const offered = useMemo(
+    () =>
+      showEverything
+        ? saved
+        : saved.filter((c) => mine.has(c.id) || c.id === chosen || touched.current.has(c.id)),
+    [saved, mine, chosen, showEverything],
+  );
+  const elsewhere = saved.length - offered.length;
+
   const projectLogin = remember ? saved.find((c) => c.id === wanted) : undefined;
   const usingProject = Boolean(wanted) && chosen === wanted;
 
   const chosenLabel = saved.find((c) => c.id === chosen)?.label;
-  const usable = unlocked && saved.length > 0;
+  const usable = unlocked && (offered.length > 0 || saved.length > 0);
   // A credential this project remembers can be chosen before the vault has
   // finished opening — it opens by itself, and that is a round trip (LT-292).
   // Rendering nothing at all in that moment hides both the chooser and the
@@ -140,7 +177,18 @@ export function CredentialPicker({
           // LT-293: replacing keeps the same record, so every project pointing
           // at it follows and this project's reference does not move.
           ...(replacing && chosen ? { id: chosen } : {}),
-          label: replacing && chosenLabel ? chosenLabel : `${projectName || 'This project'} — ${typed.username.trim()}`,
+          // LT-412: a label must not claim a relationship it cannot keep.
+          // This was `${projectName || 'This project'} — ${username}`, and the
+          // fallback froze the literal words *This project* into the vault —
+          // so a credential made in one project was then offered in every
+          // other under a label saying it belonged to the one you were
+          // looking at. A project with a name may still say so; a project
+          // without one says only who the login is for.
+          label: replacing && chosenLabel
+            ? chosenLabel
+            : projectName.trim()
+              ? `${projectName.trim()} — ${typed.username.trim()}`
+              : typed.username.trim(),
           kind,
           username: typed.username.trim(),
           secret: typed.secret,
@@ -199,13 +247,24 @@ export function CredentialPicker({
                 {unlocked ? 'A credential no longer saved' : 'Kept for this project — unlocking the vault…'}
               </option>
             )}
-            {saved.map((c) => (
+            {offered.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.label}
               </option>
             ))}
           </select>
         </label>
+      )}
+      {(usable || chosenUnresolved) && elsewhere > 0 && !showEverything && (
+        <button
+          type="button"
+          className="cv-btn cv-btn-small cv-cred-elsewhere"
+          disabled={disabled}
+          title="The vault is shared by every project on this computer. This project does not use these."
+          onClick={() => setShowEverything(true)}
+        >
+          Show {elsewhere} saved elsewhere on this computer
+        </button>
       )}
       {/* Hidden rather than ignored when a saved credential is in use — except
           while replacing it, where typing the new login into them is the whole

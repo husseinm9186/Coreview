@@ -743,9 +743,19 @@ mod link_tests {
 /// — and nothing else. No secret is stored here: the table is unencrypted and
 /// sits in the same database as the projects.
 #[tauri::command]
-pub fn get_settings(state: State<'_, AppState>) -> CmdResult<std::collections::HashMap<String, String>> {
+pub fn get_settings(
+    state: State<'_, AppState>,
+    project_id: Option<String>,
+) -> CmdResult<std::collections::HashMap<String, String>> {
     let conn = state.db.lock().map_err(db_err)?;
-    db::all_settings(&conn).map_err(db_err)
+    // This computer's preferences, then this project's on top (LT-414). The
+    // two key sets do not overlap — `is_project_key` decides which table a key
+    // lives in — so the merge cannot have a winner and a loser.
+    let mut all = db::all_settings(&conn).map_err(db_err)?;
+    if let Some(id) = project_id.as_deref().filter(|i| !i.is_empty()) {
+        all.extend(db::project_settings(&conn, id).map_err(db_err)?);
+    }
+    Ok(all)
 }
 
 /// Stores a preference, or clears it when `value` is absent or empty.
@@ -754,6 +764,7 @@ pub fn set_setting(
     state: State<'_, AppState>,
     key: String,
     value: Option<String>,
+    project_id: Option<String>,
 ) -> CmdResult<()> {
     // A fixed key list rather than an open map: this table is read on startup
     // and fed straight into the UI, and an unbounded key space invites it
@@ -822,6 +833,15 @@ pub fn set_setting(
         return Err(format!("{key} is not a setting Coreview stores"));
     }
     let conn = state.db.lock().map_err(db_err)?;
+    // LT-414: a key that shapes the work belongs to the project doing it.
+    // Without a project open there is nothing to write it to, and writing it
+    // to the shared table is precisely the bug — so it is refused instead.
+    if db::is_project_key(&key) {
+        let id = project_id
+            .filter(|i| !i.is_empty())
+            .ok_or("That setting belongs to a project, and no project is open.")?;
+        return db::set_project_setting(&conn, &id, &key, value.as_deref()).map_err(db_err);
+    }
     db::set_setting(&conn, &key, value.as_deref()).map_err(db_err)
 }
 

@@ -114,15 +114,17 @@ pub async fn meraki_backup(
     organization_id: String,
     network_ids: Vec<String>,
     stamp: String,
+    project_id: String,
 ) -> CmdResult<BackupWritten> {
     if network_ids.is_empty() {
         return Err("Choose at least one network to back up.".into());
     }
+    // LT-413: this project's folder.
     let root = {
         let conn = state.db.lock().map_err(db_err)?;
-        crate::db::all_settings(&conn).map_err(db_err)?.get("backupFolder").cloned()
+        crate::db::project_settings(&conn, &project_id).map_err(db_err)?.get("backupFolder").cloned()
     }
-    .ok_or("Choose a backup folder before backing anything up.")?;
+    .ok_or("Choose a backup folder for this project before backing anything up.")?;
     let root = std::path::PathBuf::from(root);
 
     let client = client_for(&state, &credential_id, "meraki backup")?;
@@ -189,10 +191,11 @@ pub async fn meraki_health_check(
     organization_id: String,
     network_id: String,
     profile: Option<String>,
+    project_id: String,
 ) -> CmdResult<health::Report> {
     let root = {
         let conn = state.db.lock().map_err(db_err)?;
-        crate::db::all_settings(&conn).map_err(db_err)?.get("backupFolder").cloned()
+        crate::db::project_settings(&conn, &project_id).map_err(db_err)?.get("backupFolder").cloned()
     };
 
     let client = client_for(&state, &credential_id, "meraki health check")?;

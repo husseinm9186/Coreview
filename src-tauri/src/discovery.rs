@@ -667,16 +667,12 @@ pub async fn start_backup(
     input: BackupInput,
     credentials: CredentialInput,
     stamp: String,
+    project_id: String,
 ) -> CmdResult<()> {
     state.limiter.allow(crate::ratelimit::Job::Backup)?;
-    let root = {
-        let conn = state.db.lock().map_err(db_err)?;
-        db::all_settings(&conn)
-            .map_err(db_err)?
-            .get("backupFolder")
-            .cloned()
-    }
-    .ok_or("Choose a backup folder before backing anything up.")?;
+    // LT-413: this project's folder, so one customer's captures do not land in
+    // another's pile.
+    let root = backup_root(&state, &project_id)?;
 
     let kinds: Vec<BackupKind> = input
         .kinds
@@ -732,7 +728,7 @@ pub async fn start_backup(
     }
 
     let options = BackupOptions {
-        root: root.into(),
+        root,
         kinds,
         ssh: SshOptions {
             port: input.port,
@@ -800,20 +796,29 @@ pub struct BackupDevice {
     pub latest: Option<String>,
 }
 
-fn backup_root(state: &State<'_, AppState>) -> CmdResult<std::path::PathBuf> {
+/// Where this **project's** backups live (LT-413).
+///
+/// It used to be one folder for the machine, and every listing walked it — so
+/// a new project opened showing the previous customer's device names and
+/// offered their runs for comparison. The folder is a property of the work,
+/// and the work is the project.
+fn backup_root(state: &State<'_, AppState>, project_id: &str) -> CmdResult<std::path::PathBuf> {
+    if project_id.is_empty() {
+        return Err("No project is open, so there is no backup folder to read.".into());
+    }
     let conn = state.db.lock().map_err(db_err)?;
-    let root = db::all_settings(&conn)
+    let root = db::project_settings(&conn, project_id)
         .map_err(db_err)?
         .get("backupFolder")
         .cloned()
-        .ok_or("No backup folder has been chosen yet.")?;
+        .ok_or("No backup folder has been chosen for this project yet.")?;
     Ok(root.into())
 }
 
 /// Every device with backups, for the browser.
 #[tauri::command]
-pub fn list_backup_devices(state: State<'_, AppState>) -> CmdResult<Vec<BackupDevice>> {
-    let root = backup_root(&state)?;
+pub fn list_backup_devices(state: State<'_, AppState>, project_id: String) -> CmdResult<Vec<BackupDevice>> {
+    let root = backup_root(&state, &project_id)?;
     let Ok(entries) = std::fs::read_dir(&root) else {
         return Ok(Vec::new());
     };
@@ -841,8 +846,8 @@ pub fn list_backup_devices(state: State<'_, AppState>) -> CmdResult<Vec<BackupDe
 
 /// Every capture for one device, newest first, as filenames.
 #[tauri::command]
-pub fn list_device_captures(state: State<'_, AppState>, device: String) -> CmdResult<Vec<String>> {
-    let root = backup_root(&state)?;
+pub fn list_device_captures(state: State<'_, AppState>, device: String, project_id: String) -> CmdResult<Vec<String>> {
+    let root = backup_root(&state, &project_id)?;
     Ok(coreview_discover::capture::list_captures(&root, &device, "")
         .into_iter()
         .filter_map(|p| p.file_name().map(|f| f.to_string_lossy().to_string()))
@@ -859,8 +864,9 @@ pub fn read_capture(
     state: State<'_, AppState>,
     device: String,
     filename: String,
+    project_id: String,
 ) -> CmdResult<String> {
-    let root = backup_root(&state)?;
+    let root = backup_root(&state, &project_id)?;
     let path = capture_path(&root, &device, &filename)?;
     std::fs::read_to_string(&path).map_err(|e| format!("Could not read {}: {e}", path.display()))
 }
@@ -872,8 +878,9 @@ pub fn diff_captures(
     device: String,
     before: String,
     after: String,
+    project_id: String,
 ) -> CmdResult<Vec<coreview_discover::capture::DiffLine>> {
-    let root = backup_root(&state)?;
+    let root = backup_root(&state, &project_id)?;
     let a = std::fs::read_to_string(capture_path(&root, &device, &before)?).map_err(|e| e.to_string())?;
     let b = std::fs::read_to_string(capture_path(&root, &device, &after)?).map_err(|e| e.to_string())?;
     Ok(coreview_discover::capture::diff(&a, &b))
@@ -881,8 +888,8 @@ pub fn diff_captures(
 
 /// Every backup run, newest first, for the before-and-after picker (LT-152).
 #[tauri::command]
-pub fn list_backup_runs(state: State<'_, AppState>) -> CmdResult<Vec<coreview_discover::compare::RunSummary>> {
-    let root = backup_root(&state)?;
+pub fn list_backup_runs(state: State<'_, AppState>, project_id: String) -> CmdResult<Vec<coreview_discover::compare::RunSummary>> {
+    let root = backup_root(&state, &project_id)?;
     Ok(coreview_discover::compare::list_runs(&root))
 }
 
@@ -894,8 +901,9 @@ pub fn compare_backup_runs(
     state: State<'_, AppState>,
     before: String,
     after: String,
+    project_id: String,
 ) -> CmdResult<Vec<coreview_discover::compare::DeviceComparison>> {
-    let root = backup_root(&state)?;
+    let root = backup_root(&state, &project_id)?;
     coreview_discover::compare::compare_runs(&root, &before, &after)
 }
 
@@ -906,8 +914,9 @@ pub fn run_backup_checks(
     state: State<'_, AppState>,
     stamp: String,
     checks: Vec<coreview_discover::checks::Check>,
+    project_id: String,
 ) -> CmdResult<Vec<coreview_discover::checks::CheckResult>> {
-    let root = backup_root(&state)?;
+    let root = backup_root(&state, &project_id)?;
     coreview_discover::checks::run_checks(&root, &stamp, &checks)
 }
 

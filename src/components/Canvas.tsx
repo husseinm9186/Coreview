@@ -28,7 +28,7 @@ import { ColourLegend } from './ColourLegend';
 import { ShortcutHelp } from './ShortcutHelp';
 import { GuidePanel } from './GuidePanel';
 import { CommandPalette, type PaletteCommand } from './CommandPalette';
-import { litNodes } from '../lib/canvasFilter';
+import { hidingUnmatched, litNodes } from '../lib/canvasFilter';
 import { nearestInDirection, nearestTo, type Direction } from '../lib/spatialNav';
 import { edgeAriaLabel, nodeAriaLabel } from '../lib/ariaLabels';
 import { InkStrokes, InkTools } from './InkLayer';
@@ -1282,10 +1282,20 @@ export function Canvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [view.nodes, view.edges, canvasFilter, focus, statusTick],
   );
+  // LT-415: with *Hide what does not match* ticked, the same match takes the
+  // rest off the page instead of fading it. Nothing is deleted — `view.nodes`
+  // is the drawing, not the document — and clearing the filter brings it all
+  // back. A section (zone) always matches, so the backdrop never vanishes from
+  // under the devices standing on it.
+  const hiding = hidingUnmatched(canvasFilter) && lit !== null;
+  const shownNodes = useMemo(
+    () => (hiding && lit ? view.nodes.filter((n) => lit.has(n.id)) : view.nodes),
+    [view.nodes, hiding, lit],
+  );
   const derived = useRef(new WeakMap<TopoNode, { zIndex: number; locked: boolean; dimmed: boolean; out: TopoNode }>());
   const nodes = useMemo(
     () =>
-      view.nodes.map((n, i) => {
+      shownNodes.map((n, i) => {
         const layers = layersOf(pg.canvas.layers);
         const locked =
           Boolean((n.data as { locked?: boolean }).locked) ||
@@ -1303,7 +1313,9 @@ export function Canvas() {
         // array-position-derived zIndex is what actually drives paint
         // order, and it does respond to that reorder.
         const zIndex = (n.data as { deviceType?: string }).deviceType === 'zone' ? 0 : i + 1;
-        const dimmed = lit !== null && !lit.has(n.id);
+        // Nothing on the page is dimmed while hiding: what would have been
+        // faint is simply not here.
+        const dimmed = !hiding && lit !== null && !lit.has(n.id);
         const was = derived.current.get(n);
         if (was && was.zIndex === zIndex && was.locked === locked && was.dimmed === dimmed) return was.out;
         // LT-241: what a screen reader says for it.
@@ -1313,7 +1325,7 @@ export function Canvas() {
         derived.current.set(n, { zIndex, locked, dimmed, out });
         return out;
       }),
-    [view.nodes, pg.canvas.layers, lit],
+    [shownNodes, pg.canvas.layers, lit, hiding],
   );
   // LT-241 names each link for a screen reader; LT-232 dims some. The copy is
   // kept per link object and reused while its label and dimming are unchanged,
@@ -1323,16 +1335,18 @@ export function Canvas() {
   const shownEdges = useMemo(() => {
     const names = new Map(view.nodes.map((n) => [n.id, (n.data as { label?: string; title?: string }).label ?? (n.data as { title?: string }).title ?? 'a note']));
     const nameOf = (id: string) => names.get(id) ?? 'a device';
-    return view.edges.map((e) => {
+    // A link with a hidden end has nowhere to land, so it goes with it.
+    const edges = hiding && lit ? view.edges.filter((e) => lit.has(e.source) && lit.has(e.target)) : view.edges;
+    return edges.map((e) => {
       const ariaLabel = edgeAriaLabel(e, nameOf);
-      const dimmed = lit !== null && !(lit.has(e.source) && lit.has(e.target));
+      const dimmed = !hiding && lit !== null && !(lit.has(e.source) && lit.has(e.target));
       const was = derivedEdges.current.get(e);
       if (was && was.ariaLabel === ariaLabel && was.dimmed === dimmed) return was.out;
       const out = dimmed ? { ...e, ariaLabel, className: `${e.className ?? ''} is-dimmed`.trim() } : { ...e, ariaLabel };
       derivedEdges.current.set(e, { ariaLabel, dimmed, out });
       return out;
     });
-  }, [view.edges, view.nodes, lit]);
+  }, [view.edges, view.nodes, lit, hiding]);
 
   const boxOf = (n: TopoNode): Box => ({
     id: n.id,

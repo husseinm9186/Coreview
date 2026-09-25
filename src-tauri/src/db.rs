@@ -12,7 +12,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 /// Bumped whenever the diagram document shape changes; the frontend migrates.
 pub const DOCUMENT_VERSION: i64 = 1;
 
@@ -250,6 +250,25 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             value TEXT NOT NULL
         );
 
+        -- The same, but belonging to one project (LT-414).
+        --
+        -- `app_settings` above is a property of this *computer* — where its
+        -- icon library is, whether the keychain opens the vault. What was
+        -- wrongly kept there too is a property of the *work*: which folder a
+        -- customer's backups go in, what the captures are named, which
+        -- commands to run. Those followed whoever opened the app into the next
+        -- project, which on a tool pointed at several customers' networks is
+        -- the leak D-038 already ruled on.
+        --
+        -- Local, not in the document: a customer's folder path must not travel
+        -- when the project is exported or sent to a colleague (D-006, D-034).
+        CREATE TABLE IF NOT EXISTS project_settings (
+            project_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            PRIMARY KEY (project_id, key)
+        );
+
         -- SSH host keys, remembered on first contact so a later change can be
         -- refused. Fingerprints only: a public key fingerprint is not a secret,
         -- and storing it here rather than in a project keeps it out of anything
@@ -385,10 +404,54 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             conn.execute("INSERT INTO schema_info (version) VALUES (?1)", params![SCHEMA_VERSION])?;
         }
         Some(v) if v < SCHEMA_VERSION => {
-            // Future migrations are applied here in order before the bump.
+            // Migrations are applied here in order before the bump.
+            if v < 2 {
+                split_settings_per_project(conn)?;
+            }
             conn.execute("UPDATE schema_info SET version = ?1", params![SCHEMA_VERSION])?;
         }
         _ => {}
+    }
+    Ok(())
+}
+
+/// Schema 2 (LT-414): project-shaped settings move out of the machine-wide
+/// table and into the project that was using them.
+///
+/// **Copied to every project that exists, then removed from the shared table.**
+/// Before this, every project read one `backupFolder` — so they all had the
+/// same one, and copying it to each keeps every existing project exactly as it
+/// was. What changes is the future: a project made after this starts with
+/// none, instead of inheriting the last one's.
+///
+/// A fallback would have been less code and would have kept the bug.
+fn split_settings_per_project(conn: &Connection) -> rusqlite::Result<()> {
+    let shared = all_settings(conn)?;
+    let moving: Vec<(&str, &String)> = PROJECT_KEYS
+        .iter()
+        .filter_map(|k| shared.get(*k).map(|v| (*k, v)))
+        .collect();
+    if moving.is_empty() {
+        return Ok(());
+    }
+
+    let ids: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT id FROM projects")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        rows.collect::<rusqlite::Result<Vec<String>>>()?
+    };
+
+    for id in &ids {
+        for (key, value) in &moving {
+            // A project that somehow already has its own keeps it.
+            conn.execute(
+                "INSERT OR IGNORE INTO project_settings (project_id, key, value) VALUES (?1, ?2, ?3)",
+                params![id, key, value],
+            )?;
+        }
+    }
+    for (key, _) in &moving {
+        conn.execute("DELETE FROM app_settings WHERE key = ?1", params![key])?;
     }
     Ok(())
 }
@@ -833,6 +896,79 @@ pub fn all_settings(conn: &Connection) -> rusqlite::Result<std::collections::Has
     let mut stmt = conn.prepare("SELECT key, value FROM app_settings")?;
     let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
     rows.collect()
+}
+
+/// Settings that belong to a project rather than to this computer (LT-414).
+///
+/// Everything a backup run is shaped by: where it writes, what it names the
+/// files, which commands it sends, which checks it applies.
+pub const PROJECT_KEYS: [&str; 15] = [
+    // Where this customer's work is written.
+    "backupFolder",
+    "exportFolder",
+    // How a backup run is shaped: what it names files, which commands it
+    // sends, in what order, and what it checks afterwards.
+    "backupChecks",
+    "backupCommandSets",
+    "backupFilePattern",
+    "backupGroups",
+    "backupPaging",
+    "backupShowCommands",
+    // What a discovery was pointed at (LT-135). These are **addresses on a
+    // customer's network** — a seed and a list of subnets — which is the half
+    // of the report that said "i see it when I start a new project from ip
+    // address". A second customer's project must not open with the first
+    // customer's addresses in the form.
+    "scanSeed",
+    "scanSubnets",
+    "scanPort",
+    "scanMaxHops",
+    "scanCredentialId",
+    "scanSnmpRows",
+    "addressPreference",
+];
+
+/// Whether a key belongs to a project rather than to this computer.
+pub fn is_project_key(key: &str) -> bool {
+    PROJECT_KEYS.contains(&key)
+}
+
+/// Every preference stored for one project.
+///
+/// **There is no fallback to `app_settings`, and that is the point.** Falling
+/// back would leave a new project inheriting whatever the last one used, which
+/// is the bug this was written for. What existed before the split was copied
+/// to the projects that existed, once, by [`migrate`].
+pub fn project_settings(
+    conn: &Connection,
+    project_id: &str,
+) -> rusqlite::Result<std::collections::HashMap<String, String>> {
+    let mut stmt = conn.prepare("SELECT key, value FROM project_settings WHERE project_id = ?1")?;
+    let rows = stmt.query_map(params![project_id], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    rows.collect()
+}
+
+/// Writes one of a project's preferences, or clears it when `value` is `None`.
+pub fn set_project_setting(
+    conn: &Connection,
+    project_id: &str,
+    key: &str,
+    value: Option<&str>,
+) -> rusqlite::Result<()> {
+    match value {
+        Some(v) if !v.is_empty() => conn.execute(
+            "INSERT INTO project_settings (project_id, key, value) VALUES (?1, ?2, ?3)
+             ON CONFLICT(project_id, key) DO UPDATE SET value = excluded.value",
+            params![project_id, key, v],
+        )?,
+        _ => conn.execute(
+            "DELETE FROM project_settings WHERE project_id = ?1 AND key = ?2",
+            params![project_id, key],
+        )?,
+    };
+    Ok(())
 }
 
 /// Writes a preference, or clears it when `value` is `None`.
@@ -1307,6 +1443,135 @@ mod tests {
         set_setting(&conn, "exportFolder", Some("")).unwrap();
         assert_eq!(all_settings(&conn).unwrap().get("exportFolder"), None);
         assert!(all_settings(&conn).unwrap().is_empty());
+    }
+
+    /// LT-414: what one project is shaped by must not shape the next one.
+    ///
+    /// This is the operator's report in one test — "what I saved on the 1st
+    /// project i see it when I start a new project".
+    #[test]
+    fn a_projects_settings_are_its_own() {
+        let conn = mem();
+        upsert_project(&conn, &pkg("one", "Customer A")).unwrap();
+        upsert_project(&conn, &pkg("two", "Customer B")).unwrap();
+
+        set_project_setting(&conn, "one", "backupFolder", Some("/a/backups")).unwrap();
+        set_project_setting(&conn, "one", "backupFilePattern", Some("{device}-{date}")).unwrap();
+
+        // The second project sees none of it, because it never chose any.
+        let two = project_settings(&conn, "two").unwrap();
+        assert!(two.is_empty(), "a new project inherited another's settings: {two:?}");
+
+        // And the first still has exactly what it chose.
+        let one = project_settings(&conn, "one").unwrap();
+        assert_eq!(one.get("backupFolder").map(String::as_str), Some("/a/backups"));
+        assert_eq!(one.get("backupFilePattern").map(String::as_str), Some("{device}-{date}"));
+
+        // They do not collide when both set the same key to different values.
+        set_project_setting(&conn, "two", "backupFolder", Some("/b/backups")).unwrap();
+        assert_eq!(
+            project_settings(&conn, "one").unwrap().get("backupFolder").map(String::as_str),
+            Some("/a/backups"),
+        );
+        assert_eq!(
+            project_settings(&conn, "two").unwrap().get("backupFolder").map(String::as_str),
+            Some("/b/backups"),
+        );
+
+        // Clearing one clears only that one.
+        set_project_setting(&conn, "two", "backupFolder", None).unwrap();
+        assert!(project_settings(&conn, "two").unwrap().is_empty());
+        assert_eq!(project_settings(&conn, "one").unwrap().len(), 2);
+    }
+
+    /// The migration keeps every existing project exactly as it was, and stops
+    /// there — the next project made starts clean.
+    #[test]
+    fn the_split_carries_what_existed_and_then_stops() {
+        // A database as it was before schema 2: one shared backup folder.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_info (version INTEGER NOT NULL);
+             INSERT INTO schema_info (version) VALUES (1);",
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+        // migrate() creates the tables; put the old-world state in by hand and
+        // run the split directly, which is what an upgrade does.
+        upsert_project(&conn, &pkg("one", "Customer A")).unwrap();
+        upsert_project(&conn, &pkg("two", "Customer B")).unwrap();
+        set_setting(&conn, "backupFolder", Some("/shared")).unwrap();
+        set_setting(&conn, "backupFilePattern", Some("{device}")).unwrap();
+        set_setting(&conn, "iconLibraryDir", Some("/icons")).unwrap();
+        split_settings_per_project(&conn).unwrap();
+
+        // Both projects kept what they had been sharing.
+        for id in ["one", "two"] {
+            let mine = project_settings(&conn, id).unwrap();
+            assert_eq!(mine.get("backupFolder").map(String::as_str), Some("/shared"), "{id}");
+            assert_eq!(mine.get("backupFilePattern").map(String::as_str), Some("{device}"), "{id}");
+        }
+
+        // The shared table no longer carries them, so nothing can inherit.
+        let shared = all_settings(&conn).unwrap();
+        assert_eq!(shared.get("backupFolder"), None);
+        assert_eq!(shared.get("backupFilePattern"), None);
+        // But what is genuinely about this computer stays where it was.
+        assert_eq!(shared.get("iconLibraryDir").map(String::as_str), Some("/icons"));
+
+        // A project made after the split starts with nothing.
+        upsert_project(&conn, &pkg("three", "Customer C")).unwrap();
+        assert!(project_settings(&conn, "three").unwrap().is_empty());
+    }
+
+    /// The upgrade that runs on a machine that already has projects and a
+    /// backup folder — end to end through `migrate`, not by calling the split
+    /// by hand.
+    ///
+    /// This is the path that runs once on the operator's own database, and it
+    /// must not lose the folder his backups are already in.
+    #[test]
+    fn upgrading_a_real_database_keeps_every_project_working() {
+        let conn = Connection::open_in_memory().unwrap();
+        // Build the schema, then wind the version back to 1 and put the
+        // world as it was: two projects sharing one machine-wide folder.
+        migrate(&conn).unwrap();
+        conn.execute("DELETE FROM project_settings", []).unwrap();
+        conn.execute("UPDATE schema_info SET version = 1", []).unwrap();
+        upsert_project(&conn, &pkg("one", "Customer A")).unwrap();
+        upsert_project(&conn, &pkg("two", "Customer B")).unwrap();
+        set_setting(&conn, "backupFolder", Some("/customers/backups")).unwrap();
+        set_setting(&conn, "scanSubnets", Some("192.0.2.0/24")).unwrap();
+        set_setting(&conn, "sshFontSize", Some("14")).unwrap();
+
+        // The upgrade.
+        migrate(&conn).unwrap();
+        let version: i64 = conn
+            .query_row("SELECT version FROM schema_info LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+
+        // Nobody lost anything they were using.
+        for id in ["one", "two"] {
+            let mine = project_settings(&conn, id).unwrap();
+            assert_eq!(mine.get("backupFolder").map(String::as_str), Some("/customers/backups"), "{id}");
+            assert_eq!(mine.get("scanSubnets").map(String::as_str), Some("192.0.2.0/24"), "{id}");
+        }
+        // The terminal preference is about this computer and did not move.
+        assert_eq!(all_settings(&conn).unwrap().get("sshFontSize").map(String::as_str), Some("14"));
+        // And nothing project-shaped is left to be inherited.
+        let shared = all_settings(&conn).unwrap();
+        for key in PROJECT_KEYS {
+            assert_eq!(shared.get(key), None, "{key} is still shared");
+        }
+
+        // Running it twice changes nothing — an upgrade is not re-run, but a
+        // migration that is only safe once is a migration waiting to go wrong.
+        migrate(&conn).unwrap();
+        assert_eq!(
+            project_settings(&conn, "one").unwrap().get("backupFolder").map(String::as_str),
+            Some("/customers/backups"),
+        );
     }
 
     #[test]

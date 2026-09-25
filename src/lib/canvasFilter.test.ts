@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { TopoEdge, TopoNode } from '../state/store';
-import { filterActive, inSubnet, litNodes, matchesFilter, neighbourhood } from './canvasFilter';
+import { filterActive, inSubnet, litNodes, matchesFilter, neighbourhood, hidingUnmatched } from './canvasFilter';
 
 const dev = (id: string, data: Record<string, unknown>) =>
   ({ id, type: 'device', position: { x: 0, y: 0 }, data: { label: id, deviceType: 'access-switch', tags: [], addresses: [], ...data } }) as unknown as TopoNode;
@@ -61,5 +61,25 @@ describe('focus (LT-233)', () => {
     const ns = ['a', 'b', 'c', 'd'].map((id) => dev(id, { role: id === 'c' ? 'Core' : 'Access' }));
     expect(litNodes(ns, edges, null, null, () => 'healthy')).toBeNull();
     expect([...litNodes(ns, edges, { role: 'access' }, { ids: ['b'], hops: 1 }, () => 'healthy')!].sort()).toEqual(['a', 'b']);
+  });
+});
+
+describe('hiding what does not match (LT-415)', () => {
+  it('is a modifier, not a criterion — on its own it filters nothing', () => {
+    // Ticking the box with nothing chosen must not empty the diagram.
+    expect(filterActive({ hide: true })).toBe(false);
+    expect(hidingUnmatched({ hide: true })).toBe(false);
+    expect(hidingUnmatched({ types: ['switch'] })).toBe(false);
+    expect(hidingUnmatched({ types: ['switch'], hide: true })).toBe(true);
+    expect(hidingUnmatched(null)).toBe(false);
+  });
+
+  it('does not change what matches, only what is done with it', () => {
+    // The same filter with and without `hide` must agree about every device,
+    // or the count shown and the devices removed could disagree.
+    const dim = { types: ["switch"] };
+    const hide = { types: ["switch"], hide: true };
+    expect(filterActive(dim)).toBe(true);
+    expect(filterActive(hide)).toBe(true);
   });
 });
