@@ -48,6 +48,18 @@ export interface PathDevice {
   neighbours?: { localInterface?: string | null; name: string }[];
   /** LT-348: this device is a VXLAN tunnel endpoint. */
   vtep?: Vtep;
+  /** LT-479: policy routing applied on this device. The engine does not
+   *  evaluate a policy; a hop through a device that has one says so. */
+  policyRoutes?: { interface?: string | null; name: string }[];
+  /** LT-480: OTV on this device — the VLANs it extends and which far edge
+   *  owns each MAC — and the MACs it learned per address, so a destination
+   *  on an extended VLAN can be sent to the edge that owns it. */
+  otv?: {
+    overlays: { name: string; extendedVlans: number[] }[];
+    routes: { vlan: number; mac: string; owner: string; nextHop: string }[];
+  } | null;
+  /** Address → MAC, from what the device learned on its ports. */
+  macs?: Record<string, string>;
   /** LT-348: address translation it performs, checked on arrival. */
   nat?: NatRule[];
   /** LT-348: virtual addresses it answers for, and what is behind them. */
@@ -131,6 +143,11 @@ export interface Hop {
   vrf?: string;
   /** LT-348: BGP's own tie-breakers, where the device reported them. */
   bgp?: BgpAttributes;
+  /** LT-478: how many equal-cost next hops the winning route has, when more
+   *  than one — the device's hash decides which, and only the device can say. */
+  ecmp?: number;
+  /** LT-479: what this decision did not take into account, in sentences. */
+  notes?: string[];
 }
 
 export type HopSegment =
@@ -143,7 +160,9 @@ export type HopSegment =
   /** A hop of the underlay carrying that tunnel. */
   | { kind: 'underlay'; vni: number; localVtep: string; remoteVtep: string }
   /** Out of the overlay at the far end. */
-  | { kind: 'decapsulate'; vni: number; localVtep: string };
+  | { kind: 'decapsulate'; vni: number; localVtep: string }
+  /** LT-480: across an OTV extension, to the edge that owns the MAC. */
+  | { kind: 'otv'; vlan: number; overlay: string; mac: string; remote: string };
 
 /** What BGP used to choose, where the device said. */
 export interface BgpAttributes {
@@ -162,6 +181,26 @@ export type TraceResult =
   | { kind: 'insufficient'; reason: string; paths: Hop[][] }
   /** The routes point in a circle. */
   | { kind: 'loop'; paths: Hop[][]; at: string };
+
+/** LT-479: a policy route is consulted before the table, and the engine
+ *  does not read it. Said on the hop rather than left silent. */
+export function policyNotes(device: PathDevice): string[] {
+  const routes = device.policyRoutes ?? [];
+  if (routes.length === 0) return [];
+  const where = routes.map((r) => (r.interface ? `${r.interface} (${r.name})` : r.name)).join(', ');
+  return [`Policy routing is configured on ${device.hostname} — ${where} — and was not evaluated; this is the routing table's decision.`];
+}
+
+/** LT-480: the OTV overlay extending the VLAN a connected route sits on,
+ *  when there is one. The VLAN is read off the interface name (`Vlan100`). */
+export function otvExtension(device: PathDevice, route: PathRoute): { vlan: number; overlay: string } | undefined {
+  if (!device.otv || !route.interface) return undefined;
+  const m = /^vlan\s*(\d+)$/i.exec(route.interface.trim());
+  if (!m) return undefined;
+  const vlan = Number(m[1]);
+  const overlay = device.otv.overlays.find((o) => o.extendedVlans.includes(vlan));
+  return overlay ? { vlan, overlay: overlay.name } : undefined;
+}
 
 /** How many equal-cost branches to follow before stopping. */
 const MAX_PATHS = 8;
@@ -448,7 +487,9 @@ export function tracePath(request: TraceRequest): TraceResult {
   const first: {
     failure: { at: string; reason: string; path: Hop[] } | null;
     looped: { at: string; path: Hop[] } | null;
-  } = { failure: null, looped: null };
+    /** LT-480: a refusal for want of data, which outranks an unreachable. */
+    insufficient: { reason: string; path: Hop[] } | null;
+  } = { failure: null, looped: null, insufficient: null };
 
   /** A routed hop across an L3 VNI, as three steps: into the overlay, the
    *  underlay that carries it, and out at the far end (LT-347).
@@ -703,6 +744,54 @@ export function tracePath(request: TraceRequest): TraceResult {
     const why = alternate
       ? `${reasonFor(route, table, target)} Taken because the preferred route's next hop is on a device this simulation removed; it is already in ${device.hostname}'s table.`
       : reasonFor(route, table, target);
+    // LT-480: connected, but on a VLAN this device extends over OTV. The
+    // edge that owns the destination's MAC is in the device's own OTV route
+    // table; a MAC nobody learned, or an edge this run never reached, is
+    // refused rather than guessed (D-050).
+    const extended = route.nextHops.length === 0 ? otvExtension(device, route) : undefined;
+    if (extended) {
+      const mac = device.macs?.[target.trim()];
+      const owner = mac ? device.otv?.routes.find((r) => r.vlan === extended.vlan && r.mac === mac) : undefined;
+      if (!mac || !owner) {
+        first.insufficient ??= {
+          reason: `${device.hostname} has ${route.prefix} on VLAN ${extended.vlan}, which ${extended.overlay} extends over OTV to other sites. ${
+            mac ? `Its OTV route table names no edge for ${mac}` : `This run holds no MAC for ${target} on ${device.hostname}`
+          }, so which site holds ${target} is not known.`,
+          path,
+        };
+        return;
+      }
+      if (owner.owner !== 'site') {
+        const remote = devices.find((d) => d.hostname.trim().toLowerCase() === owner.nextHop.trim().toLowerCase());
+        if (!remote) {
+          first.insufficient ??= {
+            reason: `${device.hostname}'s OTV route table sends ${target} (${mac}) on VLAN ${extended.vlan} to ${owner.nextHop}, which this run did not reach.`,
+            path,
+          };
+          return;
+        }
+        const hop: Hop = {
+          device: device.hostname,
+          prefix: route.prefix,
+          protocol: route.protocol,
+          nextHop: null,
+          outInterface: route.interface ?? null,
+          distance: route.distance ?? null,
+          metric: route.metric ?? null,
+          why: `${why} VLAN ${extended.vlan} is extended over OTV (${extended.overlay}); ${device.hostname}'s OTV route table says ${mac} is behind ${owner.nextHop}, so the frame crosses the extension rather than being delivered here.`,
+          via: [],
+          segment: { kind: 'otv', vlan: extended.vlan, overlay: extended.overlay, mac, remote: remote.hostname },
+        };
+        const key2 = `${device.hostname}|otv|${extended.vlan}`;
+        if (seen.has(key2)) {
+          first.looped ??= { at: device.hostname, path };
+          return;
+        }
+        walk(remote, [...path, hop], new Set([...seen, key2]), target);
+        return;
+      }
+    }
+
     // Connected: the destination is on a network this device is attached to,
     // which is as far as routing goes.
     if (route.nextHops.length === 0) {
@@ -718,6 +807,7 @@ export function tracePath(request: TraceRequest): TraceResult {
           metric: route.metric ?? null,
           why: `${why} It is connected, so ${target} is on a network ${device.hostname} is attached to.`,
           via: [],
+          ...(policyNotes(device).length ? { notes: policyNotes(device) } : {}),
         },
       ]);
       return;
@@ -797,6 +887,8 @@ export function tracePath(request: TraceRequest): TraceResult {
         via: via.length > 1 ? via : [],
         ...(named ? { vrf: vrf!.trim() } : {}),
         ...(route.bgp ? { bgp: route.bgp } : {}),
+        ...(route.nextHops.length > 1 ? { ecmp: route.nextHops.length } : {}),
+        ...(policyNotes(device).length ? { notes: policyNotes(device) } : {}),
       };
       const next = [...path, hop];
 
@@ -834,6 +926,7 @@ export function tracePath(request: TraceRequest): TraceResult {
 
   if (done.length > 0) return { kind: 'delivered', paths: done };
   if (first.looped) return { kind: 'loop', paths: [first.looped.path], at: first.looped.at };
+  if (first.insufficient) return { kind: 'insufficient', paths: [first.insufficient.path], reason: first.insufficient.reason };
   if (first.failure) {
     return { kind: 'unreachable', paths: [first.failure.path], at: first.failure.at, reason: first.failure.reason };
   }

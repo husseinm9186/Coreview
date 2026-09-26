@@ -22,7 +22,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::filter::DiscoveryFilter;
 use crate::hostkeys::HostKeyStore;
-use crate::interfaces::{addresses_from, parse_ip_interface_brief};
+use crate::interfaces::addresses_from;
 use crate::snmp::{classify_identity, identify, SnmpAuth};
 use crate::ssh::{Credentials, Device, SshError, SshOptions, SshProgress, Secret};
 use crate::types::{AddressPreference, DeviceAddress, DeviceClass, Evidence, Neighbor};
@@ -211,9 +211,15 @@ pub struct DeviceDetails {
     /// LT-347: each VRF's own routing table, by VRF name. Empty unless the run
     /// asked for it. The global table stays in `routes` and is unaffected.
     pub vrf_routes: std::collections::BTreeMap<String, Vec<crate::routes::Route>>,
+    /// LT-479: where policy routing is applied, read with the routing table.
+    /// A trace through this device says it was not evaluated.
+    pub policy_routes: Vec<crate::policyroutes::PolicyRoute>,
     /// LT-347: this device as a VXLAN tunnel endpoint. `None` when the run did
     /// not ask, or when the device does not speak it.
     pub overlay: Option<crate::overlay::Overlay>,
+    /// LT-480: OTV on a Nexus 7000, read with the overlay. `None` where the
+    /// platform has no OTV or the run did not ask.
+    pub otv: Option<crate::otv::Otv>,
 }
 
 /// Which of the extra tables a crawl collects (LT-200–204). Each costs a
@@ -464,6 +470,8 @@ pub struct CrawlResult {
     /// LT-454: the host keys this crawl met for the first time and now
     /// trusts. A finding, so that day-one trust is visible afterwards.
     pub first_seen_keys: Vec<FirstSeenKey>,
+    /// LT-481: where the replies went and how many, when a capture was asked for.
+    pub support_capture: Option<crate::support::Summary>,
 }
 
 /// LT-454: one host key trusted on first contact during a crawl.
@@ -938,6 +946,7 @@ pub async fn crawl_from(
             .map(|(host, port, fingerprint)| FirstSeenKey { host, port, fingerprint })
             .collect();
     }
+    result.support_capture = options.ssh.support_capture.as_ref().map(|c| c.summary());
     result
 }
 
@@ -1388,12 +1397,42 @@ async fn visit(
     // LT-461: the banner first, because the dialect it names decides how
     // every table below is asked. It used to be read after the neighbours,
     // which is why the Dell question had to wait until after it.
-    let version = device.run("show version").await.unwrap_or_default();
+    //
+    // LT-465: `show version` is one spelling. The others are tried only when
+    // it was refused, and FortiOS — known from its refusal alone — stops the
+    // list at once, so nothing a Cisco, Aruba, Dell or Fortinet device is
+    // asked has changed.
+    let mut version = String::new();
+    for command in crate::dialect::VERSION_COMMANDS {
+        let out = device.run(command).await.unwrap_or_default();
+        if version.is_empty() {
+            version = out.clone();
+        }
+        if crate::dialect::identifies(&out) {
+            version = out;
+            break;
+        }
+    }
     // LT-451: one reading of the banner decides every command.
     let dialect = crate::dialect::dialect_for(&version);
+    // LT-465: paging, the platform's own way, once the platform is known.
+    // The two spellings `connect` already tried are not sent again.
+    if let Some(paging) = dialect.paging_off() {
+        if paging != "terminal length 0" && paging != "no page" {
+            let _ = device.run(paging).await;
+        }
+    }
     // LT-407: Dell speaks three dialects and none of them is Cisco's; the
     // VLAN and model readers further down still ask which.
     let dell = crate::dell::detect(&version);
+    // LT-466: what else the platform needs asking to name itself — a Junos
+    // keeps its serial in `show chassis hardware` — and the identity read the
+    // platform's way. A default identity leaves the ordinary readers to it.
+    let mut identity_answers = Vec::new();
+    for command in dialect.identity_commands() {
+        identity_answers.push(device.run(command).await.unwrap_or_default());
+    }
+    let identity = dialect.identity(&version, &identity_answers);
     // Both protocols, always. CDP misses everything that is not Cisco, and
     // LLDP is off by default on plenty of Cisco kit — asking only one leaves a
     // silent hole in the map. Each is asked the dialect's way: the Cisco form
@@ -1401,7 +1440,12 @@ async fn visit(
     // LT-407) — the sequence is written down in `dialect.rs`, not here.
     let (cdp_found, cdp_via) = read_first(&mut device, dialect.cdp_readings()).await;
     let (lldp_found, lldp_via) = read_first(&mut device, dialect.lldp_readings()).await;
-    let brief = device.run("show ip interface brief").await.unwrap_or_default();
+    // LT-475: on a wireless controller, the access points it manages, as
+    // neighbours it reported. Nothing on anything else.
+    let (access_points, _) = read_first(&mut device, dialect.ap_readings()).await;
+    // LT-465: the interface table, the dialect's way; a family whose table
+    // has no parser yet is asked nothing and keeps the address that answered.
+    let (mut interfaces, interfaces_via) = read_first(&mut device, dialect.interface_readings()).await;
     // LLDP does not require a device to advertise a management address, and
     // plenty do not — a FortiSwitch on the network this was built against is
     // named and classified correctly and has nowhere to connect. The switch
@@ -1668,7 +1712,6 @@ async fn visit(
         learned.extend(f.learned.iter().cloned());
     }
 
-    let mut interfaces = parse_ip_interface_brief(&brief);
     // LT-395: `show ip interface brief` is rejected there; `show ip` has the
     // same answer in its own table.
     if interfaces.is_empty() && aruba_switch {
@@ -1710,6 +1753,7 @@ async fn visit(
         crate::mac_table::count_by_port(&learned).len(),
     );
     let mut neighbors = merge_neighbors(cdp_found, lldp_found);
+    neighbors.extend(access_points);
 
     // Fill in an address for anything that did not advertise one. Only where
     // there is none: an address a device advertised about itself beats one
@@ -1795,6 +1839,8 @@ async fn visit(
         _ if dell.is_some() => {
             crate::dell::model_of(&version).or_else(|| platform_from_version(&version))
         }
+        // LT-466: the platform's own reading of its model, where it has one.
+        _ if identity.model.is_some() => identity.model.clone(),
         _ => platform_from_version(&version),
     };
     let version_line = match forti_status {
@@ -1862,7 +1908,7 @@ async fn visit(
     if platform.is_some() {
         evidence.insert("platform".into(), Evidence::now("ssh:show version").saying(version_line.unwrap_or("")));
     }
-    evidence.insert("addresses".into(), Evidence::now("ssh:show ip interface brief"));
+    evidence.insert("addresses".into(), Evidence::now(&format!("ssh:{}", interfaces_via.unwrap_or("show ip interface brief"))));
     if details.uptime_seconds.is_some() {
         evidence.insert("uptime".into(), Evidence::now("ssh:show version"));
     }
@@ -1878,6 +1924,8 @@ async fn visit(
             platform,
             serial: if aruba_switch {
                 serial_field(&aruba_system.serials)
+            } else if !identity.serials.is_empty() {
+                serial_field(&identity.serials)
             } else {
                 serial_field(&serials_in_version(&version))
             },
@@ -1907,6 +1955,11 @@ async fn read_details(device: &mut Session, version: &str, wanted: DetailOptions
         for command in platform.route_commands() {
             let out = device.run(command).await.unwrap_or_default();
             details.routes.extend(crate::routes::parse_routes(&out));
+        }
+        // LT-479: and where a policy would be consulted before that table.
+        for reading in platform.policy_route_readings() {
+            let out = device.run(reading.command).await.unwrap_or_default();
+            details.policy_routes.extend((reading.parse)(&out));
         }
     }
     // LT-347: each VRF's own table. Read after the global one so a device
@@ -1979,6 +2032,18 @@ async fn read_details(device: &mut Session, version: &str, wanted: DetailOptions
             let out = device.run(crate::overlay::SOURCE_COMMAND).await.unwrap_or_default();
             found.vtep = crate::overlay::parse_source_interface(&out);
             details.overlay = Some(found);
+        }
+        // LT-480: OTV lives on a Nexus 7000 and nowhere else this reads;
+        // asked by platform so no other device pays three rejected commands.
+        if platform.family() == crate::dialect::Family::CiscoNxOs {
+            let overlays = crate::otv::parse_show_otv(&device.run("show otv").await.unwrap_or_default());
+            if !overlays.is_empty() {
+                details.otv = Some(crate::otv::Otv {
+                    overlays,
+                    adjacencies: crate::otv::parse_adjacency(&device.run("show otv adjacency").await.unwrap_or_default()),
+                    routes: crate::otv::parse_route(&device.run("show otv route").await.unwrap_or_default()),
+                });
+            }
         }
     }
 
@@ -2393,7 +2458,10 @@ fn platform_from_version(version: &str) -> Option<String> {
         // "Model number            : WS-C2960X-24TS-L"
         if let Some((label, value)) = t.split_once(':') {
             let l = label.trim().to_ascii_lowercase();
-            if l.contains("model number") || l.contains("model") && l.contains("hardware") {
+            // LT-465: a bare `Model:` too — PAN-OS (`model: PA-220`) and
+            // Junos (`Model: ex4300-48t`) label it that way, and no Cisco
+            // banner has a line whose whole label is the one word.
+            if l.contains("model number") || l.contains("model") && l.contains("hardware") || l == "model" {
                 let v = value.trim();
                 if !v.is_empty() {
                     return Some(v.to_string());

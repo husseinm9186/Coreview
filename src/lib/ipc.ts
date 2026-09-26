@@ -239,7 +239,7 @@ export type Neighbor = {
   capabilities: string[];
   version: string | null;
   class: DeviceClassName;
-  discoveredBy: 'cdp' | 'lldp' | 'fortiLink';
+  discoveredBy: 'cdp' | 'lldp' | 'fortiLink' | 'controller';
   chassisId: string | null;
   /** Who registered the chassis id's MAC prefix. The maker only — a vendor
    *  does not say what a device is. */
@@ -336,6 +336,8 @@ export type CrawledDevice = {
   /** LT-348: per-VRF routing tables, by VRF name. A device with a table for a
    *  VRF routes that VRF from it and from nothing else. */
   vrfRoutes?: Record<string, RouteRow[]>;
+  /** LT-479: where policy routing is applied on this device; a trace says it was not evaluated. */
+  policyRoutes?: { interface: string | null; name: string }[];
   /** LT-348: this device is a VXLAN tunnel endpoint. Filled from `overlay`
    *  below where a crawl collected it, or by an import. */
   vtep?: { address: string; segments: { vni: number; vlan?: number | null; prefix?: string | null }[] };
@@ -348,6 +350,13 @@ export type CrawledDevice = {
     peers: { address: string; state?: string | null; vnis: number[] }[];
     learned: { routeType: number; vni?: number | null; mac?: string | null; address?: string | null; nextHop?: string | null }[];
   };
+  /** LT-480: OTV on a Nexus 7000 — the VLANs it extends, the far edges, and
+   *  which edge owns each MAC. */
+  otv?: {
+    overlays: { name: string; extendedVlans: number[]; joinInterface?: string | null; joinAddress?: string | null }[];
+    adjacencies: { overlay: string; hostname: string; address?: string | null; state?: string | null }[];
+    routes: { vlan: number; mac: string; owner: string; nextHop: string }[];
+  } | null;
   /** LT-348: address translation it performs. */
   nat?: { kind: 'destination' | 'source'; matches: string; becomes: string; port?: number | null; description?: string }[];
   /** LT-348: virtual addresses it answers for, and what is behind them. */
@@ -453,6 +462,8 @@ export type CrawlInput = {
   retries?: number;
   /** LT-389: write a debug log of this run. Off unless asked for. */
   debugLog?: boolean;
+  /** LT-481: keep every identity command's reply, redacted, for support. */
+  supportCapture?: boolean;
   /** LT-424: the project the run is kept under. Without one, nothing is kept. */
   projectId?: string;
   /** LT-199, LT-209: saved credentials bound to devices, subnets or vendors,
@@ -603,6 +614,8 @@ export type CrawlResult = {
   cancelled: boolean;
   /** LT-389: where the debug log went, when the run was asked to write one. */
   debugLogPath?: string | null;
+  /** LT-481: where the support capture went, and how many replies it holds. */
+  supportCapture?: { folder: string; files: number; problem?: string | null } | null;
   /** LT-454: host keys trusted on first contact during this crawl. */
   firstSeenKeys?: { host: string; port: number; fingerprint: string }[];
   /** LT-424: the kept run this result was written to, when the crawl had a project. */
@@ -638,6 +651,16 @@ export type VaultStatus = {
 
 /** LT-124: one entry of a gateway's ARP table. */
 export type GatewayArpEntry = { ip: string; mac: string; vendor: string | null };
+
+/** LT-477: a device's own traceroute. */
+export type MeasuredTrace = {
+  hops: { ttl: number; address: string | null; rttsMs: number[] }[];
+  command: string;
+  platform: string;
+};
+
+/** LT-478: the leg a device hashes a flow onto. */
+export type MeasuredLeg = { nextHop: string; interface: string | null; command: string };
 
 export type CredentialSummary = {
   id: string;
@@ -1053,6 +1076,14 @@ export const ipc = {
     return typeof picked === 'string' ? picked : null;
   },
 
+  /** LT-477: `device`'s own traceroute to `target`. Measured, not calculated. */
+  async tracerouteFromDevice(device: string, credentialId: string, target: string): Promise<MeasuredTrace> {
+    return invoke('traceroute_from_device', { device, credentialId, target });
+  },
+  /** LT-478: which equal-cost leg `device` hashes this flow onto, from its own answer. */
+  async ecmpLegFromDevice(device: string, credentialId: string, source: string, destination: string, protocol?: number | null, sourcePort?: number | null, destinationPort?: number | null): Promise<MeasuredLeg> {
+    return invoke('ecmp_leg_from_device', { device, credentialId, source, destination, protocol: protocol ?? null, sourcePort: sourcePort ?? null, destinationPort: destinationPort ?? null });
+  },
   /** LT-225: `device`'s own ping to `target`, over SSH with a saved
    *  credential by id. */
   async pingFromDevice(device: string, credentialId: string, target: string, count = 3): Promise<{ sent: number; received: number; minMs: number | null; avgMs: number | null; maxMs: number | null; output: string }> {

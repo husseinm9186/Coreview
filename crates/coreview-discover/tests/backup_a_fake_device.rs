@@ -193,6 +193,7 @@ fn options(root: std::path::PathBuf, port: u16, kinds: Vec<BackupKind>) -> Backu
             auth_timeout: Duration::from_secs(10),
             command_timeout: Duration::from_secs(10),
             login_transcript: None,
+            support_capture: None,
             max_output_bytes: coreview_discover::ssh::DEFAULT_MAX_OUTPUT_BYTES,
         },
         second_factor: false,

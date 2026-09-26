@@ -26,6 +26,10 @@ pub enum Job {
     SshSession,
     /// LT-345: checking one saved credential against one device.
     CredentialTest,
+    /// LT-477: a traceroute run on a device.
+    DeviceTraceroute,
+    /// LT-478: asking a device which equal-cost leg it hashes a flow onto.
+    DeviceHash,
 }
 
 impl Job {
@@ -44,6 +48,8 @@ impl Job {
             // Checking a password is cheap and people do it in bursts while
             // they get it right; it still reaches a device, so it is counted.
             Job::CredentialTest => (40, "A credential test"),
+            Job::DeviceTraceroute => (20, "A traceroute from a device"),
+            Job::DeviceHash => (30, "An ECMP hash from a device"),
         }
     }
 }

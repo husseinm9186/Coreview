@@ -85,6 +85,8 @@ fn sw2_lldp() -> String {
 enum Flavour {
     Cisco,
     DellOs10,
+    /// LT-466: answers only Junos's spellings, with Junos's refusal for the rest.
+    Junos,
 }
 
 #[derive(Clone)]
@@ -158,6 +160,14 @@ impl server::Handler for FakeSwitch {
 
         if self.flavour == Flavour::DellOs10 {
             let body = dell_answer(command, self.hostname_address());
+            session.data(
+                channel,
+                format!("{command}\r\n{body}{}#", self.hostname).into_bytes(),
+            )?;
+            return Ok(());
+        }
+        if self.flavour == Flavour::Junos {
+            let body = junos_answer(command, self.hostname_address());
             session.data(
                 channel,
                 format!("{command}\r\n{body}{}#", self.hostname).into_bytes(),
@@ -351,6 +361,52 @@ fn sw1_lldp() -> String {
 /// green test and a blank diagram.
 ///
 /// Dell's shapes, invented values (D-027).
+/// LT-466: a Junos EX, from Juniper's documented layouts (D-058). Every
+/// Cisco spelling is refused the way Junos refuses it.
+fn junos_answer(command: &str, address: &str) -> String {
+    let unknown = "                 ^\r\nunknown command.\r\n";
+    match command {
+        "terminal length 0" | "enable" | "set cli screen-length 0" => String::new(),
+        "show version" => "Hostname: LAB-JUNOS-1\r\nModel: ex4300-48t\r\nJunos: 21.4R3-S1.5\r\n".into(),
+        "show chassis hardware" => concat!(
+            "Hardware inventory:\r\n",
+            "Item             Version  Part number  Serial number     Description\r\n",
+            "Chassis                                PE3717190123      EX4300-48T\r\n",
+        )
+        .into(),
+        "show interfaces terse" => format!(
+            "Interface               Admin Link Proto    Local                 Remote\r\n\
+             ge-0/0/0                up    up\r\n\
+             ge-0/0/0.0              up    up   inet     {address}/8\r\n\
+             lo0.0                   up    up   inet     10.255.0.7          --> 0/0\r\n"
+        ),
+        "show lldp neighbors" => concat!(
+            "Local Interface    Parent Interface    Chassis Id          Port info          System Name\r\n",
+            "ge-0/0/1           -                   00:1c:73:aa:bb:cc   Ethernet1          leaf1\r\n",
+        )
+        .into(),
+        "show arp no-resolve" => concat!(
+            "MAC Address       Address         Interface                Flags\r\n",
+            "00:50:56:aa:bb:cc 10.9.9.9        irb.100 [ge-0/0/3.0]     none\r\n",
+        )
+        .into(),
+        "show ethernet-switching table" => concat!(
+            "   Vlan                MAC                 MAC         Age    Logical                NH        RTR\r\n",
+            "   name                address             flags              interface              Index     ID\r\n",
+            "   v100                00:50:56:aa:bb:cc   D             -   ge-0/0/3.0             0         0\r\n",
+        )
+        .into(),
+        "show lacp interfaces" => concat!(
+            "Aggregated interface: ae0\r\n",
+            "    LACP state:       Role   Exp   Def  Dist  Col  Syn  Aggr  Timeout  Activity\r\n",
+            "      ge-0/0/10       Actor    No    No   Yes  Yes  Yes   Yes     Fast    Active\r\n",
+            "      ge-0/0/10     Partner    No    No   Yes  Yes  Yes   Yes     Fast    Active\r\n",
+        )
+        .into(),
+        _ => unknown.into(),
+    }
+}
+
 fn dell_answer(command: &str, address: &str) -> String {
     let invalid = "% Error: Invalid input at \"^\" marker.\r\n";
     match command {
@@ -409,6 +465,7 @@ fn options(port: u16) -> CrawlOptions {
             auth_timeout: Duration::from_secs(10),
             command_timeout: Duration::from_secs(10),
             login_transcript: None,
+            support_capture: None,
             max_output_bytes: coreview_discover::ssh::DEFAULT_MAX_OUTPUT_BYTES,
         },
         ..Default::default()
@@ -930,6 +987,45 @@ async fn the_debug_log_says_what_was_followed_and_why_the_rest_was_not() {
 
     // D-055.
     assert!(!log.contains("correct-horse"), "the password reached the log:\n{log}");
+}
+
+/// LT-466 (D-058): a Junos is identified from `show version`, asked its own
+/// questions and none of Cisco's, and what it answers is read — the fake
+/// refuses every other spelling the way Junos does.
+#[tokio::test]
+async fn a_junos_answering_in_its_own_dialect_is_read() {
+    let port = free_port().await;
+    start(
+        "127.0.0.2",
+        port,
+        FakeSwitch {
+            flavour: Flavour::Junos,
+            // The prompt Junos draws is `user@host>`; the fake ends every
+            // prompt in `#`, and the part that matters is the `@`.
+            hostname: "admin@LAB-JUNOS-1".into(),
+            cdp: String::new(),
+            lldp: String::new(),
+            loopback: "10.255.0.7".into(),
+            arp: String::new(),
+            macs: String::new(),
+        },
+    )
+    .await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+    let result = crawl("127.0.0.2", creds(), options(port), store, tx, CancellationToken::new()).await;
+    assert_eq!(result.failures.len(), 0, "{:?}", result.failures);
+    assert_eq!(result.devices.len(), 1, "{:?}", result.devices);
+    let j = &result.devices[0];
+    assert_eq!(j.hostname, "LAB-JUNOS-1", "the host after the @");
+    assert_eq!(j.platform.as_deref(), Some("EX4300-48T"));
+    assert_eq!(j.class, DeviceClass::Switch);
+    assert_eq!(j.serial.as_deref(), Some("PE3717190123"), "from show chassis hardware");
+    assert!(j.addresses.iter().any(|a| a.ip == "10.255.0.7"), "from show interfaces terse: {:?}", j.addresses);
+    assert_eq!(j.port_channels.iter().map(|p| (p.name.as_str(), p.members.clone())).collect::<Vec<_>>(), [("ae0", vec!["ge-0/0/10".to_string()])]);
+    let seen: Vec<&str> = result.not_visited.iter().map(|n| n.short_name.as_str()).collect();
+    assert!(seen.contains(&"leaf1"), "the LLDP table was read: {seen:?}");
+    assert!(j.attached.iter().any(|a| a.mac == "005056aabbcc" && a.address.as_deref() == Some("10.9.9.9")), "the switching table and the ARP table met: {:?}", j.attached);
 }
 
 #[tokio::test]

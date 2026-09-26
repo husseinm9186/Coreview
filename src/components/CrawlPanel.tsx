@@ -36,7 +36,7 @@ import { failureAdvice, failureHeading, reasonWithoutAddress } from '../lib/fail
 import { newProbe } from '../lib/probes';
 import { buildTopology, identitiesOfNode, identity } from '../lib/topology';
 import { ChangeReport } from './ChangeReport';
-import { inferredSwitches, selectAttached, vendorCounts } from '../lib/attached';
+import { inferredSwitches, selectAttached, vendorCounts, attachedRows, sortAttachedRows, type AttachedColumn } from '../lib/attached';
 import type { DeviceNodeData } from '../types/domain';
 import { activePage } from '../lib/pages';
 
@@ -231,6 +231,9 @@ export function CrawlPanel({
   // guarding (D-055).
   const [debugLog, setDebugLog] = useState(false);
   const [debugLogPath, setDebugLogPath] = useState<string | null>(null);
+  // LT-481: the support capture — every identity reply, redacted, in a folder.
+  const [supportCapture, setSupportCapture] = useState(false);
+  const [supportResult, setSupportResult] = useState<{ folder: string; files: number; problem?: string | null } | null>(null);
   // LT-210: where each device is, live.
   const [table, setTable] = useState<CrawlTable>(new Map());
   // LT-211: the plan a run would follow, worked out with nothing sent.
@@ -412,6 +415,7 @@ export function CrawlPanel({
         setFailures(r.failures);
         // LT-389: where it went, so it can be found and sent on.
         setDebugLogPath(r.debugLogPath ?? null);
+        setSupportResult(r.supportCapture ?? null);
         // The adjacencies live here and nowhere else. Flattening to rows threw
         // away who is plugged into what, which is why the built diagram used
         // to be a grid of unconnected boxes.
@@ -492,6 +496,7 @@ export function CrawlPanel({
           details,
           reverseDns,
           debugLog,
+          supportCapture,
           concurrency,
           perHostTimeoutSecs: perHost,
           retries,
@@ -600,6 +605,9 @@ export function CrawlPanel({
   // from what was actually chosen, so a crowd that was filtered away does not
   // leave a switch behind claiming it is there.
   const inferred = useMemo(() => inferredSwitches(chosenAttached), [chosenAttached]);
+  // LT-464: the same rows as a table, sortable by any column.
+  const [attachedSort, setAttachedSort] = useState<{ key: AttachedColumn; dir: 1 | -1 }>({ key: 'address', dir: 1 });
+  const sortedAttached = useMemo(() => sortAttachedRows(attachedRows(chosenAttached), attachedSort.key, attachedSort.dir), [chosenAttached, attachedSort]);
   const makers = useMemo(() => (result ? vendorCounts(result.devices) : []), [result]);
   const attachedTotal = useMemo(
     () => (result ? selectAttached(result.devices, {}).length : 0),
@@ -1035,6 +1043,36 @@ export function CrawlPanel({
         />
         Write a debug log of this run
       </label>
+      {/* LT-481 (D-058): the file that turns a documentation-built parser
+          into a verified one. Identity replies only, never a configuration;
+          every secret the run holds is redacted before a byte is written. */}
+      <label
+        className="cv-check cv-check-inline cv-support-capture"
+        title={t('crawl.support.title')}
+      >
+        <input
+          type="checkbox"
+          checked={supportCapture}
+          disabled={running}
+          onChange={(e) => setSupportCapture(e.target.checked)}
+        />
+        {t('crawl.support.tick')}
+      </label>
+      {supportResult && (
+        <div className="cv-failure-log cv-support-result">
+          <span className="cv-help">
+            {t('crawl.support.written', { count: supportResult.files })}
+            {supportResult.problem ? ` — ${supportResult.problem}` : ''}
+          </span>
+          <code className="cv-failure-log-path">{supportResult.folder}</code>
+          <button type="button" className="cv-btn cv-btn-small" onClick={() => void navigator.clipboard.writeText(supportResult.folder)}>
+            {t('crawl.support.copyPath')}
+          </button>
+          <button type="button" className="cv-btn cv-btn-small" onClick={() => void ipc.openAttachment(supportResult.folder, true)}>
+            {t('crawl.support.openFolder')}
+          </button>
+        </div>
+      )}
       {debugLogPath && (
         <div className="cv-failure-log">
           <span className="cv-help">The debug log for the last run:</span>
@@ -1345,6 +1383,51 @@ export function CrawlPanel({
             {/* LT-339: and one place each. A device learned by three switches
                 is drawn under the one that sees it on the quietest port. */}
           </p>
+
+          {/* LT-464: the rows the counts above are counting. Nothing is drawn
+              from here; it is what the crawl learned about each silent device,
+              so it can be read before it is on the diagram. */}
+          {chosenAttached.length > 0 && (
+            <div className="cv-table-scroll cv-attached-list">
+              <table className="cv-table cv-compare-table">
+                <thead>
+                  <tr>
+                    {([
+                      ['address', t('crawl.attached.address')],
+                      ['mac', t('crawl.attached.mac')],
+                      ['vendor', t('crawl.attached.maker')],
+                      ['hostname', t('crawl.attached.name')],
+                      ['subnet', t('crawl.attached.subnet')],
+                      ['host', t('crawl.attached.switch')],
+                      ['port', t('crawl.attached.port')],
+                      ['vlan', t('crawl.attached.vlan')],
+                    ] as const).map(([key, label]) => (
+                      <th key={key}>
+                        <button type="button" className="cv-th-sort" aria-sort={attachedSort.key === key ? (attachedSort.dir === 1 ? 'ascending' : 'descending') : undefined}
+                          onClick={() => setAttachedSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : 1 }))}>
+                          {label}{attachedSort.key === key ? (attachedSort.dir === 1 ? ' ▲' : ' ▼') : ''}
+                        </button>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedAttached.map((r) => (
+                    <tr key={`${r.host}|${r.port}|${r.mac}`}>
+                      <td className="cv-mono">{r.address}</td>
+                      <td className="cv-mono">{r.mac}</td>
+                      <td>{r.vendor}</td>
+                      <td>{r.hostname}</td>
+                      <td className="cv-mono">{r.subnet}</td>
+                      <td>{r.host}</td>
+                      <td className="cv-mono">{r.port}</td>
+                      <td className="cv-mono">{r.vlan}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {inferred.length > 0 && (
             <p className="cv-help cv-inferred-note">

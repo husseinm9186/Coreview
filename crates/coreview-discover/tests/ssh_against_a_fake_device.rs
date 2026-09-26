@@ -243,6 +243,7 @@ fn options(port: u16) -> SshOptions {
         auth_timeout: Duration::from_secs(20),
         command_timeout: Duration::from_secs(10),
         login_transcript: None,
+        support_capture: None,
         max_output_bytes: coreview_discover::ssh::DEFAULT_MAX_OUTPUT_BYTES,
     }
 }
@@ -425,6 +426,7 @@ async fn an_unreachable_device_fails_fast_rather_than_waiting_for_a_push() {
         auth_timeout: Duration::from_secs(60),
         command_timeout: Duration::from_secs(10),
         login_transcript: None,
+        support_capture: None,
         max_output_bytes: coreview_discover::ssh::DEFAULT_MAX_OUTPUT_BYTES,
     };
 

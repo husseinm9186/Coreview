@@ -83,6 +83,18 @@ pub struct Credentials {
     pub enable_password: Option<Secret>,
 }
 
+impl Credentials {
+    /// Every secret in the set, for a redaction that must know them all
+    /// (LT-481). Not for display, not for a log.
+    pub fn secrets(&self) -> Vec<String> {
+        let mut out = vec![self.password.expose().to_string()];
+        if let Some(e) = &self.enable_password {
+            out.push(e.expose().to_string());
+        }
+        out
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SshOptions {
     pub port: u16,
@@ -113,6 +125,11 @@ pub struct SshOptions {
     /// running-config, and on somebody's production switch that is exactly
     /// what must not be written to a file (D-006).
     pub login_transcript: Option<Arc<std::sync::Mutex<Vec<u8>>>>,
+    /// LT-481: where every command's reply is written for support, when the
+    /// crawl asked for it. Configurations are skipped inside `record` and
+    /// secrets are redacted there; the boundary above still holds for the
+    /// debug log, which never sees any of this (D-055).
+    pub support_capture: Option<Arc<crate::support::SupportCapture>>,
 }
 
 impl Default for SshOptions {
@@ -124,6 +141,7 @@ impl Default for SshOptions {
             command_timeout: Duration::from_secs(60),
             max_output_bytes: DEFAULT_MAX_OUTPUT_BYTES,
             login_transcript: None,
+            support_capture: None,
         }
     }
 }
@@ -534,7 +552,11 @@ impl Device {
         // LT-402: as text, before anything reads it. A device that paints its
         // screen wraps the echo in cursor moves, and an echo that cannot be
         // found is an echo that is never removed.
-        Ok(extract_output(&crate::cli::readable(&raw), command))
+        let output = extract_output(&crate::cli::readable(&raw), command);
+        if let Some(capture) = &self.options.support_capture {
+            capture.record(&self.host, command, &output);
+        }
+        Ok(output)
     }
 
     /// Reads until the device draws its prompt, returning the prompt itself.

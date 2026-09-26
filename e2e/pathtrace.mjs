@@ -64,6 +64,8 @@ const crawl = {
       routes: [
         { family: 4, prefix: "10.40.50.0/24", code: "C", protocol: "connected", nextHops: [], interface: "Vlan50", distance: 0, metric: 0 },
       ],
+      // LT-479: a policy route the engine does not evaluate, and must say so.
+      policyRoutes: [{ interface: "Vlan50", name: "PBR-GUEST" }],
     },
     {
       hostname: "SPARE", address: "192.168.13.2",
@@ -119,6 +121,15 @@ await page.addInitScript(({ p, c }) => {
       if (cmd === "get_settings") return Promise.resolve({});
       if (cmd === "list_crawl_runs") return Promise.resolve([{ id: "run-1", takenAt: 1756000000000, seed: "192.168.12.1", devices: 4 }]);
       if (cmd === "crawl_run_result") return Promise.resolve(c);
+      // LT-477: one saved SSH login, and what the source device's traceroute said.
+      if (cmd === "vault_status") return Promise.resolve({ exists: true, unlocked: true, credentials: 1, minimumPassphrase: 12, keptInKeychain: false });
+      if (cmd === "list_credentials") return Promise.resolve([{ id: "cred-ssh", label: "reader", kind: "ssh", username: "reader", detail: "", hasSecondSecret: false }]);
+      if (cmd === "traceroute_from_device") return Promise.resolve({ platform: "Cisco IOS / IOS-XE", command: "traceroute 10.40.50.9", hops: [
+        { ttl: 1, address: "192.168.12.2", rttsMs: [1.2, 1.1, 0.9] },
+        { ttl: 2, address: null, rttsMs: [] },
+        { ttl: 3, address: "198.51.100.7", rttsMs: [4] },
+        { ttl: 4, address: "10.40.50.9", rttsMs: [3, 2.8] },
+      ] });
       return Promise.resolve([]);
     },
   };
@@ -171,6 +182,31 @@ const lit = await page.evaluate(() => {
 });
 check("the path is highlighted on the topology", Array.isArray(lit) && lit.length === 2 && lit.includes("a") && lit.includes("b"),
   JSON.stringify(lit));
+
+// ------------------------------------------- LT-479: what was not evaluated
+check("a hop through a device with policy routing says it was not evaluated",
+  /Policy routing is configured on CORE — Vlan50 \(PBR-GUEST\) — and was not evaluated/.test(await panel.textContent()),
+  (await panel.textContent()).slice(0, 600));
+check("and every calculated path carries the caveat", /Not evaluated: ACLs, firewall policy/.test(await panel.textContent()));
+
+// ------------------------------------------- LT-477: measured from the device
+{
+  const measure = panel.locator('[data-region="measure"]');
+  await measure.locator("select").first().selectOption("cred-ssh");
+  await measure.locator("button", { hasText: "Measure from EDGE" }).click();
+  await page.waitForTimeout(500);
+  const asked = await page.evaluate(() => window.__calls?.filter?.((c) => c.cmd === "traceroute_from_device").at(-1)?.args ?? null);
+  const mrows = () => panel.locator('[data-region="measured"] tbody tr');
+  check("the source device's own traceroute is asked for, to the destination, with the chosen login",
+    (await mrows().count()) === 4, String(await mrows().count()) + " " + JSON.stringify(asked));
+  const verdicts = await mrows().evaluateAll((trs) => trs.map((tr) => tr.getAttribute("data-verdict")));
+  check("each answering hop is matched to a crawled device and to the calculated path",
+    JSON.stringify(verdicts) === JSON.stringify(["on", "silent", "unknown", "unknown"]), JSON.stringify(verdicts));
+  const firstRow = (await mrows().nth(0).allInnerTexts()).join(" ");
+  check("the hop that answered from CORE's address is CORE, on the path", /CORE/.test(firstRow) && /on the calculated path/.test(firstRow), firstRow);
+  check("and the summary counts it", /1 of 3 answering hops are on the calculated path/.test(await panel.textContent()));
+  check("the calculated table is untouched by the measured one", (await rows().count()) === 2);
+}
 
 if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
 

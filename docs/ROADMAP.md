@@ -91,6 +91,17 @@ assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
 
+### LT-463 — Cannot log in to a FortiSwitch — reported 2026-09-26, not yet reproduced
+**Source:** the operator, 2026-09-26: "can't login to fortiswitch", after
+the audit's pushes. The screenshot did not come through. Not yet known:
+whether this is the terminal panel or a crawl, what the app said, and which
+build he was running. A FortiSwitch on the bench logged in for LT-320–325
+and the FortiOS branch of `crawl::visit` has met one, so this is either a
+regression from the audit's changes to the login path or a device-side
+change (D-020: reproduced before it is fixed).
+**Acceptance:** the failure reproduced with its message; a test that fails
+without the fix; the fix; the device logged in again.
+
 ### LT-453 — Level of detail, measured to LT-188's protocol — 2026-09-25
 **Source:** the audit, R-31. Culling was measured twice and rejected (D-010,
 D-031). What was not measured is drawing a device as one rect and one text
@@ -315,6 +326,327 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-464 — The devices seen on switch ports are listed, not only counted — 2026-09-26
+**Source:** the operator, 2026-09-26: "can't see what was discovered on the
+networks those 44 devices?", with a screenshot of the crawl panel. Seen from
+the screenshot: the "44 more devices were seen on switch ports" section
+offers the maker, subnet and port filters and says "44 of 44 match", but
+never lists them — `CrawlPanel.tsx` counts `chosenAttached` and draws them
+only after Add. So what the crawl learned about a printer or a camera —
+its address, MAC, maker, subnet, and which switch and port it hangs off —
+cannot be read until it is on the diagram. Not a bug; a gap.
+**Acceptance:** under the filters, a table of the matching devices with
+address, MAC, maker, subnet, switch and port, sortable, the same rows the
+filters count; nothing drawn until Add, as before; `crawling.mjs` checks the
+rows against the stubbed run.
+**Shipped 2026-09-26.** Under the maker, subnet and port filters, a table
+of the rows they count — address, MAC, maker, name, subnet, switch, port,
+VLAN — sortable by any heading, addresses as addresses, an empty cell
+last either way (`attachedRows`, `sortAttachedRows`, tested). Nothing is
+drawn from it. `crawling.mjs` seeds two silent devices and checks the
+rows and the sort; one consequence recorded there: a switch with silent
+devices on it is no longer an orphan finding.
+
+### LT-465 — The identity commands belong to the dialect: version, interfaces, paging — 2026-09-26
+**Source:** the operator's instruction of 2026-09-26 (D-058), the
+foundation for everything under it. `crawl::visit` still hard-codes
+`show version` and `show ip interface brief`, and `ssh::connect` sends
+`terminal length 0` then `no page` before anything knows the platform — a
+Junos, a PAN-OS or a Comware box is asked Cisco's questions for its own
+identity and answers none of them.
+**Acceptance:** `Dialect` gains `version_commands`, `interface_readings`
+and `paging_off`; identification tries the version spellings in order
+(`show version`, `display version`, `show system info`, `/system resource
+print`) and reads the family off whichever answered, including off the
+rejection text of the others; paging is turned off the dialect's way once
+it is known; `family_of` recognises every family under LT-466–476; the
+equivalence tests hold that nothing an IOS, NX-OS, FortiOS or ArubaOS-Switch
+device is asked has changed; the fake network is green.
+**Shipped 2026-09-26.** `Dialect` gains `interface_readings`, `paging_off`,
+`identity_commands` and `identity`; `VERSION_COMMANDS` is the list of
+spellings tried in order (`show version`, `display version`, `show system
+info`, `show sysinfo`, `/system resource print`) and `identifies` says
+when to stop — an answer, or a refusal that alone names the family, which
+is how FortiOS still costs nothing extra. `family_of` reads nine more
+banners; `cli::command_was_rejected` knows the other platforms' refusals.
+Paging is sent the platform's way once known, never the two spellings
+`connect` already tried. The interface table and the version are read
+through the dialect; the equivalence tests hold that IOS, NX-OS, FortiOS,
+ArubaOS-Switch, ArubaOS-CX and Dell are asked exactly what they were. The
+unverified list grows by nine names, on purpose. A bare `Model:` label is
+now a model to `platform_from_version`.
+
+### LT-466 — Junos: identity, neighbours, ARP, switching table, bundles — 2026-09-26
+**Source:** D-058. Routes, VRFs and the overlay are read already (LT-352);
+identity is not — a Junos device today is crawled as "unrecognised".
+**Acceptance:** built from Juniper's documentation and posted output:
+`show version` (model, Junos version, hostname), `show chassis hardware`
+(serial), `show interfaces terse` (addresses), `show lldp neighbors`,
+`show arp no-resolve`, `show ethernet-switching table`, `show lacp
+interfaces`; EX/QFX classified as switches, SRX as a firewall, MX as a
+router; the `user@host>` prompt; `set cli screen-length 0`;
+`verified_against_hardware() == false` and the fixtures say reconstructed.
+**Shipped 2026-09-26.** `junos.rs`, from the documentation (D-058): model
+and hostname off `show version`, serials off `show chassis hardware`,
+`show interfaces terse`, `show lldp neighbors`, `show arp no-resolve`,
+`show ethernet-switching table`, `show lacp interfaces`; EX/QFX switches,
+SRX firewalls; `user@host>` prompts name the host (also PAN-OS, RouterOS,
+EdgeOS). No CDP is asked. **Met a fake device:** `crawl_a_fake_network`
+gains a Junos that refuses every Cisco spelling the way Junos does, and
+the crawl identifies it, asks only its questions and reads its neighbour,
+address, serial, bundle and switching table. Real hardware: still none.
+
+### LT-467 — Arista EOS: identity and LLDP — 2026-09-26
+**Source:** D-058. EOS answers most Cisco spellings, which is why it half
+works; what it does not share is the `show version` shape and the LLDP
+detail layout.
+**Acceptance:** model and serial from `show version` (`Arista DCS-…`,
+`Serial number:`), `show lldp neighbors detail` in EOS's layout, `show
+port-channel summary`; unverified until met.
+**Shipped 2026-09-26.** `arista.rs`: the model off the first line, the
+serial through the ordinary reader, EOS's block-per-interface LLDP detail,
+bundles through Dell's `show port-channel summary` reader, which reads the
+same table; no CDP asked. Unverified.
+
+### LT-468 — Palo Alto PAN-OS — 2026-09-26
+**Source:** D-058. A Palo Alto has been seen on the operator's network over
+SNMP and by its OUI (LT-134); nothing logs into one.
+**Acceptance:** `set cli pager off`; `show system info` (hostname, model,
+serial, version); `show interface all` (addresses); `show lldp neighbors
+all`; `show arp all`; `show routing route` per virtual router, mapped onto
+the path engine's VRF tables; classified as a firewall; unverified.
+**Shipped 2026-09-26, one part short.** `panos.rs`: `set cli pager off`,
+`show system info`, `show interface all` (logical section), `show lldp
+neighbors all`, `show arp all` through the ordinary reader, `show routing
+route` read by shape through `routes::parse_routes`. **Not done:** the
+virtual routers are not separated — every router's rows land in the
+global table rather than in the engine's VRF tables. Unverified.
+
+### LT-469 — Cisco ASA and Firepower (ASA CLI) — 2026-09-26
+**Source:** D-058.
+**Acceptance:** `terminal pager 0`; `show version` (`Hardware:`, `Serial
+Number:`); `show interface ip brief`; `show route` in ASA's `via X,
+ifname` layout; `show arp` in ASA's `ifname address mac age` layout; no
+neighbour protocol, and the crawl says so rather than reporting none;
+classified as a firewall; unverified.
+**Shipped 2026-09-26.** `asa.rs`: `terminal pager 0`, the model off
+`Hardware:`, `show interface ip brief` through the IOS reader, `show
+route` through the ordinary route reader once `network mask` is rewritten
+as `network/len` (`cidr_prefixes`, IOS output untouched), `show arp`; no
+neighbour protocol asked. Unverified.
+
+### LT-470 — Check Point Gaia (clish) — 2026-09-26
+**Source:** D-058.
+**Acceptance:** `set clienv rows 0`; `show version all`, `show asset all`
+(model, serial), `show hostname`; `show interfaces all`; `show route`;
+`show arp dynamic all`; classified as a firewall; unverified.
+**Shipped 2026-09-26.** `gaia.rs`: `set clienv rows 0`, the family off
+`show version all`, model and serial off `show asset all`, `show
+interfaces all` block by block, `show route` and `show arp dynamic all`
+through the ordinary readers. No LLDP in clish, so none asked. Unverified.
+
+### LT-471 — HPE Comware — 2026-09-26
+**Source:** D-058. IRF stacking is already read (D-026); nothing else is.
+**Acceptance:** `screen-length disable`; `display version`; `display ip
+interface brief`; `display lldp neighbor-information list`; `display arp`;
+`display mac-address`; `display ip routing-table`; `display
+link-aggregation verbose`; the `<host>` / `[host]` prompts; unverified.
+**Shipped 2026-09-26.** `comware.rs`: `screen-length disable`, the model
+off the uptime line, serials off `display device manuinfo`, `display ip
+interface brief`, `display lldp neighbor-information list`, `display
+arp`, `display mac-address`, `display ip routing-table` by shape, `display
+link-aggregation verbose`. **IRF is not read** — the stack list is empty
+for this family until a parser exists. Unverified.
+
+### LT-472 — Huawei VRP — 2026-09-26
+**Source:** D-058.
+**Acceptance:** `screen-length 0 temporary`; `display version`; `display ip
+interface brief`; `display lldp neighbor brief`; `display arp`; `display
+mac-address`; `display ip routing-table`; `display eth-trunk`; unverified.
+**Shipped 2026-09-26.** `huawei.rs`: `screen-length 0 temporary`, the
+model off the uptime line, `display esn`, `display ip interface brief`,
+`display lldp neighbor brief`, `display arp`, `display mac-address` and
+`display ip routing-table` through Comware's readers, `display eth-trunk`.
+Unverified.
+
+### LT-473 — MikroTik RouterOS (v6 and v7) — 2026-09-26
+**Source:** D-058.
+**Acceptance:** `/system resource print`, `/system identity print`,
+`/system routerboard print` (model, serial); `/ip address print
+without-paging`; `/ip neighbor print detail without-paging` (LLDP, CDP and
+MNDP in one table); `/ip arp print without-paging`; `/interface bridge
+host print without-paging`; `/ip route print without-paging` in both the
+v6 and the v7 layouts; the `[user@host] >` prompt; unverified.
+**Shipped 2026-09-26.** `routeros.rs`: nothing sent for paging, every
+listing `without-paging`; model and serial off `/system routerboard print`
+(board name off the resource listing on a CHR); `/ip address print`,
+`/ip neighbor print detail` (LLDP, CDP and MNDP as key=value lines),
+`/ip arp print`, `/interface bridge host print` (local entries dropped),
+`/ip route print` in both the v6 and v7 layouts by shape. Unverified.
+
+### LT-474 — The Vyatta family: Ubiquiti EdgeOS and VyOS — 2026-09-26
+**Source:** D-058. One dialect, because they are one lineage and answer the
+same commands.
+**Acceptance:** `terminal length 0`; `show version`; `show interfaces`;
+`show ip route`; `show arp`; `show lldp neighbors detail`; the `user@host:~$`
+prompt; classified as a router; unverified.
+**Shipped 2026-09-26.** `vyatta.rs`: EdgeOS and VyOS as one family;
+`show version`, `show interfaces` with continuation lines, lldpd's
+`show lldp neighbors detail`, `show arp` and `show ip route` through the
+ordinary readers — the route reader now treats Quagga's `>` as a marker
+(`S>*`). Unverified.
+
+### LT-475 — Cisco wireless controllers: Catalyst 9800 and AireOS — 2026-09-26
+**Source:** D-058, "access points". An access point is reached through its
+controller, not logged into.
+**Acceptance:** a controller's `show ap summary` and `show ap cdp neighbors`
+(9800: IOS-XE, already a dialect; AireOS: `config paging disable`, `show
+sysinfo`, `show ap summary`, `show ap cdp neighbors all`) turn each AP into
+a device attached to the switch port its CDP row names, classified as an
+access point, with the controller as the thing it was reported by;
+unverified.
+**Shipped 2026-09-26, not the way it was asked.** `wlc.rs` reads AireOS's
+and a 9800's `show ap summary` by column heading, and each AP becomes a
+neighbour the controller *reported* (`Protocol::Controller`, new), with
+name, model, address and the access-point class; AireOS identity comes
+off `show inventory`; a 9800 is IOS-XE and is told apart by `C9800` in its
+banner, so no other IOS device is asked for an AP table. **The
+controller's CDP table is not read:** the cable from the AP to its switch
+port is drawn from the switch's own CDP or LLDP table, which every AP that
+speaks either already appears in. Unverified.
+
+### LT-476 — Aruba Mobility controllers and Instant clusters — 2026-09-26
+**Source:** D-058, the same for Aruba.
+**Acceptance:** `no paging`; `show version`; `show ap database` (ArubaOS 8)
+and `show aps` (Instant); `show ap lldp neighbors` where the platform has
+it; APs attached as under LT-475; unverified.
+**Shipped 2026-09-26, one part short.** ArubaOS 8's `show ap database`
+and Instant's `show aps` through the same column reader; the model off
+`ArubaOS (MODEL: …)`, serials off `show inventory`; `no paging`. **`show ap
+lldp neighbors` is not read**, for the reason in LT-475. Unverified.
+
+### LT-477 — A measured trace, from the device — 2026-09-26
+**Source:** the operator, 2026-09-26: "does it work based on the routing
+table and real flow of the traffic … I need real and true trace path". The
+engine (LT-346) is calculated from tables and says so; measured is what
+was asked for.
+**Acceptance:** a **Measure from device** action on the Trace path tab that
+logs into the source-side device with a saved credential and runs its own
+traceroute — IOS/NX-OS `traceroute <dst> [source <intf>]`, Junos `traceroute
+<dst>`, FortiOS `execute traceroute <dst>`, EOS `traceroute`, PAN-OS
+`traceroute host <dst>`, ASA `traceroute` — reads the hops (Cisco, Junos
+and Linux layouts), maps each hop to a crawled device by address, draws the
+measured path beside the calculated one and **flags every hop where they
+disagree**; only an IPv4 address ever reaches the command line; the Cisco
+layout is from captured output (the lab), the rest under D-058; a Tauri
+command, a fixture, the isolation table, `pathtrace.mjs` extended.
+**Shipped 2026-09-26, with two things said plainly.** `trace.rs` builds the
+platform's own traceroute command (Junos `no-resolve wait 2`, FortiOS
+`execute traceroute`, PAN-OS `traceroute host`, Comware and Huawei
+`tracert`; Gaia, RouterOS and AireOS refused by name) and reads both the
+Cisco and the Linux/Junos layouts hop by hop, silent hops kept. The
+`traceroute_from_device` command logs in with a saved credential, reads
+the banner to pick the dialect, runs it with a three-minute budget and
+never puts more than a parsed address on the line; isolation table, rate
+limit (`DeviceTraceroute`) and IPC added. The Trace path tab gains a
+credential picker and **Measure from <device>**; the measured hops are
+listed with the crawled device each answered from and whether it is on
+the calculated path, with a summary and a named disagreement.
+**Not as asked:** the Cisco layout is reconstructed too — the lab was not
+reachable from here — and the measured path is a table beside the
+calculated one, not a second highlight on the diagram. `pathtrace.mjs`
+drives it against a stubbed traceroute.
+
+### LT-478 — The ECMP leg a real flow takes, from the device's own hash — 2026-09-26
+**Source:** the same. The engine shows every equal-cost leg; it cannot say
+which one a given flow hashes onto, and neither can anything but the
+device.
+**Acceptance:** where a hop has several next hops and a source, destination,
+protocol and ports are given, an **Ask the device** action runs NX-OS `show
+routing hash <src> <dst> [ip-proto] [src-port] [dst-port]` or IOS/IOS-XE
+`show ip cef exact-route <src> <dst>` and the hop shows the leg the device
+named, marked as the device's answer; under D-058.
+**Shipped 2026-09-26.** NX-OS `show routing hash <src> <dst> [ip-proto]
+[ports]` and IOS `show ip cef exact-route <src> <dst>` are built and read
+(`trace.rs`), `ecmp_leg_from_device` runs them, and a hop with several
+equal-cost next hops shows how many and an **Ask <device>** button whose
+answer says which leg the device hashes this flow onto and whether it is
+the one shown. Unit-tested on both sides; not in the harness, whose
+fixture has no equal-cost route.
+
+### LT-479 — Policy routing and filtering: the trace says what it did not evaluate — 2026-09-26
+**Source:** the same. A route-map or a firewall policy can send or drop a
+packet the table would have forwarded, and today the "Why this path?" panel
+is silent about it.
+**Acceptance:** the crawl reads `show ip policy` (IOS/NX-OS) and FortiOS
+`show router policy` when routes are ticked; every hop whose ingress
+interface carries a policy route is marked "a policy route was not
+evaluated here"; every trace ends with the fixed caveat that ACLs and
+firewall policy were not evaluated; under D-058.
+**Shipped 2026-09-26, coarser than asked.** `policyroutes.rs` reads IOS and
+NX-OS `show ip policy` and FortiOS `show router policy` with the routing
+table; `CrawledDevice.policyRoutes` carries them; every hop through a
+device that has any says, in the "Why this path?" list, that policy
+routing is configured there (naming the interfaces and maps) and was not
+evaluated — **per device, not per ingress interface**, because the engine
+does not know a hop's ingress interface. Every calculated path ends with
+the fixed caveat about ACLs, firewall policy, NAT and VIPs. Engine test
+and harness check.
+
+### LT-480 — OTV: the layer-2 extension between data centres — 2026-09-26
+**Source:** the same, "multi data centers … and otv". Nothing collects it.
+**Acceptance:** on a Nexus 7000 with the overlay ticked, `show otv`, `show
+otv adjacency`, `show otv vlan` and `show otv route` are read; an
+OTV-extended VLAN is modelled like a VXLAN segment (LT-348), so a
+destination on an extended VLAN crosses to the edge whose OTV route holds
+it, and refuses when no edge holds it (D-050); under D-058.
+**Shipped 2026-09-26.** `otv.rs` reads `show otv`, `show otv adjacency`
+and `show otv route`, asked on NX-OS only when the overlay is ticked;
+`CrawledDevice.otv` carries them and the crawl's attached MACs give the
+engine an address→MAC map. A connected route on a VLAN an overlay extends
+is not delivered locally: the OTV route table names the edge owning the
+destination's MAC and the walk crosses to it (`segment.kind === 'otv'`,
+drawn and reported on the application page); a MAC nobody learned, or an
+edge this run never reached, is refused with the reason (D-050). Engine
+tests for the crossing, both refusals and local ownership. Unverified.
+
+### LT-481 — A support capture: the debug output that turns a hypothesis into evidence — 2026-09-26
+**Source:** D-058, "will need to get you debug output". D-055 keeps device
+output out of the debug log, and stays.
+**Acceptance:** a tick on the crawl, **Keep replies for support**, with a
+folder; every identity command's reply — never a configuration — is written
+as `<folder>/<address>/<command>.txt` as the crawl goes, after a redaction
+pass that removes every secret the vault holds and anything shaped like a
+password line; the crawl's summary says how many files were written; a
+test proves a known password never reaches the file; `crawling.mjs`
+covers the tick.
+**Shipped 2026-09-26, with one difference.** A tick on the crawl, **Keep
+replies for support**; `support.rs` writes every SSH command's reply as
+`<data dir>/support/crawl-<stamp>/<host>/<n>-<command>.txt` — the folder is
+the app's, like the debug log's, **not one the operator chooses** — after
+skipping any configuration command and redacting every secret the run
+holds (SSH, enable, fallback and SNMP) and every line naming a password,
+secret, community, key or passphrase. The result says how many files and
+where, with Copy path and Open folder. Tests: a known password never
+reaches the file; a configuration is never written; names are safe; a
+failed write is reported. Telnet sessions are not captured.
+
+### LT-483 — **bug** The per-VRF and overlay ticks never reached the crawl — 2026-09-26
+**Found** while wiring LT-481: `ipcPayloads.ts` picked `routes`,
+`spanningTree` and `vlans` out of `details` and dropped `vrfs` and
+`overlay`, added by LT-347 — so the two tick-boxes, and LT-347's parsers
+behind them, had never run from the interface. **Reproduced** by a payload
+test that fails without the fix, then fixed; the crawl fixture regenerated;
+`crawling.mjs` now expects both ticks in what is sent.
+
+### LT-484 — **bug** The debug log's path never reached the page — 2026-09-26
+**Found** the same way: `CrawlPanel` has shown `debugLogPath` since LT-389
+and the crawl command never emitted it, so "Open folder" never had a
+folder. Fixed by closing the log at the end of the crawl and sending its
+path with the result. **No test fails without this one**: the emission
+lives inside the command's spawned task, which nothing drives offline;
+said here rather than claimed.
 
 ### LT-459 — The strings built inside JSX expressions read from the catalogue — 2026-09-26
 **Source:** "Do it and continue", 2026-09-26, after LT-448 recorded what its
@@ -11141,6 +11473,11 @@ internal COREVIEW-FGT-Root-CA cannot and never will.
 ## Icebox
 
 ### LT-416 — After a discovery the devices sit in one endless row — 2026-09-25
+
+### LT-482 — The next tier of dialects — Icebox 2026-09-26
+Named while shaping D-058 and not asked for: Extreme EXOS, SonicOS, Ruckus
+ICX, Nokia SR OS, Cumulus and SONiC, Cisco IOS-XR. Each is one `impl` of
+`Dialect` under the same rule, when someone has one to capture from.
 
 **Source:** "right now after discover they look like they are setting on top of
 each other / I need to option to resort them so they show better view", with a

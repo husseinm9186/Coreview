@@ -116,6 +116,9 @@ pub struct CrawlInput {
     /// nobody asked for is a file nobody is guarding (D-055).
     #[serde(default)]
     pub debug_log: bool,
+    /// LT-481: keep every identity command's reply, redacted, for support.
+    #[serde(default)]
+    pub support_capture: bool,
 }
 
 fn yes() -> bool {
@@ -348,7 +351,15 @@ pub async fn start_crawl(
     }
 
     let per_host_secs = input.per_host_timeout_secs.unwrap_or(300).clamp(30, 1_800);
-    let options = CrawlOptions {
+    // LT-481: the SNMP secrets, taken before the inputs below are moved into
+    // the options, for the support capture's redaction.
+    let snmp_secrets: Vec<String> = input
+        .snmp
+        .iter()
+        .flat_map(|s| [s.community.clone(), s.auth_password.clone(), s.privacy_password.clone()])
+        .flatten()
+        .collect();
+    let mut options = CrawlOptions {
         filter: DiscoveryFilter {
             subnets,
             crawl_classes: parse_classes(&input.crawl_classes),
@@ -492,6 +503,25 @@ pub async fn start_crawl(
     let credentials = resolve_ssh(&state, input.credential_id.as_deref(), credentials)?;
     let persist_store = Arc::clone(&store);
 
+    // LT-481: the support capture, opened now for the same reason as the
+    // debug log below. Every secret the run holds is handed to the redaction
+    // before a single reply is written.
+    if input.support_capture {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or_default();
+        let mut secrets: Vec<String> = credentials.secrets();
+        for c in &options.fallback_credentials {
+            secrets.extend(c.secrets());
+        }
+        secrets.extend(snmp_secrets);
+        let folder = coreview_discover::support::folder_under(&crate::db::data_dir(), stamp);
+        let capture = coreview_discover::support::SupportCapture::open(folder, secrets)
+            .map_err(|e| format!("could not open the support capture: {e}"))?;
+        options.ssh.support_capture = Some(Arc::new(capture));
+    }
+
     // LT-389: started here rather than inside the run, so a file that cannot
     // be opened is reported now. Somebody ticked a box and is waiting for a
     // file; silently not writing one is worse than saying so.
@@ -588,6 +618,12 @@ pub async fn start_crawl(
                 "firstSeenKeys": result.first_seen_keys,
                 "runId": run_id,
                 "status": status,
+                // LT-481: where the replies went.
+                "supportCapture": result.support_capture,
+                // LT-484: the log is closed here, and its path told. The page
+                // has read `debugLogPath` since LT-389 and nothing ever sent
+                // it, so the "Open folder" button never had anything to open.
+                "debugLogPath": coreview_discover::debuglog::stop(),
             }),
         );
         // The slot empties when the crawl does, however it ended.
@@ -693,6 +729,116 @@ pub async fn ping_from_device(
     let output = output?;
     coreview_discover::pathcheck::parse_ios_ping(&output)
         .ok_or_else(|| format!("{} did not report a result: {}", device.trim(), output.lines().last().unwrap_or("").trim()))
+}
+
+/// LT-477: what a device saw, hop by hop, running its own traceroute.
+///
+/// The platform is read off the device's version banner first, the way a
+/// crawl does, because the command is the platform's own. A platform with
+/// no traceroute this reads is refused by name.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeasuredTrace {
+    pub hops: Vec<coreview_discover::trace::TraceHop>,
+    pub command: String,
+    pub platform: String,
+}
+
+/// Logs in, reads the version banner and hands back the dialect it names.
+async fn identify(session: &mut coreview_discover::ssh::Device) -> (String, Box<dyn coreview_discover::dialect::Dialect>) {
+    let mut version = String::new();
+    for command in coreview_discover::dialect::VERSION_COMMANDS {
+        let out = session.run(command).await.unwrap_or_default();
+        if version.is_empty() {
+            version = out.clone();
+        }
+        if coreview_discover::dialect::identifies(&out) {
+            version = out;
+            break;
+        }
+    }
+    let dialect = coreview_discover::dialect::dialect_for(&version);
+    (version, dialect)
+}
+
+#[tauri::command]
+pub async fn traceroute_from_device(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    device: String,
+    credential_id: String,
+    target: String,
+) -> CmdResult<MeasuredTrace> {
+    state.limiter.allow(crate::ratelimit::Job::DeviceTraceroute)?;
+    let target: std::net::Ipv4Addr = target.trim().parse().map_err(|_| format!("{} is not an IPv4 address", target.trim()))?;
+    let credentials = crate::vault_commands::ssh_credentials(&state, &credential_id)?;
+    crate::vault_commands::note_use(&state, &credential_id, "Traceroute from a device", device.trim());
+    let store = load_host_keys(&state)?;
+    // A traceroute waits on every silent hop; three minutes covers thirty.
+    let options = SshOptions { command_timeout: std::time::Duration::from_secs(180), ..SshOptions::default() };
+    let mut session = coreview_discover::ssh::Device::connect(device.trim(), &credentials, options, Arc::clone(&store), None)
+        .await
+        .map_err(|e| e.to_string())?;
+    let (_, dialect) = identify(&mut session).await;
+    let outcome = match coreview_discover::trace::traceroute_command(dialect.family(), target) {
+        Some(command) => session.run(&command).await.map_err(|e| e.to_string()).map(|out| (command, out)),
+        None => Err(format!("{} runs {}, which has no traceroute this can read.", device.trim(), dialect.name())),
+    };
+    session.close().await;
+    persist_host_keys(&app, &store);
+    let (command, output) = outcome?;
+    let hops = coreview_discover::trace::parse_traceroute(&output);
+    if hops.is_empty() {
+        return Err(format!("{} did not report a trace: {}", device.trim(), output.lines().last().unwrap_or("").trim()));
+    }
+    Ok(MeasuredTrace { hops, command, platform: dialect.name().to_string() })
+}
+
+/// LT-478: which equal-cost leg a device hashes one flow onto, from the
+/// device's own answer.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeasuredLeg {
+    pub next_hop: String,
+    pub interface: Option<String>,
+    pub command: String,
+}
+
+// A Tauri command takes its arguments flat, as `terminal.rs` already allows.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn ecmp_leg_from_device(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    device: String,
+    credential_id: String,
+    source: String,
+    destination: String,
+    protocol: Option<u8>,
+    source_port: Option<u16>,
+    destination_port: Option<u16>,
+) -> CmdResult<MeasuredLeg> {
+    state.limiter.allow(crate::ratelimit::Job::DeviceHash)?;
+    let source: std::net::Ipv4Addr = source.trim().parse().map_err(|_| format!("{} is not an IPv4 address", source.trim()))?;
+    let destination: std::net::Ipv4Addr = destination.trim().parse().map_err(|_| format!("{} is not an IPv4 address", destination.trim()))?;
+    let credentials = crate::vault_commands::ssh_credentials(&state, &credential_id)?;
+    crate::vault_commands::note_use(&state, &credential_id, "ECMP hash from a device", device.trim());
+    let store = load_host_keys(&state)?;
+    let mut session = coreview_discover::ssh::Device::connect(device.trim(), &credentials, SshOptions::default(), Arc::clone(&store), None)
+        .await
+        .map_err(|e| e.to_string())?;
+    let (_, dialect) = identify(&mut session).await;
+    let ports = source_port.zip(destination_port);
+    let outcome = match coreview_discover::trace::ecmp_command(dialect.family(), source, destination, protocol, ports) {
+        Some(command) => session.run(&command).await.map_err(|e| e.to_string()).map(|out| (command, out)),
+        None => Err(format!("{} runs {}, which cannot be asked which leg it hashes a flow onto.", device.trim(), dialect.name())),
+    };
+    session.close().await;
+    persist_host_keys(&app, &store);
+    let (command, output) = outcome?;
+    let leg = coreview_discover::trace::parse_ecmp_leg(&output)
+        .ok_or_else(|| format!("{} did not name a leg: {}", device.trim(), output.lines().last().unwrap_or("").trim()))?;
+    Ok(MeasuredLeg { next_hop: leg.next_hop, interface: leg.interface, command })
 }
 
 #[tauri::command]

@@ -32,9 +32,9 @@ const payloads: Record<string, unknown> = {
     seed: '192.0.2.1', subnets: ['192.0.2.0/24'], crawlClasses: ['switch'], maxHops: 3, maxDevices: 200, secondFactor: false,
     addressPreference: 'management', interfaceName: 'Vlan1', port: 22, transport: 'ssh', vdom: 'root',
     snmp: [{ version: 'v3', community: 'not-a-real-community', username: 'reader', authProtocol: 'sha', authPassword: 'not-a-real-auth', privacy: 'aes 256', privacyPassword: 'not-a-real-priv', ...extra }],
-    credentialId: 'cred-ssh', snmpCredentialIds: ['cred-snmp'], details: { routes: true, spanningTree: false, vlans: true, ...extra },
+    credentialId: 'cred-ssh', snmpCredentialIds: ['cred-snmp'], details: { routes: true, spanningTree: false, vlans: true, vrfs: true, overlay: true, ...extra },
     bindings: [{ scope: 'subnet', value: '192.0.2.0/24', credentialId: 'cred-ssh', ...extra }], reverseDns: true, concurrency: 4,
-    perHostTimeoutSecs: 120, retries: 1, projectId: 'project-1', ...extra,
+    perHostTimeoutSecs: 120, retries: 1, debugLog: true, supportCapture: true, projectId: 'project-1', ...extra,
   }),
   backup_input: backupInput({
     credentialId: 'cred-ssh', targets: [{ address: '192.0.2.10', name: 'CORE-SW1', commands: ['show version'], site: 'HQ', ...extra }],
@@ -62,6 +62,13 @@ describe('what the backend is sent (LT-259)', () => {
       expect(json).toBe(readFileSync(fixture(name), 'utf8'));
     });
   }
+
+  // LT-483: the two ticks LT-347 added were dropped here, so a crawl asked
+  // for its VRF tables or its overlay never read either.
+  it('sends the per-VRF and overlay ticks with the crawl', () => {
+    const out = crawlInput({ seed: '192.0.2.1', details: { routes: false, spanningTree: false, vlans: false, vrfs: true, overlay: true } }) as { details: Record<string, boolean> };
+    expect(out.details).toEqual({ routes: false, spanningTree: false, vlans: false, vrfs: true, overlay: true });
+  });
 
   it('keeps a probe\'s document-only fields out of what the engine is sent', () => {
     const sent = payloads.probe_config as Record<string, unknown>;

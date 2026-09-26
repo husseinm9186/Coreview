@@ -27,7 +27,12 @@ export const crawlResult = {
       hostname: "CORE-SW1", serial: null, address: "192.0.2.10",
       addresses: [{ ip: "192.0.2.10", interface: null, isManagement: true }],
       probeTarget: "192.0.2.10", class: "switch", platform: "WS-C2960CX-8PC-L", version: null, dnsName: "core-sw1.example.test",
-      neighbors: [], hops: 0, reachedBy: "ssh", attached: [], portChannels: [],
+      neighbors: [], hops: 0, reachedBy: "ssh", portChannels: [],
+      // LT-464: two silent devices on their own ports, listed before they are drawn.
+      attached: [
+        { mac: "0000.5e00.5310", port: "Gi0/5", address: "192.0.2.40", vendor: "Example Printers", hostname: "PRN-1", class: null, vlan: "10", portPopulation: 1 },
+        { mac: "0000.5e00.5311", port: "Gi0/6", address: "192.0.2.31", vendor: "Example Cameras", hostname: null, class: null, vlan: "20", portPopulation: 1 },
+      ],
       uptimeSeconds: 5019180,
       routes: [
         { family: 4, prefix: "0.0.0.0/0", code: "S*", protocol: "static", nextHops: ["192.0.2.1"], interface: null, distance: 1, metric: 0 },
@@ -171,7 +176,7 @@ await page.waitForTimeout(400);
 const dry = panel.locator(".cv-dry-run");
 check("a dry run shows the plan", (await dry.count()) === 1);
 const newCalls = await page.evaluate((n) => window.__calls.slice(n).map((c) => c.cmd), callsBefore);
-check("and sends nothing: no crawl, sweep or lookup is asked for", newCalls.every((c) => c === "list_credentials"), JSON.stringify(newCalls));
+check("and sends nothing: no crawl, sweep or lookup is asked for", newCalls.every((c) => ["list_credentials", "save_project", "list_projects"].includes(c)), JSON.stringify(newCalls));
 const seedLines = await dry.locator("li[data-kind]").allTextContents();
 check("each seed says what would happen to it", seedLines.length === 3 && /192\.0\.2\.10 — would be dialled with Core login \(192\.0\.2\.0\/25\), then Core login \(if a neighbour reports FortiSwitch\), then reader \(typed above\)/.test(seedLines[0]) &&
   /198\.51\.100\.0\/30 — 2 of 2 addresses/.test(seedLines[2]), JSON.stringify(seedLines));
@@ -223,7 +228,8 @@ check("how many at once, when to give up and how often to retry go with the run 
   JSON.stringify({ c: started?.input?.concurrency, t: started?.input?.perHostTimeoutSecs, r: started?.input?.retries }));
 check("the whole seed list goes to the crawl", started?.input?.seed === "192.0.2.10, 192.0.2.11, 198.51.100.0/30", started?.input?.seed);
 check("and sends what was chosen with the run", JSON.stringify(started?.input?.details) ===
-  JSON.stringify({ routes: false, spanningTree: true, vlans: true }) && started?.input?.reverseDns === true, JSON.stringify(started?.input?.details));
+  // LT-483: the two ticks LT-347 added now travel too.
+  JSON.stringify({ routes: false, spanningTree: true, vlans: true, vrfs: false, overlay: false }) && started?.input?.reverseDns === true, JSON.stringify(started?.input?.details));
 
 // ------------------------------------------------ LT-210, LT-278 live table
 await page.evaluate(() => {
@@ -264,9 +270,28 @@ check("every crawl is kept, by the crawl itself rather than by the page (LT-227,
 const findings = await panel.locator(".cv-findings li").evaluateAll((lis) => lis.map((li) => [li.dataset.kind, Array.from(li.childNodes).filter((n) => n.nodeName !== "BUTTON").map((n) => n.textContent).join("").trim()]));
 check("the result lists what is wrong", JSON.stringify(findings) === JSON.stringify([
   ["unidentified", "Unidentified link CORE-SW1 Gi0/1 is an up trunk with no neighbour reporting on it."],
-  ["orphan", "Orphan CORE-SW1 was reached but has no link to anything the crawl found."],
+  // CORE-SW1 has two silent devices on it since LT-464's fixture, so it is no orphan.
   ["orphan", "Orphan EDGE-RTR1 was reached but has no link to anything the crawl found."],
 ]), JSON.stringify(findings));
+// ------------------------------------------------- LT-464 the attached, listed
+{
+  const attached = panel.locator(".cv-attached");
+  check("the silent devices are counted", /2 more devices were seen on switch ports/.test(await attached.locator("summary").textContent()));
+  await attached.locator("summary").click();
+  await page.waitForTimeout(150);
+  const rowsOf = () => attached.locator(".cv-attached-list tbody tr").evaluateAll((trs) => trs.map((tr) => [...tr.querySelectorAll("td")].map((td) => td.textContent).join("|")));
+  check("and listed, with what the crawl learned about each, addresses first", JSON.stringify(await rowsOf()) === JSON.stringify([
+    "192.0.2.31|0000.5e00.5311|Example Cameras||192.0.2.0/24|CORE-SW1|Gi0/6|20",
+    "192.0.2.40|0000.5e00.5310|Example Printers|PRN-1|192.0.2.0/24|CORE-SW1|Gi0/5|10",
+  ]), JSON.stringify(await rowsOf()));
+  await attached.locator(".cv-th-sort", { hasText: "Port" }).click();
+  check("a heading sorts its column", (await rowsOf())[0].includes("Gi0/5"), JSON.stringify(await rowsOf()));
+  await attached.locator(".cv-th-sort", { hasText: "Port" }).click();
+  check("and again the other way", (await rowsOf())[0].includes("Gi0/6"), JSON.stringify(await rowsOf()));
+  // Closed again, so nothing below draws them.
+  await attached.locator("summary").click();
+  await page.waitForTimeout(150);
+}
 // LT-215: with Physical and Logical views on the page, a layer-3 hop between
 // crawled devices is drawn on the Logical one.
 // ------------------------------------------------- LT-333 choose by role

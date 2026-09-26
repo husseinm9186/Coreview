@@ -22,11 +22,12 @@ import {
   type Application,
 } from '../lib/appPath';
 import { saveExport, slug } from '../lib/exports';
-import { ipc, type CrawledDevice, type CrawlResult } from '../lib/ipc';
+import { ipc, type CrawledDevice, type CrawlResult, type MeasuredLeg, type MeasuredTrace } from '../lib/ipc';
 import { activePage } from '../lib/pages';
 import { devicesOnPath, tracePath, type PathDevice, type TraceResult } from '../lib/pathTrace';
 import { useStore } from '../state/store';
 import type { DeviceNodeData } from '../types/domain';
+import { SavedCredentialSelect } from './CredentialPicker';
 
 /**
  * A crawled device's overlay, as the path engine wants it (LT-347).
@@ -99,6 +100,12 @@ function asPathDevices(result: CrawlResult | null): PathDevice[] {
     vtep: d.vtep ?? vtepFrom(d.overlay),
     nat: d.nat,
     vips: d.vips,
+    // LT-479: so a hop can say a policy was not evaluated.
+    policyRoutes: d.policyRoutes,
+    // LT-480: OTV, and the MAC behind each address this device learned, so
+    // a destination on an extended VLAN can be sent to the edge owning it.
+    otv: d.otv ?? undefined,
+    macs: Object.fromEntries((d.attached ?? []).filter((a) => a.address).map((a) => [a.address as string, a.mac.toLowerCase().replace(/[^0-9a-f]/g, '')])),
     neighbours: (d.neighbors ?? []).map((n) => ({
       localInterface: n.localInterface,
       name: n.shortName || n.deviceId,
@@ -133,6 +140,12 @@ export function PathTracePanel() {
   const [candidates, setCandidates] = useState<string[]>([]);
   const [traced, setTraced] = useState<TraceResult | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  // LT-477: the measured path, from the source device's own traceroute;
+  // LT-478: the legs devices said they hash this flow onto, per hop.
+  const [credentialId, setCredentialId] = useState<string | undefined>();
+  const [measured, setMeasured] = useState<MeasuredTrace | null>(null);
+  const [measuring, setMeasuring] = useState(false);
+  const [legs, setLegs] = useState<Record<string, MeasuredLeg | string>>({});
 
   // The runs this project has. Newest first is what `listCrawlRuns` gives.
   useEffect(() => {
@@ -192,6 +205,52 @@ export function PathTracePanel() {
     setDown(new Set());
     setCandidates([]);
     setHighlight(null);
+    setMeasured(null);
+    setLegs({});
+  };
+
+  /** The address the crawl reached a device on, by its hostname. */
+  const addressOf = (hostname: string): string | null => {
+    const want = hostname.trim().toLowerCase();
+    const d = (result?.devices ?? []).find((x) => x.hostname.trim().toLowerCase() === want);
+    return d?.address ?? d?.addresses?.[0]?.ip ?? null;
+  };
+  /** The crawled device holding an address, if any. */
+  const deviceHolding = (address: string): string | null =>
+    devices.find((d) => d.addresses.some((a) => a.ip.trim() === address.trim()))?.hostname ?? null;
+  const protocolNumber = protocol === 'tcp' ? 6 : protocol === 'udp' ? 17 : protocol === 'icmp' ? 1 : null;
+
+  const measure = () => {
+    const source = addressOf(from);
+    if (!credentialId) {
+      setProblem(t('trace.needCredential', { device: from }));
+      return;
+    }
+    if (!source) {
+      setProblem(t('trace.noSourceAddress', { device: from }));
+      return;
+    }
+    setProblem(null);
+    setMeasuring(true);
+    void ipc
+      .tracerouteFromDevice(source, credentialId, to.trim())
+      .then(setMeasured)
+      .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)))
+      .finally(() => setMeasuring(false));
+  };
+
+  const askLeg = (key: string, device: string) => {
+    const address = addressOf(device);
+    const source = addressOf(from);
+    if (!credentialId || !address || !source) {
+      setProblem(!credentialId ? t('trace.needCredential', { device }) : t('trace.noSourceAddress', { device: !address ? device : from }));
+      return;
+    }
+    setProblem(null);
+    void ipc
+      .ecmpLegFromDevice(address, credentialId, source, to.trim(), protocolNumber, null, port.trim() ? Number(port) : null)
+      .then((leg) => setLegs((was) => ({ ...was, [key]: leg })))
+      .catch((e: unknown) => setLegs((was) => ({ ...was, [key]: e instanceof Error ? e.message : String(e) })));
   };
 
   // A path left lit on the diagram after the panel has gone is a diagram
@@ -365,7 +424,29 @@ export function PathTracePanel() {
                   <td>{hop.device}</td>
                   <td className="cv-mono">{hop.prefix}</td>
                   <td>{hop.protocol}</td>
-                  <td className="cv-mono">{hop.nextHop ?? '—'}</td>
+                  <td className="cv-mono">
+                    {hop.nextHop ?? '—'}
+                    {hop.ecmp && (
+                      <div className="cv-trace-leg">
+                        <span className="cv-help">{t('trace.ecmpOf', { count: hop.ecmp })}</span>{' '}
+                        <button type="button" className="cv-btn cv-btn-small" onClick={() => askLeg(`${i}-${n}`, hop.device)}>
+                          {t('trace.askDevice', { device: hop.device })}
+                        </button>
+                        {legs[`${i}-${n}`] !== undefined && (
+                          <div className="cv-help cv-trace-leg-answer">
+                            {typeof legs[`${i}-${n}`] === 'string'
+                              ? String(legs[`${i}-${n}`])
+                              : t('trace.deviceChose', {
+                                  device: hop.device,
+                                  nextHop: (legs[`${i}-${n}`] as MeasuredLeg).nextHop,
+                                  via: (legs[`${i}-${n}`] as MeasuredLeg).interface ? ` via ${(legs[`${i}-${n}`] as MeasuredLeg).interface}` : '',
+                                  which: (legs[`${i}-${n}`] as MeasuredLeg).nextHop === hop.nextHop ? t('trace.thisLeg') : t('trace.otherLeg'),
+                                })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </td>
                   <td className="cv-mono">{hop.outInterface ?? '—'}</td>
                   <td className="cv-mono">
                     {hop.distance ?? '—'}/{hop.metric ?? '—'}
@@ -382,6 +463,7 @@ export function PathTracePanel() {
               {path.map((hop, n) => (
                 <li key={`${hop.device}-why-${n}`}>
                   <strong>{hop.device}</strong> {hop.why}
+                  {hop.notes?.map((note, k) => <div key={k} className="cv-help cv-trace-note">{note}</div>)}
                   {hop.via.length > 0 && (
                     <div className="cv-help">
                       {t('trace.resolved', {
@@ -393,9 +475,68 @@ export function PathTracePanel() {
                 </li>
               ))}
             </ol>
+            {/* LT-479: what no calculated path evaluates, said every time. */}
+            <p className="cv-help cv-trace-caveat">{t('trace.caveat')}</p>
           </details>
         </div>
       ))}
+
+      {/* LT-477: the measured path, beside the calculated one. */}
+      {traced && (
+        <div className="cv-trace-measure" data-region="measure">
+          <SavedCredentialSelect kind="ssh" label={t('trace.credential', { device: from })} value={credentialId} onChange={setCredentialId} />
+          <button type="button" className="cv-btn cv-btn-small" disabled={measuring || !from.trim() || !to.trim()} onClick={measure}>
+            {measuring ? t('trace.measuring') : t('trace.measure', { device: from })}
+          </button>
+          {measured && (() => {
+            const onPath = new Set(devicesOnPath(traced).map((n) => n.trim().toLowerCase()));
+            const rows = measured.hops.map((h) => {
+              const device = h.address ? deviceHolding(h.address) : null;
+              const verdict = !h.address ? 'silent' : !device ? 'unknown' : onPath.has(device.trim().toLowerCase()) ? 'on' : 'off';
+              return { ...h, device, verdict };
+            });
+            const answering = rows.filter((r) => r.address).length;
+            const agreeing = rows.filter((r) => r.verdict === 'on').length;
+            const off = rows.filter((r) => r.verdict === 'off');
+            return (
+              <div data-region="measured">
+                <p className="cv-help">{t('trace.measured', { platform: measured.platform, command: measured.command })}</p>
+                <table className="cv-table">
+                  <thead>
+                    <tr>
+                      <th>{t('trace.colTtl')}</th>
+                      <th>{t('trace.colAddress')}</th>
+                      <th>{t('trace.colDevice')}</th>
+                      <th>{t('trace.colRtt')}</th>
+                      <th>{t('trace.colCalculated')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.ttl} data-verdict={r.verdict}>
+                        <td>{r.ttl}</td>
+                        <td className="cv-mono">{r.address ?? '*'}</td>
+                        <td>{r.device ?? '—'}</td>
+                        <td className="cv-mono">{r.rttsMs.map((v) => `${v} ms`).join(' ') || '—'}</td>
+                        <td>
+                          {r.verdict === 'on' && t('trace.onPath')}
+                          {r.verdict === 'off' && <strong>{t('trace.offPath')}</strong>}
+                          {r.verdict === 'unknown' && t('trace.unknownHop')}
+                          {r.verdict === 'silent' && t('trace.silentHop')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className={`cv-help${off.length ? ' cv-problem' : ''}`}>
+                  {t('trace.measuredSummary', { onPath: agreeing, answering })}
+                  {off.length > 0 && ` ${t('trace.disagree', { hops: off.map((r) => `${r.ttl} (${r.device})`).join(', ') })}`}
+                </p>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {traced && candidates.length > 0 && (
         <details className="cv-trace-simulate" data-region="simulate">

@@ -17,7 +17,9 @@
 //! first step finds four hundred phones whether you want them or not, and the
 //! decision about what to draw should not be buried inside the crawl.
 
+pub mod arista;
 pub mod arp;
+pub mod asa;
 pub mod bindings;
 pub mod backup;
 pub mod capture;
@@ -26,14 +28,18 @@ pub mod cdp;
 pub mod checks;
 pub mod cli;
 pub mod compare;
+pub mod comware;
 pub mod crawl;
 pub mod defaultroute;
 pub mod classify;
 pub mod counters;
 pub mod filter;
 pub mod fortios;
+pub mod gaia;
 pub mod hostkeys;
+pub mod huawei;
 pub mod interfaces;
+pub mod junos;
 /// Who made a device, from its MAC. The table itself lives in
 /// `coreview-probe`, because the ping sweep names its hits from it too
 /// (LT-121) and this crate is the one that depends on that one.
@@ -47,7 +53,9 @@ pub mod lldp;
 pub mod etherchannel;
 pub mod mac_table;
 pub mod pathcheck;
+pub mod policyroutes;
 pub mod ptr;
+pub mod routeros;
 pub mod routes;
 pub mod seeds;
 pub mod arubasw;
@@ -55,15 +63,21 @@ pub mod debuglog;
 pub mod dell;
 pub mod screen;
 pub mod sessionlog;
+pub mod otv;
 pub mod overlay;
+pub mod panos;
 pub mod vrftables;
 pub mod stp;
+pub mod support;
 pub mod uptime;
 pub mod vlans;
+pub mod vyatta;
 pub mod walkfile;
+pub mod wlc;
 #[cfg(test)]
 mod parser_properties;
 pub mod telnet;
+pub mod trace;
 pub mod types;
 pub mod vault;
 

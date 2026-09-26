@@ -27,6 +27,17 @@ pub fn commands_for(platform_hint: &str) -> &'static [&'static str] {
     let p = platform_hint.to_ascii_lowercase();
     if p.contains("forti") {
         &["get router info routing-table details 0.0.0.0", "get router info routing-table all"]
+    } else if p.contains("pan-os") {
+        &["show routing route"]
+    } else if p.contains("comware") || p.contains("huawei") {
+        &["display ip routing-table"]
+    } else if p.contains("routeros") {
+        &["/ip route print without-paging"]
+    } else if p.contains("aireos") || p.contains("aruba controller") {
+        // LT-465: no parser for the table yet, so nothing is asked (D-058).
+        &[]
+    } else if p.contains("cisco asa") || p.contains("gaia") {
+        &["show route"]
     } else if p.contains("aruba") || p.contains("aos-cx") {
         &["show ip route 0.0.0.0/0", "show ip route"]
     } else if p.contains("junos") || p.contains("juniper") {
@@ -67,6 +78,15 @@ pub fn parse_default_route(output: &str) -> Option<Ipv4Addr> {
         // AOS-CX and others word it the same way.
         if let Some(at) = low.find(" via ") {
             if let Some(ip) = first_usable_address(&l[at + 5..]) {
+                return Some(ip);
+            }
+        }
+
+        // LT-465 (D-058): a table row with no `via` — PAN-OS, Comware, Huawei
+        // and RouterOS print `0.0.0.0/0  <next hop>  …` — the first usable
+        // address after the prefix.
+        if let Some(at) = low.find("0.0.0.0/0") {
+            if let Some(ip) = first_usable_address(&l[at + "0.0.0.0/0".len()..]) {
                 return Some(ip);
             }
         }

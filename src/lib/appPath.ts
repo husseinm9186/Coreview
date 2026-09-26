@@ -76,6 +76,8 @@ function lookOf(hop: Hop): { type: DeviceType; prefix: string } {
       return { type: 'core-switch', prefix: 'VTEP' };
     case 'underlay':
       return { type: 'router', prefix: 'underlay' };
+    case 'otv':
+      return { type: 'core-switch', prefix: 'OTV' };
     default:
       return { type: 'router', prefix: '' };
   }
@@ -101,6 +103,8 @@ function edgeLabel(hop: Hop, first: string | null): string {
       return 'underlay';
     case 'decapsulate':
       return `VNI ${hop.segment.vni}`;
+    case 'otv':
+      return `OTV VLAN ${hop.segment.vlan}`;
     default:
       return hop.prefix;
   }
@@ -204,6 +208,12 @@ export function applicationNarrative(result: TraceResult, app: Application): str
       case 'decapsulate':
         lines.push(
           `${hop.device} takes the traffic out of VNI ${hop.segment.vni} and delivers it on the local segment.`,
+        );
+        continue;
+      case 'otv':
+        lines.push(
+          `${hop.device} carries the frame across OTV (${hop.segment.overlay}, VLAN ${hop.segment.vlan}) to ${hop.segment.remote}, ` +
+            `which its OTV route table names as the edge owning ${hop.segment.mac}. This is a layer 2 extension between sites, not a routed hop.`,
         );
         continue;
       default:

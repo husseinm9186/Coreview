@@ -210,3 +210,55 @@ export function inferredSwitches(chosen: AttachedOn[], atLeast = INFERRED_MINIMU
 export function behindInferred(entry: AttachedOn, inferred: InferredSwitch[]): InferredSwitch | undefined {
   return inferred.find((s) => s.host === entry.host && s.port === entry.device.port);
 }
+
+/** LT-464: one attached device as a row somebody can read, before it is
+ *  drawn. The subnet is the /24 its address is in, the way the filter
+ *  reads it; a device with no address has none. */
+export interface AttachedRow {
+  address: string;
+  mac: string;
+  vendor: string;
+  hostname: string;
+  subnet: string;
+  host: string;
+  port: string;
+  vlan: string;
+}
+
+export type AttachedColumn = keyof AttachedRow;
+
+export function attachedRows(chosen: readonly AttachedOn[]): AttachedRow[] {
+  return chosen.map(({ device, host }) => ({
+    address: device.address ?? '',
+    mac: device.mac,
+    vendor: device.vendor ?? '',
+    hostname: device.hostname ?? '',
+    subnet: (device.address ? subnetOf(device.address) : null) ?? '',
+    host,
+    port: device.port,
+    vlan: device.vlan ?? '',
+  }));
+}
+
+/** Addresses sort as addresses (10.0.0.9 before 10.0.0.10); everything else
+ *  as text, case-insensitively; an empty cell always sorts last. */
+export function sortAttachedRows(rows: readonly AttachedRow[], key: AttachedColumn, dir: 1 | -1): AttachedRow[] {
+  const ip = (s: string) => s.split('.').map(Number);
+  const compare = (a: string, b: string) => {
+    if (key === 'address' || key === 'subnet') {
+      const [x, y] = [ip(a), ip(b)];
+      if (x.length === 4 && y.length === 4 && x.every(Number.isFinite) && y.every(Number.isFinite)) {
+        for (let i = 0; i < 4; i++) if (x[i] !== y[i]) return x[i]! - y[i]!;
+        return 0;
+      }
+    }
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  };
+  return [...rows].sort((a, b) => {
+    const [x, y] = [a[key], b[key]];
+    // An empty cell is last whichever way the column is sorted.
+    if (!x || !y) return !x && !y ? 0 : !x ? 1 : -1;
+    return dir * compare(x, y);
+  });
+}
+

@@ -77,10 +77,12 @@ export const crawlInput = (input: object) => {
   const out = pickAll(i, [
     'seed', 'subnets', 'crawlClasses', 'maxHops', 'maxDevices', 'secondFactor', 'addressPreference', 'interfaceName', 'port',
     'transport', 'vdom', 'snmp', 'credentialId', 'snmpCredentialIds', 'details', 'bindings', 'reverseDns', 'concurrency',
-    'perHostTimeoutSecs', 'retries', 'debugLog', 'projectId',
+    'perHostTimeoutSecs', 'retries', 'debugLog', 'supportCapture', 'projectId',
   ]);
   if (Array.isArray(i.snmp)) out.snmp = i.snmp.map((s) => pickAll(s, SNMP_INPUT_KEYS));
-  if (i.details) out.details = pickAll(i.details, ['routes', 'spanningTree', 'vlans']);
+  // LT-483: `vrfs` and `overlay` were missing here since LT-347 added them,
+  // so the two tick-boxes never reached Rust and the crawl never read either.
+  if (i.details) out.details = pickAll(i.details, ['routes', 'spanningTree', 'vlans', 'vrfs', 'overlay']);
   if (Array.isArray(i.bindings)) out.bindings = i.bindings.map((b) => pickAll(b, ['scope', 'value', 'credentialId']));
   return out;
 };

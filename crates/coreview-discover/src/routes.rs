@@ -59,17 +59,30 @@ impl Route {
 /// The commands worth asking for the table, per platform.
 pub fn commands_for(platform_hint: &str) -> &'static [&'static str] {
     let p = platform_hint.to_ascii_lowercase();
-    if p.contains("forti") {
+    if p.contains("pan-os") {
+        // LT-468: every virtual router's table, read by shape.
+        &["show routing route"]
+    } else if p.contains("comware") || p.contains("huawei") {
+        &["display ip routing-table"]
+    } else if p.contains("routeros") {
+        &["/ip route print without-paging"]
+    } else if p.contains("forti") || ["aireos", "aruba controller"].iter().any(|h| p.contains(h)) {
         // FortiOS prints a different table; there is no capture of it yet, so
-        // nothing is asked rather than parsed wrongly.
+        // nothing is asked rather than parsed wrongly. The same for the
+        // D-058 families whose table parsers have not been written (LT-465).
         &[]
+    } else if p.contains("cisco asa") || p.contains("gaia") {
+        // ASA and Gaia spell it `show route`, in a table this parser reads.
+        &["show route"]
     } else {
         &["show ip route", "show ipv6 route"]
     }
 }
 
 fn protocol_of(code: &str) -> &'static str {
-    let first = code.split_whitespace().next().unwrap_or("").trim_end_matches(['*', '+', '%', 'p']);
+    // LT-474: Quagga and FRR — EdgeOS and VyOS — write the selected route as
+    // `S>*`, so `>` is a marker too.
+    let first = code.split_whitespace().next().unwrap_or("").trim_end_matches(['*', '+', '%', 'p', '>']);
     match first {
         "C" => "connected",
         "L" => "local",
@@ -158,6 +171,21 @@ pub fn parse_routes(output: &str) -> Vec<Route> {
     // the prefix is on its own line and the paths are indented under it. Told
     // apart by shape rather than by asking the caller what the platform was,
     // the same way the FortiSwitch MAC table is (LT-333).
+    // LT-468: PAN-OS, told apart by shape the same way; LT-471–473: Comware
+    // and Huawei's table, and RouterOS's listing, likewise.
+    if crate::panos::is_route_table(output) {
+        return crate::panos::parse_routes(output);
+    }
+    if crate::comware::is_routing_table(output) {
+        return crate::comware::parse_routing_table(output);
+    }
+    if crate::routeros::is_route_table(output) {
+        return crate::routeros::parse_routes(output);
+    }
+    // LT-469: an ASA prints `network mask`; rewritten to `network/len` so the
+    // reader below sees the table it knows. IOS output passes through unchanged.
+    let rewritten = crate::asa::cidr_prefixes(output);
+    let output = rewritten.as_str();
     if output.contains("ubest/mbest:") || output.contains("IP Route Table for VRF") {
         return parse_nxos_routes(output);
     }

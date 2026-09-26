@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { behindInferred, bestSighting, inferredSwitches, matchesFilter, selectAttached, sightingsByMac, vendorCounts } from './attached';
+import { attachedRows, behindInferred, bestSighting, inferredSwitches, matchesFilter, selectAttached, sightingsByMac, sortAttachedRows, vendorCounts } from './attached';
 import type { AttachedDevice, CrawledDevice } from './ipc';
 
 const thing = (over: Partial<AttachedDevice> = {}): AttachedDevice => ({
@@ -259,3 +259,24 @@ describe('a crowded port with nobody answering on it is a switch (LT-336)', () =
     expect(behindInferred(elsewhere, found)).toBeUndefined();
   });
 });
+
+describe('the attached devices as rows (LT-464)', () => {
+  const rows = attachedRows([
+    { host: 'SW1', device: thing({ mac: '7456aa000010', address: '192.168.77.10', vendor: 'Axis', hostname: 'CAM-LOBBY', port: 'Gi0/9', vlan: '20' }) },
+    { host: 'SW1', device: thing({ mac: '7456aa000002', address: '192.168.77.2', vendor: 'Brother', hostname: null, port: 'Gi0/10', vlan: null }) },
+    { host: 'SW2', device: thing({ mac: '7456aa000099', address: null, vendor: null, hostname: null, port: 'Gi0/1' }) },
+  ]);
+
+  it('says what the crawl learned, with the subnet worked out and blanks left blank', () => {
+    expect(rows[0]).toEqual({ address: '192.168.77.10', mac: '7456aa000010', vendor: 'Axis', hostname: 'CAM-LOBBY', subnet: '192.168.77.0/24', host: 'SW1', port: 'Gi0/9', vlan: '20' });
+    expect(rows[2]).toEqual({ address: '', mac: '7456aa000099', vendor: '', hostname: '', subnet: '', host: 'SW2', port: 'Gi0/1', vlan: '' });
+  });
+
+  it('sorts addresses as addresses and keeps an empty cell last either way', () => {
+    expect(sortAttachedRows(rows, 'address', 1).map((r) => r.address)).toEqual(['192.168.77.2', '192.168.77.10', '']);
+    expect(sortAttachedRows(rows, 'address', -1).map((r) => r.address)).toEqual(['192.168.77.10', '192.168.77.2', '']);
+    expect(sortAttachedRows(rows, 'vendor', 1).map((r) => r.vendor)).toEqual(['Axis', 'Brother', '']);
+    expect(sortAttachedRows(rows, 'port', 1).map((r) => r.port)).toEqual(['Gi0/1', 'Gi0/9', 'Gi0/10']);
+  });
+});
+

@@ -79,6 +79,7 @@ async fn main() {
             auth_timeout: Duration::from_secs(60),
             command_timeout: Duration::from_secs(60),
             login_transcript: None,
+            support_capture: None,
             max_output_bytes: coreview_discover::ssh::DEFAULT_MAX_OUTPUT_BYTES,
         },
         second_factor: false,

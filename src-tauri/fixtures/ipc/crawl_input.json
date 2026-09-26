@@ -32,7 +32,9 @@
   "details": {
     "routes": true,
     "spanningTree": false,
-    "vlans": true
+    "vlans": true,
+    "vrfs": true,
+    "overlay": true
   },
   "bindings": [
     {
@@ -45,5 +47,7 @@
   "concurrency": 4,
   "perHostTimeoutSecs": 120,
   "retries": 1,
+  "debugLog": true,
+  "supportCapture": true,
   "projectId": "project-1"
 }

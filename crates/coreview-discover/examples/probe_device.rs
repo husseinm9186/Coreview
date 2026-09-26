@@ -40,6 +40,7 @@ async fn main() {
         auth_timeout: Duration::from_secs(90),
         command_timeout: Duration::from_secs(45),
         login_transcript: None,
+        support_capture: None,
         max_output_bytes: coreview_discover::ssh::DEFAULT_MAX_OUTPUT_BYTES,
     };
     let credentials = Credentials {

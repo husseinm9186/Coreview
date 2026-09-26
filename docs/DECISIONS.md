@@ -1065,3 +1065,44 @@ the operator, his own key in the vault, nothing about him sent anywhere.
 `verified_against_api()` stays false: this is still a client that has never
 had an answer from the real thing, and a loopback 308 is a hypothesis about
 Meraki, not evidence of it.
+
+### D-058 — Dialects and path features may be built from vendor documentation, articles and posts, until the operator's captures replace them — 2026-09-26
+**Asked for:** "enhance the crawler to support other switches and routers and
+firewalls and access points … make sure it's very solid", and a trace path
+that is "real and true" across multiple data centres, ECMP, VXLAN and OTV —
+then, told that the standing rule is captured output (not documentation) and
+that none of that hardware is on the bench: "add to the roadmap, and start
+building based on vendor documents and articles and real posts. I don't have
+hardware to test but will need to get you debug output so we can enhance and
+do better."
+
+**Decision:** D-026 and D-051 extend to every dialect and every path feature
+under LT-465–LT-480. Each parser is written from the vendor's documentation
+and from real output people have posted, says so in its own doc comment,
+carries fixtures that are marked as reconstructed rather than captured, and
+reports `verified_against_hardware() == false` until output from a real
+device — the operator's, or anyone's — has replaced the fixture. The
+dialect test that names the unverified dialects grows by one name per
+family and is the list of what is still a hypothesis.
+
+**What makes the hypothesis safe to run.** A wrong parser reads nothing, and
+nothing is what the crawler already reports for a device it cannot read —
+never a guess. Every command is best effort, so a spelling the device does
+not know costs one rejected command. The identification step tries the
+version spellings in order and stops at the first that answers, so a
+platform nobody recognised is still crawled the generic way it always was.
+
+**How a hypothesis becomes evidence: the support capture (LT-481).** The
+operator will send debug output, and D-055 says the debug log never holds
+device output — so it will not. The capture is a separate, opt-in file the
+operator asks for on a crawl, written to a folder he chooses, holding only
+the identity commands' replies (never a running configuration), with every
+secret the vault knows redacted before a byte is written. It is the file
+that turns `verified: false` into `true`, one platform at a time, and it is
+the one file a parser may be corrected against.
+
+**Rejected:** claiming a platform is supported on the strength of a manual;
+falling back to the global table, the diagram's cables or a guessed next
+hop in a trace (D-050 stands); building OTV or ECMP hashing as inference —
+both are asked of the device, or not answered.
+

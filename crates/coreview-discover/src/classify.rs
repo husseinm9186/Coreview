@@ -48,7 +48,8 @@ fn from_platform(s: &str) -> Option<DeviceClass> {
     }
 
     // Wireless controllers, before the AIR- access point rule below.
-    const WLC: [&str; 6] = ["AIR-CT", "C9800", "AIRCT", "WLC", "VWLC", "WISM"];
+    // LT-476: Aruba's controllers by their model numbers.
+    const WLC: [&str; 10] = ["AIR-CT", "C9800", "AIRCT", "WLC", "VWLC", "WISM", "ARUBA70", "ARUBA72", "ARUBA90", "ARUBA92"];
     if WLC.iter().any(|p| s.contains(p)) {
         return Some(DeviceClass::WirelessController);
     }
@@ -66,7 +67,9 @@ fn from_platform(s: &str) -> Option<DeviceClass> {
     }
 
     // Firewalls. FPR is Firepower; ASA covers the 5500 series.
-    const FW: [&str; 7] = ["ASA", "FPR", "FIREPOWER", "PALO ALTO", "PA-", "FORTIGATE", "SONICWALL"];
+    // LT-466: Juniper's SRX; LT-470: a Check Point gateway names itself by
+    // its appliance number and the word.
+    const FW: [&str; 10] = ["ASA", "FPR", "FIREPOWER", "PALO ALTO", "PA-", "FORTIGATE", "SONICWALL", "SRX", "CHECK POINT", "CHECKPOINT"];
     if FW.iter().any(|p| s.contains(p)) {
         return Some(DeviceClass::Firewall);
     }
@@ -96,7 +99,7 @@ fn from_platform(s: &str) -> Option<DeviceClass> {
     }
 
     // Switches. Catalyst, Nexus, and the WS- Catalyst prefix.
-    const SWITCH: [&str; 18] = [
+    const SWITCH: [&str; 26] = [
         "WS-C", "C9200", "C9300", "C9400", "C9500", "N9K", "N5K", "N7K",
         // Seen on a real network: Fortinet and Ubiquiti switches, which
         // advertise a bare Bridge capability and would otherwise be Unknown.
@@ -105,6 +108,10 @@ fn from_platform(s: &str) -> Option<DeviceClass> {
         // with a WS- prefix in a version banner. A real C2960CX classified as
         // Unknown without these.
         "C2960", "C3560", "C3650", "C3750", "C3850", "C1000", "CBS350",
+        // LT-466: Juniper's switches, by their model prefixes (D-058).
+        "EX2300", "EX3400", "EX4", "EX9", "QFX",
+        // LT-467: Arista's, and its virtual one.
+        "DCS-", "CCS-", "VEOS",
     ];
     if SWITCH.iter().any(|p| s.contains(p)) {
         return Some(DeviceClass::Switch);

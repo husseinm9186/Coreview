@@ -73,6 +73,13 @@ pub fn prompt_from_line(line: &str) -> Option<Prompt> {
     // The hostname is the part in front of it, so the bracket is removed
     // before anything else is judged.
     let base = hostname.split('(').next().unwrap_or(hostname).trim();
+    // LT-466 (D-058): `user@host>` on Junos and PAN-OS, `[admin@host] >` on
+    // RouterOS, `user@host:~$` on EdgeOS and VyOS. The hostname is what
+    // follows the `@`, up to a colon that starts a working directory.
+    let base = match base.rsplit_once('@') {
+        Some((_, host)) => host.trim_matches(['[', ']', ' ']).split(':').next().unwrap_or("").trim(),
+        None => base,
+    };
     // Reject anything that cannot be a hostname. Without this, a config line
     // like `banner motd #` reads as a prompt and truncates the capture.
     if base.is_empty() || !base.chars().all(is_hostname_char) {
@@ -418,12 +425,25 @@ pub fn extract_output(raw: &str, command: &str) -> String {
 pub fn command_was_rejected(output: &str) -> Option<String> {
     for line in output.lines().take(5) {
         let t = line.trim();
+        // LT-465 (D-058): the refusals of the other platforms, as their
+        // documentation and posted sessions spell them — Junos and PAN-OS
+        // "unknown command" / "Invalid syntax", Huawei "Error: Unrecognized
+        // command", Gaia "CLINFR0329 Invalid command", RouterOS "bad command
+        // name", AireOS "Incorrect usage".
+        let lower = t.to_ascii_lowercase();
         if t.starts_with('%')
             || t.starts_with("^%")
             || t.contains("Invalid input detected")
             || t.contains("Incomplete command")
             || t.contains("Permission denied")
             || t.contains("Authorization failed")
+            || lower.contains("unknown command")
+            || lower.contains("unrecognized command")
+            || lower.contains("invalid syntax")
+            || lower.starts_with("clinfr")
+            || lower.contains("bad command name")
+            || lower.contains("incorrect usage")
+            || lower.starts_with("syntax error")
         {
             return Some(t.to_string());
         }
@@ -456,6 +476,17 @@ pub fn looks_like_config(text: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// LT-466: the prompts of the platforms that put a user in front.
+    #[test]
+    fn a_user_at_host_prompt_names_the_host() {
+        assert_eq!(prompt_from_line("admin@core-ex1>").unwrap().hostname, "core-ex1");
+        assert_eq!(prompt_from_line("admin@core-ex1# ").unwrap().hostname, "core-ex1");
+        assert_eq!(prompt_from_line("admin@PA-220(active)>").unwrap().hostname, "PA-220");
+        assert_eq!(prompt_from_line("[admin@MikroTik] > ").unwrap().hostname, "MikroTik");
+        assert_eq!(prompt_from_line("ubnt@edge-1:~$").unwrap().hostname, "edge-1");
+        assert!(prompt_from_line("mail@example.com sent").is_none(), "trailing text is still not a prompt");
+    }
 
     #[test]
     fn an_enable_prompt_is_recognised() {

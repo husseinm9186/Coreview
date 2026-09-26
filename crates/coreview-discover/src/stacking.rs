@@ -206,6 +206,11 @@ pub fn commands_for(platform_hint: &str) -> &'static [&'static str] {
         return &["show stacking detail"];
     }
     let p = platform_hint.to_ascii_lowercase();
+    // LT-465: a firewall, a router or a controller has no stack to ask about,
+    // and Comware's IRF has no parser yet (D-058).
+    if ["pan-os", "cisco asa", "gaia", "comware", "huawei", "routeros", "vyatta", "aireos", "aruba controller"].iter().any(|h| p.contains(h)) {
+        return &[];
+    }
     if p.contains("aruba") || p.contains("aos-cx") || p.contains("hpe") || p.contains("hp ") {
         // `show vsf` is a table; `show vsf topology` is ASCII art. The table
         // first, because it is the one worth parsing.

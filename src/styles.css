@@ -725,6 +725,10 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-tabs button.is-active { background: var(--panel-2); border-color: var(--line-strong); color: var(--text); }
 
 .cv-table { width: 100%; border-collapse: collapse; font-size: var(--text-md); }
+/* LT-464: a column heading that sorts. Looks like the heading it replaces. */
+.cv-th-sort { background: none; border: 0; padding: 0; margin: 0; color: inherit; font: inherit; text-align: inherit; cursor: pointer; }
+.cv-th-sort:hover { text-decoration: underline; }
+.cv-attached-list { max-height: 18rem; margin: var(--space-2) 0; }
 .cv-table th {
   position: sticky; top: 0; z-index: 1;
   text-align: left; font-weight: 600; color: var(--text-faint);

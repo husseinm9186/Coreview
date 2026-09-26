@@ -110,7 +110,7 @@ async fn main() {
     for concurrency in [1usize, 4, 16, 32] {
         let options = CrawlOptions {
             filter: DiscoveryFilter { subnets: vec![parse_cidr("127.1.0.0/16").unwrap()], ..Default::default() },
-            ssh: SshOptions { port, connect_timeout: Duration::from_secs(5), auth_timeout: Duration::from_secs(10), command_timeout: Duration::from_secs(10), max_output_bytes: coreview_discover::ssh::DEFAULT_MAX_OUTPUT_BYTES, login_transcript: None },
+            ssh: SshOptions { port, connect_timeout: Duration::from_secs(5), auth_timeout: Duration::from_secs(10), command_timeout: Duration::from_secs(10), max_output_bytes: coreview_discover::ssh::DEFAULT_MAX_OUTPUT_BYTES, login_transcript: None, support_capture: None },
             max_hops: 64,
             max_devices: total + 10,
             concurrency,

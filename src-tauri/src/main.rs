@@ -222,6 +222,8 @@ fn main() {
             discovery::start_crawl,
             discovery::cancel_crawl,
             discovery::ping_from_device,
+            discovery::traceroute_from_device,
+            discovery::ecmp_leg_from_device,
             discovery::read_snmp_walk,
             discovery::read_nmap_xml,
             discovery::start_backup,

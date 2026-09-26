@@ -21,6 +21,9 @@ pub enum Protocol {
     /// statement about the link than either protocol makes, and it is the only
     /// way this link is visible on an account that cannot run `diagnose`.
     FortiLink,
+    /// LT-475: a wireless controller naming an access point it manages —
+    /// the same kind of statement as FortiLink, from a controller's AP table.
+    Controller,
 }
 
 impl Protocol {
@@ -29,6 +32,7 @@ impl Protocol {
             Protocol::Cdp => "CDP",
             Protocol::Lldp => "LLDP",
             Protocol::FortiLink => "FortiLink",
+            Protocol::Controller => "Controller",
         }
     }
 }

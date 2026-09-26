@@ -591,3 +591,68 @@ describe('a route the device says crosses the overlay (LT-347)', () => {
     expect(result.kind).not.toBe('delivered');
   });
 });
+
+describe('what a hop says it did not evaluate (LT-479) and how many legs it had (LT-478)', () => {
+  it('names the policy routing on a device and counts the equal-cost legs', () => {
+    const edge: PathDevice = {
+      ...dev('EDGE', ['192.168.12.1', '192.168.13.1'], [
+        route({ prefix: '10.40.50.0/24', protocol: 'ospf', nextHops: ['192.168.12.2', '192.168.13.2'], distance: 110, metric: 2 }),
+        route({ prefix: '192.168.12.0/30', protocol: 'connected', interface: 'Gi0/0' }),
+        route({ prefix: '192.168.13.0/30', protocol: 'connected', interface: 'Gi0/1' }),
+      ]),
+      policyRoutes: [{ interface: 'Gi0/2', name: 'PBR-GUEST' }],
+    };
+    const core = dev('CORE', ['192.168.12.2'], [route({ prefix: '10.40.50.0/24', protocol: 'connected', interface: 'Vlan50' })]);
+    const spare = dev('SPARE', ['192.168.13.2'], [route({ prefix: '10.40.50.0/24', protocol: 'connected', interface: 'Vlan50' })]);
+    const out = tracePath({ devices: [edge, core, spare], from: 'EDGE', to: '10.40.50.9' });
+    expect(out.kind).toBe('delivered');
+    expect(out.paths).toHaveLength(2);
+    const first = out.paths[0]![0]!;
+    expect(first.ecmp).toBe(2);
+    expect(first.notes).toEqual(['Policy routing is configured on EDGE — Gi0/2 (PBR-GUEST) — and was not evaluated; this is the routing table\'s decision.']);
+    expect(out.paths[0]![1]!.notes).toBeUndefined();
+    expect(out.paths[0]![1]!.ecmp).toBeUndefined();
+  });
+});
+
+describe('an OTV-extended VLAN goes to the edge that owns the MAC (LT-480)', () => {
+  const otv = (routes: { vlan: number; mac: string; owner: string; nextHop: string }[]) => ({
+    overlays: [{ name: 'Overlay1', extendedVlans: [100, 101] }],
+    routes,
+  });
+  const dc1: PathDevice = {
+    ...dev('DC1-EDGE', ['10.100.0.1'], [route({ prefix: '10.100.0.0/24', protocol: 'connected', interface: 'Vlan100' })]),
+    otv: otv([{ vlan: 100, mac: '005056aabbcc', owner: 'overlay', nextHop: 'DC2-EDGE' }]),
+    macs: { '10.100.0.50': '005056aabbcc' },
+  };
+  const dc2: PathDevice = {
+    ...dev('DC2-EDGE', ['10.100.0.2'], [route({ prefix: '10.100.0.0/24', protocol: 'connected', interface: 'Vlan100' })]),
+    otv: otv([{ vlan: 100, mac: '005056aabbcc', owner: 'site', nextHop: 'Ethernet2/2' }]),
+    macs: { '10.100.0.50': '005056aabbcc' },
+  };
+
+  it('crosses the extension to the owning edge and delivers there', () => {
+    const out = tracePath({ devices: [dc1, dc2], from: 'DC1-EDGE', to: '10.100.0.50' });
+    expect(out.kind).toBe('delivered');
+    const path = out.paths[0]!;
+    expect(path.map((h) => h.device)).toEqual(['DC1-EDGE', 'DC2-EDGE']);
+    expect(path[0]!.segment).toEqual({ kind: 'otv', vlan: 100, overlay: 'Overlay1', mac: '005056aabbcc', remote: 'DC2-EDGE' });
+    expect(path[1]!.nextHop).toBeNull();
+  });
+
+  it('refuses when the MAC is not known, or the owning edge was never reached', () => {
+    const noMac = tracePath({ devices: [{ ...dc1, macs: {} }, dc2], from: 'DC1-EDGE', to: '10.100.0.50' });
+    expect(noMac.kind).toBe('insufficient');
+    expect(noMac.kind === 'insufficient' && noMac.reason).toMatch(/holds no MAC for 10\.100\.0\.50/);
+    const noEdge = tracePath({ devices: [dc1], from: 'DC1-EDGE', to: '10.100.0.50' });
+    expect(noEdge.kind).toBe('insufficient');
+    expect(noEdge.kind === 'insufficient' && noEdge.reason).toMatch(/DC2-EDGE, which this run did not reach/);
+  });
+
+  it('delivers locally when its own table says the MAC is on this site', () => {
+    const out = tracePath({ devices: [dc2, dc1], from: 'DC2-EDGE', to: '10.100.0.50' });
+    expect(out.kind).toBe('delivered');
+    expect(out.paths[0]!.map((h) => h.device)).toEqual(['DC2-EDGE']);
+  });
+});
+
