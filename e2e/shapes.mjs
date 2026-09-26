@@ -58,6 +58,8 @@ await page.addInitScript(({ p }) => {
       // Exports: the save dialog answers with a path, and what would be
       // written is kept for the checks to read (LT-170).
       if (cmd === "plugin:dialog|save") return Promise.resolve("/tmp/coreview-shapes-test.svg");
+      if (cmd === "pick_export_target") return Promise.resolve({ token: `t-${next++}`, path: args.folder ? `${args.folder}/${args.filename}` : `/tmp/${args.filename}` });
+      if (cmd === "pick_export_folder") return Promise.resolve({ token: `f-${next++}`, path: args.folder ?? "/tmp/picked" });
       if (cmd === "save_export") {
         const bytes = Uint8Array.from(atob(args.contentsB64), (c) => c.charCodeAt(0));
         (window.__exports ??= []).push({ path: args.path, text: new TextDecoder().decode(bytes) });

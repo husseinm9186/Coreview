@@ -3,6 +3,24 @@
    block near the bottom for paper. A hex anywhere else in this file, or
    anywhere in `src/` outside `src/theme.ts`, is a bug. */
 :root {
+  /* LT-442: the type scale. Every font-size in this file reads one of these;
+     typeScale.test.ts fails on a literal. The spacing set is declared for
+     new rules and not yet enforced. */
+  --text-2xs: 9px;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-md: 12px;
+  --text-lg: 13px;
+  --text-xl: 14px;
+  --text-2xl: 16px;
+  --text-3xl: 18px;
+  --text-4xl: 20px;
+  --text-display: 30px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
   /* The chrome is dark, always (LT-046), and the browser has to be told so —
      this is not decoration (LT-328).
      A page that declares no colour scheme is assumed to be light, and every
@@ -170,11 +188,11 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
-  font-size: 13px;
+  font-size: var(--text-lg);
   -webkit-font-smoothing: antialiased;
 }
 
-.cv-mono { font-family: var(--mono); font-size: 12px; }
+.cv-mono { font-family: var(--mono); font-size: var(--text-md); }
 .cv-sr {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
@@ -259,7 +277,7 @@ body {
   width: 14px; height: 54px; padding: 0;
   background: var(--panel-2); color: var(--text-dim);
   border: 1px solid var(--line); border-radius: 4px;
-  font-size: 12px; line-height: 1; cursor: pointer;
+  font-size: var(--text-md); line-height: 1; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
 .cv-rail:hover { background: var(--panel); color: var(--text); border-color: var(--line-strong); }
@@ -327,27 +345,27 @@ a:hover { color: var(--text); }
 .cv-project-name { font-weight: 600; }
 .cv-project-sub, .cv-project-date { color: var(--text-dim); }
 .cv-ticket {
-  font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+  font-family: var(--mono); font-size: var(--text-sm); color: var(--text-dim);
   border: 1px solid var(--line-strong); border-radius: 4px; padding: 1px 6px;
 }
 /* LT-384: the login transcript a failed device left behind. */
 .cv-failure-log { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
-.cv-failure-log-path { font-size: 11px; word-break: break-all; color: var(--text-dim); }
-.cv-btn-small { padding: 1px 6px; font-size: 11px; }
-.cv-save-state { color: var(--text-faint); font-size: 11px; display: inline-flex; align-items: center; gap: 4px; }
+.cv-failure-log-path { font-size: var(--text-sm); word-break: break-all; color: var(--text-dim); }
+.cv-btn-small { padding: 1px 6px; font-size: var(--text-sm); }
+.cv-save-state { color: var(--text-faint); font-size: var(--text-sm); display: inline-flex; align-items: center; gap: 4px; }
 .cv-save-state.is-dirty { color: var(--warning); }
 /* LT-380: the answer to pressing Save. It is a chrome element, so it reads a
    chrome token — --healthy is defined in :root and again under .is-contrast,
    and does not flip with the ground. */
 .cv-save-state.is-acknowledged { color: var(--healthy); font-weight: 600; }
-.cv-save-tick { font-size: 12px; line-height: 1; }
+.cv-save-tick { font-size: var(--text-md); line-height: 1; }
 
 .cv-topbar-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .cv-divider { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
 
 .cv-session-state {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; color: var(--text-dim);
+  font-size: var(--text-md); color: var(--text-dim);
   padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px;
 }
 .cv-session-state .cv-dot {
@@ -360,7 +378,7 @@ a:hover { color: var(--text); }
 
 .cv-counts { display: flex; gap: 4px; }
 .cv-count {
-  font-size: 11px; padding: 2px 7px; border-radius: 4px;
+  font-size: var(--text-sm); padding: 2px 7px; border-radius: 4px;
   border: 1px solid var(--line); color: var(--text-dim);
 }
 .cv-count.is-healthy { color: var(--healthy); }
@@ -372,11 +390,11 @@ a:hover { color: var(--text); }
 .cv-btn {
   background: var(--panel-2); color: var(--text);
   border: 1px solid var(--line-strong); border-radius: var(--radius);
-  padding: 5px 11px; font-size: 12px; font-family: inherit; cursor: pointer;
+  padding: 5px 11px; font-size: var(--text-md); font-family: inherit; cursor: pointer;
 }
 .cv-btn:hover:not(:disabled) { background: var(--hover); border-color: var(--line-strong); }
 .cv-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.cv-btn-small { padding: 2px 7px; font-size: 11px; }
+.cv-btn-small { padding: 2px 7px; font-size: var(--text-sm); }
 .cv-btn.is-active { border-color: var(--accent); color: var(--accent); }
 .cv-btn.is-danger, .cv-btn-small.is-danger { border-color: var(--danger-line); color: var(--down); }
 .cv-btn.is-danger:hover { background: var(--danger-hover); }
@@ -388,7 +406,7 @@ a:hover { color: var(--text); }
      not turn white when the canvas does (LT-315). */
   width: 100%; background: var(--bg-raised); color: var(--text);
   border: 1px solid var(--chrome-edge); border-radius: var(--radius);
-  padding: 5px 8px; font-size: 12px; font-family: inherit;
+  padding: 5px 8px; font-size: var(--text-md); font-family: inherit;
   /* An input's own idea of how wide it should be is about 180px, and that
      beats a flex parent's `min-width: 0` — which is why three fields in a row
      pushed the inspector 229px wider than the panel and put a horizontal
@@ -421,25 +439,25 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-color { width: 100%; height: 28px; background: none; border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 1px; }
 
 .cv-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 9px; flex: 1; min-width: 0; }
-.cv-field-label { font-size: 11px; color: var(--text-dim); }
-.cv-field-hint { font-size: 10px; color: var(--text-faint); }
+.cv-field-label { font-size: var(--text-sm); color: var(--text-dim); }
+.cv-field-hint { font-size: var(--text-xs); color: var(--text-faint); }
 .cv-field-hint.is-danger { color: var(--down); }
 /* Wraps rather than overflowing. A row of three controls in a 340px panel is
    two rows, not a row you have to scroll. */
 .cv-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .cv-row > .cv-field { flex: 1 1 132px; }
 .cv-checks { display: flex; flex-direction: column; gap: 5px; margin: 8px 0; }
-.cv-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); cursor: pointer; }
+.cv-check { display: flex; align-items: center; gap: 6px; font-size: var(--text-md); color: var(--text-dim); cursor: pointer; }
 .cv-check-inline { margin: 0; white-space: nowrap; }
-.cv-help { color: var(--text-faint); font-size: 11px; line-height: 1.5; }
-.cv-error { color: var(--down); font-size: 12px; }
+.cv-help { color: var(--text-faint); font-size: var(--text-sm); line-height: 1.5; }
+.cv-error { color: var(--down); font-size: var(--text-md); }
 
 /* The status pill. Its own class, after three components shared .cv-chip and
    the filter-chip rules further down clobbered this ink with --text-dim —
    dim grey on bright green, the LT-048 bug. */
 .cv-status-chip {
   display: inline-flex; align-items: center; gap: 4px;
-  font-size: 10px; font-weight: 600; color: var(--on-status);
+  font-size: var(--text-xs); font-weight: 600; color: var(--on-status);
   padding: 1px 7px; border-radius: 999px; white-space: nowrap;
 }
 
@@ -454,7 +472,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 }
 .cv-dropdown-menu button {
   text-align: left; background: none; border: none; color: var(--text);
-  padding: 6px 9px; font-size: 12px; font-family: inherit; cursor: pointer; border-radius: 4px;
+  padding: 6px 9px; font-size: var(--text-md); font-family: inherit; cursor: pointer; border-radius: 4px;
 }
 .cv-dropdown-menu button:hover { background: var(--panel-2); }
 
@@ -470,7 +488,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 }
 .cv-palette-search { margin-bottom: 10px; }
 .cv-palette-group h3 {
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em;
   color: var(--text-faint); margin: 12px 0 6px;
 }
 .cv-palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
@@ -478,13 +496,13 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   background: var(--panel-2); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 8px 4px;
-  font-size: 10px; color: var(--text-dim); font-family: inherit;
+  font-size: var(--text-xs); color: var(--text-dim); font-family: inherit;
   cursor: grab; text-align: center; line-height: 1.25;
 }
 .cv-palette-item:hover { border-color: var(--accent); color: var(--text); }
 .cv-palette-icon { width: 22px; height: 22px; color: var(--accent); }
-.cv-palette-glyph { font-size: 18px; color: var(--accent); line-height: 22px; }
-.cv-palette-hint { color: var(--text-faint); font-size: 10px; margin-top: 14px; }
+.cv-palette-glyph { font-size: var(--text-3xl); color: var(--accent); line-height: 22px; }
+.cv-palette-hint { color: var(--text-faint); font-size: var(--text-xs); margin-top: 14px; }
 /* A captured shape (LT-104) — its own remove "×", pinned to the corner of
    the draggable tile rather than nested inside it (a button in a button is
    invalid markup, and a nested one is exactly the kind of element the
@@ -494,7 +512,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-palette-item-remove {
   position: absolute; top: 3px; right: 3px; z-index: 1;
   background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px;
-  color: var(--text-dim); font-size: 11px; line-height: 1; padding: 1px 4px; cursor: pointer;
+  color: var(--text-dim); font-size: var(--text-sm); line-height: 1; padding: 1px 4px; cursor: pointer;
 }
 .cv-palette-item-remove:hover { color: var(--down); border-color: var(--down); }
 
@@ -502,7 +520,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 
 /* Background is stated once, with the ground, near the top of this file. */
 .cv-canvas { position: relative; min-width: 0; }
-.react-flow__attribution { background: transparent; color: var(--text-faint); font-size: 9px; }
+.react-flow__attribution { background: transparent; color: var(--text-faint); font-size: var(--text-2xs); }
 .react-flow__controls button {
   background: var(--panel-2); border-bottom: 1px solid var(--line); fill: var(--text-dim);
 }
@@ -551,8 +569,8 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-node-icon svg { width: 100%; height: 100%; }
 .cv-node-image { width: 30px; height: 30px; object-fit: contain; }
 .cv-node-text { min-width: 0; }
-.cv-node-label { font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cv-node-detail { font-size: 10px; color: var(--ink-muted); margin-top: 2px; line-height: 1.4; }
+.cv-node-label { font-weight: 600; font-size: var(--text-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-node-detail { font-size: var(--text-xs); color: var(--ink-muted); margin-top: 2px; line-height: 1.4; }
 .cv-node-status-line { font-weight: 600; }
 .cv-node-maint { color: var(--maintenance); }
 
@@ -560,12 +578,12 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   position: absolute; top: -8px; right: -8px; z-index: 2;
   width: 17px; height: 17px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 700; color: var(--on-status);
+  font-size: var(--text-xs); font-weight: 700; color: var(--on-status);
   border: 2px solid var(--bg);
 }
-.cv-lock { position: absolute; top: -8px; left: -8px; font-size: 10px; }
+.cv-lock { position: absolute; top: -8px; left: -8px; font-size: var(--text-xs); }
 .cv-node-link {
-  position: absolute; bottom: -8px; left: -8px; font-size: 10px;
+  position: absolute; bottom: -8px; left: -8px; font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -605,7 +623,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
      is clickable, so it loses nothing by standing aside. */
   position: absolute; pointer-events: none;
   background: var(--label-bg); border: 1px solid var(--page-border);
-  border-radius: 4px; padding: 1px 6px; font-size: 10px; color: var(--ink);
+  border-radius: 4px; padding: 1px 6px; font-size: var(--text-xs); color: var(--ink);
   font-family: var(--mono); white-space: nowrap;
 }
 /* A port label is the thing on a link that is read most and is written
@@ -630,7 +648,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 }
 .cv-menu button {
   text-align: left; background: none; border: none; color: var(--text);
-  padding: 6px 9px; font-size: 12px; font-family: inherit; cursor: pointer; border-radius: 4px;
+  padding: 6px 9px; font-size: var(--text-md); font-family: inherit; cursor: pointer; border-radius: 4px;
 }
 .cv-menu button:hover { background: var(--panel-2); }
 .cv-menu button.is-danger { color: var(--down); }
@@ -652,25 +670,25 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-inspector .cv-help,
 .cv-inspector .cv-field-hint { overflow-wrap: anywhere; }
 .cv-inspector-title {
-  font-size: 13px; margin: 0 0 12px;
+  font-size: var(--text-lg); margin: 0 0 12px;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
 .cv-section { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }
 .cv-section h3 {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+  font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.07em;
   color: var(--text-faint); margin: 0 0 8px;
   display: flex; align-items: center; justify-content: space-between;
 }
 .cv-addr { display: grid; grid-template-columns: 90px 1fr auto auto; gap: 4px; margin-bottom: 5px; align-items: center; }
-.cv-addr-label { font-size: 11px; }
+.cv-addr-label { font-size: var(--text-sm); }
 
 .cv-probe { border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 8px; }
 .cv-probe-head { display: flex; align-items: center; gap: 6px; padding: 6px; background: var(--panel-2); }
-.cv-probe-toggle { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 11px; }
+.cv-probe-toggle { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: var(--text-sm); }
 .cv-probe-name { flex: 1; }
 .cv-probe-body { padding: 8px; }
 .cv-probe-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
-.cv-probe-result { color: var(--text-dim); font-size: 11px; }
+.cv-probe-result { color: var(--text-dim); font-size: var(--text-sm); }
 
 /* ------------------------------------------------------------------ panel */
 
@@ -690,28 +708,28 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-panel.is-collapsed {
   height: auto; flex-direction: row; align-items: center; gap: 14px; padding: 6px 12px;
 }
-.cv-panel-summary { display: flex; gap: 12px; font-family: var(--mono); font-size: 11px; }
+.cv-panel-summary { display: flex; gap: 12px; font-family: var(--mono); font-size: var(--text-sm); }
 .cv-panel-head {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
   padding: 6px 10px; border-bottom: 1px solid var(--line);
 }
 .cv-panel-search { max-width: 320px; }
-.cv-panel-message { padding: 6px 12px; background: var(--panel-2); color: var(--text-dim); font-size: 11px; }
+.cv-panel-message { padding: 6px 12px; background: var(--panel-2); color: var(--text-dim); font-size: var(--text-sm); }
 .cv-panel-body { flex: 1; overflow: auto; }
 .cv-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
 .cv-tabs button {
   white-space: nowrap;
   background: none; border: 1px solid transparent; color: var(--text-dim);
-  padding: 4px 10px; border-radius: var(--radius); font-size: 12px; font-family: inherit; cursor: pointer;
+  padding: 4px 10px; border-radius: var(--radius); font-size: var(--text-md); font-family: inherit; cursor: pointer;
 }
 .cv-tabs button.is-active { background: var(--panel-2); border-color: var(--line-strong); color: var(--text); }
 
-.cv-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.cv-table { width: 100%; border-collapse: collapse; font-size: var(--text-md); }
 .cv-table th {
   position: sticky; top: 0; z-index: 1;
   text-align: left; font-weight: 600; color: var(--text-faint);
   background: var(--chrome); border-bottom: 1px solid var(--chrome-edge);
-  padding: 6px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 6px 10px; font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em;
 }
 /* Rows are content and the header is furniture, so they differ — but both come
    from the chrome set. Taking the rows from `--page` meant the ground toggle
@@ -725,12 +743,12 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 
 .cv-welcome { flex: 1; overflow-y: auto; background: radial-gradient(1100px 500px at 50% -10%, var(--welcome-glow) 0%, var(--desk) 62%); }
 .cv-welcome-inner { max-width: 900px; margin: 0 auto; padding: 56px 24px 64px; }
-.cv-welcome-head h1 { font-size: 30px; letter-spacing: 0.02em; margin: 0 0 8px; }
+.cv-welcome-head h1 { font-size: var(--text-display); letter-spacing: 0.02em; margin: 0 0 8px; }
 .cv-welcome-head p { color: var(--text-dim); max-width: 620px; line-height: 1.6; margin: 0; }
 .cv-welcome-actions { display: flex; align-items: center; gap: 10px; margin: 26px 0 8px; }
 .cv-welcome-section { margin-top: 34px; }
-.cv-welcome-section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
-.cv-welcome-foot { margin-top: 44px; color: var(--text-faint); font-size: 11px; }
+.cv-welcome-section h2 { font-size: var(--text-lg); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
+.cv-welcome-foot { margin-top: 44px; color: var(--text-faint); font-size: var(--text-sm); }
 
 .cv-project-list { list-style: none; margin: 0; padding: 0; }
 .cv-project-list li {
@@ -744,7 +762,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   padding: 10px 12px; cursor: pointer; font-family: inherit;
 }
 .cv-project-title { font-weight: 600; }
-.cv-project-meta, .cv-project-date { color: var(--text-faint); font-size: 11px; }
+.cv-project-meta, .cv-project-date { color: var(--text-faint); font-size: var(--text-sm); }
 .cv-project-tools { display: flex; gap: 5px; }
 
 .cv-sample-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-top: 10px; }
@@ -754,8 +772,8 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   display: grid; gap: 5px; font-family: inherit; color: var(--text);
 }
 .cv-sample:hover { border-color: var(--accent); }
-.cv-sample-title { font-weight: 600; font-size: 12px; }
-.cv-sample-desc { color: var(--text-faint); font-size: 11px; line-height: 1.5; }
+.cv-sample-title { font-weight: 600; font-size: var(--text-md); }
+.cv-sample-desc { color: var(--text-faint); font-size: var(--text-sm); line-height: 1.5; }
 
 .cv-modal-backdrop {
   position: fixed; inset: 0; z-index: 200;
@@ -767,8 +785,8 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   border-radius: 10px; padding: 22px; max-width: 560px; width: 100%;
   box-shadow: 0 24px 60px var(--shadow-deep);
 }
-.cv-modal h2 { margin: 0 0 12px; font-size: 16px; }
-.cv-modal h3 { margin: 16px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-faint); }
+.cv-modal h2 { margin: 0 0 12px; font-size: var(--text-2xl); }
+.cv-modal h3 { margin: 16px 0 4px; font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-faint); }
 .cv-modal p { color: var(--text-dim); line-height: 1.6; margin: 0 0 8px; }
 .cv-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 
@@ -825,7 +843,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   display: grid;
   gap: 6px;
   padding: 0 2px 6px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 
@@ -876,7 +894,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 /* ---- folder settings --------------------------------------------------- */
 .cv-folders { margin-top: 34px; }
 .cv-folders h2 {
-  font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+  font-size: var(--text-md); letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--text-faint); font-weight: 600; margin: 0 0 12px;
 }
 .cv-folder-row {
@@ -891,7 +909,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-folder-path {
   display: block; margin: 8px 0 6px; padding: 6px 8px;
   background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
-  font-size: 12px; color: var(--text);
+  font-size: var(--text-md); color: var(--text);
   overflow-wrap: anywhere;
 }
 .cv-folder-path.is-unset { color: var(--text-faint); font-style: italic; }
@@ -907,9 +925,9 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-field { display: flex; flex-direction: column; gap: 4px; flex: 0 1 300px; min-width: 180px; }
 .cv-field-narrow { flex: 0 0 110px; min-width: 110px; }
 .cv-field > span {
-  font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint);
+  font-size: var(--text-sm); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint);
 }
-.cv-discover-status { margin: 10px 0 0; font-size: 12px; color: var(--text-dim); }
+.cv-discover-status { margin: 10px 0 0; font-size: var(--text-md); color: var(--text-dim); }
 .cv-discover-problem { color: var(--down); }
 .cv-discover-empty { padding: 16px; }
 
@@ -954,7 +972,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-failure-group { margin: 8px 0 2px; }
 .cv-failure-group h5 {
   margin: 0 0 2px;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--text);
 }
@@ -969,7 +987,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   border-radius: 3px;
   background: var(--panel-2);
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 16px;
 }
 .cv-mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -979,25 +997,25 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
    in the field row is pushed off the edge of the window. */
 .cv-discover-run {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  margin-top: 12px; font-size: 12px;
+  margin-top: 12px; font-size: var(--text-md);
 }
 .cv-discover-push {
   margin: 10px 0 0; padding: 8px 12px;
   border: 1px solid var(--warning); border-left-width: 3px;
   border-radius: var(--radius);
   background: rgba(232, 163, 61, 0.08);
-  color: var(--text); font-size: 13px;
+  color: var(--text); font-size: var(--text-lg);
 }
 .cv-discover-filter {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   margin: 14px 0 4px;
 }
 .cv-filter-label {
-  font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  font-size: var(--text-sm); letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--text-faint); margin-right: 2px;
 }
 .cv-chip {
-  font: inherit; font-size: 12px; cursor: pointer;
+  font: inherit; font-size: var(--text-md); cursor: pointer;
   padding: 3px 9px; border-radius: 999px;
   border: 1px solid var(--line-strong); background: var(--panel);
   color: var(--text-dim);
@@ -1008,14 +1026,14 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-filter-search { flex: 0 1 240px; margin-left: auto; }
 .cv-reached { color: var(--healthy); }
 .cv-seen { color: var(--text-faint); }
-.cv-discover-failures { margin-top: 12px; font-size: 12px; color: var(--text-dim); }
+.cv-discover-failures { margin-top: 12px; font-size: var(--text-md); color: var(--text-dim); }
 .cv-discover-failures summary { cursor: pointer; color: var(--down); }
 .cv-discover-failures ul { margin: 8px 0 0; padding-left: 18px; }
 .cv-discover-failures li { margin-bottom: 4px; }
 .cv-discover-live-failed { margin: 6px 0 0; color: var(--warning); }
 .cv-snmp { margin-top: 12px; }
 .cv-snmp > summary {
-  cursor: pointer; font-size: 12px; color: var(--text-dim);
+  cursor: pointer; font-size: var(--text-md); color: var(--text-dim);
   padding: 4px 0; user-select: none;
 }
 .cv-snmp > summary:hover { color: var(--text); }
@@ -1051,23 +1069,23 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 /* The saved-views menu is sized to what it says. As a generic input it took
    whatever width the bar had left, which pushed the filter box off its place. */
 .cv-ipam-views { flex: 0 0 auto; width: auto; max-width: 220px; }
-.cv-ipam-columns > summary { cursor: pointer; list-style: none; padding: 3px 8px; border: 1px solid var(--line); border-radius: 4px; color: var(--text-dim); font-size: 12px; }
+.cv-ipam-columns > summary { cursor: pointer; list-style: none; padding: 3px 8px; border: 1px solid var(--line); border-radius: 4px; color: var(--text-dim); font-size: var(--text-md); }
 .cv-ipam-columns[open] > summary { color: var(--text); border-color: var(--accent); }
 .cv-ipam-columns-list { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 200px; max-height: 360px; overflow-y: auto; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; display: grid; gap: 4px; }
 .cv-ipam-columns-list .cv-help { margin: 6px 0 0; }
 .cv-ipam-setup { display: grid; gap: 24px; padding: 12px 16px; max-width: 980px; }
-.cv-ipam-setup-section h3 { margin: 0 0 4px; font-size: 14px; }
+.cv-ipam-setup-section h3 { margin: 0 0 4px; font-size: var(--text-xl); }
 .cv-ipam-setup-section > .cv-help { max-width: 70ch; margin: 0 0 8px; }
 .cv-ipam-setup-section .cv-table { margin-bottom: 8px; }
 .cv-setup-on { border: none; margin: 0; padding: 0; display: flex; gap: 10px; align-items: center; }
-.cv-setup-on > legend { font-size: 11px; color: var(--text-dim); padding: 0; margin-bottom: 2px; }
-.cv-ipam-where { display: block; font-size: 11px; }
+.cv-setup-on > legend { font-size: var(--text-sm); color: var(--text-dim); padding: 0; margin-bottom: 2px; }
+.cv-ipam-where { display: block; font-size: var(--text-sm); }
 /* LT-294: the ranges sit above the addresses they cover. */
 .cv-ipam-ranges { margin: 0 0 10px; }
-.cv-ipam-ranges th { font-size: 10px; color: var(--text-faint); }
+.cv-ipam-ranges th { font-size: var(--text-xs); color: var(--text-faint); }
 .cv-ipam-ranges td { font-variant-numeric: tabular-nums; }
 .cv-ipam-addresses { margin: 0; }
-.cv-ipam-addresses th { font-size: 10px; color: var(--text-faint); }
+.cv-ipam-addresses th { font-size: var(--text-xs); color: var(--text-faint); }
 .cv-ipam-addresses td { font-variant-numeric: tabular-nums; }
 
 /* ---- the guide, in the app (LT-303) ------------------------------------ */
@@ -1084,12 +1102,12 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-help-body { overflow: auto; padding: 18px 26px 60px; max-width: 86ch; line-height: 1.6; }
 .cv-help-body p, .cv-help-body ul, .cv-help-body ol { margin: 0 0 12px; }
 .cv-help-body li { margin: 0 0 4px; }
-.cv-help-h2 { font-size: 17px; margin: 0 0 14px; }
-.cv-help-h3 { font-size: 13px; margin: 20px 0 8px; color: var(--text); }
-.cv-help-body code { background: var(--panel); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+.cv-help-h2 { font-size: var(--text-3xl); margin: 0 0 14px; }
+.cv-help-h3 { font-size: var(--text-lg); margin: 20px 0 8px; color: var(--text); }
+.cv-help-body code { background: var(--panel); padding: 1px 5px; border-radius: 3px; font-size: var(--text-md); }
 .cv-help-code {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 10px 12px; overflow-x: auto; font-size: 12px; line-height: 1.5;
+  padding: 10px 12px; overflow-x: auto; font-size: var(--text-md); line-height: 1.5;
 }
 .cv-help-code code { background: none; padding: 0; }
 .cv-help-body blockquote {
@@ -1113,7 +1131,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel);
 }
-.cv-register-title { font-size: 14px; margin: 0; font-weight: 600; }
+.cv-register-title { font-size: var(--text-xl); margin: 0; font-weight: 600; }
 .cv-register-project { color: var(--text-dim); font-weight: 400; }
 .cv-register-back { margin-left: auto; }
 .cv-register-body { flex: 1; min-height: 0; overflow: auto; padding: 14px; }
@@ -1126,7 +1144,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-settings { display: flex; flex-direction: column; gap: 18px; padding: 14px; max-width: 980px; }
 .cv-settings-block { display: flex; flex-direction: column; gap: 8px; }
 .cv-settings-block h2 {
-  margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  margin: 0; font-size: var(--text-sm); font-weight: 600; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--text-dim);
 }
 .cv-settings-block > .cv-help { margin: 0; max-width: 78ch; }
@@ -1136,13 +1154,13 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 /* LT-346: Trace path. */
 .cv-pathtrace { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; }
 .cv-trace-path { display: flex; flex-direction: column; gap: 6px; }
-.cv-trace-ecmp { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
-.cv-trace-why > summary { cursor: pointer; font-size: 11px; color: var(--text-dim); padding: 4px 0; }
+.cv-trace-ecmp { font-size: var(--text-sm); color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.cv-trace-why > summary { cursor: pointer; font-size: var(--text-sm); color: var(--text-dim); padding: 4px 0; }
 .cv-trace-why > summary:hover { color: var(--text); }
-.cv-trace-reasons { margin: 4px 0 0; padding-left: 20px; font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+.cv-trace-reasons { margin: 4px 0 0; padding-left: 20px; font-size: var(--text-md); display: flex; flex-direction: column; gap: 6px; }
 .cv-trace-reasons .cv-help { margin: 2px 0 0; }
 .cv-trace-insufficient { border-left: 2px solid var(--warning); padding-left: 8px; }
-.cv-trace-simulate > summary { cursor: pointer; font-size: 11px; color: var(--text-dim); padding: 4px 0; }
+.cv-trace-simulate > summary { cursor: pointer; font-size: var(--text-sm); color: var(--text-dim); padding: 4px 0; }
 .cv-trace-simulate > summary:hover { color: var(--text); }
 .cv-trace-targets { display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 0; }
 .cv-trace-simulating { color: var(--warning); }
@@ -1152,7 +1170,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 /* LT-336: a deduction, marked as one. */
 .cv-inferred-note { color: var(--text-dim); border-left: 2px solid var(--line-strong); padding-left: 8px; }
 .cv-settings-vault > summary {
-  cursor: pointer; padding: 6px 0; font-size: 11px; color: var(--text-dim);
+  cursor: pointer; padding: 6px 0; font-size: var(--text-sm); color: var(--text-dim);
   text-transform: uppercase; letter-spacing: 0.05em;
 }
 .cv-settings-vault > summary:hover { color: var(--text); }
@@ -1174,7 +1192,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-lab-view section > .cv-lab-problems, .cv-lab-view section > p { align-self: stretch; }
 .cv-lab-bar { display: flex; align-items: center; gap: 10px; }
 .cv-lab-bar .cv-help { margin: 0; }
-.cv-lab-h3 { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin: 6px 0 0; }
+.cv-lab-h3 { font-size: var(--text-sm); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin: 6px 0 0; }
 .cv-lab-note { max-width: 96ch; margin: 0; }
 .cv-lab-said { color: var(--healthy); }
 .cv-lab-free { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -1182,7 +1200,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-lab-container td:first-child { font-weight: 600; }
 .cv-lab-subnet td { color: var(--text-dim); }
 .cv-pill-container, .cv-pill-subnet {
-  display: inline-block; font-size: 10px; padding: 0 6px; border-radius: 9px; border: 1px solid;
+  display: inline-block; font-size: var(--text-xs); padding: 0 6px; border-radius: 9px; border: 1px solid;
 }
 .cv-pill-container { color: var(--accent); border-color: var(--accent); }
 .cv-pill-subnet { color: var(--healthy); border-color: var(--healthy); }
@@ -1192,9 +1210,9 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   border: 1px solid var(--down); border-radius: var(--radius); padding: 9px 12px; background: var(--panel);
 }
 .cv-lab-conflicts ul, .cv-lab-problems ul { margin: 6px 0 0; padding-left: 18px; }
-.cv-lab-conflicts li, .cv-lab-problems li { font-size: 12px; color: var(--text-dim); }
+.cv-lab-conflicts li, .cv-lab-problems li { font-size: var(--text-md); color: var(--text-dim); }
 .cv-lab-problems p { margin: 0; color: var(--down); }
-.cv-lab-diff { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; }
+.cv-lab-diff { display: flex; flex-direction: column; gap: 2px; font-size: var(--text-md); }
 .cv-diff-out { color: var(--down); }
 .cv-diff-in { color: var(--healthy); }
 .cv-lab-wizard section { border-top: 1px solid var(--line); padding-top: 8px; }
@@ -1208,19 +1226,67 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 }
 @media (max-width: 1100px) { .cv-backup-columns { grid-template-columns: 1fr; } }
 .cv-backup-head {
-  font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase;
+  font-size: var(--text-sm); letter-spacing: 0.07em; text-transform: uppercase;
   color: var(--text-faint); font-weight: 600; margin: 0 0 8px;
 }
 .cv-backup-list { list-style: none; margin: 0; padding: 0; }
 .cv-backup-list button {
-  font: inherit; font-size: 13px; text-align: left; width: 100%;
+  font: inherit; font-size: var(--text-lg); text-align: left; width: 100%;
   background: none; border: none; color: var(--text); cursor: pointer;
   padding: 5px 8px; border-radius: 4px;
 }
 .cv-backup-list button:hover { background: var(--panel-2); }
 .cv-backup-list button.is-open { background: var(--panel-2); color: var(--accent); }
 .cv-backup-captures { margin-top: 10px; }
-.cv-backup-captures ul { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; }
+/* LT-445: a filter above a long list; LT-449: what an empty list says. */
+.cv-list-filter { margin: 6px 0; max-width: 320px; }
+/* LT-444: the drawer, over the inspector's side of the window. */
+.cv-drawer {
+  position: fixed; top: 44px; right: 0; bottom: 0; z-index: 40;
+  width: clamp(360px, 40vw, 640px);
+  background: var(--chrome); border-left: 1px solid var(--chrome-edge);
+  box-shadow: -8px 0 24px var(--shadow);
+  display: flex; flex-direction: column;
+}
+.cv-drawer-head { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--chrome-edge); }
+.cv-drawer-body { padding: 12px; overflow-y: auto; overflow-x: hidden; }
+.cv-drawer-body * { max-width: 100%; }
+.cv-drawer-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 16px; margin: 8px 0 12px; }
+.cv-drawer-fact { font-size: var(--text-md); }
+.cv-drawer-fact .cv-help { display: block; }
+.cv-drawer-message { padding: 8px 10px; border-left: 3px solid var(--warning); background: var(--panel-2); }
+.cv-drawer-message.is-info { border-left-color: var(--accent); }
+.cv-drawer-history, .cv-drawer-devices { list-style: none; margin: 0; padding: 0; font-size: var(--text-md); }
+.cv-drawer-history li, .cv-drawer-devices li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.cv-open-drawer { margin-bottom: 8px; }
+.cv-finding-open { margin-left: 6px; }
+/* LT-446: the selection bar and its tick column. */
+.cv-select-bar { display: flex; align-items: center; gap: 8px; padding: 4px 8px; margin: 4px 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; font-size: var(--text-md); }
+.cv-pick-col { width: 24px; text-align: center; }
+tr[data-picked="yes"] td { background: var(--hover); }
+.cv-empty { margin: 8px 0; }
+.cv-empty-what { color: var(--text); }
+/* LT-443: the running jobs, one header each. */
+.cv-jobs { display: flex; flex-direction: column; gap: 4px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.cv-jobs.is-compact { flex-direction: row; flex-wrap: wrap; padding: 0; border: 0; background: transparent; gap: 8px; }
+.cv-job { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-md); }
+.cv-job-line { color: var(--text-dim); }
+.cv-job.is-stopping .cv-job-line { color: var(--text-faint); }
+.cv-job-progress { width: 90px; height: 6px; accent-color: var(--accent); }
+/* LT-437: the intent rules under the findings. */
+.cv-intent-rules { margin-top: 10px; }
+.cv-intent-list { list-style: none; margin: 6px 0 0; padding: 0; font-size: var(--text-md); }
+.cv-intent-list li { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+/* LT-434: a failed check's severity, and the matrix's rows by their worst. */
+.cv-severity { font-size: var(--text-sm); color: var(--text-dim); }
+.cv-severity.is-critical { color: var(--down); }
+.cv-severity.is-warning { color: var(--warning); }
+.cv-check-matrix td { white-space: nowrap; }
+.cv-check-matrix tr[data-worst="critical"] td:first-child { color: var(--down); }
+/* LT-433: whether a capture differs from the one before it of its kind. */
+.cv-backup-badge { margin-left: 8px; font-size: var(--text-sm); color: var(--text-dim); }
+.cv-backup-badge.is-changed { color: var(--warning); }
+.cv-backup-captures ul { list-style: none; margin: 6px 0 0; padding: 0; font-size: var(--text-md); }
 .cv-backup-captures li {
   display: flex; align-items: center; gap: 10px; padding: 3px 0;
 }
@@ -1228,7 +1294,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-diff-body {
   margin: 6px 0 0; padding: 8px 10px; max-height: 200px; overflow: auto;
   background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
-  font-family: var(--mono); font-size: 11px; line-height: 1.5;
+  font-family: var(--mono); font-size: var(--text-sm); line-height: 1.5;
 }
 .cv-diff-body .is-added { color: var(--healthy); }
 .cv-diff-body .is-removed { color: var(--down); }
@@ -1239,7 +1305,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-compared-device { border-top: 1px solid var(--line); padding: 6px 0; }
 .cv-compared-device summary { cursor: pointer; }
 .cv-compared-part { margin: 6px 0 0 14px; }
-.cv-compared-name { margin: 0 0 2px; font-size: 12px; }
+.cv-compared-name { margin: 0 0 2px; font-size: var(--text-md); }
 .cv-compared-status.is-changed { color: var(--warning); }
 .cv-compared-status.is-same,
 .cv-compared-status.is-onlyBefore,
@@ -1257,7 +1323,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-check-results td { vertical-align: top; }
 .cv-verdict {
   display: inline-block; padding: 1px 8px; border: 1px solid currentColor; border-radius: 999px;
-  font-size: 11px; font-weight: 600; white-space: nowrap;
+  font-size: var(--text-sm); font-weight: 600; white-space: nowrap;
 }
 .cv-verdict.is-pass { color: var(--healthy); }
 .cv-verdict.is-fail { color: var(--down); }
@@ -1289,11 +1355,11 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 /* ---- host keys --------------------------------------------------------- */
 .cv-hostkeys { margin-top: 34px; }
 .cv-hostkeys h2 {
-  font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+  font-size: var(--text-md); letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--text-faint); font-weight: 600; margin: 0 0 12px;
 }
 .cv-hostkey-table { margin-top: 10px; }
-.cv-hostkey-table td, .cv-hostkey-table th { font-size: 12px; }
+.cv-hostkey-table td, .cv-hostkey-table th { font-size: var(--text-md); }
 .cv-fingerprint { color: var(--text-dim); overflow-wrap: anywhere; }
 .cv-hostkey-actions {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px;
@@ -1304,7 +1370,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 /* ---- credential vault -------------------------------------------------- */
 .cv-vault { margin-top: 34px; }
 .cv-vault h2 {
-  font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+  font-size: var(--text-md); letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--text-faint); font-weight: 600; margin: 0 0 12px;
 }
 .cv-vault .cv-help { max-width: 62ch; margin-bottom: 10px; }
@@ -1340,7 +1406,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-ssh-tab > button:first-child { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cv-ssh-close {
   background: none; border: 0; color: var(--text-faint); cursor: pointer;
-  padding: 0 6px; font-size: 13px; line-height: 1;
+  padding: 0 6px; font-size: var(--text-lg); line-height: 1;
 }
 .cv-ssh-close:hover { color: var(--down); }
 .cv-ssh-controls {
@@ -1363,14 +1429,14 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   padding: 10px; margin: 6px 8px; border: 1px solid var(--line-strong);
   border-radius: var(--radius); background: var(--bg-raised);
 }
-.cv-ssh-send > strong { font-size: 12px; color: var(--text); }
+.cv-ssh-send > strong { font-size: var(--text-md); color: var(--text); }
 .cv-ssh-send .cv-help { margin: 0; max-width: 70ch; }
 .cv-ssh-targets {
   display: flex; flex-wrap: wrap; gap: 10px; margin: 0;
   border: 1px solid var(--line); border-radius: var(--radius); padding: 8px;
 }
 .cv-ssh-targets > legend {
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--text-dim); padding: 0 4px;
 }
 .cv-ssh-screens { flex: 1; min-height: 0; padding: 6px 8px 8px; }
@@ -1382,7 +1448,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
    colours throughout — the inspector does not follow the canvas ground. */
 .cv-cred-overrides { margin: 8px 0; border: 1px solid var(--line); border-radius: var(--radius); }
 .cv-cred-overrides > summary {
-  cursor: pointer; padding: 6px 9px; font-size: 11px; color: var(--text-dim);
+  cursor: pointer; padding: 6px 9px; font-size: var(--text-sm); color: var(--text-dim);
   text-transform: uppercase; letter-spacing: 0.05em;
 }
 .cv-cred-overrides > summary:hover { color: var(--text); }
@@ -1391,7 +1457,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   padding: 8px 9px; border-top: 1px solid var(--line); background: var(--bg-raised);
 }
 .cv-cred-override-head { display: flex; flex-direction: column; gap: 2px; }
-.cv-cred-override-head strong { font-size: 12px; color: var(--text); }
+.cv-cred-override-head strong { font-size: var(--text-md); color: var(--text); }
 .cv-cred-override-head .cv-help { margin: 0; }
 .cv-cred-override .cv-row { flex-wrap: wrap; gap: 8px; }
 /* LT-345: testing a login, beside the buttons that manage it. */
@@ -1399,7 +1465,7 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-cred-test-at .cv-input { width: 16ch; min-width: 0; }
 .cv-cred-reached { color: var(--healthy); }
 .cv-vault-table { margin-top: 12px; }
-.cv-vault-table td, .cv-vault-table th { font-size: 12px; }
+.cv-vault-table td, .cv-vault-table th { font-size: var(--text-md); }
 .cv-secret-cell { display: flex; align-items: center; gap: 6px; }
 .cv-second-secret { color: var(--text-faint); }
 /* An eye is a control, not de-emphasised text, so it takes `--text-dim`
@@ -1428,13 +1494,13 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 /* ---- subnet list ------------------------------------------------------- */
 .cv-subnets { margin-top: 12px; }
 .cv-subnets-label {
-  display: block; font-size: 11px; letter-spacing: 0.06em;
+  display: block; font-size: var(--text-sm); letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--text-faint); margin-bottom: 6px;
 }
 .cv-subnet-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .cv-subnet-row .cv-input { flex: 0 1 260px; }
 .cv-subnet-row .cv-input.is-bad { border-color: var(--down); }
-.cv-subnet-problem { font-size: 12px; color: var(--down); }
+.cv-subnet-problem { font-size: var(--text-md); color: var(--down); }
 .cv-subnet-actions { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
 
 /* The credential half of an imported package: a distinct block, because it is
@@ -1452,7 +1518,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 /* A tighter cell than the panels this class was written for, but the arrow
    still needs its corner: without this the type name runs under it. */
 .cv-import-table select.cv-input { padding-right: 22px; }
-.cv-import-table .cv-btn { padding: 2px 8px; font-size: 11px; }
+.cv-import-table .cv-btn { padding: 2px 8px; font-size: var(--text-sm); }
 /* A link the drawing did not glue: worked out from where the line was drawn,
    and marked so it can be checked rather than trusted. */
 .cv-import-table tr.cv-row-inferred td:first-child { border-left: 2px solid var(--warning); }
@@ -1530,12 +1596,12 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   position: absolute; top: -4px; right: -6px; z-index: 2;
   width: 15px; height: 15px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 9px; font-weight: 700; color: var(--on-status);
+  font-size: var(--text-2xs); font-weight: 700; color: var(--on-status);
   border: 2px solid var(--desk);
 }
-.cv-glyph-lock { position: absolute; top: -6px; left: -8px; font-size: 9px; }
+.cv-glyph-lock { position: absolute; top: -6px; left: -8px; font-size: var(--text-2xs); }
 .cv-glyph-link {
-  position: absolute; bottom: -6px; left: -8px; font-size: 9px;
+  position: absolute; bottom: -6px; left: -8px; font-size: var(--text-2xs);
   pointer-events: auto; cursor: pointer;
 }
 
@@ -1552,9 +1618,9 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   pointer-events: none;
 }
 .cv-glyph-label, .cv-glyph-text .cv-inline-edit { pointer-events: auto; }
-.cv-glyph-label { font-weight: 600; font-size: 12px; color: var(--ink); }
-.cv-glyph-addr { font-family: var(--mono); font-size: 10px; color: var(--ink-muted); }
-.cv-glyph-status { font-size: 10px; font-weight: 600; }
+.cv-glyph-label { font-weight: 600; font-size: var(--text-md); color: var(--ink); }
+.cv-glyph-addr { font-family: var(--mono); font-size: var(--text-xs); color: var(--ink-muted); }
+.cv-glyph-status { font-size: var(--text-xs); font-weight: 600; }
 
 /* Typing on the diagram itself. Sized and coloured to match the text it
    replaces, so committing a rename does not make the label jump. */
@@ -1573,7 +1639,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 .cv-chip {
   background: var(--panel-2); color: var(--text-dim);
   border: 1px solid var(--line); border-radius: 999px;
-  padding: 2px 10px; font-size: 11px; cursor: pointer;
+  padding: 2px 10px; font-size: var(--text-sm); cursor: pointer;
 }
 .cv-chip:hover:not(:disabled) { border-color: var(--line-strong); color: var(--text); }
 .cv-chip.is-on { background: rgba(94, 184, 255, 0.14); border-color: var(--accent); color: var(--text); }
@@ -1582,7 +1648,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 /* The second credential set: present but folded away, because most estates
    have one login and the form is already long. */
 .cv-backup-creds { margin: 8px 0 2px; }
-.cv-backup-creds > summary { cursor: pointer; color: var(--text-dim); font-size: 12px; }
+.cv-backup-creds > summary { cursor: pointer; color: var(--text-dim); font-size: var(--text-md); }
 .cv-backup-creds > summary:hover { color: var(--text); }
 
 /* A device that has missed a check but has not yet failed enough times to be
@@ -1616,7 +1682,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 /* Silent devices: folded away, because most runs do not want them and the
    results table is the thing people came for. */
 .cv-attached { margin: 10px 0 4px; border-left: 2px solid var(--line); padding-left: 10px; }
-.cv-attached > summary { cursor: pointer; color: var(--text-dim); font-size: 12px; }
+.cv-attached > summary { cursor: pointer; color: var(--text-dim); font-size: var(--text-md); }
 .cv-attached > summary:hover { color: var(--text); }
 
 /* Connection points belong on the shape — and since LT-053 the node's
@@ -1682,7 +1748,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 }
 .cv-find-input {
   background: none; border: none; color: var(--text);
-  padding: 9px 11px; font-size: 13px; font-family: inherit; outline: none;
+  padding: 9px 11px; font-size: var(--text-lg); font-family: inherit; outline: none;
 }
 .cv-find-input::placeholder { color: var(--text-faint); }
 .cv-find-results {
@@ -1692,45 +1758,45 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 .cv-find-results button {
   display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
   text-align: left; background: none; border: none; color: var(--text);
-  padding: 6px 8px; font-size: 12px; font-family: inherit; cursor: pointer; border-radius: 4px;
+  padding: 6px 8px; font-size: var(--text-md); font-family: inherit; cursor: pointer; border-radius: 4px;
 }
 .cv-find-results button:hover { background: var(--panel-2); }
 .cv-find-results button.is-at { background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
 .cv-find-label { font-weight: 600; }
 .cv-find-where {
-  color: var(--text-dim); font-family: var(--mono); font-size: 11px;
+  color: var(--text-dim); font-family: var(--mono); font-size: var(--text-sm);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%;
 }
-.cv-find-empty { padding: 8px 10px; font-size: 12px; color: var(--text-dim); }
+.cv-find-empty { padding: 8px 10px; font-size: var(--text-md); color: var(--text-dim); }
 
 /* --------------------------------------------------------------- changes */
 .cv-change {
   border: 1px solid var(--line-strong); border-radius: var(--radius);
   background: var(--bg-raised); padding: 10px 12px; margin: 12px 0;
 }
-.cv-change h3 { margin: 0 0 6px; font-size: 13px; }
+.cv-change h3 { margin: 0 0 6px; font-size: var(--text-lg); }
 .cv-change-group { margin-top: 10px; }
 .cv-change-group h4 {
-  margin: 0; font-size: 12px; display: flex; align-items: center; gap: 6px;
+  margin: 0; font-size: var(--text-md); display: flex; align-items: center; gap: 6px;
 }
 .cv-change-count {
-  font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+  font-family: var(--mono); font-size: var(--text-sm); color: var(--text-dim);
   background: var(--panel-2); border-radius: 9px; padding: 0 6px;
 }
 .cv-change-group p { margin: 2px 0 4px; }
 .cv-change-group ul { margin: 0; padding-left: 18px; }
-.cv-change-group li { font-size: 12px; font-family: var(--mono); color: var(--text); }
+.cv-change-group li { font-size: var(--text-md); font-family: var(--mono); color: var(--text); }
 
 /* -------------------------------------------------------- bulk selection */
 .cv-inspector-sub {
-  display: block; font-weight: 400; font-size: 11px; color: var(--text-dim);
+  display: block; font-weight: 400; font-size: var(--text-sm); color: var(--text-dim);
   margin-top: 2px;
 }
 .cv-row-tight { display: flex; gap: 6px; align-items: center; }
 .cv-row-tight .cv-input { flex: 1; min-width: 0; }
 .cv-tag-row { display: flex; flex-wrap: wrap; gap: 5px; }
 .cv-tag {
-  font-family: var(--mono); font-size: 11px; color: var(--text);
+  font-family: var(--mono); font-size: var(--text-sm); color: var(--text);
   background: var(--panel-2); border: 1px solid var(--line-strong);
   border-radius: 10px; padding: 2px 8px; cursor: pointer;
 }
@@ -1746,7 +1812,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 .cv-history-windows { display: flex; gap: 2px; }
 .cv-history-windows button {
   background: none; border: 1px solid transparent; color: var(--text-dim);
-  font-family: var(--mono); font-size: 10px; padding: 1px 6px;
+  font-family: var(--mono); font-size: var(--text-xs); padding: 1px 6px;
   border-radius: 4px; cursor: pointer;
 }
 .cv-history-windows button:hover { color: var(--text); }
@@ -1770,7 +1836,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 .cv-history-legend { display: flex; flex-wrap: wrap; gap: 10px; }
 .cv-history-key {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; color: var(--text-dim);
+  font-size: var(--text-sm); color: var(--text-dim);
 }
 .cv-history-key i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
 
@@ -1817,7 +1883,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   padding: 3px 10px 4px;
   max-width: 70%;
 }
-.cv-node.cv-zone .cv-node-label { font-size: 12px; letter-spacing: 0.02em; }
+.cv-node.cv-zone .cv-node-label { font-size: var(--text-md); letter-spacing: 0.02em; }
 .cv-node.cv-zone .cv-node-detail { display: none; }
 .cv-node.cv-zone .react-flow__handle { display: none; }
 /* A section is an area, not a device: it has no address, nothing probes it,
@@ -1869,14 +1935,14 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   pointer-events: none; overflow: visible;
 }
 .cv-boundary-chip {
-  font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
+  font-size: var(--text-sm); font-weight: 700; letter-spacing: 0.02em;
   margin-right: 6px; white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 /* LT-167: the cable tag in a link's centre label. */
 .cv-cable-tag {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px; font-weight: 700; letter-spacing: 0.03em;
+  font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.03em;
 }
 .cv-cable-tag.has-label { margin-right: 5px; padding-right: 5px; border-right: 1px solid currentColor; }
 .cv-boundary-chip.is-invalid { text-decoration: underline wavy; text-underline-offset: 3px; }
@@ -1886,12 +1952,12 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
    across a dozen families, and one flat alphabetical list of them is not
    something anyone finds anything in. */
 .cv-palette-sub {
-  cursor: pointer; list-style: none; font-size: 11px; font-weight: 600;
+  cursor: pointer; list-style: none; font-size: var(--text-sm); font-weight: 600;
   letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-dim);
   padding: 6px 2px 4px; display: flex; align-items: center; gap: 6px;
 }
 .cv-palette-sub::-webkit-details-marker { display: none; }
-.cv-palette-sub::before { content: '▸'; font-size: 9px; transition: transform 120ms ease; }
+.cv-palette-sub::before { content: '▸'; font-size: var(--text-2xs); transition: transform 120ms ease; }
 details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
 .cv-palette-sub:hover { color: var(--text); }
 .cv-palette-count {
@@ -1913,7 +1979,7 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
 /* ---------------------------------------------------------------- views */
 .cv-layers { border-bottom: 1px solid var(--line); margin-bottom: 8px; padding-bottom: 4px; }
 .cv-layers-hidden {
-  font-size: 10px; font-weight: 400; letter-spacing: 0; text-transform: none;
+  font-size: var(--text-xs); font-weight: 400; letter-spacing: 0; text-transform: none;
   color: var(--warning);
 }
 .cv-layers-list {
@@ -1929,14 +1995,14 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
 .cv-layer { display: flex; align-items: center; gap: 4px; }
 .cv-layer-name {
   flex: 1; min-width: 0; background: none; border: 1px solid transparent;
-  color: var(--text); font-size: 12px; font-family: inherit; padding: 2px 5px;
+  color: var(--text); font-size: var(--text-md); font-family: inherit; padding: 2px 5px;
   border-radius: 4px;
 }
 .cv-layer-name:hover { border-color: var(--line); }
 .cv-layer-name:focus { border-color: var(--accent); outline: none; background: var(--bg); }
 .cv-layer-eye, .cv-layer-lock, .cv-layer-print, .cv-layer-remove {
   background: none; border: none; cursor: pointer; padding: 2px 3px;
-  color: var(--text-dim); font-size: 12px; line-height: 1; border-radius: 3px;
+  color: var(--text-dim); font-size: var(--text-md); line-height: 1; border-radius: 3px;
 }
 .cv-layer-eye:hover, .cv-layer-lock:hover, .cv-layer-print:hover, .cv-layer-remove:hover { color: var(--text); }
 .cv-layer-print.is-off { color: var(--text-faint); text-decoration: line-through; }
@@ -1967,21 +2033,21 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
 }
 .cv-page-tab-name {
   min-width: 0; width: 100%; background: none; border: none;
-  color: var(--text); font-size: 12px; font-family: inherit;
+  color: var(--text); font-size: var(--text-md); font-family: inherit;
   padding: 5px 4px; cursor: inherit; text-overflow: ellipsis;
 }
 .cv-page-tab.is-active .cv-page-tab-name { cursor: text; }
 .cv-page-tab-name:focus { outline: none; }
 .cv-page-tab-add {
   background: none; border: none; cursor: pointer; color: var(--text-dim);
-  font-size: 16px; line-height: 1; padding: 0 10px; border-radius: 4px;
+  font-size: var(--text-2xl); line-height: 1; padding: 0 10px; border-radius: 4px;
 }
 .cv-page-tab-add:hover { color: var(--text); background: var(--hover); }
 
 /* LT-183: the page navigator — every page with a sketch of what is on it. */
 .cv-page-nav-toggle {
   background: none; border: none; cursor: pointer; color: var(--text-dim);
-  font-size: 13px; padding: 0 8px; border-radius: 4px; margin-right: 4px;
+  font-size: var(--text-lg); padding: 0 8px; border-radius: 4px; margin-right: 4px;
 }
 .cv-page-nav-toggle:hover, .cv-page-nav-toggle.is-on { color: var(--text); background: var(--hover); }
 .cv-page-tabs:has(.cv-page-nav) { overflow: visible; }
@@ -1994,9 +2060,9 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
 .cv-page-nav-head {
   display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
   padding: 8px 10px; border-bottom: 1px solid var(--line);
-  color: var(--text); font-size: 12px; font-weight: 600;
+  color: var(--text); font-size: var(--text-md); font-weight: 600;
 }
-.cv-page-nav-hint { color: var(--text-dim); font-size: 10px; font-weight: 400; }
+.cv-page-nav-hint { color: var(--text-dim); font-size: var(--text-xs); font-weight: 400; }
 .cv-page-nav-list { list-style: none; margin: 0; padding: 4px; overflow-y: auto; }
 .cv-page-nav-row {
   display: flex; align-items: center; gap: 10px; padding: 4px 6px;
@@ -2011,10 +2077,10 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
 .cv-page-thumb-zone { fill: none; stroke: var(--line); stroke-width: 1; }
 .cv-page-thumb-link { stroke: var(--text-dim); stroke-width: 0.6; opacity: 0.7; }
 .cv-page-nav-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-.cv-page-nav-name { color: var(--text); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cv-page-nav-count { color: var(--text-dim); font-size: 10px; }
+.cv-page-nav-name { color: var(--text); font-size: var(--text-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-page-nav-count { color: var(--text-dim); font-size: var(--text-xs); }
 .cv-page-nav-rename {
-  font: inherit; font-size: 12px; color: var(--text); background: var(--bg);
+  font: inherit; font-size: var(--text-md); color: var(--text); background: var(--bg);
   border: 1px solid var(--accent); border-radius: 3px; padding: 1px 4px;
 }
 
@@ -2044,16 +2110,16 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
 }
 .cv-legend-head {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  font-size: var(--text-sm); font-weight: 600; letter-spacing: 0.04em;
   text-transform: uppercase; color: var(--text-dim); margin-bottom: 5px;
 }
 .cv-legend-off {
   background: none; border: none; color: var(--text-dim); cursor: pointer;
-  font-size: 13px; line-height: 1; padding: 0 2px;
+  font-size: var(--text-lg); line-height: 1; padding: 0 2px;
 }
 .cv-legend-off:hover { color: var(--text); }
 .cv-legend-items { display: flex; flex-direction: column; gap: 3px; }
-.cv-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.cv-legend-item { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); }
 .cv-legend-item i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
 .cv-legend-key {
   font-family: var(--mono); color: var(--text);
@@ -2069,7 +2135,7 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
 }
 .cv-dropdown-field label {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  font-size: 11px; color: var(--text-dim);
+  font-size: var(--text-sm); color: var(--text-dim);
 }
 .cv-dropdown-field .cv-input { width: 130px; }
 /* A line in the change report that can be gone to. */
@@ -2125,18 +2191,18 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
   padding: 18px 22px; max-width: 760px; max-height: 80vh; overflow-y: auto;
 }
 .cv-help-head { display: flex; justify-content: space-between; align-items: center; }
-.cv-help-head h2 { margin: 0 0 6px; font-size: 15px; }
+.cv-help-head h2 { margin: 0 0 6px; font-size: var(--text-xl); }
 .cv-help-head button {
-  background: none; border: none; font-size: 18px; cursor: pointer; color: var(--text-dim);
+  background: none; border: none; font-size: var(--text-3xl); cursor: pointer; color: var(--text-dim);
 }
 .cv-help-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 4px 26px; }
 .cv-help-cols h3 {
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--text-faint); margin: 12px 0 4px;
 }
-.cv-help-row { display: flex; gap: 10px; align-items: baseline; padding: 2px 0; font-size: 12px; }
+.cv-help-row { display: flex; gap: 10px; align-items: baseline; padding: 2px 0; font-size: var(--text-md); }
 .cv-help-row kbd {
-  font-family: var(--mono); font-size: 10.5px; white-space: nowrap;
+  font-family: var(--mono); font-size: var(--text-xs); white-space: nowrap;
   background: var(--bg-raised); border: 1px solid var(--chrome-edge);
   border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px;
 }
@@ -2144,9 +2210,9 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
 
 .cv-tr-card { min-width: 420px; }
 .cv-tr-card h2 { display: flex; gap: 6px; align-items: baseline; }
-.cv-tr-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+.cv-tr-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: var(--text-md); }
 .cv-tr-table th {
-  text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  text-align: left; font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--text-faint); padding: 0 8px 4px 0; border-bottom: 1px solid var(--chrome-edge);
 }
 .cv-tr-table td { padding: 3px 8px 3px 0; vertical-align: top; border-bottom: 1px solid var(--chrome-edge); }
@@ -2170,7 +2236,7 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
 .cv-recovery {
   display: flex; align-items: center; gap: 10px; padding: 7px 12px;
   background: var(--notice-bg); border-bottom: 1px solid var(--notice-line);
-  color: var(--notice-text); font-size: 12px;
+  color: var(--notice-text); font-size: var(--text-md);
 }
 
 /* --- LT-043: the monitored-objects row, floated over the node on hover
@@ -2188,7 +2254,7 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
   border: 1px solid var(--chrome-edge);
   border-radius: 6px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   color: var(--text);
   pointer-events: none;
@@ -2243,7 +2309,7 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
   background: none;
   border: none;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--ink);
   white-space: nowrap;
   text-shadow:
@@ -2265,12 +2331,12 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
 /* --- LT-066: the built-in shape library folds behind one header, its
    categories nested a level in. --- */
 .cv-palette-lib {
-  cursor: pointer; font-weight: 600; font-size: 12px;
+  cursor: pointer; font-weight: 600; font-size: var(--text-md);
   padding: 4px 0; list-style: none;
   display: flex; align-items: center; gap: 6px;
 }
 .cv-palette-lib::-webkit-details-marker { display: none; }
-.cv-palette-lib::before { content: '▸'; font-size: 9px; color: var(--text-faint); }
+.cv-palette-lib::before { content: '▸'; font-size: var(--text-2xs); color: var(--text-faint); }
 details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-palette-nested { margin-left: 8px; }
 
@@ -2355,7 +2421,7 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
   background: var(--panel); color: var(--text);
 }
 .cv-boundary-detail {
-  font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+  font-family: var(--mono); font-size: var(--text-sm); color: var(--text-dim);
   white-space: pre-wrap; margin: 8px 0; max-height: 140px; overflow: auto;
 }
 
@@ -2363,7 +2429,7 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
    started, as a date-time group, newest first. --- */
 .cv-history-log {
   list-style: none; margin: 6px 0 0; padding: 0;
-  font-size: 11px; max-height: 148px; overflow: auto;
+  font-size: var(--text-sm); max-height: 148px; overflow: auto;
 }
 /* LT-099: the strip's own click-to-enlarge shows more of the log behind it
    too — a taller strip with the same 12 lines below it answered "more
@@ -2374,31 +2440,31 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
   align-items: baseline; padding: 2px 0;
   border-top: 1px solid var(--line);
 }
-.cv-history-dtg { color: var(--text-dim); font-size: 10px; white-space: nowrap; }
+.cv-history-dtg { color: var(--text-dim); font-size: var(--text-xs); white-space: nowrap; }
 
 /* --- LT-076: the clock picker in the top bar, and the zone note under the
    transition log. --- */
 .cv-input-inline {
-  height: 22px; padding: 0 4px; font-size: 11px; margin-left: 6px;
+  height: 22px; padding: 0 4px; font-size: var(--text-sm); margin-left: 6px;
   max-width: 132px;
 }
-.cv-history-zone { margin: 6px 0 0; font-size: 10px; }
+.cv-history-zone { margin: 6px 0 0; font-size: var(--text-xs); }
 
 /* LT-195–197: rack elevations. They were in the bottom panel and a 42U rack is
    taller than any panel; LT-319 gave them the Tools screen, which is where the
    height was always going to have to come from. */
 .cv-racks { display: flex; flex-direction: column; gap: 8px; padding: 8px 12px; min-height: 100%; }
 .cv-racks-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.cv-racks-message { color: var(--text-dim); font-size: 12px; }
+.cv-racks-message { color: var(--text-dim); font-size: var(--text-md); }
 .cv-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
 .cv-seg button {
-  background: none; border: none; color: var(--text-dim); font: inherit; font-size: 12px;
+  background: none; border: none; color: var(--text-dim); font: inherit; font-size: var(--text-md);
   padding: 4px 10px; cursor: pointer;
 }
 .cv-seg button + button { border-left: 1px solid var(--line); }
 .cv-seg button.is-on { background: var(--panel-2); color: var(--text); }
 .cv-racks-chosen {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: var(--text-md); color: var(--text-dim);
   padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px;
 }
 .cv-racks-chosen strong { color: var(--text); }
@@ -2406,7 +2472,7 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-racks-waiting { flex: none; width: 210px; display: flex; flex-direction: column; gap: 6px; }
 .cv-racks-waiting ul { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; }
 .cv-racks-device {
-  display: flex; justify-content: space-between; gap: 6px; padding: 3px 6px; font-size: 12px;
+  display: flex; justify-content: space-between; gap: 6px; padding: 3px 6px; font-size: var(--text-md);
   color: var(--text); border-radius: 3px; cursor: grab;
 }
 .cv-racks-device:hover { background: var(--hover); }
@@ -2419,7 +2485,7 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-rack-frame { display: flex; }
 .cv-rack-numbers {
   list-style: none; margin: 0; padding: 0 4px 0 0; width: 26px;
-  color: var(--text-dim); font-size: 9px; text-align: right; font-variant-numeric: tabular-nums;
+  color: var(--text-dim); font-size: var(--text-2xs); text-align: right; font-variant-numeric: tabular-nums;
 }
 .cv-rack-numbers { padding-top: 2px; }
 .cv-rack-numbers li { display: flex; align-items: center; justify-content: flex-end; }
@@ -2430,7 +2496,7 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-rack-item {
   position: absolute; left: 2px; right: 2px; display: flex; align-items: center; justify-content: center;
   background: var(--panel-2); border: 1px solid var(--accent); border-radius: 2px;
-  color: var(--text); font: inherit; font-size: 10px; padding: 0 4px; cursor: grab; overflow: hidden;
+  color: var(--text); font: inherit; font-size: var(--text-xs); padding: 0 4px; cursor: grab; overflow: hidden;
 }
 .cv-rack-item.is-behind {
   cursor: default; border-style: dashed; border-color: var(--line); color: var(--text-dim); font-style: italic;
@@ -2445,45 +2511,45 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
   border: 2px dashed var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .cv-rack-ghost.is-refused { border-color: var(--down); background: color-mix(in srgb, var(--down) 18%, transparent); }
-.cv-rack-foot { font-size: 11px; color: var(--text-dim); display: flex; flex-direction: column; gap: 2px; }
+.cv-rack-foot { font-size: var(--text-sm); color: var(--text-dim); display: flex; flex-direction: column; gap: 2px; }
 
 /* LT-200–204: which extra tables a crawl reads. */
 .cv-crawl-details { display: flex; flex-wrap: wrap; gap: 4px 14px; border: 1px solid var(--line); border-radius: 4px; padding: 4px 10px 6px; margin: 6px 0; }
-.cv-crawl-details legend { color: var(--text-dim); font-size: 11px; padding: 0 4px; }
+.cv-crawl-details legend { color: var(--text-dim); font-size: var(--text-sm); padding: 0 4px; }
 .cv-inventory details { margin: 4px 0; }
-.cv-inventory summary { cursor: pointer; font-size: 12px; color: var(--text); padding: 2px 0; }
-.cv-inventory-table { font-size: 11px; }
+.cv-inventory summary { cursor: pointer; font-size: var(--text-md); color: var(--text); padding: 2px 0; }
+.cv-inventory-table { font-size: var(--text-sm); }
 .cv-inventory-table tr.is-dim td { color: var(--text-dim); }
 .cv-inventory-table td.is-warning { color: var(--warning); }
-.cv-inventory-vlans { list-style: none; margin: 0; padding: 0; columns: 2; font-size: 11px; color: var(--text); }
+.cv-inventory-vlans { list-style: none; margin: 0; padding: 0; columns: 2; font-size: var(--text-sm); color: var(--text); }
 .cv-table-scroll { overflow-x: auto; }
 /* LT-209: credential rules by subnet or vendor. */
 .cv-cred-rules { margin: 6px 0; }
-.cv-cred-rules summary { cursor: pointer; font-size: 12px; color: var(--text); }
+.cv-cred-rules summary { cursor: pointer; font-size: var(--text-md); color: var(--text); }
 .cv-cred-rule { align-items: center; }
 .cv-cred-rule-problem { color: var(--warning); flex-basis: 100%; }
 .cv-seed-csv { align-self: flex-end; cursor: pointer; }
 /* LT-210: the live crawl table. State is carried by words and a border style,
    not colour alone. */
 .cv-crawl-table { margin: 6px 0; max-height: 260px; overflow: auto; }
-.cv-crawl-table summary { cursor: pointer; font-size: 12px; color: var(--text); }
-.cv-crawl-state { display: inline-block; padding: 0 6px; border-radius: 8px; border: 1px solid var(--line); font-size: 11px; white-space: nowrap; }
+.cv-crawl-table summary { cursor: pointer; font-size: var(--text-md); color: var(--text); }
+.cv-crawl-state { display: inline-block; padding: 0 6px; border-radius: 8px; border: 1px solid var(--line); font-size: var(--text-sm); white-space: nowrap; }
 .cv-crawl-state.is-collected, .cv-crawl-state.is-reported { border-color: var(--healthy); color: var(--healthy); }
 .cv-crawl-state.is-failed { border-color: var(--down); color: var(--down); border-style: dashed; }
 .cv-crawl-state.is-awaiting-approval, .cv-crawl-state.is-retrying { border-color: var(--warning); color: var(--warning); }
 .cv-crawl-state.is-skipped, .cv-crawl-state.is-queued { color: var(--text-dim); }
 .cv-crawl-detail { color: var(--text-dim); max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* LT-211: a crawl's dry run. */
-.cv-dry-run { border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; margin: 6px 0; font-size: 12px; color: var(--text); }
+.cv-dry-run { border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; margin: 6px 0; font-size: var(--text-md); color: var(--text); }
 .cv-dry-run header { display: flex; align-items: baseline; gap: 10px; }
 .cv-dry-run header .cv-layer-remove { margin-left: auto; }
-.cv-dry-run h4 { margin: 8px 0 2px; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.cv-dry-run h4 { margin: 8px 0 2px; font-size: var(--text-sm); color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
 .cv-dry-run ul { margin: 0; padding-left: 18px; }
 .cv-dry-run-bad { color: var(--warning); }
-.cv-dry-run-commands { font-size: 11px; color: var(--text-dim); margin: 2px 0; }
+.cv-dry-run-commands { font-size: var(--text-sm); color: var(--text-dim); margin: 2px 0; }
 .cv-crawl-profiles { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px; margin-bottom: 6px; }
 /* LT-213: crawl findings. Severity is in the words as well as the colour. */
-.cv-findings { margin: 6px 0; font-size: 12px; }
+.cv-findings { margin: 6px 0; font-size: var(--text-md); }
 .cv-findings summary { cursor: pointer; color: var(--text); }
 .cv-findings ul { margin: 4px 0; padding-left: 0; list-style: none; }
 .cv-findings li { padding: 3px 8px; border-left: 3px solid var(--line); color: var(--text); margin: 2px 0; }
@@ -2492,19 +2558,19 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-findings li.is-warning .cv-finding-kind { color: var(--warning); }
 .cv-findings-none { margin: 6px 0; }
 /* LT-216: reviewing a crawl's changes before any is applied. */
-.cv-reconcile { border: 1px solid var(--accent); border-radius: 4px; padding: 8px 12px; margin: 8px 0; font-size: 12px; color: var(--text); }
+.cv-reconcile { border: 1px solid var(--accent); border-radius: 4px; padding: 8px 12px; margin: 8px 0; font-size: var(--text-md); color: var(--text); }
 .cv-reconcile header { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
-.cv-reconcile h4 { margin: 8px 0 2px; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.cv-reconcile h4 { margin: 8px 0 2px; font-size: var(--text-sm); color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
 .cv-reconcile ul { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
 .cv-reconcile li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 2px 0; }
 .cv-reconcile-detail { color: var(--text-dim); }
 .cv-reconcile-group.is-removed h4, .cv-reconcile-group.is-moved h4 { color: var(--warning); }
-.cv-probe-template-pick { width: auto; margin-left: 6px; font-size: 11px; }
+.cv-probe-template-pick { width: auto; margin-left: 6px; font-size: var(--text-sm); }
 /* LT-224: probe history sparklines. The strip's bar height carries status
    (sliver healthy, half warning, full down) so it reads without colour. */
 .cv-probe-history { margin: 4px 0 8px; }
-.cv-probe-history-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-dim); }
-.cv-probe-history-head select { width: auto; font-size: 11px; padding: 1px 4px; }
+.cv-probe-history-head { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--text-dim); }
+.cv-probe-history-head select { width: auto; font-size: var(--text-sm); padding: 1px 4px; }
 .cv-sparkline { display: block; margin-top: 4px; overflow: visible; }
 .cv-sparkline-base { stroke: var(--line); stroke-width: 1; }
 .cv-sparkline-area { fill: var(--accent); opacity: 0.15; }
@@ -2515,7 +2581,7 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-sparkline-bar.is-down { fill: var(--down); }
 .cv-sparkline-bar.is-unknown, .cv-sparkline-bar.is-maintenance, .cv-sparkline-bar.is-disabled { fill: var(--text-faint); }
 /* LT-225: path check. */
-.cv-path-check { padding: 8px 12px; font-size: 12px; color: var(--text); }
+.cv-path-check { padding: 8px 12px; font-size: var(--text-md); color: var(--text); }
 .cv-path-hops { list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 8px 0 4px; padding: 0; }
 .cv-path-hops li { display: flex; align-items: center; gap: 4px; }
 .cv-path-hop { padding: 1px 8px; border: 1px solid var(--line); border-radius: 10px; }
@@ -2527,35 +2593,35 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-path-result.is-ok { border-left-color: var(--healthy); }
 .cv-path-result.is-bad { border-left-color: var(--down); }
 /* LT-226–228: comparing two runs. Direction is a glyph as well as a colour. */
-.cv-compare { padding: 8px 12px; font-size: 12px; color: var(--text); }
+.cv-compare { padding: 8px 12px; font-size: var(--text-md); color: var(--text); }
 .cv-compare-table tr.is-worse .cv-compare-change { color: var(--down); }
 .cv-compare-table tr.is-better .cv-compare-change { color: var(--healthy); }
 /* LT-230: the command palette. */
 .cv-palette-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.35); display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; }
 .cv-command-palette { width: min(640px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; max-height: 70vh; }
-.cv-command-input { margin: 10px; font-size: 14px; padding: 8px 10px; }
+.cv-command-input { margin: 10px; font-size: var(--text-xl); padding: 8px 10px; }
 .cv-command-results { list-style: none; margin: 0; padding: 0 6px; overflow-y: auto; }
-.cv-command-results li { display: grid; grid-template-columns: 76px minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: baseline; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.cv-command-results li { display: grid; grid-template-columns: 76px minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: baseline; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: var(--text-md); }
 .cv-command-results li.is-active { background: var(--hover); outline: 1px solid var(--accent); }
-.cv-command-kind { color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.cv-command-kind { color: var(--text-dim); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; }
 .cv-command-title { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cv-command-detail { color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cv-command-foot { margin: 0; padding: 6px 16px 8px; color: var(--text-dim); font-size: 11px; border-top: 1px solid var(--line); }
+.cv-command-foot { margin: 0; padding: 6px 16px 8px; color: var(--text-dim); font-size: var(--text-sm); border-top: 1px solid var(--line); }
 /* LT-232, LT-233: dimmed, not hidden. */
 .react-flow__node.is-dimmed { opacity: 0.15; }
 .react-flow__edge.is-dimmed { opacity: 0.1; }
-.cv-dim-chip { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 8; display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px; background: var(--panel); border: 1px solid var(--accent); border-radius: 16px; color: var(--text); font-size: 12px; }
+.cv-dim-chip { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 8; display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 12px; background: var(--panel); border: 1px solid var(--accent); border-radius: 16px; color: var(--text); font-size: var(--text-md); }
 .cv-filter-fields { width: 260px; display: flex; flex-direction: column; gap: 6px; }
 .cv-filter-fields fieldset { border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; max-height: 140px; overflow-y: auto; }
-.cv-filter-fields legend { font-size: 11px; color: var(--text-dim); }
+.cv-filter-fields legend { font-size: var(--text-sm); color: var(--text-dim); }
 .cv-filter-menu summary.is-on { border-color: var(--accent); color: var(--text); }
 /* LT-234: neighbours and attachments in the device inspector. */
 .cv-link-button { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
-.cv-attachment { display: flex; align-items: center; gap: 6px; margin: 3px 0; font-size: 12px; }
+.cv-attachment { display: flex; align-items: center; gap: 6px; margin: 3px 0; font-size: var(--text-md); }
 .cv-attachment-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 /* LT-235: the port at each end of a link. */
-.cv-port-end h4 { margin: 6px 0 2px; font-size: 12px; color: var(--text); }
-.cv-port-facts { display: grid; grid-template-columns: max-content 1fr; gap: 1px 10px; margin: 0; font-size: 11px; }
+.cv-port-end h4 { margin: 6px 0 2px; font-size: var(--text-md); color: var(--text); }
+.cv-port-facts { display: grid; grid-template-columns: max-content 1fr; gap: 1px 10px; margin: 0; font-size: var(--text-sm); }
 .cv-port-facts dt { color: var(--text-dim); }
 .cv-port-facts dd { margin: 0; color: var(--text); }
 .cv-port-facts dd.is-warning { color: var(--warning); }
@@ -2570,32 +2636,32 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-ink-bar .cv-btn.is-on { border-color: var(--accent); color: var(--text); background: var(--panel-2); }
 .cv-ink-swatch { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line); cursor: pointer; padding: 0; }
 .cv-ink-swatch.is-on { box-shadow: 0 0 0 2px var(--accent); }
-.cv-ink-width { width: auto; font-size: 11px; padding: 1px 4px; }
+.cv-ink-width { width: auto; font-size: var(--text-sm); padding: 1px 4px; }
 .cv-ink-sheet { position: absolute; inset: 0; z-index: 6; touch-action: none; }
 .cv-ink-sheet.is-pen { cursor: crosshair; }
 .cv-ink-sheet.is-eraser { cursor: cell; }
 @media print { .cv-ink-bar { display: none; } }
 /* LT-239: comments. */
-.cv-comment { border-left: 3px solid var(--accent); padding: 4px 8px; margin: 6px 0; font-size: 12px; color: var(--text); }
+.cv-comment { border-left: 3px solid var(--accent); padding: 4px 8px; margin: 6px 0; font-size: var(--text-md); color: var(--text); }
 .cv-comment.is-resolved { border-left-color: var(--line); opacity: 0.7; }
 .cv-comment header { display: flex; align-items: baseline; gap: 6px; }
 .cv-comment header .cv-btn { margin-left: auto; }
 .cv-comment p { margin: 2px 0 4px; white-space: pre-wrap; }
 .cv-comment-reply { margin-left: 10px; padding-left: 6px; border-left: 1px solid var(--line); }
 .cv-comment-new { display: flex; flex-direction: column; gap: 4px; }
-.cv-comment-badge { position: absolute; top: -6px; left: -6px; font-size: 10px; background: var(--panel); color: var(--text); border: 1px solid var(--accent); border-radius: 8px; padding: 0 4px; }
+.cv-comment-badge { position: absolute; top: -6px; left: -6px; font-size: var(--text-xs); background: var(--panel); color: var(--text); border: 1px solid var(--accent); border-radius: 8px; padding: 0 4px; }
 
 /* LT-245: matching a file's columns to fields. */
 .cv-import-map { display: grid; gap: 8px; margin-block: 8px; }
 .cv-import-map-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
 .cv-import-kind { border: 0; padding: 0; margin: 0; display: flex; gap: 10px; align-items: center; }
-.cv-import-kind legend { float: left; margin-right: 8px; color: var(--text-dim); font-size: 12px; }
+.cv-import-kind legend { float: left; margin-right: 8px; color: var(--text-dim); font-size: var(--text-md); }
 .cv-import-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
 
 /* LT-256, LT-257: choosing a report. */
 .cv-report-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; }
 .cv-report-dialog fieldset { border: 0; padding: 0; margin: 0 0 14px; }
-.cv-report-dialog legend { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-faint); margin-bottom: 6px; }
+.cv-report-dialog legend { font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-faint); margin-bottom: 6px; }
 .cv-report-templates { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; }
 .cv-report-template { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; cursor: pointer; }
 .cv-report-template.is-on { border-color: var(--accent); }
@@ -2630,7 +2696,7 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
   background: var(--panel-2); margin-right: 8px; overflow: hidden; vertical-align: middle;
 }
 .cv-bar-fill { display: block; height: 100%; border-radius: 4px; }
-.cv-bar-value { font-size: 11px; color: var(--text-dim); }
+.cv-bar-value { font-size: var(--text-sm); color: var(--text-dim); }
 /* Filled bars and the summary pills share one set of colours, so the two
    always agree about what "busy" looks like. */
 .cv-bar-fill.cv-band-full { background: var(--down); }
@@ -2638,7 +2704,7 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-bar-fill.cv-band-light { background: var(--healthy); }
 .cv-bar-fill.cv-band-empty { background: var(--text-dim); }
 .cv-dash .cv-pill {
-  display: inline-block; font-size: 10px; padding: 0 6px; border-radius: 9px;
+  display: inline-block; font-size: var(--text-xs); padding: 0 6px; border-radius: 9px;
   border: 1px solid; color: var(--text-dim); border-color: var(--line);
 }
 .cv-dash .cv-pill.cv-band-full { color: var(--down); border-color: var(--down); }
@@ -2650,20 +2716,20 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-meraki-row {
   display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin: 10px 0;
 }
-.cv-meraki-row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
-.cv-meraki-count { font-size: 12px; color: var(--text-faint); align-self: center; }
+.cv-meraki-row label { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-md); color: var(--text-dim); }
+.cv-meraki-count { font-size: var(--text-md); color: var(--text-faint); align-self: center; }
 
 .cv-meraki-report { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
 .cv-meraki-report-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
-.cv-meraki-report-head h3 { margin: 0; font-size: 15px; }
+.cv-meraki-report-head h3 { margin: 0; font-size: var(--text-xl); }
 
 .cv-meraki-tally { display: flex; gap: 10px; list-style: none; padding: 0; margin: 12px 0; flex-wrap: wrap; }
 .cv-meraki-tile {
   display: flex; flex-direction: column; gap: 2px; min-width: 92px;
   padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2);
 }
-.cv-meraki-tile strong { font-size: 20px; font-variant-numeric: tabular-nums; }
-.cv-meraki-tile span { font-size: 11px; color: var(--text-faint); }
+.cv-meraki-tile strong { font-size: var(--text-4xl); font-variant-numeric: tabular-nums; }
+.cv-meraki-tile span { font-size: var(--text-sm); color: var(--text-faint); }
 .cv-meraki-tile.is-attention strong { color: var(--down); }
 .cv-meraki-tile.is-advisory strong { color: var(--accent); }
 .cv-meraki-tile.is-manual strong { color: var(--warning); }
@@ -2681,23 +2747,23 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
   display: flex; gap: 10px; align-items: center; width: 100%;
   background: none; border: 0; padding: 0; cursor: pointer; text-align: left; color: var(--text);
 }
-.cv-meraki-num { font-variant-numeric: tabular-nums; color: var(--text-faint); font-size: 11px; min-width: 28px; }
-.cv-meraki-check-title { font-weight: 600; font-size: 13px; flex: 1; }
-.cv-meraki-summary { margin: 4px 0 0 38px; font-size: 12px; color: var(--text-dim); }
+.cv-meraki-num { font-variant-numeric: tabular-nums; color: var(--text-faint); font-size: var(--text-sm); min-width: 28px; }
+.cv-meraki-check-title { font-weight: 600; font-size: var(--text-lg); flex: 1; }
+.cv-meraki-summary { margin: 4px 0 0 38px; font-size: var(--text-md); color: var(--text-dim); }
 .cv-meraki-check-body { margin: 8px 0 0 38px; display: flex; flex-direction: column; gap: 8px; overflow-x: auto; }
-.cv-meraki-check-body h5 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
-.cv-meraki-action { font-size: 12px; color: var(--warning); margin: 0; }
+.cv-meraki-check-body h5 { margin: 0 0 4px; font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
+.cv-meraki-action { font-size: var(--text-md); color: var(--warning); margin: 0; }
 .cv-meraki-actions { margin: 8px 0; }
 
 /* The health report's document structure (LT-410). */
 .cv-meraki-meta { margin: 10px 0; max-width: 620px; }
 .cv-meraki-meta th { text-align: left; width: 160px; font-weight: 600; }
-.cv-meraki-key { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.cv-meraki-key { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--text-md); color: var(--text-dim); }
 .cv-meraki-section { margin-top: 18px; }
-.cv-meraki-section > h4 { margin: 0 0 8px; font-size: 14px; }
-.cv-meraki-nav { margin: 2px 0 0 38px; font-size: 11px; color: var(--text-faint); }
-.cv-meraki-checklist { margin: 0 0 4px 16px; padding: 0; font-size: 12px; color: var(--text-dim); }
-.cv-meraki-steps { margin: 0 0 4px 16px; padding: 0; font-size: 12px; color: var(--text-dim); display: flex; flex-direction: column; gap: 4px; }
+.cv-meraki-section > h4 { margin: 0 0 8px; font-size: var(--text-xl); }
+.cv-meraki-nav { margin: 2px 0 0 38px; font-size: var(--text-sm); color: var(--text-faint); }
+.cv-meraki-checklist { margin: 0 0 4px 16px; padding: 0; font-size: var(--text-md); color: var(--text-dim); }
+.cv-meraki-steps { margin: 0 0 4px 16px; padding: 0; font-size: var(--text-md); color: var(--text-dim); display: flex; flex-direction: column; gap: 4px; }
 .cv-meraki-steps li { line-height: 1.45; }
 
 /* The filter's hide tick and its count (LT-415). */
@@ -2712,7 +2778,7 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .react-flow__node.is-collapsed::after {
   content: '+'; position: absolute; top: -6px; right: -6px;
   width: 16px; height: 16px; line-height: 15px; text-align: center;
-  font-size: 13px; font-weight: 700; border-radius: 50%;
+  font-size: var(--text-lg); font-weight: 700; border-radius: 50%;
   background: var(--accent); color: var(--on-status);
   border: 1px solid var(--panel); pointer-events: none;
 }
@@ -2725,5 +2791,5 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
    It opens rightwards, into the room it actually has. */
 .cv-type-filter .cv-dropdown-menu { left: 0; right: auto; }
 .cv-type-filter-menu { max-height: 60vh; overflow-y: auto; min-width: 210px; }
-.cv-type-filter-menu .cv-check { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.cv-type-filter-menu .cv-check { display: flex; align-items: center; gap: 6px; font-size: var(--text-md); }
 .cv-type-count { margin-left: auto; color: var(--text-faint); font-variant-numeric: tabular-nums; }

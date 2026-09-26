@@ -12,9 +12,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { PageNavigator } from './PageNavigator';
+import { t } from '../i18n';
 
 export function PageTabs() {
-  const doc = useStore((s) => s.doc);
+  // LT-452: the pages and which is active, not the whole document.
+  const pages = useStore((s) => s.doc.pages);
+  const activePageId = useStore((s) => s.doc.activePageId);
   const addPage = useStore((s) => s.addPage);
   const removePage = useStore((s) => s.removePage);
   const renamePage = useStore((s) => s.renamePage);
@@ -42,30 +45,30 @@ export function PageTabs() {
     {
       label: 'Delete',
       danger: true,
-      disabled: doc.pages.length <= 1,
+      disabled: pages.length <= 1,
       onSelect: () => removePage(id),
     },
   ];
 
   return (
-    <div ref={stripRef} className="cv-page-tabs" role="tablist" aria-label="Pages">
+    <div ref={stripRef} className="cv-page-tabs" role="tablist" aria-label={t('pageTabs.pages')}>
       <button
         type="button"
         className={`cv-page-nav-toggle${navOpen ? ' is-on' : ''}`}
-        title="All pages"
-        aria-label="All pages"
+        title={t('pageTabs.allPages')}
+        aria-label={t('pageTabs.allPages')}
         aria-expanded={navOpen}
         onClick={() => setNavOpen((o) => !o)}
       >
         ☰
       </button>
       {navOpen && <PageNavigator onClose={() => setNavOpen(false)} />}
-      {doc.pages.map((p, i) => (
+      {pages.map((p, i) => (
         <div
           key={p.id}
-          className={`cv-page-tab${p.id === doc.activePageId ? ' is-active' : ''}`}
+          className={`cv-page-tab${p.id === activePageId ? ' is-active' : ''}`}
           role="tab"
-          aria-selected={p.id === doc.activePageId}
+          aria-selected={p.id === activePageId}
           draggable
           onDragStart={() => setDragFrom(i)}
           onDragOver={(e) => e.preventDefault()}
@@ -82,7 +85,7 @@ export function PageTabs() {
         >
           <input
             className="cv-page-tab-name"
-            aria-label="Page name"
+            aria-label={t('pageTabs.pageName')}
             value={p.name}
             // Deliberately not stopped: a click here should also switch to
             // this tab, the same as clicking anywhere else on it — that is
@@ -101,8 +104,8 @@ export function PageTabs() {
       <button
         type="button"
         className="cv-page-tab-add"
-        title="Add a page"
-        aria-label="Add a page"
+        title={t('pageTabs.addAPage')}
+        aria-label={t('pageTabs.addAPage')}
         onClick={() => addPage('Page')}
       >
         +

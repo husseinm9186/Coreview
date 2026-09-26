@@ -5,6 +5,7 @@ import { activePage } from '../lib/pages';
 import { useStore } from '../state/store';
 import type { DeviceNodeData, DeviceType } from '../types/domain';
 import { DEVICE_LABEL } from './icons';
+import { t } from '../i18n';
 
 /**
  * Filter the drawing by what a device is, from the canvas itself (LT-419).
@@ -74,7 +75,7 @@ export function CanvasTypeFilter() {
       <summary
         className={`cv-btn cv-btn-small${chosen.length > 0 ? ' is-on' : ''}`}
         aria-label={chosen.length > 0 ? `Filter by type (${hidden} hidden)` : 'Filter by type'}
-        title="Show only the kinds of device you pick. Nothing is deleted."
+        title={t('canvasTypeFilter.showOnlyTheKinds')}
       >
         ⚟ {chosen.length > 0 ? `${hidden} hidden` : 'Types'}
       </summary>
@@ -91,9 +92,9 @@ export function CanvasTypeFilter() {
           disabled={chosen.length === 0}
           onClick={showEveryKind}
         >
-          Show every kind
+          {t('canvasTypeFilter.showEveryKind')}
         </button>
-        <p className="cv-help">Nothing is deleted — this only changes what is drawn.</p>
+        <p className="cv-help">{t('canvasTypeFilter.nothingIsDeletedThis')}</p>
       </div>
     </details>
   );

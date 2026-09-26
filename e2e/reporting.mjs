@@ -59,6 +59,8 @@ await page.addInitScript(({ p }) => {
       if (cmd === "list_crawl_runs") return Promise.resolve([]);
       if (cmd === "diagram_pdf_pages") return Promise.resolve([37, 80, 68, 70]);
       if (cmd === "plugin:dialog|save") return Promise.resolve(`/tmp/${args.options?.defaultPath ?? "out"}`);
+      if (cmd === "pick_export_target") return Promise.resolve({ token: `t-${next++}`, path: args.folder ? `${args.folder}/${args.filename}` : `/tmp/${args.filename}` });
+      if (cmd === "pick_export_folder") return Promise.resolve({ token: `f-${next++}`, path: args.folder ?? "/tmp/picked" });
       if (cmd === "save_export") return Promise.resolve(null);
       return Promise.resolve([]);
     },
@@ -90,8 +92,12 @@ check("the section added by hand", all.includes("Port inventory"));
 check("and not the one the template left out", !svgs.slice(1).some((s) => s.includes(">Device inventory<")));
 check("the drawing on its own page", svgs.some((s) => s.includes("Diagram — Core") && s.includes("CORE-SW1")));
 check("and what changed between the last two sessions", all.includes("Validation sessions") && /CORE-SW1 — Ping/.test(all));
-const saved = (await calls("save_export")).at(-1)?.args.path ?? "";
-check("saved under the template's name", /report-lab-verification-report\.pdf$/.test(saved), saved);
+// LT-456: the page names the file; where it goes is Rust's answer to the
+// picker, and the write spends the token the picker returned.
+const picked = (await calls("pick_export_target")).at(-1)?.args ?? {};
+const written = (await calls("save_export")).at(-1)?.args ?? {};
+check("saved under the template's name", /^report-lab-verification-report\.pdf$/.test(picked.filename ?? ""), JSON.stringify(picked));
+check("and written to the location the picker gave, by its token", typeof written.token === "string" && written.token.startsWith("t-") && !("path" in written), JSON.stringify(written));
 check("and the dialog closes", (await dialog.count()) === 0);
 
 await browser.close();

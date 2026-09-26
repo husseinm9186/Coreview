@@ -58,7 +58,8 @@ const edgeIndexByPages = new WeakMap<ProjectPage[], Map<string, TopoEdge>>();
 
 /** Every node across every page — for the things that do not care which
  *  page a device is drawn on: monitoring, status, event history. */
-export function allNodes(doc: ProjectDocument): TopoNode[] {
+/** LT-452: only the pages are read, so a caller can subscribe to those alone. */
+export function allNodes(doc: Pick<ProjectDocument, 'pages'>): TopoNode[] {
   let got = nodesByPages.get(doc.pages);
   if (!got) {
     got = doc.pages.flatMap((p) => p.nodes);
@@ -68,7 +69,7 @@ export function allNodes(doc: ProjectDocument): TopoNode[] {
 }
 
 /** Every link across every page. See allNodes. */
-export function allEdges(doc: ProjectDocument): TopoEdge[] {
+export function allEdges(doc: Pick<ProjectDocument, 'pages'>): TopoEdge[] {
   let got = edgesByPages.get(doc.pages);
   if (!got) {
     got = doc.pages.flatMap((p) => p.edges);

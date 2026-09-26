@@ -1,10 +1,15 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useStableList } from '../lib/useStableList';
 import { useReactFlow } from '@xyflow/react';
 import { findNodes } from '../lib/findNodes';
 import { t } from '../i18n';
 
 import { useStore } from '../state/store';
+import { JobsBar } from './JobsBar';
+import { EmptyState } from './EmptyState';
+import { useRovingTabindex } from './useRovingTabindex';
+import { eventsToCsv } from '../lib/csv';
+import { saveExport, slug } from '../lib/exports';
 import { DiscoverPanel } from './DiscoverPanel';
 import { CrawlPanel } from './CrawlPanel';
 import { BackupPanel } from './BackupPanel';
@@ -104,7 +109,9 @@ export function StatusPanel() {
   // LT-230: a tab asked for from the command palette.
   const panelRequest = useStore((s) => s.panelRequest);
   const setOpen = useStore((s) => s.setPanelOpen);
-  const doc = useStore((s) => s.doc);
+  // LT-452: the pages and the probes, not the whole document.
+  const pages = useStore((s) => s.doc.pages);
+  const probes = useStore((s) => s.doc.probes);
   const runtime = useStore((s) => s.runtime);
   const events = useStore((s) => s.events);
   const timeFormat = useStore((s) => s.settings.timeFormat);
@@ -185,11 +192,10 @@ export function StatusPanel() {
   // changes. Held steady while only positions move, the rows below are not
   // rebuilt — and two thousand table rows not re-rendered — on every frame.
   const nodes = useStableList(
-    allNodes(doc),
+    allNodes({ pages }),
     (a, b) => a.id === b.id && a.type === b.type && a.data === b.data,
   );
-  const edges = useStableList(allEdges(doc), (a, b) => a === b);
-  const probes = doc.probes;
+  const edges = useStableList(allEdges({ pages }), (a, b) => a === b);
 
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
@@ -261,6 +267,13 @@ export function StatusPanel() {
     [rows, problemsOnly, query],
   );
 
+  // LT-446: tick events, then copy or save exactly those. LT-447: the table
+  // is one tab stop and the arrows walk it.
+  const [pickedEvents, setPickedEvents] = useState<Set<string>>(new Set());
+  const eventsRef = useRef<HTMLTableElement>(null);
+  useRovingTabindex(eventsRef, [events.length, query, problemsOnly]);
+  const meta = useStore((s) => s.meta);
+  const exportFolder = useStore((s) => s.settings.exportFolder);
   const filteredEvents = events.filter((e) => {
     if (problemsOnly && e.currentStatus !== 'down' && e.currentStatus !== 'warning') return false;
     if (!query) return true;
@@ -440,6 +453,8 @@ export function StatusPanel() {
         </button>
       </div>
 
+      {/* LT-443: every running job, whichever tab started it. */}
+      <JobsBar />
       {statusMessage && <div className="cv-panel-message" role="status" aria-live="polite">{statusMessage}</div>}
 
       <div className="cv-panel-body">
@@ -488,9 +503,31 @@ export function StatusPanel() {
             </tbody>
           </table>
         ) : (
-          <table className="cv-table">
+          <>
+          {pickedEvents.size > 0 && (
+            <div className="cv-select-bar" role="toolbar" aria-label={t('select.bar')}>
+              <span>{t('select.count', { count: pickedEvents.size })}</span>
+              <button type="button" className="cv-btn cv-btn-small"
+                onClick={() => void navigator.clipboard.writeText(eventsToCsv(events.filter((e) => pickedEvents.has(e.id))))}>
+                {t('select.copyCsv')}
+              </button>
+              <button type="button" className="cv-btn cv-btn-small"
+                onClick={() => void saveExport(`${slug(meta?.name ?? 'events')}-events-selected.csv`, eventsToCsv(events.filter((e) => pickedEvents.has(e.id))), 'text/csv', exportFolder)
+                  .then((path) => { if (path) useStore.getState().setStatusMessage(t('select.exported', { path })); })
+                  .catch(() => undefined)}>
+                {t('select.exportCsv')}
+              </button>
+              <button type="button" className="cv-btn cv-btn-small" onClick={() => setPickedEvents(new Set())}>{t('select.clear')}</button>
+            </div>
+          )}
+          <table className="cv-table" ref={eventsRef}>
             <thead>
               <tr>
+                <th className="cv-pick-col">
+                  <input type="checkbox" aria-label={t('select.all')}
+                    checked={filteredEvents.length > 0 && filteredEvents.every((e) => pickedEvents.has(e.id))}
+                    onChange={(ev) => setPickedEvents(ev.target.checked ? new Set(filteredEvents.map((e) => e.id)) : new Set())} />
+                </th>
                 <th>Time</th>
                 <th>Object</th>
                 <th>Name</th>
@@ -505,6 +542,7 @@ export function StatusPanel() {
               {filteredEvents.map((e) => (
                 <tr
                   key={e.id}
+                  data-picked={pickedEvents.has(e.id) ? 'yes' : undefined}
                   onDoubleClick={() =>
                     void navigator.clipboard.writeText(
                       `${formatTime(e.timestampMs, timeFormat)} ${e.objectType} ${e.objectName} ${
@@ -514,6 +552,15 @@ export function StatusPanel() {
                   }
                   title="Double-click to copy this event"
                 >
+                  <td className="cv-pick-col">
+                    <input type="checkbox" aria-label={t('select.row')} checked={pickedEvents.has(e.id)}
+                      onClick={(ev) => ev.stopPropagation()}
+                      onChange={(ev) => setPickedEvents((prev) => {
+                        const next = new Set(prev);
+                        if (ev.target.checked) next.add(e.id); else next.delete(e.id);
+                        return next;
+                      })} />
+                  </td>
                   {/* LT-074: a DTG, not a bare clock time — a log line has to
                       say which day and which zone to be worth keeping. */}
                   <td className="cv-mono" title={new Date(e.timestampMs).toISOString()}>
@@ -538,14 +585,16 @@ export function StatusPanel() {
               ))}
               {filteredEvents.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="cv-help">
-                    No events yet. Events are recorded when a status changes during a validation
-                    session.
+                  <td colSpan={9}>
+                    {events.length === 0
+                      ? <EmptyState what={t('empty.events.what')} why={t('empty.events.why')} />
+                      : <EmptyState what={t('empty.events.filtered')} />}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </div>

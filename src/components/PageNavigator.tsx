@@ -11,6 +11,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 
 import { thumbnailOf } from '../lib/pageThumb';
 import { useStore, type ProjectPage } from '../state/store';
+import { t } from '../i18n';
 
 const THUMB_W = 96;
 const THUMB_H = 60;
@@ -30,14 +31,16 @@ const PageSketch = memo(function PageSketch({ page }: { page: ProjectPage }) {
 });
 
 export function PageNavigator({ onClose }: { onClose: () => void }) {
-  const doc = useStore((s) => s.doc);
+  // LT-452: the pages and which is active, not the whole document.
+  const pages = useStore((s) => s.doc.pages);
+  const activePageId = useStore((s) => s.doc.activePageId);
   const renamePage = useStore((s) => s.renamePage);
   const reorderPages = useStore((s) => s.reorderPages);
   const setActivePage = useStore((s) => s.setActivePage);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const at = Math.max(0, doc.pages.findIndex((p) => p.id === doc.activePageId));
+  const at = Math.max(0, pages.findIndex((p) => p.id === activePageId));
 
   // The chosen row keeps the keyboard, so the arrow keys work straight away.
   useEffect(() => {
@@ -49,7 +52,6 @@ export function PageNavigator({ onClose }: { onClose: () => void }) {
   // on the canvas.
   const onKey = (e: React.KeyboardEvent) => {
     if (renaming) return;
-    const pages = doc.pages;
     const move = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
     if (move) {
       e.preventDefault();
@@ -74,13 +76,13 @@ export function PageNavigator({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="cv-page-nav" role="dialog" aria-label="Page navigator">
+    <div className="cv-page-nav" role="dialog" aria-label={t('pageNavigator.pageNavigator')}>
       <div className="cv-page-nav-head">
-        <span>Pages</span>
-        <span className="cv-page-nav-hint">↑↓ switch · Alt+↑↓ move · F2 rename</span>
+        <span>{t('pageNavigator.pages')}</span>
+        <span className="cv-page-nav-hint">{t('pageNavigator.switchAltMoveF2')}</span>
       </div>
-      <ul ref={listRef} className="cv-page-nav-list" role="listbox" aria-label="Pages" onKeyDown={onKey}>
-        {doc.pages.map((p, i) => (
+      <ul ref={listRef} className="cv-page-nav-list" role="listbox" aria-label={t('pageNavigator.pages')} onKeyDown={onKey}>
+        {pages.map((p, i) => (
           <li
             key={p.id}
             role="option"
@@ -104,7 +106,7 @@ export function PageNavigator({ onClose }: { onClose: () => void }) {
               {renaming === p.id ? (
                 <input
                   className="cv-page-nav-rename"
-                  aria-label="Page name"
+                  aria-label={t('pageNavigator.pageName')}
                   defaultValue={p.name}
                   autoFocus
                   onFocus={(e) => e.target.select()}

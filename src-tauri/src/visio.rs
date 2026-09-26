@@ -471,7 +471,7 @@ mod tests {
         assert!(part(&bytes, "[Content_Types].xml").contains("/visio/pages/page2.xml"));
         assert!(part(&bytes, "visio/pages/_rels/pages.xml.rels").contains(r#"Target="page2.xml""#));
 
-        let read = crate::visio_import::import_vsdx(&bytes).expect("reads back");
+        let read = coreview_formats::visio_import::import_vsdx(&bytes).expect("reads back");
         assert_eq!(read.pages.len(), 2);
         assert_eq!(read.pages[1].name, "Branch");
         assert_eq!(read.pages[0].links[0].waypoints, Vec::<[f64; 2]>::new(), "a straight link stays straight");
@@ -482,13 +482,22 @@ mod tests {
         assert!((bends[1][0] - 9.0).abs() < 1e-3 && (bends[1][1] - 9.25).abs() < 1e-3, "{bends:?}");
     }
 
+    /// LT-441 widened it: `]]>` may not appear in character data at all, and
+    /// a link's label goes through the same door as a device's name.
     #[test]
     fn a_name_with_xml_in_it_cannot_break_the_file() {
         let mut d = lab();
-        d.pages[0].shapes[0].name = "SW <core> & \"edge\"".into();
+        d.pages[0].shapes[0].name = "SW <core> & \"edge\" ]]> it's".into();
+        if let Some(link) = d.pages[0].links.first_mut() {
+            link.label = "Gi0/1 <-> Gi0/2 & \"trunk\"".into();
+        }
         let page = part(&to_vsdx(&d).expect("vsdx"), "visio/pages/page1.xml");
-        assert!(page.contains("SW &lt;core&gt; &amp; &quot;edge&quot;"), "{page}");
+        assert!(page.contains("SW &lt;core&gt; &amp; &quot;edge&quot; ]]&gt; it&apos;s"), "{page}");
         assert!(!page.contains("<core>"));
+        assert!(!page.contains("]]>"), "the CDATA terminator never reaches character data");
+        assert!(page.contains("Gi0/1 &lt;-&gt; Gi0/2 &amp; &quot;trunk&quot;"), "{page}");
+        // And the file still parses as XML, which is the only thing that matters.
+        roxmltree::Document::parse(&page).expect("the page is well-formed XML");
     }
 
     #[test]

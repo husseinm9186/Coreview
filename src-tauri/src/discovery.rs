@@ -451,8 +451,20 @@ pub async fn start_crawl(
     let (tx, mut rx) = tokio::sync::mpsc::channel(1024);
     let emitter = app.clone();
     let pump_run_id = run_id.clone();
+    let progress = ticket.progress();
     let pump = tauri::async_runtime::spawn(async move {
+        // LT-432: a crawl finds its own size as it goes, so `done` counts
+        // devices settled — reached or failed — and there is no total.
+        let mut settled: u64 = 0;
         while let Some(event) = rx.recv().await {
+            match &event {
+                CrawlEvent::Visiting { address, .. } => progress.set(format!("Visiting {address}"), settled, None),
+                CrawlEvent::Reached(_) | CrawlEvent::Failed { .. } => {
+                    settled += 1;
+                    progress.set("Crawling", settled, None);
+                }
+                _ => {}
+            }
             if let CrawlEvent::Reached(device) = &event {
                 use tauri::Manager;
                 let state = emitter.state::<AppState>();
@@ -555,6 +567,7 @@ pub async fn start_crawl(
                 "notVisited": result.not_visited,
                 "failures": result.failures,
                 "cancelled": result.cancelled,
+                "firstSeenKeys": result.first_seen_keys,
             });
             let closed = state
                 .db
@@ -572,6 +585,7 @@ pub async fn start_crawl(
                 "notVisited": result.not_visited,
                 "failures": result.failures,
                 "cancelled": result.cancelled,
+                "firstSeenKeys": result.first_seen_keys,
                 "runId": run_id,
                 "status": status,
             }),
@@ -795,11 +809,23 @@ pub async fn start_backup(
     // LT-428: one backup at a time; see `jobs.rs`.
     let ticket = state.jobs.start(crate::jobs::Kind::Backup)?;
     let token = ticket.token();
+    let progress = ticket.progress();
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(1024);
     let emitter = app.clone();
     tauri::async_runtime::spawn(async move {
+        use coreview_discover::capture::BackupEvent;
+        // LT-432: the registry hears how many devices are done of how many.
+        let mut done: u64 = 0;
         while let Some(event) = rx.recv().await {
+            match &event {
+                BackupEvent::Started { devices } => progress.set("Backing up", 0, Some(*devices as u64)),
+                BackupEvent::Saved(_) | BackupEvent::Failed(_) => {
+                    done += 1;
+                    progress.set("Backing up", done, None);
+                }
+                _ => {}
+            }
             let _ = emitter.emit("coreview://backup", &event);
         }
     });
@@ -838,6 +864,9 @@ pub struct BackupDevice {
     /// Newest capture, as its filename. Sortable, because the names begin with
     /// a timestamp.
     pub latest: Option<String>,
+    /// LT-433: whether the newest capture differs from the one before it of
+    /// the same kind. `None` with nothing to compare against.
+    pub changed_at_latest: Option<bool>,
 }
 
 /// Where this **project's** backups live (LT-413).
@@ -879,6 +908,7 @@ pub fn list_backup_devices(state: State<'_, AppState>, project_id: String) -> Cm
                     .and_then(|p| p.file_name())
                     .map(|f| f.to_string_lossy().to_string()),
                 captures: captures.len(),
+                changed_at_latest: coreview_discover::capture::changed_at_latest(&root, &name),
                 name,
             }
         })
@@ -896,6 +926,14 @@ pub fn list_device_captures(state: State<'_, AppState>, device: String, project_
         .into_iter()
         .filter_map(|p| p.file_name().map(|f| f.to_string_lossy().to_string()))
         .collect())
+}
+
+/// LT-433: every capture of one device, newest first, each flagged against
+/// the previous of its kind.
+#[tauri::command(async)]
+pub fn device_capture_history(state: State<'_, AppState>, device: String, project_id: String) -> CmdResult<Vec<coreview_discover::capture::CaptureHistory>> {
+    let root = backup_root(&state, &project_id)?;
+    Ok(coreview_discover::capture::history(&root, &device))
 }
 
 /// Reads one capture.
@@ -953,15 +991,20 @@ pub fn compare_backup_runs(
 
 /// Runs checks against one run's show-command captures (LT-153). Reads files
 /// only; the checks are the operator's own, sent from the Backups tab.
+///
+/// LT-434: `roles` names each device's role as the diagram has it, so a
+/// check written for one role is *not applicable* elsewhere rather than
+/// failed. Absent means no device has a role.
 #[tauri::command]
 pub fn run_backup_checks(
     state: State<'_, AppState>,
     stamp: String,
     checks: Vec<coreview_discover::checks::Check>,
     project_id: String,
+    roles: Option<std::collections::HashMap<String, String>>,
 ) -> CmdResult<Vec<coreview_discover::checks::CheckResult>> {
     let root = backup_root(&state, &project_id)?;
-    coreview_discover::checks::run_checks(&root, &stamp, &checks)
+    coreview_discover::checks::run_checks(&root, &stamp, &checks, &roles.unwrap_or_default())
 }
 
 /// One entry of a gateway's ARP table, with the manufacturer behind its MAC.
@@ -1227,8 +1270,8 @@ pub fn read_snmp_walk(text: String, address: Option<String>) -> coreview_discove
 
 /// LT-248: an Nmap XML report, read as ping-sweep rows.
 #[tauri::command(async)]
-pub fn read_nmap_xml(text: String) -> Result<crate::nmap_import::NmapReport, String> {
-    crate::nmap_import::read_nmap_xml(&text)
+pub fn read_nmap_xml(text: String) -> Result<coreview_formats::nmap_import::NmapReport, String> {
+    coreview_formats::nmap_import::read_nmap_xml(&text)
 }
 
 #[cfg(test)]

@@ -29,7 +29,9 @@ import { VaultSettings } from './VaultSettings';
  */
 export function SettingsView() {
   const projectDefaults = useStore((s) => s.doc.credentialDefaults);
-  const doc = useStore((s) => s.doc);
+  // LT-452: only what the scope reads.
+  const pages = useStore((s) => s.doc.pages);
+  const credentialRules = useStore((s) => s.doc.credentialRules);
   const vaultRevision = useStore((s) => s.vaultRevision);
   const terminal = useStore((s) => s.settings.terminal);
   const setTerminal = useStore((s) => s.setTerminalSettings);
@@ -58,7 +60,7 @@ export function SettingsView() {
   const snmp = projectDefaults?.snmp?.[0];
   const named = (id: string | undefined) => (id ? saved.find((c) => c.id === id)?.label : undefined);
 
-  const used = credentialsUsedBy(doc);
+  const used = credentialsUsedBy({ pages, credentialDefaults: projectDefaults, credentialRules });
   const mine = saved.filter((c) => used.has(c.id));
   const elsewhere = saved.length - mine.length;
 

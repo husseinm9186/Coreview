@@ -13,6 +13,7 @@ import { useReactFlow } from '@xyflow/react';
 import { findNodes, type Match } from '../lib/findNodes';
 import { useStore } from '../state/store';
 import { activePage } from '../lib/pages';
+import { t } from '../i18n';
 
 const WHERE: Record<Match['matchedOn'], string> = {
   name: 'name',
@@ -82,11 +83,11 @@ export function FindBox({ onClose }: { onClose: () => void }) {
         ref={inputRef}
         type="text"
         className="cv-find-input"
-        placeholder="Find a device by name, address, model, tag or note"
+        placeholder={t('findBox.findADeviceBy')}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={onKeyDown}
-        aria-label="Find a device"
+        aria-label={t('findBox.findADevice')}
       />
       {query.trim() !== '' && (
         <div className="cv-find-results" role="listbox">

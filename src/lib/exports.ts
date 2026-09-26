@@ -46,25 +46,20 @@ export async function saveExport(
     return filename;
   }
 
-  const [{ save }, { invoke }] = await Promise.all([
-    import('@tauri-apps/plugin-dialog'),
-    import('@tauri-apps/api/core'),
-  ]);
-  let path: string | null;
-  if (folder) {
-    // A chosen export folder is a standing answer to "where should this go",
-    // so asking again every time would just be a dialog to dismiss.
-    path = joinPath(folder, filename);
-  } else {
-    const ext = filename.slice(filename.lastIndexOf('.') + 1);
-    path = await save({ defaultPath: filename, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] });
-  }
-  if (!path) return null;
+  // LT-456: the page never names a path. Rust joins the chosen folder, or
+  // shows the save dialog itself, and hands back a token one write spends —
+  // so nothing a page could be made to send can write anywhere a person did
+  // not just point. A chosen export folder is still a standing answer to
+  // "where should this go", so it shows no dialog.
+  const { ipc } = await import('./ipc');
+  const target = await ipc.pickExportTarget(filename, folder);
+  if (!target) return null;
 
   const contentsB64 =
     typeof content === 'string' ? utf8ToBase64(content) : bytesToBase64(content);
-  await invoke('save_export', { path, contentsB64 });
-  return path;
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('save_export', { token: target.token, contentsB64 });
+  return target.path;
 }
 
 export function slug(s: string): string {

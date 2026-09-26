@@ -735,6 +735,30 @@ fn profile_arg(profile: &Path) -> String {
 /// file will not load, even with the rest converted fine, so the exit code is
 /// not the verdict — a file with no output is the failure, and the caller
 /// reports those by name. Only a soffice that cannot start at all is an error.
+/// LT-458: the argument list, with every file as an absolute path so that
+/// none can begin with `-` and be read as an option. Absolute rather than a
+/// `--` separator, because this LibreOffice could not be shown to honour one
+/// and a flag that is not honoured is a file that is silently not converted.
+pub fn soffice_args(profile: &Path, out_dir: &Path, files: &[PathBuf]) -> Vec<std::ffi::OsString> {
+    let mut args: Vec<std::ffi::OsString> = vec![
+        profile_arg(profile).into(),
+        "--headless".into(),
+        "--convert-to".into(),
+        "svg".into(),
+        "--outdir".into(),
+        out_dir.as_os_str().to_owned(),
+    ];
+    for f in files {
+        let absolute = if f.is_absolute() {
+            f.clone()
+        } else {
+            std::env::current_dir().map(|d| d.join(f)).unwrap_or_else(|_| f.clone())
+        };
+        args.push(absolute.into_os_string());
+    }
+    args
+}
+
 pub fn convert_batch(files: &[PathBuf], out_dir: &Path) -> Result<Vec<PathBuf>, String> {
     // LT-070: soffice serialises on a shared user profile, so two conversions
     // at once — cargo's parallel tests, or a user who already has LibreOffice
@@ -743,12 +767,7 @@ pub fn convert_batch(files: &[PathBuf], out_dir: &Path) -> Result<Vec<PathBuf>, 
     let profile = unique_profile_dir();
     let _ = std::fs::create_dir_all(&profile);
     let mut cmd = std::process::Command::new("soffice");
-    cmd.arg(profile_arg(&profile))
-        .args(["--headless", "--convert-to", "svg", "--outdir"])
-        .arg(out_dir);
-    for f in files {
-        cmd.arg(f);
-    }
+    cmd.args(soffice_args(&profile, out_dir, files));
     let result = cmd.output().map_err(|e| format!("soffice failed to start: {e}"));
     let produced: Vec<PathBuf> = files
         .iter()
@@ -832,6 +851,20 @@ pub fn tidy_converted(svg: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    /// LT-458: a file whose name begins with `-` reaches soffice as an
+    /// absolute path, never as something that looks like an option.
+    #[test]
+    fn a_file_named_like_an_option_is_passed_as_an_absolute_path() {
+        let args = super::soffice_args(std::path::Path::new("/tmp/profile"), std::path::Path::new("/tmp/out"), &["--odd.emf".into(), "/abs/--other.wmf".into()]);
+        let files: Vec<String> = args[6..].iter().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert_eq!(files.len(), 2);
+        assert!(std::path::Path::new(&files[0]).is_absolute(), "{files:?}");
+        assert!(files[0].ends_with("--odd.emf"));
+        assert_eq!(files[1], "/abs/--other.wmf");
+        assert!(files.iter().all(|f| !f.starts_with('-')));
+        assert_eq!(args[1..6].iter().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>(), ["--headless", "--convert-to", "svg", "--outdir", "/tmp/out"]);
+    }
+
     use super::*;
 
     /// LT-382 (bug): three tests shelling out to LibreOffice at once.

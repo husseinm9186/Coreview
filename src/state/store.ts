@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import type { Edge, Node } from '@xyflow/react';
 import { applyEdgeChanges, applyNodeChanges, type EdgeChange, type NodeChange } from '@xyflow/react';
 
-import { ipc, isDesktop, type ProbeResultDto, type IconLibEntry, type StoredSettings, setCurrentProject } from '../lib/ipc';
+import { ipc, isDesktop, type ProbeResultDto, type IconLibEntry, type StoredSettings, type JobSnapshot, setCurrentProject } from '../lib/ipc';
+import { applyJob } from '../lib/jobs';
 import { staleCredentials, withoutStaleCredentials } from '../lib/credentialScope';
 import { uid } from '../lib/id';
 import { newProbe } from '../lib/probes';
@@ -32,6 +33,9 @@ import { deleteHistory, loadHistory, saveHistory } from '../lib/historyStore';
 import { forceLayout, orthogonalLayout, radialLayout } from '../lib/autoLayout';
 import type { CredentialRule } from '../lib/credentialBindings';
 import { readProfile, withProfile, type CrawlProfile } from '../lib/crawlProfiles';
+import type { IntentRule } from '../lib/intentChecks';
+import type { LifecycleRow } from '../lib/lifecycle';
+import type { DrawerContent } from '../components/Drawer';
 import { applyChanges, type Change } from '../lib/reconcile';
 import { probeFromTemplate, targetOf, withTemplate, type ProbeTemplate } from '../lib/probeTemplates';
 import type { Sample } from '../lib/sparkline';
@@ -165,6 +169,12 @@ export interface ProjectDocument {
   credentialRules?: CredentialRule[];
   /** LT-212: named crawl settings. No secrets — see crawlProfiles.ts. */
   crawlProfiles?: CrawlProfile[];
+  /** LT-437: rules about how the estate is meant to be, checked against
+   *  every crawl and reported among the findings. See intentChecks.ts. */
+  intentRules?: IntentRule[];
+  /** LT-439: the operator's own lifecycle table — model, end of sale, end of
+   *  support — read from a CSV he supplies. Nothing is fetched from a vendor. */
+  lifecycle?: LifecycleRow[];
   /** LT-222: saved checks to add to other devices. */
   probeTemplates?: ProbeTemplate[];
   /** LT-271: a sample's guided tour, and the steps already done. */
@@ -424,6 +434,28 @@ interface Store {
    *  hostname and a username it was never asked to keep. */
   sshSessions: SshTab[];
   sshActive: string | null;
+  /** LT-453: the canvas is zoomed far enough out that a device draws as a
+   *  glyph and a name only — the level of detail the benchmark measures.
+   *  **Off unless the page was opened with `?lod=on`**: the measurement
+   *  LT-188's protocol demands was stopped by the machine for memory before
+   *  it finished, so nothing is claimed for it and nothing ships on by
+   *  default until it has been measured (D-031). */
+  farZoom: boolean;
+  lodEnabled: boolean;
+  setFarZoom: (far: boolean) => void;
+  /** LT-444: the drawer beside the canvas — a device or a finding — and
+   *  whether it is pinned. Window state, never the document. */
+  drawer: DrawerContent | null;
+  drawerPinned: boolean;
+  openDrawer: (content: DrawerContent) => void;
+  closeDrawer: () => void;
+  setDrawerPinned: (on: boolean) => void;
+  /** LT-432: every job running or stopping right now, as `jobs.rs` reports
+   *  them on `coreview://job`. Window state: a job belongs to the process,
+   *  not to the document, and the list is rebuilt from `job_list` on load. */
+  jobs: JobSnapshot[];
+  setJobs: (jobs: JobSnapshot[]) => void;
+  applyJobEvent: (snapshot: JobSnapshot) => void;
   openSshTab: (tab: SshTab) => void;
   setSshActive: (id: string | null) => void;
   /** The session ended — at the device's end or ours. The tab stays, with
@@ -443,9 +475,9 @@ interface Store {
    *  None of them reports on the live diagram, and all four want height the
    *  bottom panel does not have. A way of looking, so never saved. */
   toolsOpen: boolean;
-  toolsView: 'compare' | 'racks' | 'csv' | 'visio' | 'settings';
+  toolsView: 'compare' | 'racks' | 'csv' | 'visio' | 'lifecycle' | 'settings';
   setToolsOpen: (on: boolean, view?: 'compare' | 'racks' | 'csv' | 'visio' | 'settings') => void;
-  setToolsView: (view: 'compare' | 'racks' | 'csv' | 'visio' | 'settings') => void;
+  setToolsView: (view: 'compare' | 'racks' | 'csv' | 'visio' | 'lifecycle' | 'settings') => void;
   /** LT-184: true while the canvas is being printed, so views set not to
    *  print are left off the page. Not part of the document. */
   printing: boolean;
@@ -489,6 +521,10 @@ interface Store {
   forgetCredential: (kind: 'ssh' | 'snmp', id?: string) => void;
   /** LT-212. */
   saveCrawlProfile: (profile: CrawlProfile) => void;
+  /** LT-437: the project's intent rules, replaced whole. One undo step. */
+  setIntentRules: (rules: IntentRule[]) => void;
+  /** LT-439: the project's lifecycle table, replaced whole. One undo step. */
+  setLifecycle: (rows: LifecycleRow[]) => void;
   /** LT-216: the accepted changes of a crawl review, as one undo step.
    *  Returns the devices it added. */
   applyCrawlChanges: (accepted: Change[]) => TopoNode[];
@@ -1004,6 +1040,11 @@ export const useStore = create<Store>((set, get) => ({
   toolsView: 'compare',
   sshSessions: [],
   sshActive: null,
+  jobs: [],
+  drawer: null,
+  drawerPinned: false,
+  farZoom: false,
+  lodEnabled: typeof location !== 'undefined' && new URLSearchParams(location.search).get('lod') === 'on',
   doc: emptyDocument(),
   dirty: false,
   lastSavedAt: null,
@@ -1344,6 +1385,30 @@ export const useStore = create<Store>((set, get) => ({
 
   setPrinting(on) {
     set({ printing: on });
+  },
+
+  setFarZoom(far) {
+    if (get().farZoom !== far) set({ farZoom: far });
+  },
+
+  openDrawer(content) {
+    set({ drawer: content });
+  },
+
+  closeDrawer() {
+    set({ drawer: null, drawerPinned: false });
+  },
+
+  setDrawerPinned(on) {
+    set({ drawerPinned: on });
+  },
+
+  setJobs(jobs) {
+    set({ jobs: [...jobs].sort((a, b) => a.id - b.id) });
+  },
+
+  applyJobEvent(snapshot) {
+    set((s) => ({ jobs: applyJob(s.jobs, snapshot) }));
   },
 
   openSshTab(tab) {
@@ -2254,6 +2319,16 @@ export const useStore = create<Store>((set, get) => ({
     }));
     for (const c of accepted) if (c.patch && 'addresses' in c.patch.data) get().ensureNodeCheck(c.patch.id);
     return next.added;
+  },
+
+  setIntentRules(rules) {
+    get().commit();
+    set((s) => ({ doc: { ...s.doc, intentRules: rules }, dirty: true }));
+  },
+
+  setLifecycle(rows) {
+    get().commit();
+    set((s) => ({ doc: { ...s.doc, lifecycle: rows }, dirty: true }));
   },
 
   saveCrawlProfile(profile) {

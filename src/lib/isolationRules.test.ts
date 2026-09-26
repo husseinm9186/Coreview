@@ -61,17 +61,17 @@ describe('the isolation rules (LT-258)', () => {
     const at = (payload: unknown, cmd = 'save_export') => rules.check({ cmd, callback: 1, error: 2, payload });
     expect(rules.check({ cmd: 'drop_everything', callback: 1, error: 2, payload: {} })).toMatch(/no command called drop_everything/);
     expect(rules.check({ cmd: 'plugin:shell|execute', callback: 1, error: 2, payload: {} })).toMatch(/no use for plugin:shell\|execute/);
-    expect(at({ path: '/tmp/x', contentsB64: '', extra: 1 })).toMatch(/sends "extra"/);
+    expect(at({ token: 't', contentsB64: '', extra: 1 })).toMatch(/sends "extra"/);
     expect(at([1, 2])).toMatch(/not named/);
-    expect(at(JSON.parse('{"path":"/tmp/x","contentsB64":{"__proto__":{"polluted":true}}}'))).toMatch(/__proto__/);
+    expect(at(JSON.parse('{"token":"t","contentsB64":{"__proto__":{"polluted":true}}}'))).toMatch(/__proto__/);
     let deep: unknown = 'x';
     for (let i = 0; i < 80; i += 1) deep = [deep];
-    expect(at({ path: deep, contentsB64: '' })).toMatch(/nested too deeply/);
+    expect(at({ token: deep, contentsB64: '' })).toMatch(/nested too deeply/);
     expect(rules.check(null)).toMatch(/names no command/);
   });
 
   it('send a refusal on as ipc_refused, keeping the callbacks so the call fails', () => {
-    const out = rules.guard({ cmd: 'save_export', callback: 7, error: 8, options: { headers: {} }, payload: { path: '/tmp/x', injected: true } });
+    const out = rules.guard({ cmd: 'save_export', callback: 7, error: 8, options: { headers: {} }, payload: { token: 't', injected: true } });
     expect(out).toMatchObject({ cmd: 'ipc_refused', callback: 7, error: 8, payload: { command: 'save_export' } });
     expect(String((out.payload as { reason: string }).reason)).toMatch(/injected/);
     expect(rules.check(out)).toBeNull();

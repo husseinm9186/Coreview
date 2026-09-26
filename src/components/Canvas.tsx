@@ -1680,6 +1680,13 @@ export function Canvas() {
            sources also be the end of a link. */
         connectionMode={ConnectionMode.Loose}
         minZoom={0.01}
+        // LT-453: below a third of natural size a device is a glyph and a
+        // name; the two thresholds keep it from flickering at the boundary.
+        onMove={(_, viewport) => {
+          const far = useStore.getState().farZoom;
+          if (!far && viewport.zoom < 0.35) useStore.getState().setFarZoom(true);
+          else if (far && viewport.zoom > 0.45) useStore.getState().setFarZoom(false);
+        }}
         maxZoom={100}
         onNodeClick={(_, n) => store.select(n.id, null)}
         onEdgeClick={(_, e) => store.select(null, e.id)}

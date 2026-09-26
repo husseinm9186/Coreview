@@ -381,9 +381,21 @@ non-super_admin profile and the prompt finder only accepted `#` and `>`.
 **Now** section is again a list of open work rather than a history. Do not
 trust the summary below over that file; it is a signpost and it will rot.
 
-- **Not started:** the thirty-six audit items LT-423–LT-458 (2026-09-25),
-  approved as a set and worked in the roadmap's order. LT-124 and LT-125 are
-  done.
+- **The audit of 2026-09-25 (LT-423–LT-458)** shipped the same day, all but
+  one: LT-453 (level of detail on the canvas) is built, off by default, and
+  waits for a benchmark on a quiet machine — the run was stopped for memory,
+  and D-031's protocol accepts nothing unmeasured. What it left behind, and
+  where: `src-tauri/src/jobs.rs` (the job registry; a second crawl is
+  refused, `coreview://job` carries progress), `timeline.rs` (changes across
+  every kept crawl), `coreview-discover/src/dialect.rs` (one reading of the
+  banner decides every command; the identity half of a visit is still in
+  `crawl.rs`), `crates/coreview-formats` (the Visio, draw.io and Nmap
+  readers, Tauri-free), `Drawer.tsx` and `JobsBar.tsx` on the page, and
+  schema 3, under which a crawl is written device by device as it goes.
+  Four guards were added beside `groundTokens.test.ts`:
+  `asyncCommands.test.ts` (no I/O on the UI thread), `typeScale.test.ts`
+  (font sizes are tokens), the dialect equivalence test, and the licence
+  test now listing every crate. LT-124 and LT-125 are done.
 - **Half done:** LT-139 the stacking parsers exist and have met no hardware ·
   LT-110 Visio import (the Lucidchart/geometric path has no `<Connect>` data
   at all).
@@ -477,6 +489,10 @@ trust the summary below over that file; it is a signpost and it will rot.
   LT-223/229 (D-030 not accepted), LT-261 (Q-012, OpenSSL in every
   installer), LT-263 (Q-013, no TPM or Secure Enclave), LT-269 (Q-010, CI cost),
   and LT-281 (vite/vitest major upgrades).
+
+**One thing the audit could not settle:** whether LibreOffice honours `--`
+as an end-of-options mark (LT-458). It could not be shown to on this machine,
+so `shapeconv` passes absolute paths instead and the flag is not used.
 
 **Known bugs open: one, and it is not a code change.** LT-137: two real device
 passwords were used as test fixtures and remain in git history. The fixtures

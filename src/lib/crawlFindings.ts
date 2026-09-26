@@ -29,7 +29,12 @@ import { macKey, shortInterface } from './topology';
 
 export type FindingKind =
   | 'one-way' | 'not-seen' | 'unidentified' | 'loop' | 'blocked' | 'orphan'
-  | 'duplicate-mac' | 'duplicate-ip';
+  | 'duplicate-mac' | 'duplicate-ip'
+  /** LT-437: a rule the operator wrote, broken. See intentChecks.ts. */
+  | 'intent'
+  /** LT-454: a host key trusted on first contact, written down so day-one
+   *  trust is visible afterwards. Information, not a fault. */
+  | 'host-key-new';
 
 export interface Finding {
   kind: FindingKind;
@@ -53,7 +58,19 @@ export const FINDING_LABEL: Record<FindingKind, string> = {
   orphan: 'Orphan',
   'duplicate-mac': 'Duplicate MAC',
   'duplicate-ip': 'Duplicate address',
+  intent: 'Intent',
+  'host-key-new': 'First contact',
 };
+
+/** LT-454: one finding per host key this crawl met for the first time. */
+export function firstSeenKeyFindings(keys: readonly { host: string; port: number; fingerprint: string }[] | undefined): Finding[] {
+  return (keys ?? []).map((k) => ({
+    kind: 'host-key-new',
+    severity: 'info',
+    message: `${k.host}${k.port === 22 ? '' : `:${k.port}`} was trusted on first contact; its key is ${k.fingerprint}. If this device was not new to you, confirm the key with someone who can see it.`,
+    devices: [k.host],
+  }));
+}
 
 const key = (name: string) => name.trim().toLowerCase();
 const port = (name: string | null | undefined) => (name ? shortInterface(name).toLowerCase() : '');
@@ -90,7 +107,7 @@ interface Link {
   bShown: string;
 }
 
-export function crawlFindings(result: Pick<CrawlResult, 'devices'>, drawn: readonly DrawnLink[] = []): Finding[] {
+export function crawlFindings(result: Pick<CrawlResult, 'devices' | 'firstSeenKeys'>, drawn: readonly DrawnLink[] = []): Finding[] {
   const findings: Finding[] = [];
   const reached = new Map<string, CrawledDevice>();
   for (const d of result.devices) if (d.reachedBy !== 'reported') reached.set(key(d.hostname), d);
@@ -257,7 +274,9 @@ export function crawlFindings(result: Pick<CrawlResult, 'devices'>, drawn: reado
     });
   }
 
-  const order: FindingKind[] = ['loop', 'duplicate-ip', 'duplicate-mac', 'one-way', 'not-seen', 'blocked', 'unidentified', 'orphan'];
+  const order: FindingKind[] = ['loop', 'duplicate-ip', 'duplicate-mac', 'one-way', 'not-seen', 'blocked', 'unidentified', 'orphan', 'host-key-new'];
+  // LT-454: first contact is information, listed after everything that is wrong.
+  findings.push(...firstSeenKeyFindings(result.firstSeenKeys));
   return findings.sort((x, y) => order.indexOf(x.kind) - order.indexOf(y.kind));
 }
 

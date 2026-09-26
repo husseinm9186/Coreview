@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { t } from '../i18n';
 
 /**
  * Keeps one broken component from taking the application with it (LT-073).
@@ -43,12 +44,11 @@ export class ErrorBoundary extends Component<Props, State> {
       <div className="cv-boundary" role="alert">
         <strong>{this.props.what} stopped working.</strong>
         <p className="cv-help">
-          The rest of Coreview is still running and nothing has been lost. If it keeps
-          happening, this is the detail worth reporting:
+          The rest of Coreview is still running and nothing has been lost. If it keeps happening, this is the detail worth reporting:
         </p>
         <pre className="cv-boundary-detail">{error.message}</pre>
         <button type="button" className="cv-btn" onClick={() => this.setState({ error: null })}>
-          Try again
+          {t('errorBoundary.tryAgain')}
         </button>
       </div>
     );

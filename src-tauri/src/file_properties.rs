@@ -26,18 +26,18 @@ proptest! {
     #[test]
     fn no_file_reader_panics_on_arbitrary_bytes(bytes in prop::collection::vec(any::<u8>(), 0..2048)) {
         let text = String::from_utf8_lossy(&bytes);
-        let _ = crate::visio_import::import_vsdx(&bytes);
+        let _ = coreview_formats::visio_import::import_vsdx(&bytes);
         let _ = crate::spreadsheet::read_xlsx(&bytes);
-        let _ = crate::drawio_import::import_drawio(&text);
-        let _ = crate::nmap_import::read_nmap_xml(&text);
+        let _ = coreview_formats::drawio_import::import_drawio(&text);
+        let _ = coreview_formats::nmap_import::read_nmap_xml(&text);
     }
 
     #[test]
     fn a_damaged_drawing_or_scan_is_an_error_or_a_result(cut in any::<usize>(), flips in prop::collection::vec((any::<usize>(), any::<u8>()), 0..8)) {
         let drawio = cut_and_flip(DRAWIO, cut, &flips);
-        let _ = crate::drawio_import::import_drawio(&String::from_utf8_lossy(&drawio));
+        let _ = coreview_formats::drawio_import::import_drawio(&String::from_utf8_lossy(&drawio));
         let nmap = cut_and_flip(NMAP, cut, &flips);
-        let _ = crate::nmap_import::read_nmap_xml(&String::from_utf8_lossy(&nmap));
+        let _ = coreview_formats::nmap_import::read_nmap_xml(&String::from_utf8_lossy(&nmap));
     }
 
     /// A real zip whose parts are nonsense is refused, not a panic.
@@ -59,12 +59,12 @@ proptest! {
         }
         let bytes = buf.into_inner();
         let _ = crate::spreadsheet::read_xlsx(&bytes);
-        let _ = crate::visio_import::import_vsdx(&bytes);
+        let _ = coreview_formats::visio_import::import_vsdx(&bytes);
     }
 }
 
 #[test]
 fn the_samples_are_read() {
-    assert_eq!(crate::drawio_import::import_drawio(DRAWIO).unwrap().pages[0].links.len(), 1);
-    assert_eq!(crate::nmap_import::read_nmap_xml(NMAP).unwrap().hosts.len(), 1);
+    assert_eq!(coreview_formats::drawio_import::import_drawio(DRAWIO).unwrap().pages[0].links.len(), 1);
+    assert_eq!(coreview_formats::nmap_import::read_nmap_xml(NMAP).unwrap().hosts.len(), 1);
 }

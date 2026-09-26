@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { useStore } from '../state/store';
 import { layersOf, STANDARD_LAYER_NAMES } from '../lib/layers';
 import { activePage } from '../lib/pages';
+import { t } from '../i18n';
 
 export function Layers() {
   const canvas = useStore((s) => activePage(s.doc).canvas);
@@ -50,7 +51,7 @@ export function Layers() {
             <input
               className="cv-layer-name"
               value={layer.name}
-              aria-label="View name"
+              aria-label={t('layers.viewName')}
               onChange={(e) => setLayer(layer.id, { name: e.target.value })}
             />
             <button
@@ -75,7 +76,7 @@ export function Layers() {
             <button
               type="button"
               className="cv-layer-remove"
-              title="Remove this view. What is on it stays on the diagram."
+              title={t('layers.removeThisViewWhat')}
               aria-label={`Remove ${layer.name}`}
               onClick={() => removeLayer(layer.id)}
             >
@@ -88,8 +89,8 @@ export function Layers() {
       <div className="cv-row cv-row-tight cv-layers-add">
         <input
           className="cv-input"
-          placeholder="Logical, Change 4821…"
-            aria-label="New view name"
+          placeholder={t('layers.logicalChange4821')}
+            aria-label={t('layers.newViewName')}
           value={adding}
           onChange={(e) => setAdding(e.target.value)}
           onKeyDown={(e) => {
@@ -116,8 +117,7 @@ export function Layers() {
         </button>
       )}
       <p className="cv-help">
-        ⎙ chooses whether a view goes into exports and printing. Anything not put on a view appears on all of them, so a diagram drawn before you
-        added one is unchanged.
+        {t('layers.choosesWhetherAView')}
       </p>
     </details>
   );

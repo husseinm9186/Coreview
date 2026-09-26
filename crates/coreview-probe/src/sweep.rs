@@ -110,7 +110,9 @@ async fn identify(
         // milliseconds, and the only thing a long wait buys is a longer wait
         // on the firewalled ones, which are the majority.
         let budget = options.timeout_ms.min(PORT_TIMEOUT_MS);
-        crate::ports::scan(ip, crate::ports::COMMON_PORTS, budget, port_permits).await
+        // LT-440: the operator's own list where given, otherwise the common one.
+        let list = crate::ports::ports_to_scan(&options.ports);
+        crate::ports::scan(ip, &list, budget, port_permits).await
     };
 
     // Reading the neighbour table is a file read on Linux and a process
@@ -367,7 +369,15 @@ pub struct SweepOptions {
     /// networks watch for it.
     #[serde(default = "yes")]
     pub scan_ports: bool,
+    /// LT-440: the ports to try instead of the common eighteen. Empty means
+    /// the common list; at most `MAX_PORTS`, because the scan is the
+    /// noisiest thing a sweep does and the list is per host.
+    #[serde(default)]
+    pub ports: Vec<u16>,
 }
+
+/// LT-440: the most ports one sweep may try per host.
+pub const MAX_PORTS: usize = 64;
 
 /// Serde needs a function to default a bool to true; both of these are on
 /// unless the caller says otherwise, so an old saved payload that predates
@@ -383,6 +393,7 @@ impl Default for SweepOptions {
             concurrency: DEFAULT_CONCURRENCY,
             identify: true,
             scan_ports: true,
+            ports: Vec::new(),
         }
     }
 }
@@ -391,11 +402,20 @@ impl SweepOptions {
     /// Clamps rather than rejects. These come from a slider, and a value out of
     /// range should behave sensibly instead of failing a long-running sweep.
     pub fn clamped(self) -> Self {
+        // LT-440: no port 0, no repeats, in the order given, capped.
+        let mut seen = std::collections::HashSet::new();
+        let ports: Vec<u16> = self
+            .ports
+            .into_iter()
+            .filter(|p| *p != 0 && seen.insert(*p))
+            .take(MAX_PORTS)
+            .collect();
         Self {
             timeout_ms: self.timeout_ms.clamp(100, 60_000),
             concurrency: self.concurrency.clamp(MIN_CONCURRENCY, MAX_CONCURRENCY),
             identify: self.identify,
             scan_ports: self.scan_ports,
+            ports,
         }
     }
 }
@@ -795,10 +815,18 @@ mod tests {
             concurrency: 100_000,
             identify: false,
             scan_ports: false,
+            // LT-440: a zero, a repeat, and more than the cap.
+            ports: std::iter::once(0).chain([22, 22, 161]).chain(1000..1200).collect(),
         }
         .clamped();
         assert_eq!(o.timeout_ms, 100);
         assert_eq!(o.concurrency, MAX_CONCURRENCY);
+        assert_eq!(o.ports.len(), MAX_PORTS, "capped");
+        assert_eq!(&o.ports[..3], &[22, 161, 1000], "no zero, no repeat, in the order given");
+        let list = crate::ports::ports_to_scan(&o.ports);
+        assert_eq!(list[1], (161, "SNMP"), "named from the registry");
+        assert_eq!(list[2], (1000, ""), "and honestly unnamed where it is not");
+        assert_eq!(crate::ports::ports_to_scan(&[]).len(), crate::ports::COMMON_PORTS.len(), "empty means the common list");
         // Clamping is about the numbers; the switches pass through untouched.
         assert!(!o.identify);
         assert!(!o.scan_ports);

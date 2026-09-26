@@ -1,5 +1,6 @@
 import { useStore } from '../state/store';
 import { isDesktop } from '../lib/ipc';
+import { t } from '../i18n';
 
 /**
  * Where Coreview writes things, chosen once and remembered.
@@ -16,10 +17,9 @@ export function FolderSettings() {
   if (!isDesktop) {
     return (
       <section className="cv-folders">
-        <h2>Folders</h2>
+        <h2>{t('folderSettings.folders')}</h2>
         <p className="cv-help">
-          Choosing folders needs the desktop app. In a browser, exports go to your normal
-          downloads and there are no backups.
+          {t('folderSettings.choosingFoldersNeedsThe')}
         </p>
       </section>
     );
@@ -55,7 +55,7 @@ export function FolderSettings() {
 
   return (
     <section className="cv-folders">
-      <h2>Folders</h2>
+      <h2>{t('folderSettings.folders')}</h2>
       {row(
         'backupFolder',
         'Configuration backups',

@@ -94,13 +94,13 @@ export const backupInput = (input: object) => {
 };
 
 /** `SweepOptions` in `coreview-probe/src/sweep.rs`. */
-export const sweepOptions = (o: object) => pickAll(o, ['timeoutMs', 'concurrency', 'identify', 'scanPorts']);
+export const sweepOptions = (o: object) => pickAll(o, ['timeoutMs', 'concurrency', 'identify', 'scanPorts', 'ports']);
 
 /** `SaveCredential` in `src-tauri/src/vault_commands.rs`. */
 export const saveCredential = (c: object) => pickAll(c, ['id', 'label', 'kind', 'username', 'secret', 'secondSecret', 'detail']);
 
 /** `Check` in `coreview-discover/src/checks.rs`. */
-export const backupCheck = (c: object) => pickAll(c, ['id', 'name', 'command', 'expect', 'pattern', 'ignoreCase']);
+export const backupCheck = (c: object) => pickAll(c, ['id', 'name', 'command', 'expect', 'pattern', 'ignoreCase', 'block', 'severity', 'roles']);
 
 /** `VisioDrawing`, `VisioPage`, `VisioShape` and `VisioLink` in `src-tauri/src/visio.rs`. */
 export const visioDrawing = (d: object) => {

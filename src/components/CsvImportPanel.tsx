@@ -11,6 +11,7 @@ import { uid } from '../lib/id';
 import { DEVICE_LABEL } from './icons';
 import type { DeviceNodeData, DeviceType, LinkData } from '../types/domain';
 import { activePage } from '../lib/pages';
+import { t } from '../i18n';
 
 /** Matches a `type` value to a device glyph, by label or by id. */
 function deviceType(raw: string): DeviceType {
@@ -164,7 +165,7 @@ export function CsvImportPanel() {
   };
 
   if (!isDesktop) {
-    return <p className="cv-help cv-discover-empty">Reading a file needs the desktop app.</p>;
+    return <p className="cv-help cv-discover-empty">{t('csvImportPanel.readingAFileNeeds')}</p>;
   }
 
   const header = loaded?.kind === 'grid' ? (loaded.sheets[loaded.sheet]?.rows[loaded.headerRow] ?? []) : [];
@@ -175,7 +176,7 @@ export function CsvImportPanel() {
     <div className="cv-discover">
       <div className="cv-discover-form">
         <button type="button" className="cv-btn cv-btn-start" onClick={() => void read()}>
-          Choose a file
+          {t('csvImportPanel.chooseAFile')}
         </button>
         <span className="cv-help">
           A device or link list as CSV or an Excel workbook — you choose which column is which — or a NetBox
@@ -187,19 +188,19 @@ export function CsvImportPanel() {
       {done && <p className="cv-help" role="status">{done}</p>}
 
       {loaded?.kind === 'grid' && (
-        <section className="cv-import-map" aria-label="Match the columns">
+        <section className="cv-import-map" aria-label={t('csvImportPanel.matchTheColumns')}>
           <p className="cv-help">{fileName(loaded.source)}</p>
           <div className="cv-import-map-head">
             {loaded.sheets.length > 1 && (
               <label className="cv-field cv-field-narrow">
-                <span>Sheet</span>
+                <span>{t('csvImportPanel.sheet')}</span>
                 <select className="cv-input" value={loaded.sheet} onChange={(e) => setLoaded(withSheet(loaded.source, loaded.sheets, Number(e.target.value)))}>
                   {loaded.sheets.map((s, i) => <option key={s.name} value={i}>{s.name}</option>)}
                 </select>
               </label>
             )}
             <label className="cv-field cv-field-narrow">
-              <span>Header row</span>
+              <span>{t('csvImportPanel.headerRow')}</span>
               <input className="cv-input" type="number" min={1} max={Math.max(1, (loaded.sheets[loaded.sheet]?.rows.length ?? 1))} value={loaded.headerRow + 1}
                 onChange={(e) => {
                   const headerRow = Math.max(0, Number(e.target.value) - 1);
@@ -208,7 +209,7 @@ export function CsvImportPanel() {
                 }} />
             </label>
             <fieldset className="cv-import-kind">
-              <legend>Each row is</legend>
+              <legend>{t('csvImportPanel.eachRowIs')}</legend>
               {(['devices', 'links'] as const).map((k) => (
                 <label key={k} className="cv-check cv-check-inline">
                   <input type="radio" name="cv-import-kind" checked={loaded.as === k} onChange={() => setLoaded({ ...loaded, as: k, mapping: guessMapping(header, k) })} />
@@ -223,7 +224,7 @@ export function CsvImportPanel() {
                 <span>{f.label}{f.required ? ' *' : ''}</span>
                 <select className="cv-input" aria-label={`Column for ${f.label}`} value={loaded.mapping[f.key] ?? ''}
                   onChange={(e) => setLoaded({ ...loaded, mapping: { ...loaded.mapping, [f.key]: e.target.value === '' ? null : Number(e.target.value) } })}>
-                  <option value="">— not in this file —</option>
+                  <option value="">{t('csvImportPanel.notInThisFile')}</option>
                   {header.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
                 </select>
               </label>
@@ -258,13 +259,13 @@ export function CsvImportPanel() {
             <button type="button" className="cv-btn cv-btn-start" onClick={apply} disabled={count === 0 || missingRequired.length > 0}>
               Add {count} to diagram
             </button>
-            <button type="button" className="cv-btn" onClick={() => setLoaded(null)}>Cancel</button>
+            <button type="button" className="cv-btn" onClick={() => setLoaded(null)}>{t('csvImportPanel.cancel')}</button>
           </div>
 
           {loaded.kind === 'netbox' || mapped?.kind === 'devices' ? (
             <table className="cv-table cv-discover-table">
               <thead>
-                <tr><th>Name</th><th>Type</th><th>Address</th><th>Model</th><th>Site / rack</th><th>Tags</th></tr>
+                <tr><th>{t('csvImportPanel.name')}</th><th>{t('csvImportPanel.type')}</th><th>{t('csvImportPanel.address')}</th><th>{t('csvImportPanel.model')}</th><th>{t('csvImportPanel.siteRack')}</th><th>{t('csvImportPanel.tags')}</th></tr>
               </thead>
               <tbody>
                 {(loaded.kind === 'netbox' ? loaded.found.devices : (mapped?.rows as NodeCsvRow[])).slice(0, 200).map((r, i) => (
@@ -283,7 +284,7 @@ export function CsvImportPanel() {
           {(loaded.kind === 'netbox' ? loaded.found.links : mapped?.kind === 'links' ? mapped.rows : []).length > 0 && (
             <table className="cv-table cv-discover-table">
               <thead>
-                <tr><th>Source</th><th>Target</th><th>Ports</th><th>Label</th><th>Health rule</th></tr>
+                <tr><th>{t('csvImportPanel.source')}</th><th>{t('csvImportPanel.target')}</th><th>{t('csvImportPanel.ports')}</th><th>{t('csvImportPanel.label')}</th><th>{t('csvImportPanel.healthRule')}</th></tr>
               </thead>
               <tbody>
                 {(loaded.kind === 'netbox' ? loaded.found.links : (mapped?.rows as LinkCsvRow[])).slice(0, 200).map((r, i) => (

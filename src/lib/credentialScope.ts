@@ -19,7 +19,7 @@ import type { ProjectDocument } from '../state/store';
 import type { DeviceNodeData } from '../types/domain';
 
 /** Every credential id this project refers to, anywhere. */
-export function credentialsUsedBy(doc: ProjectDocument): Set<string> {
+export function credentialsUsedBy(doc: Pick<ProjectDocument, 'pages' | 'credentialDefaults' | 'credentialRules'>): Set<string> {
   const used = new Set<string>();
   const add = (id: string | undefined | null) => {
     const t = id?.trim();

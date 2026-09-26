@@ -6,6 +6,7 @@ import { isDesktop } from '../lib/ipc';
 import { DEVICE_LABEL, ICONS, PALETTE_GROUPS } from './icons';
 import { BOUNDARIES, BOUNDARY_KINDS } from '../lib/boundaries';
 import type { DeviceType } from '../types/domain';
+import { t } from '../i18n';
 
 export function Palette() {
   const ground = useStore((s) => s.settings.ground);
@@ -18,11 +19,11 @@ export function Palette() {
   };
 
   return (
-    <aside className="cv-palette" aria-label="Device palette">
+    <aside className="cv-palette" aria-label={t('palette.devicePalette')}>
       <input
         className="cv-input cv-palette-search"
-            aria-label="Search shapes"
-        placeholder="Search shapes"
+            aria-label={t('palette.searchShapes')}
+        placeholder={t('palette.searchShapes')}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
@@ -33,7 +34,7 @@ export function Palette() {
       <Layers />
 
       <div className="cv-palette-group">
-        <h3>Annotation</h3>
+        <h3>{t('palette.annotation')}</h3>
         <div className="cv-palette-grid">
           <button type="button" className="cv-palette-item" draggable onDragStart={(e) => drag(e, 'note')}>
             <span className="cv-palette-glyph">▤</span>
@@ -46,7 +47,7 @@ export function Palette() {
             onDragStart={(e) => drag(e, 'change-note')}
           >
             <span className="cv-palette-glyph">✎</span>
-            Change note
+            {t('palette.changeNote')}
           </button>
           <button
             type="button"
@@ -55,7 +56,7 @@ export function Palette() {
             onDragStart={(e) => drag(e, 'sticky-note')}
           >
             <span className="cv-palette-glyph">▣</span>
-            Sticky note
+            {t('palette.stickyNote')}
           </button>
         </div>
       </div>
@@ -112,7 +113,7 @@ export function Palette() {
         const Icon = ICONS.zone;
         return (
           <div className="cv-palette-group">
-            <h3>Logical boundaries</h3>
+            <h3>{t('palette.logicalBoundaries')}</h3>
             <div className="cv-palette-grid">
               {kinds.map((k) => (
                 <button
@@ -134,7 +135,7 @@ export function Palette() {
           </div>
         );
       })()}
-      <p className="cv-palette-hint">Drag an item on to the canvas to place it.</p>
+      <p className="cv-palette-hint">{t('palette.dragAnItemOn')}</p>
     </aside>
   );
 }
@@ -163,7 +164,7 @@ function CustomShapesSection({
   if (shapes.length === 0) return null;
   return (
     <div className="cv-palette-group">
-      <h3>Your shapes</h3>
+      <h3>{t('palette.yourShapes')}</h3>
       <div className="cv-palette-grid">
         {shown.map((shape) => (
           <div key={shape.id} className="cv-palette-item-wrap">
@@ -193,7 +194,7 @@ function CustomShapesSection({
           </div>
         ))}
       </div>
-      {shown.length === 0 && <p className="cv-muted cv-palette-note">No shape matches that search.</p>}
+      {shown.length === 0 && <p className="cv-muted cv-palette-note">{t('palette.noShapeMatchesThat')}</p>}
     </div>
   );
 }
@@ -306,17 +307,15 @@ function StencilPacksSection() {
 
       {confirming && (
         <div className="cv-modal-backdrop" role="presentation">
-          <div className="cv-modal" role="dialog" aria-label="Confirm remove">
+          <div className="cv-modal" role="dialog" aria-label={t('palette.confirmRemove')}>
             <h2>Remove the “{confirming}” stencil pack?</h2>
             <p>
-              Its shapes disappear from the palette, and its files are deleted to free the
-              space where the app is installed somewhere it can write. Reinstalling the app is
-              the only way to bring it back.
+              {t('palette.itsShapesDisappearFrom')}
             </p>
             {problem && <p className="cv-warn">{problem}</p>}
             <div className="cv-modal-actions">
               <button type="button" className="cv-btn" onClick={() => setConfirming(null)} disabled={busy}>
-                Keep it
+                {t('palette.keepIt')}
               </button>
               <button
                 type="button"
@@ -383,18 +382,17 @@ function IconLibrarySection({
 
   return (
     <div className="cv-palette-group">
-      <h3>Icon library</h3>
+      <h3>{t('palette.iconLibrary')}</h3>
 
       {!dir && (
         <div className="cv-palette-note">
           <p className="cv-muted">
-            Point Coreview at a folder of SVGs to use your own device icons. Nothing is
-            copied into the app.
+            {t('palette.pointCoreviewAtA')}
           </p>
           <input
             className="cv-input"
-            placeholder="/path/to/icons"
-            aria-label="Icon library folder"
+            placeholder={t('palette.pathToIcons')}
+            aria-label={t('palette.iconLibraryFolder')}
             value={path}
             onChange={(e) => setPath(e.target.value)}
             spellCheck={false}
@@ -456,7 +454,7 @@ function IconLibrarySection({
       ))}
 
       {dir && shown.length === 0 && (
-        <p className="cv-muted cv-palette-note">No icon matches that search.</p>
+        <p className="cv-muted cv-palette-note">{t('palette.noIconMatchesThat')}</p>
       )}
     </div>
   );

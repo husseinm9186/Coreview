@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ipc, type TracerouteHopDto } from '../lib/ipc';
 import { changedHops } from '../lib/tracerouteDiff';
+import { t } from '../i18n';
 
 /** LT-093: the previous run's hops, per target, for this session only —
  *  not persisted, not a history, just "what did this look like last time"
@@ -56,15 +57,15 @@ export function TraceroutePanel({ target, onClose }: { target: string; onClose: 
           <h2>
             Traceroute to <span className="cv-mono">{target}</span>
           </h2>
-          <button type="button" onClick={onClose} aria-label="Close">
+          <button type="button" onClick={onClose} aria-label={t('traceroutePanel.close')}>
             ×
           </button>
         </div>
 
-        {!hops && !error && <p className="cv-field-hint">Tracing the path — this can take a few seconds…</p>}
+        {!hops && !error && <p className="cv-field-hint">{t('traceroutePanel.tracingThePathThis')}</p>}
         {error && <p className="cv-field-hint is-danger">{error}</p>}
         {hops && hops.length === 0 && (
-          <p className="cv-field-hint">No hops came back at all.</p>
+          <p className="cv-field-hint">{t('traceroutePanel.noHopsCameBack')}</p>
         )}
         {hops && hops.length > 0 && (
           <>
@@ -73,8 +74,7 @@ export function TraceroutePanel({ target, onClose }: { target: string; onClose: 
                 reads as "this is the whole path" and it is not. */}
             {!complete && (
               <p className="cv-field-hint is-warning">
-                Cut short — the trace was still running when time ran out. The hops below are
-                real; what lies past the last one is unknown.
+                Cut short — the trace was still running when time ran out. The hops below are real; what lies past the last one is unknown.
               </p>
             )}
             <p className="cv-field-hint">
@@ -87,9 +87,9 @@ export function TraceroutePanel({ target, onClose }: { target: string; onClose: 
             <table className="cv-tr-table">
               <thead>
                 <tr>
-                  <th>Hop</th>
-                  <th>Router</th>
-                  <th>RTT</th>
+                  <th>{t('traceroutePanel.hop')}</th>
+                  <th>{t('traceroutePanel.router')}</th>
+                  <th>{t('traceroutePanel.rtt')}</th>
                 </tr>
               </thead>
               <tbody>

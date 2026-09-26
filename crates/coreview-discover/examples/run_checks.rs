@@ -56,12 +56,15 @@ fn main() {
                 expect,
                 pattern: pattern.to_string(),
                 ignore_case: false,
+                block: String::new(),
+                severity: Default::default(),
+                roles: Vec::new(),
             }
         })
         .collect();
 
     println!("run {run}");
-    match run_checks(&root, &run, &checks) {
+    match run_checks(&root, &run, &checks, &Default::default()) {
         Err(why) => {
             eprintln!("refused: {why}");
             std::process::exit(1)

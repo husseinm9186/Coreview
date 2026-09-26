@@ -27,12 +27,15 @@ import {
 import { rackElevationSvg } from '../lib/rackSvg';
 import { useStore } from '../state/store';
 import type { DeviceNodeData } from '../types/domain';
+import { t } from '../i18n';
 
 export const UNIT_PX = 14;
 const DRAG_TYPE = 'application/x-coreview-device';
 
 export function RackPanel() {
-  const doc = useStore((s) => s.doc);
+  // LT-452: the racks and the pages, not the whole document.
+  const pages = useStore((s) => s.doc.pages);
+  const docRacks = useStore((s) => s.doc.racks);
   const meta = useStore((s) => s.meta);
   const exportFolder = useStore((s) => s.settings.exportFolder);
   const store = useStore.getState;
@@ -44,10 +47,10 @@ export function RackPanel() {
   const [hover, setHover] = useState<{ rackId: string; u: number; units: number; problem: string | null } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const racks = useMemo(() => doc.racks ?? [], [doc.racks]);
+  const racks = useMemo(() => docRacks ?? [], [docRacks]);
   const devices = useMemo(
-    () => allNodes(doc).filter((n) => n.type === 'device').map((n) => rackableOf(n.id, n.data as DeviceNodeData)),
-    [doc],
+    () => allNodes({ pages }).filter((n) => n.type === 'device').map((n) => rackableOf(n.id, n.data as DeviceNodeData)),
+    [pages],
   );
   const byId = useMemo(() => new Map(devices.map((d) => [d.id, d])), [devices]);
   const rackNames = new Set(racks.map((r) => r.name.trim().toLowerCase()));
@@ -89,7 +92,7 @@ export function RackPanel() {
       }}
     >
       <div className="cv-racks-bar">
-        <div className="cv-seg" role="group" aria-label="Rack face">
+        <div className="cv-seg" role="group" aria-label={t('rackPanel.rackFace')}>
           {(['front', 'rear'] as const).map((f) => (
             <button key={f} type="button" className={face === f ? 'is-on' : ''} aria-pressed={face === f} onClick={() => setFace(f)}>
               {f === 'front' ? 'Front' : 'Rear'}
@@ -105,10 +108,10 @@ export function RackPanel() {
             if (!problem) setNewName('');
           }}
         >
-          <input className="cv-input" aria-label="New rack name" placeholder="Rack name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+          <input className="cv-input" aria-label={t('rackPanel.newRackName')} placeholder={t('rackPanel.rackName')} value={newName} onChange={(e) => setNewName(e.target.value)} />
           <input
             className="cv-input cv-input-narrow"
-            aria-label="New rack height in U"
+            aria-label={t('rackPanel.newRackHeightIn')}
             type="number"
             min={1}
             max={MAX_RACK_UNITS}
@@ -116,13 +119,13 @@ export function RackPanel() {
             onChange={(e) => setNewUnits(e.target.value)}
           />
           <button type="submit" className="cv-btn cv-btn-small">
-            Add rack
+            {t('rackPanel.addRack')}
           </button>
         </form>
         <button
           type="button"
           className="cv-btn cv-btn-small"
-          title="A rack for every rack name the devices carry, and a U for every device in one"
+          title={t('rackPanel.aRackForEvery')}
           onClick={() => {
             const got = store().buildRacksFromDevices();
             setMessage(
@@ -135,7 +138,7 @@ export function RackPanel() {
             );
           }}
         >
-          Build racks from devices
+          {t('rackPanel.buildRacksFromDevices')}
         </button>
         <button type="button" className="cv-btn cv-btn-small" disabled={racks.length === 0} onClick={() => void exportSvg()}>
           Export {face} as SVG
@@ -187,17 +190,17 @@ export function RackPanel() {
                 setMessage(`${chosen.label} is out of the rack.`);
               }}
             >
-              Take out
+              {t('rackPanel.takeOut')}
             </button>
           )}
-          <span className="cv-help">↑↓ move a U</span>
+          <span className="cv-help">{t('rackPanel.moveAU')}</span>
         </div>
       )}
 
       <div className="cv-racks-body">
         <aside className="cv-racks-waiting">
-          <input className="cv-input" aria-label="Filter devices" placeholder="Filter devices" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          <p className="cv-help">Drag a device into a rack. Only devices with a height in U are listed.</p>
+          <input className="cv-input" aria-label={t('rackPanel.filterDevices')} placeholder={t('rackPanel.filterDevices')} value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <p className="cv-help">{t('rackPanel.dragADeviceInto')}</p>
           <ul>
             {waiting.slice(0, 200).map((d) => (
               <li
@@ -236,7 +239,7 @@ export function RackPanel() {
               <header className="cv-rack-head">
                 <input
                   className="cv-input cv-rack-name"
-                  aria-label="Rack name"
+                  aria-label={t('rackPanel.rackName')}
                   defaultValue={rack.name}
                   onBlur={(e) => {
                     if (e.target.value.trim() === rack.name) return;
@@ -247,7 +250,7 @@ export function RackPanel() {
                 />
                 <input
                   className="cv-input cv-input-narrow"
-                  aria-label="Rack height in U"
+                  aria-label={t('rackPanel.rackHeightInU')}
                   type="number"
                   min={1}
                   max={MAX_RACK_UNITS}
@@ -259,7 +262,7 @@ export function RackPanel() {
                     say(problem, `${rack.name} is ${e.target.value}U.`);
                   }}
                 />
-                <button type="button" className="cv-layer-remove" aria-label={`Remove rack ${rack.name}`} title="Remove this rack. Devices keep their rack name and U." onClick={() => store().removeRack(rack.id)}>
+                <button type="button" className="cv-layer-remove" aria-label={`Remove rack ${rack.name}`} title={t('rackPanel.removeThisRackDevices')} onClick={() => store().removeRack(rack.id)}>
                   ×
                 </button>
               </header>

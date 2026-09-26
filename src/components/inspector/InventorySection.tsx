@@ -8,17 +8,18 @@
  */
 import { formatUptime } from '../../lib/inventory';
 import type { DeviceInventory } from '../../types/domain';
+import { t } from '../../i18n';
 
-export function InventorySection({ inventory }: { inventory: DeviceInventory }) {
+export function InventorySection({ inventory, uptimeWhy }: { inventory: DeviceInventory; uptimeWhy?: string | null }) {
   const up = inventory.ports.filter((p) => p.status === 'connected').length;
   const blocked = inventory.spanningTree.filter((i) => i.blocked.length > 0);
   const rootOf = inventory.spanningTree.filter((i) => i.isRoot).length;
   return (
-    <section className="cv-section cv-inventory" aria-label="From the last crawl">
-      <h3>From the last crawl</h3>
+    <section className="cv-section cv-inventory" aria-label={t('inventorySection.fromTheLastCrawl')}>
+      <h3>{t('inventorySection.fromTheLastCrawl')}</h3>
       <p className="cv-help">
         Read {new Date(inventory.collectedAt).toLocaleString()}
-        {inventory.uptimeSeconds != null && <> · up {formatUptime(inventory.uptimeSeconds)}</>}
+        {inventory.uptimeSeconds != null && <> · <span title={uptimeWhy ?? undefined}>up {formatUptime(inventory.uptimeSeconds)}</span></>}
       </p>
 
       {inventory.ports.length > 0 && (
@@ -29,7 +30,7 @@ export function InventorySection({ inventory }: { inventory: DeviceInventory }) 
           <div className="cv-table-scroll">
             <table className="cv-table cv-inventory-table">
               <thead>
-                <tr><th>Port</th><th>Status</th><th>Speed</th><th>VLAN</th><th>Errors</th><th>Description</th></tr>
+                <tr><th>{t('inventorySection.port')}</th><th>{t('inventorySection.status')}</th><th>{t('inventorySection.speed')}</th><th>{t('inventorySection.vlan')}</th><th>{t('inventorySection.errors')}</th><th>{t('inventorySection.description')}</th></tr>
               </thead>
               <tbody>
                 {inventory.ports.map((p) => (
@@ -78,7 +79,7 @@ export function InventorySection({ inventory }: { inventory: DeviceInventory }) 
           </summary>
           <table className="cv-table cv-inventory-table">
             <thead>
-              <tr><th>Instance</th><th>Root</th><th>Root port</th><th>Blocked</th></tr>
+              <tr><th>{t('inventorySection.instance')}</th><th>{t('inventorySection.root')}</th><th>{t('inventorySection.rootPort')}</th><th>{t('inventorySection.blocked')}</th></tr>
             </thead>
             <tbody>
               {inventory.spanningTree.map((i) => (
@@ -101,7 +102,7 @@ export function InventorySection({ inventory }: { inventory: DeviceInventory }) 
           </summary>
           <table className="cv-table cv-inventory-table">
             <thead>
-              <tr><th>Prefix</th><th>From</th><th>Next hop</th><th>Interface</th></tr>
+              <tr><th>{t('inventorySection.prefix')}</th><th>{t('inventorySection.from')}</th><th>{t('inventorySection.nextHop')}</th><th>{t('inventorySection.interface')}</th></tr>
             </thead>
             <tbody>
               {inventory.routes.map((r, i) => (

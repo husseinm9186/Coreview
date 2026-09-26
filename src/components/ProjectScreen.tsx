@@ -8,6 +8,7 @@ import { FolderSettings } from './FolderSettings';
 import { HostKeySettings } from './HostKeySettings';
 import { VaultSettings } from './VaultSettings';
 import type { ProjectMeta } from '../types/domain';
+import { t } from '../i18n';
 
 export function ProjectScreen() {
   const projects = useStore((s) => s.projects);
@@ -126,23 +127,22 @@ export function ProjectScreen() {
     <div className="cv-welcome">
       <div className="cv-welcome-inner">
         <header className="cv-welcome-head">
-          <h1>Coreview</h1>
+          <h1>{t('projectScreen.coreview')}</h1>
           <p>
-            Draw the topology you are actually working on, point it at real addresses, and watch
-            the links while you work. Everything stays on this machine.
+            {t('projectScreen.drawTheTopologyYou')}
           </p>
         </header>
 
         <div className="cv-welcome-actions">
           <button type="button" className="cv-btn cv-btn-start" onClick={() => setCreating(true)}>
-            Create project
+            {t('projectScreen.createProject')}
           </button>
           <button
             type="button"
             className="cv-btn"
             onClick={() => (isDesktop ? void importFromDialog() : fileRef.current?.click())}
           >
-            Import project
+            {t('projectScreen.importProject')}
           </button>
           {!isDesktop && (
             <input
@@ -163,7 +163,7 @@ export function ProjectScreen() {
               checked={showArchived}
               onChange={(e) => setShowArchived(e.target.checked)}
             />
-            Show archived
+            {t('projectScreen.showArchived')}
           </label>
         </div>
 
@@ -171,15 +171,13 @@ export function ProjectScreen() {
 
         {pending != null && (
           <section className="cv-welcome-section cv-import-vault">
-            <h2>This package also carries saved credentials</h2>
+            <h2>{t('projectScreen.thisPackageAlsoCarries')}</h2>
             <p className="cv-help">
-              They are sealed with the passphrase of the vault they were exported from, so that
-              is the passphrase they need — not this machine's. Your own vault has to be unlocked,
-              because each one is re-sealed with your key on the way in.
+              {t('projectScreen.theyAreSealedWith')}
             </p>
             <div className="cv-discover-form">
               <label className="cv-field">
-                <span>Passphrase of the exporting vault</span>
+                <span>{t('projectScreen.passphraseOfTheExporting')}</span>
                 <input
                   className="cv-input"
                   type="password"
@@ -195,10 +193,10 @@ export function ProjectScreen() {
                 onClick={importCredentials}
                 disabled={!vaultPassphrase}
               >
-                Import credentials
+                {t('projectScreen.importCredentials')}
               </button>
               <button type="button" className="cv-btn" onClick={skipCredentials}>
-                Skip them
+                {t('projectScreen.skipThem')}
               </button>
             </div>
           </section>
@@ -265,10 +263,9 @@ export function ProjectScreen() {
         </section>
 
         <section className="cv-welcome-section">
-          <h2>Start from a sample</h2>
+          <h2>{t('projectScreen.startFromASample')}</h2>
           <p className="cv-help">
-            Samples use documentation address ranges. Only the loopback target will answer, so you
-            can see healthy and failing states side by side without touching a live network.
+            {t('projectScreen.samplesUseDocumentationAddress')}
           </p>
           <div className="cv-sample-grid">
             {SAMPLES.map((s) => (
@@ -297,23 +294,21 @@ export function ProjectScreen() {
         <HostKeySettings />
 
         <footer className="cv-welcome-foot">
-          Coreview runs every check from this machine. It has no account, no cloud sync and no
-          telemetry.
+          {t('projectScreen.coreviewRunsEveryCheck')}
         </footer>
       </div>
 
       {creating && <CreateDialog onClose={() => setCreating(false)} />}
       {confirmDelete && (
         <div className="cv-modal-backdrop" role="presentation">
-          <div className="cv-modal" role="dialog" aria-label="Confirm delete">
+          <div className="cv-modal" role="dialog" aria-label={t('projectScreen.confirmDelete')}>
             <h2>Delete “{confirmDelete.name}”?</h2>
             <p>
-              This removes the diagram, probe configuration and event history for this project from
-              local storage. It cannot be undone.
+              {t('projectScreen.thisRemovesTheDiagram')}
             </p>
             <div className="cv-modal-actions">
               <button type="button" className="cv-btn" onClick={() => setConfirmDelete(null)}>
-                Keep project
+                {t('projectScreen.keepProject')}
               </button>
               <button
                 type="button"
@@ -323,7 +318,7 @@ export function ProjectScreen() {
                   setConfirmDelete(null);
                 }}
               >
-                Delete permanently
+                {t('projectScreen.deletePermanently')}
               </button>
             </div>
           </div>
@@ -352,38 +347,38 @@ function CreateDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="cv-modal-backdrop" onClick={onClose} role="presentation">
-      <div className="cv-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Create project">
-        <h2>New project</h2>
+      <div className="cv-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={t('projectScreen.createProject')}>
+        <h2>{t('projectScreen.newProject')}</h2>
         <label className="cv-field">
-          <span className="cv-field-label">Project name</span>
+          <span className="cv-field-label">{t('projectScreen.projectName')}</span>
           <input className="cv-input" autoFocus value={form.name} onChange={set('name')} />
         </label>
         <div className="cv-row">
           <label className="cv-field">
-            <span className="cv-field-label">Customer</span>
+            <span className="cv-field-label">{t('projectScreen.customer')}</span>
             <input className="cv-input" value={form.customer} onChange={set('customer')} />
           </label>
           <label className="cv-field">
-            <span className="cv-field-label">Site</span>
+            <span className="cv-field-label">{t('projectScreen.site')}</span>
             <input className="cv-input" value={form.site} onChange={set('site')} />
           </label>
         </div>
         <div className="cv-row">
           <label className="cv-field">
-            <span className="cv-field-label">Change ticket</span>
+            <span className="cv-field-label">{t('projectScreen.changeTicket')}</span>
             <input className="cv-input" value={form.ticket} onChange={set('ticket')} />
           </label>
           <label className="cv-field">
-            <span className="cv-field-label">Engineer</span>
+            <span className="cv-field-label">{t('projectScreen.engineer')}</span>
             <input className="cv-input" value={form.engineer} onChange={set('engineer')} />
           </label>
         </div>
         <label className="cv-field">
-          <span className="cv-field-label">Description</span>
+          <span className="cv-field-label">{t('projectScreen.description')}</span>
           <textarea className="cv-input" rows={3} value={form.description} onChange={set('description')} />
         </label>
         <label className="cv-field">
-          <span className="cv-field-label">Start from</span>
+          <span className="cv-field-label">{t('projectScreen.startFrom')}</span>
           <select className="cv-input" value={template} onChange={(e) => setTemplate(e.target.value)}>
             {TEMPLATES.map((t) => (
               <option key={t.id} value={t.id}>
@@ -408,7 +403,7 @@ function CreateDialog({ onClose }: { onClose: () => void }) {
               onClose();
             }}
           >
-            Create project
+            {t('projectScreen.createProject')}
           </button>
         </div>
       </div>

@@ -24,8 +24,10 @@ const BAND_LABEL: Record<Band, () => string> = {
 };
 
 export function IpamDashboard() {
-  const doc = useStore((s) => s.doc);
-  const model = useMemo(() => buildIpam(allNodes(doc), doc.ipam), [doc]);
+  // LT-452: the register is derived from the pages and its own state only.
+  const pages = useStore((s) => s.doc.pages);
+  const ipam = useStore((s) => s.doc.ipam);
+  const model = useMemo(() => buildIpam(allNodes({ pages }), ipam), [pages, ipam]);
   const rows = useMemo(() => dashboardRows(model), [model]);
   const totals = useMemo(() => dashboardTotals(rows), [rows]);
   const spare = useMemo(() => untouched(rows), [rows]);

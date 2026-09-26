@@ -366,6 +366,14 @@ fn as_crawl_result(found: coreview_meraki::discover::Found) -> Discovered {
                 stack: None,
                 details: DeviceDetails::default(),
                 dns_name: None,
+                // LT-438: the Dashboard's word for every one of these.
+                evidence: coreview_discover::types::EvidenceMap::from([
+                    ("hostname".to_string(), coreview_discover::types::Evidence::now("meraki:dashboard")),
+                    ("class".to_string(), coreview_discover::types::Evidence::now("meraki:dashboard").saying(&d.kind)),
+                    ("platform".to_string(), coreview_discover::types::Evidence::now("meraki:dashboard")),
+                    ("addresses".to_string(), coreview_discover::types::Evidence::now("meraki:dashboard")),
+                    ("serial".to_string(), coreview_discover::types::Evidence::now("meraki:dashboard")),
+                ]),
             }
         })
         .collect();

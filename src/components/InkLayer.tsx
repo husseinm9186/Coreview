@@ -15,6 +15,7 @@ import { hitsStroke, safeStroke, simplifyStroke, strokePath, type InkStroke } fr
 import { activePage } from '../lib/pages';
 import { CanvasTypeFilter } from './CanvasTypeFilter';
 import { useStore } from '../state/store';
+import { t } from '../i18n';
 
 const COLOURS: [string, string][] = [
   ['#e4564a', 'Red'],
@@ -74,15 +75,15 @@ export function InkTools() {
 
   return (
     <>
-      <div className="cv-ink-bar" role="toolbar" aria-label="Drawing and filtering">
+      <div className="cv-ink-bar" role="toolbar" aria-label={t('inkLayer.drawingAndFiltering')}>
         {/* LT-419: where he asked for it — "make the filter at the top next to
             the PEN, and Eraser". */}
         <CanvasTypeFilter />
         <button type="button" className={`cv-btn cv-btn-small${tool?.mode === 'pen' ? ' is-on' : ''}`} aria-pressed={tool?.mode === 'pen'} onClick={() => pick('pen')} title="Draw freehand (Escape to stop)">
-          ✎ Pen
+          {t('inkLayer.pen')}
         </button>
-        <button type="button" className={`cv-btn cv-btn-small${tool?.mode === 'eraser' ? ' is-on' : ''}`} aria-pressed={tool?.mode === 'eraser'} onClick={() => pick('eraser')} disabled={count === 0} title="Click or drag over a stroke to remove it">
-          ⌫ Eraser
+        <button type="button" className={`cv-btn cv-btn-small${tool?.mode === 'eraser' ? ' is-on' : ''}`} aria-pressed={tool?.mode === 'eraser'} onClick={() => pick('eraser')} disabled={count === 0} title={t('inkLayer.clickOrDragOver')}>
+          {t('inkLayer.eraser')}
         </button>
         {tool?.mode === 'pen' && (
           <>
@@ -90,14 +91,14 @@ export function InkTools() {
               <button key={c} type="button" className={`cv-ink-swatch${color === c ? ' is-on' : ''}`} style={{ background: c }} aria-label={`${name} ink`} aria-pressed={color === c}
                 onClick={() => { setColor(c); setTool({ mode: 'pen', color: c, width }); }} />
             ))}
-            <select className="cv-input cv-ink-width" aria-label="Pen width" value={width} onChange={(e) => { const w = Number(e.target.value); setWidth(w); setTool({ mode: 'pen', color, width: w }); }}>
+            <select className="cv-input cv-ink-width" aria-label={t('inkLayer.penWidth')} value={width} onChange={(e) => { const w = Number(e.target.value); setWidth(w); setTool({ mode: 'pen', color, width: w }); }}>
               {[2, 3, 5, 8].map((w) => <option key={w} value={w}>{w}px</option>)}
             </select>
           </>
         )}
         {count > 0 && (
           <button type="button" className="cv-btn cv-btn-small" aria-pressed={!hidden}
-            onClick={() => useStore.getState().setCanvas({ inkHidden: !hidden })} title="Ink that is hidden is also left out of exports">
+            onClick={() => useStore.getState().setCanvas({ inkHidden: !hidden })} title={t('inkLayer.inkThatIsHidden')}>
             {hidden ? `Show ink (${count})` : `Hide ink`}
           </button>
         )}

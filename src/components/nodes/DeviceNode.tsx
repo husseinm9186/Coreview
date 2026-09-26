@@ -14,6 +14,7 @@ import { ipc } from '../../lib/ipc';
 import { activePage } from '../../lib/pages';
 import type { DeviceNodeData, HealthStatus, ProbeRuntime } from '../../types/domain';
 import { SHAPE_DEVICE_TYPES, STATUS_GLYPH, STATUS_LABEL } from '../../types/domain';
+import { t } from '../../i18n';
 
 /** The monitored-objects table, brought to the cursor. While validation is
  *  running, the row for this device's primary probe — last result, round-trip
@@ -41,11 +42,11 @@ function LiveCard({ label, status, ink, live }: {
         <span style={{ color: ink }}>{STATUS_LABEL[status]}</span>
       </div>
       <dl>
-        <dt>Last result</dt>
+        <dt>{t('deviceNode.lastResult')}</dt>
         <dd>{live.lastSummary ?? '—'}</dd>
-        <dt>RTT</dt>
+        <dt>{t('deviceNode.rtt')}</dt>
         <dd>{rtt}</dd>
-        <dt>Checked</dt>
+        <dt>{t('deviceNode.checked')}</dt>
         <dd>{checked ? timeAgo(checked) : 'not yet'}</dd>
       </dl>
     </div>
@@ -142,7 +143,7 @@ function EditableLabel({
           setDraft(value);
           setEditing(true);
         }}
-        title="Double-click to rename"
+        title={t('deviceNode.doubleClickToRename')}
       >
         {value}
       </div>
@@ -231,6 +232,8 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
   }, []);
   const ground = useStore((s) => s.settings.ground);
   const editingNow = useStore((s) => s.editingNodeId === id);
+  // LT-453: one boolean for every node, so the crossing re-renders each once.
+  const far = useStore((s) => s.lodEnabled && s.farZoom);
   const hit = useStore((s) => s.canvasHighlight?.has(id) ?? false);
   const dimmed = useStore((s) => (s.canvasHighlight ? !s.canvasHighlight.has(id) : false));
   const beginEditing = useStore((s) => s.beginEditing);
@@ -290,6 +293,30 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
   // glyph is not a rectangle — so they keep the drawn form either way.
   const glyph = nodeStyle === 'glyph' && !isShape && !isText;
 
+  if (glyph && far) {
+    // LT-453: far out, a device is its glyph and its name. The handles stay
+    // because the links are anchored to them; the badges, the resizer, the
+    // details and the live card are not drawn at all rather than hidden.
+    return (
+      <div
+        className={`cv-glyph-node is-far ${selected ? 'is-selected' : ''}${hit ? ' is-hit' : ''}${dimmed ? ' is-dimmed' : ''}`}
+        title={hoverTitle}
+      >
+        <div className="cv-glyph-hit" />
+        <Handle type="source" position={Position.Top} id="t" className="cv-handle" />
+        <Handle type="source" position={Position.Right} id="r" className="cv-handle" />
+        <Handle type="source" position={Position.Bottom} id="b" className="cv-handle" />
+        <Handle type="source" position={Position.Left} id="l" className="cv-handle" />
+        <div className="cv-glyph-art" style={{ color: d.style?.iconColor ?? color }}>
+          {d.imageDataUrl ? <img src={d.imageDataUrl} alt="" /> : <DeviceGlyph type={d.deviceType} stacked={stacked} solid={solid} color={d.style?.iconColor ?? color} />}
+        </div>
+        <div className="cv-glyph-text">
+          <div className="cv-glyph-label" style={cssOf(d.labelStyle)}>{d.label}</div>
+        </div>
+      </div>
+    );
+  }
+
   if (glyph) {
     return (
       <div
@@ -340,9 +367,9 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
             <span aria-hidden>{STATUS_GLYPH[status]}</span>
             <span className="cv-sr">{STATUS_LABEL[status]}</span>
           </span>
-          {d.locked && <span className="cv-glyph-lock" title="Locked" aria-label="Locked">🔒</span>}
+          {d.locked && <span className="cv-glyph-lock" title={t('deviceNode.locked')} aria-label={t('deviceNode.locked')}>🔒</span>}
           {openThreads(d.comments) > 0 && (
-            <span className="cv-comment-badge" title="Open comments" aria-label={`${openThreads(d.comments)} open comments`}>
+            <span className="cv-comment-badge" title={t('deviceNode.openComments')} aria-label={`${openThreads(d.comments)} open comments`}>
               💬 {openThreads(d.comments)}
             </span>
           )}
@@ -384,7 +411,7 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
                     ? ` · ${live.lastRttMs < 1 ? '<1' : live.lastRttMs.toFixed(0)} ms`
                     : ''}
               </div>
-              {d.maintenance && <div className="cv-node-maint">In maintenance</div>}
+              {d.maintenance && <div className="cv-node-maint">{t('deviceNode.inMaintenance')}</div>}
             </>
           )}
         </div>
@@ -482,7 +509,7 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
       )}
 
       {d.locked && (
-        <span className="cv-lock" title="Locked" aria-label="Locked">
+        <span className="cv-lock" title={t('deviceNode.locked')} aria-label={t('deviceNode.locked')}>
           🔒
         </span>
       )}
@@ -542,7 +569,7 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
                     ? ` · ${live.lastRttMs < 1 ? '<1' : live.lastRttMs.toFixed(0)} ms`
                     : ''}
               </div>
-              {d.maintenance && <div className="cv-node-maint">In maintenance</div>}
+              {d.maintenance && <div className="cv-node-maint">{t('deviceNode.inMaintenance')}</div>}
             </div>
           )}
         </div>

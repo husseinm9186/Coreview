@@ -11,6 +11,8 @@
 
 export type CheckExpect = 'contains' | 'notContains' | 'matches' | 'notMatches';
 
+export type CheckSeverity = 'info' | 'warning' | 'critical';
+
 export interface BackupCheck {
   id: string;
   name: string;
@@ -19,18 +21,36 @@ export interface BackupCheck {
   expect: CheckExpect;
   pattern: string;
   ignoreCase: boolean;
+  /** LT-434: the stanza the check runs once per — `interface`, `line vty` —
+   *  by the start of its heading line. Empty means the whole output. */
+  block: string;
+  /** LT-434: how much a failure matters. */
+  severity: CheckSeverity;
+  /** LT-434: device roles the check is for; empty means every device. */
+  roles: string[];
 }
 
-export type CheckVerdict = 'pass' | 'fail' | 'notCaptured' | 'rejected';
+export type CheckVerdict = 'pass' | 'fail' | 'notCaptured' | 'rejected' | 'notApplicable';
 
 export interface CheckResult {
   device: string;
   checkId: string;
   verdict: CheckVerdict;
+  severity: CheckSeverity;
+  /** LT-434: the stanza that decided it, when the check names a block. */
+  block: string | null;
   line: number | null;
   evidence: string | null;
   why: string;
 }
+
+export const SEVERITY_CHOICES: { value: CheckSeverity; label: string }[] = [
+  { value: 'info', label: 'info' },
+  { value: 'warning', label: 'warning' },
+  { value: 'critical', label: 'critical' },
+];
+
+const isSeverity = (v: unknown): v is CheckSeverity => SEVERITY_CHOICES.some((c) => c.value === v);
 
 export const EXPECT_CHOICES: { value: CheckExpect; label: string }[] = [
   { value: 'contains', label: 'contains' },
@@ -67,6 +87,9 @@ export function parseChecks(json: string | undefined | null): BackupCheck[] {
       expect: isExpect(o.expect) ? o.expect : 'contains',
       pattern: str(o.pattern),
       ignoreCase: o.ignoreCase === true,
+      block: str(o.block),
+      severity: isSeverity(o.severity) ? o.severity : 'warning',
+      roles: Array.isArray(o.roles) ? o.roles.filter((r): r is string => typeof r === 'string' && r.trim() !== '') : [],
     });
   }
   return out;
@@ -79,7 +102,7 @@ export function serializeChecks(checks: BackupCheck[]): string | null {
 /** A fresh, empty check — nothing pre-filled (D-027). */
 export function newCheck(): BackupCheck {
   const id = `check-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  return { id, name: '', command: '', expect: 'contains', pattern: '', ignoreCase: false };
+  return { id, name: '', command: '', expect: 'contains', pattern: '', ignoreCase: false, block: '', severity: 'warning', roles: [] };
 }
 
 /** Whether a check has what it needs to run. Incomplete ones are not sent. */
@@ -88,12 +111,86 @@ export const isComplete = (c: BackupCheck) => c.command.trim() !== '' && c.patte
 export const checkLabel = (c: BackupCheck) => c.name.trim() || c.command.trim();
 
 export function summarise(results: CheckResult[]): Record<CheckVerdict, number> {
-  const out: Record<CheckVerdict, number> = { pass: 0, fail: 0, notCaptured: 0, rejected: 0 };
+  const out: Record<CheckVerdict, number> = { pass: 0, fail: 0, notCaptured: 0, rejected: 0, notApplicable: 0 };
   for (const r of results) out[r.verdict]++;
   return out;
 }
 
-const RANK: Record<CheckVerdict, number> = { fail: 0, rejected: 1, notCaptured: 2, pass: 3 };
+const RANK: Record<CheckVerdict, number> = { fail: 0, rejected: 1, notCaptured: 2, pass: 3, notApplicable: 4 };
+const SEVERITY_RANK: Record<CheckSeverity, number> = { critical: 0, warning: 1, info: 2 };
+
+/** LT-434: the results as a grid — one row per device, one column per check,
+ *  in the order the checks are listed. A cell is null where the device has
+ *  no result for that check. Failures are ordered first among rows, and
+ *  critical failures before warnings. */
+export interface CheckMatrix {
+  checks: BackupCheck[];
+  rows: { device: string; cells: (CheckResult | null)[]; failures: number; worst: CheckSeverity | null }[];
+}
+
+export function checkMatrix(results: CheckResult[], checks: BackupCheck[]): CheckMatrix {
+  const byDevice = new Map<string, Map<string, CheckResult>>();
+  for (const r of results) {
+    const row = byDevice.get(r.device) ?? new Map<string, CheckResult>();
+    row.set(r.checkId, r);
+    byDevice.set(r.device, row);
+  }
+  const rows = [...byDevice.entries()].map(([device, cells]) => {
+    const line = checks.map((c) => cells.get(c.id) ?? null);
+    const failed = line.filter((c): c is CheckResult => c?.verdict === 'fail');
+    const worst = failed.reduce<CheckSeverity | null>(
+      (w, c) => (w === null || SEVERITY_RANK[c.severity] < SEVERITY_RANK[w] ? c.severity : w),
+      null,
+    );
+    return { device, cells: line, failures: failed.length, worst };
+  });
+  rows.sort(
+    (a, b) =>
+      (a.worst === null ? 3 : SEVERITY_RANK[a.worst]) - (b.worst === null ? 3 : SEVERITY_RANK[b.worst]) ||
+      b.failures - a.failures ||
+      a.device.localeCompare(b.device),
+  );
+  return { checks, rows };
+}
+
+const VERDICT_MARK: Record<CheckVerdict, string> = {
+  pass: 'pass', fail: 'FAIL', notCaptured: 'not captured', rejected: 'rejected', notApplicable: 'n/a',
+};
+
+/** LT-434: the matrix as CSV. A leading `= + - @` is guarded the way every
+ *  CSV here is, because a device name is device-supplied. */
+export function matrixCsv(m: CheckMatrix): string {
+  const cell = (v: string) => {
+    const guarded = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+    return /[",\n\r]/.test(guarded) ? `"${guarded.replace(/"/g, '""')}"` : guarded;
+  };
+  const head = ['Device', ...m.checks.map((c) => `${checkLabel(c)} (${c.severity})`)];
+  const lines = [head.map(cell).join(',')];
+  for (const r of m.rows) {
+    lines.push([r.device, ...r.cells.map((c) => (c ? VERDICT_MARK[c.verdict] : ''))].map(cell).join(','));
+  }
+  return `${lines.join('\r\n')}\r\n`;
+}
+
+/** LT-434: the matrix as a Markdown table, failures first, with the run's
+ *  stamp in the heading so the file stands on its own. */
+export function matrixMarkdown(m: CheckMatrix, stamp: string): string {
+  const esc = (s: string) => s.replace(/\|/g, '\\|');
+  const head = `| Device | ${m.checks.map((c) => esc(`${checkLabel(c)} (${c.severity})`)).join(' | ')} |`;
+  const rule = `| --- | ${m.checks.map(() => '---').join(' | ')} |`;
+  const body = m.rows.map((r) => `| ${esc(r.device)} | ${r.cells.map((c) => (c ? VERDICT_MARK[c.verdict] : '')).join(' | ')} |`);
+  const failing = m.rows.filter((r) => r.failures > 0).length;
+  return [
+    `# Checks against run ${stamp}`,
+    '',
+    `${m.rows.length} devices, ${failing} with at least one failure.`,
+    '',
+    head,
+    rule,
+    ...body,
+    '',
+  ].join('\n');
+}
 
 /** What needs attention first: failures, then refusals, then gaps, then
  *  passes; within each, by device and then in the order the checks are

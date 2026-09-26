@@ -33,6 +33,7 @@ import { linkStyleDefaults } from '../lib/linkDefaults';
 import { activePage } from '../lib/pages';
 import { importedAddresses, importedLinkData, shapeProperty } from '../lib/visioImportModel';
 import { placeDrawing } from '../lib/visioLayout';
+import { t } from '../i18n';
 
 /** A device as it stands in the preview, after any correction. */
 interface DraftDevice {
@@ -340,7 +341,7 @@ export function VisioImportPanel() {
         {draft && (
           <>
             <button type="button" className="cv-btn is-primary" onClick={add}>
-              Add to diagram
+              {t('visioImportPanel.addToDiagram')}
             </button>
             <button type="button" className="cv-btn" onClick={() => setDraft(null)}>
               Discard
@@ -350,9 +351,7 @@ export function VisioImportPanel() {
       </div>
 
       <p className="cv-field-hint">
-        Reads devices, links, addresses, port labels, line colours, routed bends and label
-        formatting out of a Visio (.vsdx) or draw.io (.drawio) drawing, every page.
-        Correct anything that came out wrong below — nothing is added until you say so.
+        Reads devices, links, addresses, port labels, line colours, routed bends and label formatting out of a Visio (.vsdx) or draw.io (.drawio) drawing, every page. Correct anything that came out wrong below — nothing is added until you say so.
       </p>
 
       {problem && <p className="cv-warn">{problem}</p>}
@@ -365,7 +364,7 @@ export function VisioImportPanel() {
               checked={withProbes}
               onChange={(e) => setWithProbes(e.target.checked)}
             />
-            Also create a check for every device that has an address
+            {t('visioImportPanel.alsoCreateACheck')}
           </label>
 
           <p className="cv-field-hint">
@@ -394,10 +393,10 @@ export function VisioImportPanel() {
               <table className="cv-table cv-import-table">
                 <thead>
                   <tr>
-                    <th>Device</th>
-                    <th>Type</th>
-                    <th>Address</th>
-                    <th>From the drawing</th>
+                    <th>{t('visioImportPanel.device')}</th>
+                    <th>{t('visioImportPanel.type')}</th>
+                    <th>{t('visioImportPanel.address')}</th>
+                    <th>{t('visioImportPanel.fromTheDrawing')}</th>
                     <th />
                   </tr>
                 </thead>
@@ -457,7 +456,7 @@ export function VisioImportPanel() {
 
               <div className="cv-row cv-row-tight">
                 <button type="button" className="cv-btn" onClick={() => addDevice(pageIndex)}>
-                  Add a device
+                  {t('visioImportPanel.addADevice')}
                 </button>
                 <button
                   type="button"
@@ -473,11 +472,11 @@ export function VisioImportPanel() {
                 <table className="cv-table cv-import-table">
                   <thead>
                     <tr>
-                      <th>From</th>
-                      <th>Port</th>
+                      <th>{t('visioImportPanel.from')}</th>
+                      <th>{t('visioImportPanel.port')}</th>
                       <th>To</th>
-                      <th>Port</th>
-                      <th>Colour</th>
+                      <th>{t('visioImportPanel.port')}</th>
+                      <th>{t('visioImportPanel.colour')}</th>
                       <th />
                     </tr>
                   </thead>
@@ -488,7 +487,7 @@ export function VisioImportPanel() {
                           <select
                             className="cv-input"
                             value={l.source}
-                            aria-label="From device"
+                            aria-label={t('visioImportPanel.fromDevice')}
                             onChange={(e) =>
                               editLink(pageIndex, l.id, { source: e.target.value })
                             }
@@ -506,7 +505,7 @@ export function VisioImportPanel() {
                             value={l.sourcePort}
                             spellCheck={false}
                             placeholder="—"
-                            aria-label="From port"
+                            aria-label={t('visioImportPanel.fromPort')}
                             onChange={(e) =>
                               editLink(pageIndex, l.id, { sourcePort: e.target.value })
                             }
@@ -516,7 +515,7 @@ export function VisioImportPanel() {
                           <select
                             className="cv-input"
                             value={l.target}
-                            aria-label="To device"
+                            aria-label={t('visioImportPanel.toDevice')}
                             onChange={(e) =>
                               editLink(pageIndex, l.id, { target: e.target.value })
                             }
@@ -534,7 +533,7 @@ export function VisioImportPanel() {
                             value={l.targetPort}
                             spellCheck={false}
                             placeholder="—"
-                            aria-label="To port"
+                            aria-label={t('visioImportPanel.toPort')}
                             onChange={(e) =>
                               editLink(pageIndex, l.id, { targetPort: e.target.value })
                             }
@@ -545,7 +544,7 @@ export function VisioImportPanel() {
                             type="color"
                             className="cv-import-colour"
                             value={l.color || '#7d8590'}
-                            aria-label="Line colour"
+                            aria-label={t('visioImportPanel.lineColour')}
                             onChange={(e) => editLink(pageIndex, l.id, { color: e.target.value })}
                           />
                         </td>
@@ -553,7 +552,7 @@ export function VisioImportPanel() {
                           <button
                             type="button"
                             className="cv-btn is-danger"
-                            aria-label="Leave out this link"
+                            aria-label={t('visioImportPanel.leaveOutThisLink')}
                             onClick={() => dropLink(pageIndex, l.id)}
                           >
                             Remove

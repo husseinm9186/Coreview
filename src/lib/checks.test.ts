@@ -13,10 +13,10 @@ import {
 
 // Invented for the test (D-027).
 const check = (over: Partial<BackupCheck>): BackupCheck => ({
-  id: 'c', name: '', command: 'show version', expect: 'contains', pattern: 'x', ignoreCase: false, ...over,
+  id: 'c', name: '', command: 'show version', expect: 'contains', pattern: 'x', ignoreCase: false, block: '', severity: 'warning', roles: [], ...over,
 });
 const result = (device: string, checkId: string, verdict: CheckResult['verdict']): CheckResult => ({
-  device, checkId, verdict, line: null, evidence: null, why: '',
+  device, checkId, verdict, severity: 'warning', block: null, line: null, evidence: null, why: '',
 });
 
 describe('checks (LT-153)', () => {
@@ -35,7 +35,7 @@ describe('checks (LT-153)', () => {
     expect(serializeChecks([])).toBeNull();
     expect(parseChecks('nope')).toEqual([]);
     expect(parseChecks('[{"id":"k","expect":"reload","ignoreCase":"yes"}]')).toEqual([
-      { id: 'k', name: '', command: '', expect: 'contains', pattern: '', ignoreCase: false },
+      { id: 'k', name: '', command: '', expect: 'contains', pattern: '', ignoreCase: false, block: '', severity: 'warning', roles: [] },
     ]);
     expect(parseChecks('[{"id":"d"},{"id":"d"},{"name":"no id"}]')).toHaveLength(1);
   });
@@ -43,7 +43,7 @@ describe('checks (LT-153)', () => {
   it('counts every verdict', () => {
     expect(
       summarise([result('A', 'a', 'pass'), result('A', 'b', 'fail'), result('B', 'a', 'fail'), result('B', 'b', 'notCaptured')]),
-    ).toEqual({ pass: 1, fail: 2, notCaptured: 1, rejected: 0 });
+    ).toEqual({ pass: 1, fail: 2, notCaptured: 1, rejected: 0, notApplicable: 0 });
   });
 
   it('puts failures first, then refusals, gaps and passes, by device and check order', () => {

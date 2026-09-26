@@ -89,6 +89,8 @@ await page.addInitScript(({ p, walkDevice, drawing, netbox }) => {
       if (cmd === "vault_status") return Promise.resolve({ exists: true, unlocked: true, credentials: 0, minimumPassphrase: 12 });
       if (cmd === "plugin:dialog|open") return Promise.resolve(window.__picked);
       if (cmd === "plugin:dialog|save") return Promise.resolve(`/tmp/${args.options?.defaultPath ?? "out"}`);
+      if (cmd === "pick_export_target") return Promise.resolve({ token: `t-${next++}`, path: args.folder ? `${args.folder}/${args.filename}` : `/tmp/${args.filename}` });
+      if (cmd === "pick_export_folder") return Promise.resolve({ token: `f-${next++}`, path: args.folder ?? "/tmp/picked" });
       if (cmd === "save_export") {
         const bytes = Uint8Array.from(atob(args.contentsB64), (c) => c.charCodeAt(0));
         window.__exports.push({ path: args.path, text: new TextDecoder().decode(bytes) });
@@ -291,8 +293,10 @@ await viewer.close();
 
 await st(() => window.__cvStore.getState().setSettings({ exportFolder: "/home/user/exports" }));
 await exportButton("Project as a folder");
+// LT-456: the folder goes to Rust's picker; the write names only the token it gave.
+const pickedFolder = (await calls("pick_export_folder")).at(-1)?.args;
 const folder = (await calls("save_project_folder")).at(-1)?.args;
-check("a project saves as a folder of JSON and YAML", folder?.folder === "/home/user/exports" && folder.name === "import-lab" && folder.json.startsWith("{") && folder.yaml.startsWith("# A readable copy") && !folder.json.includes('"vault"'), JSON.stringify(folder && { ...folder, json: folder.json.slice(0, 40), yaml: folder.yaml.slice(0, 60) }));
+check("a project saves as a folder of JSON and YAML", pickedFolder?.folder === "/home/user/exports" && typeof folder?.token === "string" && folder.token.startsWith("f-") && !("folder" in folder) && folder.name === "import-lab" && folder.json.startsWith("{") && folder.yaml.startsWith("# A readable copy") && !folder.json.includes('"vault"'), JSON.stringify(folder && { ...folder, json: folder.json.slice(0, 40), yaml: folder.yaml.slice(0, 60) }));
 
 await browser.close();
 console.log(failures ? `\n${failures} check(s) failed` : "\nall checks passed");

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useStore } from '../state/store';
+import { parsePortList, sweepCsv } from '../lib/sweepCsv';
+import { saveExport, slug } from '../lib/exports';
+import { t } from '../i18n';
 import { ipc, isDesktop, type CredentialSummary, type SweepEvent, type SweepHit } from '../lib/ipc';
 import { makeDeviceNode } from './Canvas';
 import { SubnetList } from './SubnetList';
@@ -45,6 +48,9 @@ export function DiscoverPanel() {
   // would be noticed, which is a real situation and the operator's call.
   const [identify, setIdentify] = useState(true);
   const [scanPorts, setScanPorts] = useState(true);
+  // LT-440: the operator's own port list; empty means the common eighteen.
+  const [portList, setPortList] = useState('');
+  const exportFolder = useStore((s) => s.settings.exportFolder);
   const [problem, setProblem] = useState<string | null>(null);
   const [hits, setHits] = useState<Hit[]>([]);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -113,7 +119,7 @@ export function DiscoverPanel() {
     seen.current = new Set();
     setRunning(true);
     try {
-      await ipc.startSweep(subnets, { timeoutMs, concurrency, identify, scanPorts });
+      await ipc.startSweep(subnets, { timeoutMs, concurrency, identify, scanPorts, ports: parsePortList(portList) });
     } catch (err) {
       setRunning(false);
       setProblem(err instanceof Error ? err.message : String(err));
@@ -322,6 +328,12 @@ export function DiscoverPanel() {
           />
           <span>Ports</span>
         </label>
+        {/* LT-440: which ports, where the common list is not the question. */}
+        <label className="cv-field cv-field-narrow" title={t('sweep.portsHint')}>
+          <span>{t('sweep.portList')}</span>
+          <input className="cv-input cv-mono" value={portList} disabled={running || !identify || !scanPorts}
+            onChange={(e) => setPortList(e.target.value)} />
+        </label>
         {running ? (
           <button type="button" className="cv-btn cv-btn-stop" onClick={stop}>
             Stop
@@ -346,6 +358,13 @@ export function DiscoverPanel() {
 
         {hits.length > 0 && (
           <span className="cv-discover-actions">
+            {/* LT-440: the table as a file, the way the crawl's tables export. */}
+            <button type="button" className="cv-btn cv-btn-small"
+              onClick={() => void saveExport(`${slug(useStore.getState().meta?.name ?? 'sweep')}-sweep.csv`, sweepCsv(hits), 'text/csv', exportFolder)
+                .then((path) => { if (path) useStore.getState().setStatusMessage(t('sweep.exported', { path })); })
+                .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)))}>
+              {t('sweep.exportCsv')}
+            </button>
             <button type="button" className="cv-btn cv-btn-small" onClick={() => setAll(true)}>
               Select all
             </button>

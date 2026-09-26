@@ -172,6 +172,8 @@ export type SweepOptions = {
   identify: boolean;
   /** Try the common TCP ports on each host that answers. */
   scanPorts: boolean;
+  /** LT-440: the ports to try instead of the common list; empty means the common list. */
+  ports?: number[];
 };
 /** A port that completed a TCP handshake. `service` is what is registered for
  *  that number, not what was found listening: nothing reads a banner. */
@@ -362,6 +364,8 @@ export type CrawledDevice = {
   counters?: { port: string; inputErrors: number; crc: number; outputErrors: number; collisions: number; resets: number; outputDrops: number; duplexSpeed: string | null }[];
   /** LT-206: its PTR name, where DNS has one. */
   dnsName?: string | null;
+  /** LT-438: where each field came from, by field name. */
+  evidence?: Record<string, Evidence>;
 };
 
 export type RouteRow = {
@@ -547,6 +551,48 @@ export type CrawlFailure = {
   transcriptPath?: string;
 };
 
+/** LT-435: one change to one device in one crawl. */
+export type TimelineEntry = {
+  runId: string;
+  takenAt: number;
+  device: string;
+  field: 'appeared' | 'disappeared' | 'class' | 'platform' | 'version' | 'serial' | 'address' | 'neighbour' | 'restarted' | string;
+  was: string | null;
+  now: string | null;
+  source: string | null;
+};
+export type CrawlTimeline = {
+  entries: TimelineEntry[];
+  newestRun: string | null;
+  runs: number;
+  sinceLast: Record<string, number>;
+};
+
+/** LT-438: where a fact about a device came from (D-050). */
+export type Evidence = {
+  /** A short fixed name for the mechanism: `prompt`, `ssh:show version`,
+   *  `snmp:sysDescr`, `neighbour-report`, `oui`, `fortigate:wtp`, `typed`. */
+  source: string;
+  /** The device that reported it, where it was a neighbour and not the device itself. */
+  seenBy?: string | null;
+  seenAtMs?: number | null;
+  /** What was read, clipped. */
+  detail?: string;
+};
+
+/** LT-432: one running job as `jobs.rs` reports it. */
+export type JobKind = 'crawl' | 'backup' | 'sweep';
+export type JobState = 'running' | 'stopping' | 'complete' | 'cancelled';
+export type JobSnapshot = {
+  id: number;
+  kind: JobKind;
+  state: JobState;
+  phase: string;
+  done: number;
+  total: number | null;
+  startedMs: number;
+};
+
 /** LT-424: how a kept crawl ended — or that it has not, or that the process did. */
 export type CrawlRunStatus = 'running' | 'complete' | 'cancelled' | 'aborted';
 
@@ -557,6 +603,8 @@ export type CrawlResult = {
   cancelled: boolean;
   /** LT-389: where the debug log went, when the run was asked to write one. */
   debugLogPath?: string | null;
+  /** LT-454: host keys trusted on first contact during this crawl. */
+  firstSeenKeys?: { host: string; port: number; fingerprint: string }[];
   /** LT-424: the kept run this result was written to, when the crawl had a project. */
   runId?: string | null;
   status?: CrawlRunStatus;
@@ -702,7 +750,16 @@ export type RevealedCredential = {
   secondSecret: string | null;
 };
 
-export type BackupDevice = { name: string; captures: number; latest: string | null };
+export type BackupDevice = { name: string; captures: number; latest: string | null; changedAtLatest: boolean | null };
+/** LT-433: one capture in a device's history, flagged against the previous of its kind. */
+export type CaptureHistoryRow = {
+  file: string;
+  stamp: string | null;
+  kind: string | null;
+  bytes: number;
+  previous: string | null;
+  changed: boolean | null;
+};
 /** Mirrors the Rust DiffLine, which is tagged with `kind`. */
 export type DiffLine =
   | { kind: 'same'; value: string }
@@ -853,8 +910,19 @@ export const ipc = {
   },
 
   /** LT-255: `project.coreview` and `project.yaml` in `folder/name`. */
-  saveProjectFolder(folder: string, name: string, json: string, yaml: string) {
-    return invoke<string>('save_project_folder', { folder, name, json, yaml });
+  /** LT-456: where an export goes — the chosen folder, or a native save
+   *  dialog shown in Rust — as a one-shot token and the path to tell the
+   *  person. Null when the dialog was cancelled. */
+  async pickExportTarget(filename: string, folder?: string | null): Promise<{ token: string; path: string } | null> {
+    if (!isDesktop) throw new BackendUnavailable('Choosing where to save');
+    return invoke('pick_export_target', { filename, folder: folder ?? null });
+  },
+  async pickExportFolder(folder?: string | null): Promise<{ token: string; path: string } | null> {
+    if (!isDesktop) throw new BackendUnavailable('Choosing a folder');
+    return invoke('pick_export_folder', { folder: folder ?? null });
+  },
+  saveProjectFolder(token: string, name: string, json: string, yaml: string) {
+    return invoke<string>('save_project_folder', { token, name, json, yaml });
   },
 
   /** Native folder picker. Returns null if the user cancelled. */
@@ -1022,15 +1090,22 @@ export const ipc = {
     if (!isDesktop) return [];
     return invoke('list_crawl_runs', { projectId });
   },
+  /** LT-435: what changed across every kept crawl, oldest first. */
+  async crawlTimeline(projectId: string, device?: string): Promise<CrawlTimeline> {
+    if (!isDesktop) throw new BackendUnavailable('Stored crawls');
+    return invoke('crawl_timeline', { projectId, device: device?.trim() || null });
+  },
   async crawlRunResult(id: string): Promise<CrawlResult> {
     if (!isDesktop) throw new BackendUnavailable('Stored crawls');
-    return invoke('crawl_run_result', { id });
+    // LT-455: a run is read only from the project it belongs to.
+    return invoke('crawl_run_result', { id, projectId: forProject() });
   },
 
   /** LT-224: a probe's recorded results since `sinceMs`, oldest first. */
   async probeHistory(probeId: string, sinceMs: number, limit = 2000): Promise<{ timestampMs: number; status: string; outcome: string; rttMs: number | null }[]> {
     if (!isDesktop) return [];
-    return invoke('probe_history', { probeId, sinceMs, limit });
+    // LT-455: a probe's history is read only from this project's sessions.
+    return invoke('probe_history', { probeId, projectId: forProject(), sinceMs, limit });
   },
 
   async testProbeNow(probe: Probe): Promise<ProbeResultDto> {
@@ -1119,6 +1194,23 @@ export const ipc = {
   /** Stop the running sweep. Safe to call when none is running. */
   cancelSweep() {
     return invoke<void>('cancel_sweep');
+  },
+
+  /** LT-432: every job running or stopping right now. */
+  async listJobs(): Promise<JobSnapshot[]> {
+    if (!isDesktop) return [];
+    return invoke('job_list');
+  },
+  /** LT-432: stop one job by its id; says whether there was one. */
+  async cancelJob(id: number): Promise<boolean> {
+    if (!isDesktop) return false;
+    return invoke('job_cancel', { id });
+  },
+  /** LT-432: one event for every change to any job. */
+  async onJob(handler: (j: JobSnapshot) => void): Promise<() => void> {
+    if (!isDesktop) return () => {};
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen('coreview://job', (e) => handler(e.payload as JobSnapshot));
   },
 
   /** Subscribe to sweep progress and hits. */
@@ -1420,6 +1512,10 @@ export const ipc = {
   listDeviceCaptures(device: string) {
     return invoke<string[]>('list_device_captures', { device, projectId: forProject() });
   },
+  /** LT-433: every capture of one device, newest first, with what changed. */
+  deviceCaptureHistory(device: string) {
+    return invoke<CaptureHistoryRow[]>('device_capture_history', { device, projectId: forProject() });
+  },
   readCapture(device: string, filename: string) {
     return invoke<string>('read_capture', { device, filename, projectId: forProject() });
   },
@@ -1435,8 +1531,8 @@ export const ipc = {
     return invoke<ComparedDevice[]>('compare_backup_runs', { before, after, projectId: forProject() });
   },
   /** LT-153: checks against one run's show-command captures. Reads files only. */
-  runBackupChecks(stamp: string, checks: BackupCheck[]) {
-    return invoke<CheckResult[]>('run_backup_checks', { stamp, checks: checks.map(backupCheck), projectId: forProject() });
+  runBackupChecks(stamp: string, checks: BackupCheck[], roles: Record<string, string> = {}) {
+    return invoke<CheckResult[]>('run_backup_checks', { stamp, checks: checks.map(backupCheck), projectId: forProject(), roles });
   },
   /** LT-124: a gateway's ARP table over SNMP, with a saved credential. The
    *  optional step after a sweep; the sweep itself stays credential-free. */

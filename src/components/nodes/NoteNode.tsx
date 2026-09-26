@@ -6,6 +6,7 @@ import { canvasPalette, notePalette } from '../../theme';
 import { ipc } from '../../lib/ipc';
 import type { NoteNodeData } from '../../types/domain';
 import { inlinePieces, noteBlocks } from '../../lib/noteMarkdown';
+import { t } from '../../i18n';
 
 /** Every link — in body text or the note's own Link field — opens the same
  *  way: through the one Rust command that actually leaves the app (LT-095).
@@ -102,7 +103,7 @@ function NoteNodeInner({ data, selected }: NodeProps) {
         lineClassName="cv-resize-line"
         handleClassName="cv-resize-handle"
       />
-      {d.locked && <span className="cv-lock" title="Locked">🔒</span>}
+      {d.locked && <span className="cv-lock" title={t('noteNode.locked')}>🔒</span>}
       {d.link && (
         <span
           className="cv-node-link nodrag nopan"

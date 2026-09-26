@@ -1,0 +1,34 @@
+import { describe, expect, it } from 'vitest';
+import { applyJob, jobCount, jobLine } from './jobs';
+import type { JobSnapshot } from './ipc';
+
+const snap = (over: Partial<JobSnapshot>): JobSnapshot => ({
+  id: 1, kind: 'crawl', state: 'running', phase: 'Starting', done: 0, total: null, startedMs: 1_000, ...over,
+});
+
+describe('the running jobs (LT-432)', () => {
+  it('replaces a job by id, appends a new one, and drops one that has ended', () => {
+    let jobs = applyJob([], snap({ id: 2, kind: 'sweep' }));
+    jobs = applyJob(jobs, snap({ id: 1 }));
+    expect(jobs.map((j) => j.id)).toEqual([1, 2]);
+    jobs = applyJob(jobs, snap({ id: 1, phase: 'Visiting 192.0.2.7', done: 3 }));
+    expect(jobs.find((j) => j.id === 1)?.done).toBe(3);
+    expect(jobs.length).toBe(2);
+    jobs = applyJob(jobs, snap({ id: 2, kind: 'sweep', state: 'cancelled' }));
+    expect(jobs.map((j) => j.id)).toEqual([1]);
+    jobs = applyJob(jobs, snap({ id: 1, state: 'complete' }));
+    expect(jobs).toEqual([]);
+  });
+
+  it('counts with a total when there is one and without when there is not', () => {
+    expect(jobCount({ done: 4, total: null })).toBe('4');
+    expect(jobCount({ done: 4, total: 254 })).toBe('4 of 254');
+  });
+
+  it('writes one line a person can read at a glance', () => {
+    const line = jobLine(snap({ kind: 'backup', phase: 'Backing up', done: 2, total: 9, startedMs: 0 }), 75_000);
+    expect(line).toBe('Backup · Backing up · 2 of 9 · 1 min');
+    const stopping = jobLine(snap({ kind: 'sweep', phase: 'Sweeping', done: 10, total: 254, state: 'stopping', startedMs: 0 }), 5_000);
+    expect(stopping).toBe('Sweep · Sweeping · 10 of 254 · 5 s · stopping');
+  });
+});

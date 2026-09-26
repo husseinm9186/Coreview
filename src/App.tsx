@@ -11,6 +11,7 @@ import { RegisterScreen } from './components/RegisterScreen';
 import { ToolsScreen } from './components/ToolsScreen';
 import { StatusPanel } from './components/StatusPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { DrawerHost } from './components/Drawer';
 import { TopBar } from './components/TopBar';
 import { ipc, isDesktop } from './lib/ipc';
 
@@ -73,6 +74,17 @@ export default function App() {
     return () => un?.();
   }, [applyEngineEvent]);
 
+  // LT-432: the running jobs, listed once on load and then kept current by
+  // one event for every change, whichever panel started the job.
+  useEffect(() => {
+    let un: (() => void) | undefined;
+    void ipc.listJobs().then((jobs) => useStore.getState().setJobs(jobs)).catch(() => undefined);
+    void ipc.onJob((j) => useStore.getState().applyJobEvent(j)).then((f) => {
+      un = f;
+    });
+    return () => un?.();
+  }, []);
+
   // Belt and braces alongside the Rust-side window close handler.
   useEffect(() => {
     const stop = () => {
@@ -116,6 +128,8 @@ export default function App() {
         }`}
       >
         <ErrorBoundary what="The toolbar"><TopBar onExit={() => undefined} /></ErrorBoundary>
+        {/* LT-444: a device or a finding, at a width the rail cannot give. */}
+        <ErrorBoundary what="The drawer"><DrawerHost /></ErrorBoundary>
         {/* LT-300: the register takes the whole workspace when it is open. The
             diagram below stays mounted — React Flow rebuilds its viewport from
             scratch when unmounted, so leaving the register would otherwise come

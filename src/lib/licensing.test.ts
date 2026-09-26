@@ -50,6 +50,8 @@ describe('what Coreview says its own licence is', () => {
       'src-tauri/Cargo.toml',
       'crates/coreview-probe/Cargo.toml',
       'crates/coreview-discover/Cargo.toml',
+      'crates/coreview-meraki/Cargo.toml',
+      'crates/coreview-formats/Cargo.toml',
     ]) {
       const text = read(manifest);
       expect(text, manifest).toContain(`license = "${LICENCE_ID}"`);

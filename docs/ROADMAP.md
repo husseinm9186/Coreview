@@ -91,161 +91,6 @@ assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
 
-### LT-432 — A registry of the jobs that are running — 2026-09-25
-**Source:** the audit, R-10. Crawl, backup and sweep are three
-`Mutex<Option<CancellationToken>>` slots with no progress object, no queue and
-no list. Every long piece of work — crawl, backup, sweep, Meraki collection,
-icon-library scan — should be a job with an id, a kind, a start time, a phase,
-n of total, and a cancel.
-**Acceptance:** `jobs.rs` in `src-tauri`; `job_list` and `job_cancel(id)`
-commands registered the D-033 way; one `coreview://job` event carrying
-`{id, kind, phase, done, total}`; LT-428's refusal becomes "already running
-(id)"; the existing cancel commands keep working.
-
-### LT-433 — A device's configuration history, and what changed since last time — 2026-09-25
-**Source:** the audit, R-11, against Oxidized and Unimus. Compare reads two
-runs (LT-152); nothing shows one device across every capture it has.
-**Acceptance:** a history view per device listing every capture with a
-changed/unchanged flag, a diff to any earlier one, and a "changed since last
-backup" badge on the device and in the findings. Read-only; nothing is
-scheduled.
-
-### LT-434 — Compliance rules that understand a block — 2026-09-25
-**Source:** the audit, R-12, against SolarWinds NCM and Unimus. Checks are
-`contains`, `notContains`, `matches` and `notMatches` over one command's
-output (`checks.rs:37-42`).
-**Acceptance:** a rule can name a stanza ("every `interface` block must
-contain X"), carry a severity, belong to a per-role set, and the result is a
-pass/fail matrix across devices exportable as CSV and Markdown. Existing checks
-keep running unchanged.
-
-### LT-435 — A timeline of what changed across every crawl — 2026-09-25
-**Source:** the audit, R-13, against IP Fabric's snapshots. The topology diff
-is pairwise (LT-227).
-**Acceptance:** per device, what changed at each crawl and which source said
-so (needs LT-438); a landing view "since your last crawl" with the counts.
-
-### LT-436 — Export to NetBox and Nautobot — 2026-09-25
-**Source:** the audit, R-14. The NetBox reader exists (LT-247); nothing writes
-the other way.
-**Acceptance:** devices, interfaces, IP addresses, cables and VLANs as NetBox
-JSON and YAML; a round trip through the LT-247 reader in a test.
-
-### LT-437 — Intent checks over the normalised inventory — 2026-09-25
-**Source:** the audit, R-15. The findings engine (LT-213) flags topology
-faults; nothing checks a rule against what the crawl normalised.
-**Acceptance:** typed rules — every trunk carries VLAN N, no access port
-without BPDU guard, no duplex mismatch, uptime under N days — reported
-alongside LT-213's findings, with the device and the evidence.
-
-### LT-438 — Every derived fact says where it came from — 2026-09-25
-**Source:** the audit, R-16. `identity` notes reached against reported, the
-register says `drawn`, `crawled` or `typed`, ingestion writes "Seen by a crawl
-on SW1 Gi0/7" — three shapes of the same idea. D-050 asks for one.
-**Acceptance:** one `Evidence { source, seenAt, seenBy }` type on
-`CrawledDevice` and `TopoNode` fields (class, role, uptime, addresses, parent);
-the inspector answers "why does it say this?" for each; existing documents
-migrate with `source` unset rather than invented.
-
-### LT-439 — A lifecycle table the operator supplies — 2026-09-25
-**Source:** the audit, R-17. Device42 and SolarWinds report end-of-sale and
-end-of-support; Coreview makes no vendor call and never will.
-**Acceptance:** import a CSV of model → end-of-sale / end-of-support dates;
-a report of devices past either date; nothing fetched from anywhere.
-
-### LT-440 — A sweep's port list is the operator's, its services are named, and it exports — 2026-09-25
-**Source:** the audit, R-18, against Nmap. The sweep scans eighteen fixed
-ports (D-025) and its result has no export.
-**Acceptance:** a per-sweep port list; IANA service names on the hits; CSV
-export like the crawl's. The two D-025 switches stay, because a port scan is
-the loudest thing the app does.
-
-### LT-441 — A hostile device name survives the Visio export — 2026-09-25
-**Source:** the audit, R-19. SVG, draw.io, HTML and CSV exports were verified
-to escape device strings; `visio.rs` writes through the `zip` crate and its
-XML text was not checked.
-**Acceptance:** read the writer; a round-trip test with `<`, `&`, `"` and a
-`]]>` in a device name; fix if it fails.
-
-### LT-442 — A type and spacing scale, as tokens, guarded — 2026-09-25
-**Source:** the audit, R-20. `styles.css` sets `font-size` 91 times at 12 px
-and 75 at 11 px, with 10, 13 and 16 beside them and no declared scale; 40 uses
-of 6 px break the 4/8/12/16 spacing the rest of the sheet keeps.
-**Acceptance:** four text tokens and a spacing set in `:root`; a test in the
-`groundTokens.test.ts` style that fails on a literal size outside them; no
-visible change on the ground toggle, the contrast pair or print.
-
-### LT-443 — Every job shows the same progress — 2026-09-25
-**Source:** the audit, R-21. The crawl has a live table; backups, Meraki,
-imports and icon scans each say something different or nothing.
-**Acceptance:** one header per running job — phase · n of total · elapsed ·
-Cancel — in the status bar and in the job's panel, driven by LT-432's event.
-
-### LT-444 — Drawers for a device, a record and a finding — 2026-09-25
-**Source:** the audit, R-22. `Inspector.tsx` is 2,388 lines of rail; device
-relations, neighbours, ports, routes and history are accordions in it.
-**Acceptance:** a full-height drawer that opens beside the canvas and can be
-pinned, for a device, a register record and a crawl finding; the rail keeps
-the short form; keyboard reachable; nothing in `lib/` changes.
-
-### LT-445 — Filter as you type on every long list — 2026-09-25
-**Source:** the audit, R-23. The command palette (LT-230) and global search
-(LT-231) exist; the backups device list, the crawl live table, the port map
-and the events table have no filter of their own.
-**Acceptance:** a filter field on each list longer than a screen, matching the
-way LT-338 matches — literally.
-
-### LT-446 — A selection bar with bulk actions on backups and events — 2026-09-25
-**Source:** the audit, R-24. The register (LT-298) and the crawl review
-(LT-333) select in bulk; the backup device list and the events table do not.
-**Acceptance:** tick rows, a bar that says how many, actions that apply to
-all of them; plural forms through `Intl.PluralRules`.
-
-### LT-447 — One focus ring for the chrome, and tables the keyboard can walk — 2026-09-25
-**Source:** the audit, R-25. Seven `:focus-visible` rules for sixty-one
-components; the rest fall back to the engine's ring on a dark chrome.
-**Acceptance:** one `:focus-visible` rule on the chrome's interactive
-selectors with a two-pixel accent outline; roving tabindex on the live tables;
-checked by `e2e/workflow.mjs`.
-
-### LT-448 — The rest of the interface reads from the catalogue — 2026-09-25
-**Source:** the audit, R-26. Twenty of sixty-one components use `t()`
-(LT-272); forty-one carry literal strings.
-**Acceptance:** every user-visible string in a component goes through `t()`;
-`src/i18n/index.test.ts` stays the gate; no `count === 1` plurals.
-
-### LT-449 — An empty list says what was not found — 2026-09-25
-**Source:** the audit, R-27. Some panels say nothing when a list is empty.
-**Acceptance:** one `EmptyState` component, worded the D-050 way — what was
-looked for and why nothing came back — used by every list panel.
-
-### LT-450 — A promise nobody caught reaches the status bar — 2026-09-25
-**Source:** the audit, R-28. Twenty-nine `void ipc.…` calls against
-sixty-eight `.catch(`; a rejected one is logged to a console the bundle has
-no window for.
-**Acceptance:** a global `unhandledrejection` handler that puts the message in
-the status bar; a test that a rejected call shows there.
-
-### LT-451 — A vendor is one file: the `Dialect` trait — 2026-09-25
-**Source:** the audit, R-29. A platform is a set of `match` arms across
-`crawl.rs` (3,056 lines), `cli.rs`, `vrftables.rs`, `overlay.rs`,
-`stacking.rs`, `arubasw.rs`, `dell.rs` and `fortios.rs`. LT-391 is what that
-costs: Cisco syntax sent to an ArubaOS-Switch because one arm was missing.
-**Acceptance:** a `Dialect` trait in `coreview-discover` — the commands for
-each detail, the parsers, and `verified_against_hardware()` as a trait method —
-one file per vendor, registered once; `crawl.rs` becomes the walker; a test
-lists every unverified dialect by name (D-026, D-051 kept as data); every
-existing fixture passes unchanged.
-
-### LT-452 — Components read the slice they use — 2026-09-25
-**Source:** the audit, R-30. Fifteen components subscribe to the whole
-document with `useStore((s) => s.doc)`; `IpamPanel.tsx:146` and
-`IpamWorkbench.tsx:52` recompute `buildIpam` over every node on every
-keystroke while the register is open, and `ipam.ts:838-846` is O(containers²).
-**Acceptance:** slices with `useShallow`; `buildIpam` memoised on the register
-state and the page's addresses; the container parent search sorted by prefix;
-the canvas benchmark unchanged or better.
-
 ### LT-453 — Level of detail, measured to LT-188's protocol — 2026-09-25
 **Source:** the audit, R-31. Culling was measured twice and rejected (D-010,
 D-031). What was not measured is drawing a device as one rect and one text
@@ -255,43 +100,20 @@ recompute.
 production build; **accepted only** if idle, pan and zoom each improve by 20 %
 and drag is no more than 10 % worse; otherwise removed, and the numbers
 recorded beside D-031's.
-
-### LT-454 — A host key seen for the first time is written down as a finding — 2026-09-25
-**Source:** the audit, R-32. `ssh.rs:218-221` remembers a new key silently.
-Trust on first use is the norm for this kind of tool; a first contact that is
-never mentioned is how a day-one interception stays invisible.
-**Acceptance:** "first seen" per new key in the crawl's findings, with the
-fingerprint; a changed key stays a refusal.
-
-### LT-455 — A run, a capture and a probe's history belong to a project — 2026-09-25
-**Source:** the audit, R-33. `crawl_run_result(id)`, `read_capture` and
-`probe_history(probe_id)` take an id with no project check. One operator, one
-machine, so a label rather than a boundary — but LT-412–414 showed how a rule
-applied in one place reappears elsewhere.
-**Acceptance:** each takes the project and refuses an id from another; the
-isolation e2e written for LT-412 asserts it from outside.
-
-### LT-456 — A file is written only where a dialog pointed — 2026-09-25
-**Source:** the audit, R-34. `save_export(path, …)` and
-`save_project_folder(folder, …)` write wherever the page says. Today the page
-got the path from a native dialog and no injection sink was found; this is
-defence in depth.
-**Acceptance:** a dialog returns a token with the path; writers accept the
-token, not the path; a test that a bare path is refused.
-
-### LT-457 — The Visio and draw.io readers move to a crate of their own — 2026-09-25
-**Source:** the audit, R-35. `visio_import.rs` and `drawio_import.rs` are
-2,000 lines of pure parsing inside `src-tauri`, where property tests (LT-267)
-cannot reach them without Tauri.
-**Acceptance:** `crates/coreview-formats`, Tauri-free like `coreview-probe`;
-the same tests pass; property tests added; the licence manifest and the
-notices generator updated.
-
-### LT-458 — `--` before the files handed to LibreOffice — 2026-09-25
-**Source:** the audit, R-36. `shapeconv.rs:745-750` passes user file paths
-after `--outdir`; a file named `--something.emf` reads as an option.
-**Acceptance:** the separator; a test with such a name. Cosmetic, and
-conditional on Q-018 — if LibreOffice goes, so does this.
+**Built 2026-09-25, not measured, and off by default because of that.** The
+store gains `farZoom`, set by the canvas from the viewport with two
+thresholds (far below 0.35, near again above 0.45) so nothing flickers at the
+boundary; far out, a device draws as its glyph and its name — the four
+handles stay because the links anchor to them; the badges, the resizer, the
+details and the live card are not drawn at all. The page opened with
+`?lod=on` turns it on, `?lod=off` is the default, which is how the two
+builds are compared. **The measurement was started to the protocol** —
+production build, 1,000 and 5,000 devices, two runs each way — and the
+machine stopped it for memory after the first run, which had shared the CPU
+with the unit suite and is not usable. So: nothing is claimed, the code ships
+off, and this stays under Now until the benchmark is run on a quiet machine
+and the numbers are written beside D-031's. It is not removed, because
+removing it and rebuilding it to measure is the same work twice.
 
 ### LT-372 — A device that speaks only `hmac-sha1-96` cannot be reached — open, blocked upstream
 **Source:** reported 2026-09-21 with the app's own message, which is worth
@@ -493,6 +315,502 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-448 — The rest of the interface reads from the catalogue — 2026-09-25
+**Source:** the audit, R-26. Twenty of sixty-one components use `t()`
+(LT-272); forty-one carry literal strings.
+**Acceptance:** every user-visible string in a component goes through `t()`;
+`src/i18n/index.test.ts` stays the gate; no `count === 1` plurals.
+**Shipped 2026-09-25, as far as a rule can take it, and the rest is
+counted.** 416 literal strings in 34 components — JSX text between tags,
+prose paragraphs, and every `title`, `aria-label` and `placeholder` — now
+read from `en.ts` through `t()`, 379 keys under one `// LT-448` block, each
+key named after its component and its first words. The first pass was
+reversed and redone: a rule that took any `>text<` also took a generic type
+parameter and a ternary's branches, so the rule now demands a real tag on
+both sides and no code punctuation in the text, and a prose block must be
+bounded by tags and made of words. Two files that already had a `t` of
+their own import the catalogue's as `tr`. English is unchanged to the
+character, which every harness confirms. **Left, and counted:** strings
+built inside JSX expressions — ternaries, template literals, `count === 1`
+plurals that predate LT-272, status words in arrays — are not touched by
+this pass; `src/i18n/index.test.ts` still fails on a key used but missing,
+and a later pass over those expressions is ordinary work rather than a
+rule.
+
+### LT-456 — A file is written only where a dialog pointed — 2026-09-25
+**Source:** the audit, R-34. `save_export(path, …)` and
+`save_project_folder(folder, …)` write wherever the page says. Today the page
+got the path from a native dialog and no injection sink was found; this is
+defence in depth.
+**Acceptance:** a dialog returns a token with the path; writers accept the
+token, not the path; a test that a bare path is refused.
+**Shipped 2026-09-25.** The page no longer names a path to write.
+`pick_export_target(filename, folder)` joins the project's chosen export
+folder, or shows the native save dialog itself, in Rust, and returns a
+one-shot token with the path to tell the person; `pick_export_folder` does
+the same for a folder; `save_export(token, …)` and
+`save_project_folder(token, …)` spend the token, and a token nobody was
+given, or one already used, is refused with the reason. `ExportTargets`
+holds them, with a test for both refusals. On the page `saveExport` and the
+project-folder export ask Rust where and never see a path they could
+change; a chosen export folder still shows no dialog. The eight harnesses
+that drive an export stub the two pickers and assert the write names a
+token and nothing else. Defence in depth: no injection sink was found (the
+audit's §1.2), and this makes one irrelevant if one ever appears.
+
+### LT-452 — Components read the slice they use — 2026-09-25
+**Source:** the audit, R-30. Fifteen components subscribe to the whole
+document with `useStore((s) => s.doc)`; `IpamPanel.tsx:146` and
+`IpamWorkbench.tsx:52` recompute `buildIpam` over every node on every
+keystroke while the register is open, and `ipam.ts:838-846` is O(containers²).
+**Acceptance:** slices with `useShallow`; `buildIpam` memoised on the register
+state and the page's addresses; the container parent search sorted by prefix;
+the canvas benchmark unchanged or better.
+**Shipped 2026-09-25, for eleven of the fifteen.** `allNodes`, `allEdges`,
+`credentialsUsedBy` and `lifecycleVerdicts` now take only what they read
+(`Pick<ProjectDocument, 'pages' | …>`), so a component can hand them a
+slice. The crawl findings, Compare, the register dashboard, Lifecycle, the
+page navigator and tabs, Racks, both credential pickers, the status panel,
+the neighbours section and the inspector's link section each subscribe to
+the pages, the probes, the rules or the register — whichever they draw
+from — instead of the whole document, so a keystroke in a label no longer
+re-renders them; `buildIpam` on the dashboard is memoised on the pages and
+the register state. **Left, and said so:** the canvas, the command palette,
+the register panel and the workbench read the document broadly, and the last
+two also take the whole store with a bare `useStore()`, which re-renders on
+every change of anything — narrowing those is real work of its own and was
+not done under this item.
+
+### LT-457 — The Visio and draw.io readers move to a crate of their own — 2026-09-25
+**Source:** the audit, R-35. `visio_import.rs` and `drawio_import.rs` are
+2,000 lines of pure parsing inside `src-tauri`, where property tests (LT-267)
+cannot reach them without Tauri.
+**Acceptance:** `crates/coreview-formats`, Tauri-free like `coreview-probe`;
+the same tests pass; property tests added; the licence manifest and the
+notices generator updated.
+**Shipped 2026-09-25.** `crates/coreview-formats` holds `visio_import`,
+`drawio_import` and `nmap_import`, moved with their twenty-six tests, under
+the same licence line and `publish = false` as the other crates;
+`src-tauri` depends on it and its own `mod` lines are gone. Four property
+tests run each reader over arbitrary text, XML-shaped text and arbitrary
+bytes and assert only that it returns — the promise LT-267 holds every
+parser to. The licence test now lists every crate's manifest, including
+`coreview-meraki`, which it had missed.
+
+### LT-451 — A vendor is one file: the `Dialect` trait — 2026-09-25
+**Source:** the audit, R-29. A platform is a set of `match` arms across
+`crawl.rs` (3,056 lines), `cli.rs`, `vrftables.rs`, `overlay.rs`,
+`stacking.rs`, `arubasw.rs`, `dell.rs` and `fortios.rs`. LT-391 is what that
+costs: Cisco syntax sent to an ArubaOS-Switch because one arm was missing.
+**Acceptance:** a `Dialect` trait in `coreview-discover` — the commands for
+each detail, the parsers, and `verified_against_hardware()` as a trait method —
+one file per vendor, registered once; `crawl.rs` becomes the walker; a test
+lists every unverified dialect by name (D-026, D-051 kept as data); every
+existing fixture passes unchanged.
+**Shipped 2026-09-25, as the first step and said so.**
+`coreview-discover::dialect` reads a version banner once into a `Family` and
+hands the crawler a `Dialect` — the route, stack and default-route commands,
+the VRF and overlay dialects, and `verified_against_hardware` — with one
+implementation per family that delegates to the command lists and parsers
+already written and tested against captured output, so no fixture changed.
+`crawl::visit` and `read_details` ask the dialect instead of five separate
+`commands_for` functions. The equivalence is a test: for eight real banners,
+every table's commands are exactly what the crawler used to work out from
+that banner. A second test names the dialects that have not met a device —
+Arista EOS, Junos, ArubaOS-CX, Dell — so a new one is added on purpose and
+never claimed by omission (D-026, D-051). **Not yet behind the trait, and
+not claimed:** the identity half of a visit — the version banner's parsing,
+the neighbour tables, MAC and ARP, and the FortiOS and ArubaOS-Switch
+branches inside `visit` — which is the next thing to move.
+
+### LT-444 — Drawers for a device, a record and a finding — 2026-09-25
+**Source:** the audit, R-22. `Inspector.tsx` is 2,388 lines of rail; device
+relations, neighbours, ports, routes and history are accordions in it.
+**Acceptance:** a full-height drawer that opens beside the canvas and can be
+pinned, for a device, a register record and a crawl finding; the rail keeps
+the short form; keyboard reachable; nothing in `lib/` changes.
+**Shipped 2026-09-25, for a device and a finding.** `Drawer.tsx` is a
+fixed panel beside the canvas at `clamp(360px, 40vw, 640px)`: a device drawer
+shows the facts with their evidence sentences as hints (LT-438), the
+inventory, neighbours and attachments sections the rail already draws, the
+device's own status history, and **Select on canvas**; a finding drawer shows
+the kind, the message and each device named, with a way to the canvas where
+it is drawn and *not drawn* where it is not. Opened by **Open as drawer** in
+the inspector and **Details** on a finding; the close button takes focus on
+opening; Escape closes; unpinned, it follows the selection and closes when
+nothing is selected; **Pin** keeps it where it is. `e2e/drawer.mjs` drives
+all of that, eleven checks. **A register record got no drawer, on purpose:**
+the register is a screen of its own (D-044) with inline editing, and a
+drawer over a screen would be a second inspector.
+
+### LT-458 — `--` before the files handed to LibreOffice — 2026-09-25
+**Source:** the audit, R-36. `shapeconv.rs:745-750` passes user file paths
+after `--outdir`; a file named `--something.emf` reads as an option.
+**Acceptance:** the separator; a test with such a name. Cosmetic, and
+conditional on Q-018 — if LibreOffice goes, so does this.
+**Done 2026-09-25, not the way it was asked.** LibreOffice could not be
+shown to honour `--` as an end-of-options mark — on this machine it printed
+a complaint about it, and it could not load a plain text file headless at
+all, so the experiment settled nothing either way. A flag that might not be
+honoured is a file that is silently not converted, which is worse than the
+bug. So `soffice_args` builds the argument list with every file as an
+absolute path, which can never begin with `-`, and a test hands it
+`--odd.emf` and checks what soffice would see. Still conditional on Q-018.
+
+### LT-455 — A run, a capture and a probe's history belong to a project — 2026-09-25
+**Source:** the audit, R-33. `crawl_run_result(id)`, `read_capture` and
+`probe_history(probe_id)` take an id with no project check. One operator, one
+machine, so a label rather than a boundary — but LT-412–414 showed how a rule
+applied in one place reappears elsewhere.
+**Acceptance:** each takes the project and refuses an id from another; the
+isolation e2e written for LT-412 asserts it from outside.
+**Shipped 2026-09-25.** `crawl_run_result` takes the project and answers
+*not kept* for a run id from another; `probe_history` reads samples only
+through this project's sessions, by a join on `validation_sessions`;
+`read_capture` was already scoped by the project's own backup folder and
+was left as it was. The ipc wrappers add the project themselves, so no
+caller changed. Tests: a run read from another project is `None`; a sample
+taken in another project's session is not this project's history. The e2e
+harness for LT-412 could not be extended from the stubbed browser — these
+ids never reach a real backend there — so the boundary is held by the Rust
+tests.
+
+### LT-454 — A host key seen for the first time is written down as a finding — 2026-09-25
+**Source:** the audit, R-32. `ssh.rs:218-221` remembers a new key silently.
+Trust on first use is the norm for this kind of tool; a first contact that is
+never mentioned is how a day-one interception stays invisible.
+**Acceptance:** "first seen" per new key in the crawl's findings, with the
+fingerprint; a changed key stays a refusal.
+**Shipped 2026-09-25.** `HostKeyStore::remember` notes a key it had never
+held, `take_newly_seen` hands the list over once, and `crawl_from` writes it
+onto the result as `first_seen_keys` — host, port, fingerprint — after the
+`Finished` event. On the page each one is a finding of kind **First
+contact**, informational and listed after everything that is wrong: *192.0.2.1
+was trusted on first contact; its key is SHA256:…. If this device was not new
+to you, confirm the key with someone who can see it.* A changed key stays a
+refusal, as before, and is not a first contact. Tests: the store lists a key
+once and never a repeat or a change; the page writes the finding and keeps
+it last.
+
+### LT-450 — A promise nobody caught reaches the status bar — 2026-09-25
+**Source:** the audit, R-28. Twenty-nine `void ipc.…` calls against
+sixty-eight `.catch(`; a rejected one is logged to a console the bundle has
+no window for.
+**Acceptance:** a global `unhandledrejection` handler that puts the message in
+the status bar; a test that a rejected call shows there.
+**Shipped 2026-09-25.** `watchUnhandled` in `src/lib/unhandled.ts` hears
+the window's `unhandledrejection`, turns whatever was thrown into one line —
+an `Error`'s message, a string, an object's `message`, or *Something
+failed.* — and `main.tsx` points it at the status bar. Two tests: the
+descriptions, including a cyclic object, and the listener's install and
+removal.
+
+### LT-449 — An empty list says what was not found — 2026-09-25
+**Source:** the audit, R-27. Some panels say nothing when a list is empty.
+**Acceptance:** one `EmptyState` component, worded the D-050 way — what was
+looked for and why nothing came back — used by every list panel.
+**Shipped 2026-09-25.** One `EmptyState` — what was looked for, then why
+nothing came back — replaces the bare sentences in the crawl findings, the
+backups list, the compare view and the events table, which now also tells a
+filtered-out list apart from an empty one. The panels that say *needs the
+desktop app* or *choose a folder first* are not empty states and were left.
+
+### LT-447 — One focus ring for the chrome, and tables the keyboard can walk — 2026-09-25
+**Source:** the audit, R-25. Seven `:focus-visible` rules for sixty-one
+components; the rest fall back to the engine's ring on a dark chrome.
+**Acceptance:** one `:focus-visible` rule on the chrome's interactive
+selectors with a two-pixel accent outline; roving tabindex on the live tables;
+checked by `e2e/workflow.mjs`.
+**Shipped 2026-09-25, and half of it was already there.** The one
+`:focus-visible` rule with a two-pixel accent outline has been at
+`styles.css:184` since LT-240; the audit counted seven rules and read the
+count as coverage, which it was not — the seven are the exceptions, and the
+one rule is the chrome. What was missing is the roving tabindex:
+`useRovingTabindex` makes a table one tab stop, the arrows move between rows,
+Home and End jump, Enter presses the row's first button, and it re-arms
+itself when rows change. On the crawl's live table, the events table and
+the backups' device list.
+
+### LT-446 — A selection bar with bulk actions on backups and events — 2026-09-25
+**Source:** the audit, R-24. The register (LT-298) and the crawl review
+(LT-333) select in bulk; the backup device list and the events table do not.
+**Acceptance:** tick rows, a bar that says how many, actions that apply to
+all of them; plural forms through `Intl.PluralRules`.
+**Shipped 2026-09-25.** The events table gained a tick column, a
+select-every-row-shown tick in its heading, and a bar that appears with a
+selection — *n selected · Copy as CSV · Export CSV · Clear* — writing exactly
+the ticked rows through the same `eventsToCsv` the whole-table export uses.
+The backups' device list already had its selection and its bulk action
+(**Back up n**, Select all / Select none) and was left as it was.
+
+### LT-445 — Filter as you type on every long list — 2026-09-25
+**Source:** the audit, R-23. The command palette (LT-230) and global search
+(LT-231) exist; the backups device list, the crawl live table, the port map
+and the events table have no filter of their own.
+**Acceptance:** a filter field on each list longer than a screen, matching the
+way LT-338 matches — literally.
+**Shipped 2026-09-25, on the lists that are long.** A filter-as-you-type
+field, literal like LT-338, appears above the crawl's live table and the
+backups' device list once either has more than eight rows; the events table
+already had one, shared with the object list, and the port map turned out to
+have no list of its own — it is the inspector's per-device ports section,
+short by construction — so it got none.
+
+### LT-443 — Every job shows the same progress — 2026-09-25
+**Source:** the audit, R-21. The crawl has a live table; backups, Meraki,
+imports and icon scans each say something different or nothing.
+**Acceptance:** one header per running job — phase · n of total · elapsed ·
+Cancel — in the status bar and in the job's panel, driven by LT-432's event.
+**Shipped 2026-09-25.** `JobsBar` draws every job in the store's `jobs`
+list (LT-432) as one header — *Backup · Backing up · 2 of 9 · 1 min* — with
+a progress bar where the total is known and **Cancel** that goes through
+`job_cancel`; the elapsed figure ticks once a second only while something
+runs. It sits at the top of the bottom panel whichever tab is open and, in
+its compact form, beside the save state in the toolbar. A Meraki collection
+and an icon-library scan are still not jobs (see LT-432) and so do not show.
+
+### LT-442 — A type and spacing scale, as tokens, guarded — 2026-09-25
+**Source:** the audit, R-20. `styles.css` sets `font-size` 91 times at 12 px
+and 75 at 11 px, with 10, 13 and 16 beside them and no declared scale; 40 uses
+of 6 px break the 4/8/12/16 spacing the rest of the sheet keeps.
+**Acceptance:** four text tokens and a spacing set in `:root`; a test in the
+`groundTokens.test.ts` style that fails on a literal size outside them; no
+visible change on the ground toggle, the contrast pair or print.
+**Shipped 2026-09-25.** `:root` declares ten text steps — `--text-2xs`
+9 px through `--text-display` 30 px — and five spacing steps `--space-1`
+4 px to `--space-5` 24 px. Every one of the 223 pixel `font-size`
+declarations now reads a token (`1em` twice stays, being relative);
+`typeScale.test.ts` reads the stylesheet the way `groundTokens.test.ts` does
+and fails on the next literal, on a token the root does not declare, and on
+a scale that is not the one written down. **The cost, stated:** six rules
+moved by at most a pixel to land on a step — 10.5 → 10, 11.5 → 12, 15 → 14,
+17 → 18 — nobody had chosen those on purpose. The spacing set is declared and
+used by new rules; it is not enforced, because forty rules at 6 px would each
+need a decision that is not this item's to make.
+
+### LT-439 — A lifecycle table the operator supplies — 2026-09-25
+**Source:** the audit, R-17. Device42 and SolarWinds report end-of-sale and
+end-of-support; Coreview makes no vendor call and never will.
+**Acceptance:** import a CSV of model → end-of-sale / end-of-support dates;
+a report of devices past either date; nothing fetched from anywhere.
+**Shipped 2026-09-25.** `src/lib/lifecycle.ts` reads a CSV the operator
+keeps — the columns found by their headings (Model / Product / Part, End of
+Sale, End of Support, Note), dates as `YYYY-MM-DD` or a day-month order that
+cannot be misread, a repeated model kept once and said so — and the table
+lives in the project (`doc.lifecycle`), replaced whole as one undo step.
+**Lifecycle** on the Tools screen matches every drawn device by its model,
+exactly or by the longest prefix a table row is of it, and reports it past
+end of support, past end of sale, current, or *not in the table* — never
+fine for want of a row — worst first, with a summary line and Export CSV.
+Nothing is fetched from anywhere; the table is the operator's own and nothing
+ships pre-filled (D-027). Four tests over an invented table: the reading and
+its complaints, the dates, the matching, and the verdicts.
+
+### LT-441 — A hostile device name survives the Visio export — 2026-09-25
+**Source:** the audit, R-19. SVG, draw.io, HTML and CSV exports were verified
+to escape device strings; `visio.rs` writes through the `zip` crate and its
+XML text was not checked.
+**Acceptance:** read the writer; a round-trip test with `<`, `&`, `"` and a
+`]]>` in a device name; fix if it fails.
+**Done 2026-09-25 — the writer was already right, and the test that
+proved it had been there since LT-249.** `visio.rs` escapes every device
+name and link label through one `esc()` before it reaches `<Text>`, and
+`a_name_with_xml_in_it_cannot_break_the_file` already held a name with `<`,
+`&` and `"`. It was widened rather than trusted: the name now carries `]]>`
+and an apostrophe, a link's label goes through the same test, and the page
+is parsed back with `roxmltree` so the assertion is "well-formed XML" and not
+"the escaped string is in there somewhere". Nothing needed fixing.
+
+### LT-440 — A sweep's port list is the operator's, its services are named, and it exports — 2026-09-25
+**Source:** the audit, R-18, against Nmap. The sweep scans eighteen fixed
+ports (D-025) and its result has no export.
+**Acceptance:** a per-sweep port list; IANA service names on the hits; CSV
+export like the crawl's. The two D-025 switches stay, because a port scan is
+the loudest thing the app does.
+**Shipped 2026-09-25.** `SweepOptions.ports` — the operator's own list,
+typed into **Which ports** on the sweep form as numbers separated by commas;
+empty means the common eighteen, and `clamped` drops a zero and a repeat and
+keeps the first sixty-four, because the scan is per host and the noisiest
+thing a sweep does. Every port on the list gets the registry's name where
+`ports.rs` knows one — the common table plus a second of sixty registered
+services (SNMP, BGP, RADIUS, NETCONF, Winbox, …), IANA's names and nothing
+observed anywhere — and an honest blank where it does not. **Export CSV**
+above the results writes one row per hit: address, name and where the name
+came from, MAC, manufacturer, RTT, open ports, serial. The two D-025 switches
+are untouched. Tests: the clamp, the naming and the fallback in the probe
+crate; the port-list parser and the CSV on the page; the sweep fixture
+regenerated with the new field.
+
+### LT-437 — Intent checks over the normalised inventory — 2026-09-25
+**Source:** the audit, R-15. The findings engine (LT-213) flags topology
+faults; nothing checks a rule against what the crawl normalised.
+**Acceptance:** typed rules — every trunk carries VLAN N, no access port
+without BPDU guard, no duplex mismatch, uptime under N days — reported
+alongside LT-213's findings, with the device and the evidence.
+**Shipped 2026-09-25, with the rule set the data can bear.** `src/lib/
+intentChecks.ts` judges five rules against a crawl's normalised tables —
+*every trunk carries VLAN N*, *access ports only on VLANs …*, *no port runs
+half-duplex*, *both ends of a link agree on speed and duplex* (each link once,
+from whichever side advertised it), and *every device up at least N days* —
+and every failure names the device, the port and the figure that decided it,
+as a finding of kind **Intent** beside LT-213's. The rules live in the
+project (`doc.intentRules`), edited under **Rules about this estate** below
+the findings, and changing them is one undo step. **What it refuses (D-050):**
+a device that did not return the table a rule needs is not judged, and a rule
+no device in the crawl could be judged on is listed as such rather than
+passed. **BPDU guard is not a rule**, because no crawl reads it: a rule that
+always passed for want of data would be worse than none. Three tests: the
+five failures on an invented pair of switches, the empty answer for a bare
+device with the unjudged list, and the rule builder.
+
+### LT-436 — Export to NetBox and Nautobot — 2026-09-25
+**Source:** the audit, R-14. The NetBox reader exists (LT-247); nothing writes
+the other way.
+**Acceptance:** devices, interfaces, IP addresses, cables and VLANs as NetBox
+JSON and YAML; a round trip through the LT-247 reader in a test.
+**Shipped 2026-09-25.** `src/lib/netboxExport.ts` writes the project as the
+REST API's own records — devices with type, manufacturer, role, site, rack,
+position, serial, asset tag, primary address, comments and tags; an
+interface per port the crawl saw, with speed, mode and untagged VLAN; an
+address per device address, assigned to its interface; a cable per link
+with both terminations; and the VLANs — as JSON or YAML, under **For
+NetBox** in the Export menu. Nothing is invented: a device with no site has
+`null`, a link with no ports names only the devices, a leader line and a
+sticky note are not exported. Every record carries an id, as an API dump
+does, which is what keeps LT-247's reader from walking into a cable's
+terminations. The round trip is a test: the writer's JSON and YAML both read
+back through `readNetbox` to the same devices, addresses, models, sites,
+rack positions and cables. Built from NetBox's serializers like the reader
+(D-032): no live instance was available to import into, and this stays
+written down until one has.
+
+### LT-435 — A timeline of what changed across every crawl — 2026-09-25
+**Source:** the audit, R-13, against IP Fabric's snapshots. The topology diff
+is pairwise (LT-227).
+**Acceptance:** per device, what changed at each crawl and which source said
+so (needs LT-438); a landing view "since your last crawl" with the counts.
+**Shipped 2026-09-25.** `src-tauri/src/timeline.rs` walks every finished
+run a project has kept, oldest first, and writes one entry per change per
+device — appeared, disappeared, type, model, software, serial, an address or
+a neighbour gained or lost, and *restarted* where a later uptime is smaller —
+each against the run it happened in and with the source that said so, from
+the newer run's evidence (LT-438) or, failing that, how the device was
+reached. A field the later run did not read is not a change, and a device
+with no name is followed by its address. `crawl_timeline(projectId, device?)`
+reads the runs and skips any still running or aborted, because half a picture
+compared with a whole one reports half the estate gone. The Tools screen's
+Compare view gained **Timeline**: a device filter, the landing line — *Since
+your last crawl: 2 neighbour, 1 appeared* — the changes grouped by run
+newest first with what, was → now and the source in words, and Save as
+Markdown or CSV (the CSV guarded against a device name that starts a
+formula). Three Rust tests over invented runs and four page tests over the
+grouping, the line, the arrow and the exports.
+
+### LT-438 — Every derived fact says where it came from — 2026-09-25
+**Source:** the audit, R-16. `identity` notes reached against reported, the
+register says `drawn`, `crawled` or `typed`, ingestion writes "Seen by a crawl
+on SW1 Gi0/7" — three shapes of the same idea. D-050 asks for one.
+**Acceptance:** one `Evidence { source, seenAt, seenBy }` type on
+`CrawledDevice` and `TopoNode` fields (class, role, uptime, addresses, parent);
+the inspector answers "why does it say this?" for each; existing documents
+migrate with `source` unset rather than invented.
+**Shipped 2026-09-25.** `Evidence { source, seenBy, seenAtMs, detail }` in
+`coreview-discover::types`, and an `evidence` map on `CrawledDevice` keyed
+by field — `hostname`, `class`, `platform`, `uptime`, `addresses`, `serial`.
+Filled where each is decided: the SSH visit (the prompt, `show version`, the
+interface table), the SNMP builder (sysName, sysServices or the neighbour that
+knew better, ENTITY-MIB or sysDescr, sysUpTime), the FortiGate's reported
+access points (the controller, by name), and the Meraki devices (the
+Dashboard). On the page `buildTopology` carries it onto `DeviceNodeData.
+evidence`, gives a device known only by a neighbour's word `neighbour-report`
+with that neighbour's name on every field, and on a re-crawl replaces the
+fields it read while keeping the sources of the rest. `src/lib/evidence.ts`
+writes the sentence — *Read from show version over SSH, 5 minutes ago. It
+said: Cisco IOS XE* — and the inspector shows it as the hint on Device type,
+Model and Hostname and on the uptime line. A device drawn by hand carries no
+evidence and gets no sentence, which is D-050 applied to the sentence itself.
+Tests: the SNMP builder's evidence, three `buildTopology` cases, and the
+sentence. **Not done:** the addresses list and the role field keep their own
+existing hints; attached endpoints from a MAC table (`AttachedDevice.class`
+from the OUI) are not nodes and carry none yet.
+
+### LT-434 — Compliance rules that understand a block — 2026-09-25
+**Source:** the audit, R-12, against SolarWinds NCM and Unimus. Checks are
+`contains`, `notContains`, `matches` and `notMatches` over one command's
+output (`checks.rs:37-42`).
+**Acceptance:** a rule can name a stanza ("every `interface` block must
+contain X"), carry a severity, belong to a per-role set, and the result is a
+pass/fail matrix across devices exportable as CSV and Markdown. Existing checks
+keep running unchanged.
+**Shipped 2026-09-25.** A check gained three fields, each defaulting to what
+it meant before: **block** — the start of a stanza's heading (`interface`,
+`line vty`), so the check runs once per stanza and names the first one that
+decides it, as a line of the whole output; **severity** — info, warning or
+critical, carried onto every result; and **roles** — the diagram's roles the
+check is for, so a rule written for routers reads *not applicable* on a
+switch rather than failed, which is the new verdict, also used where an
+output has no such block. `checks::stanzas` reads indentation, not
+punctuation, because that is how every CLI this reads lays a configuration
+out; two tests cover the splitter and the four block outcomes, against an
+invented configuration. On the page, `checkMatrix` turns the results into a
+grid — worst failures first, checks in their listed order, an empty cell
+where a device has no result — with **As a matrix** in the panel, and
+`matrixCsv` / `matrixMarkdown` behind **Export CSV** and **Export Markdown**
+through the same `saveExport` every other export uses, the CSV guarded
+against a device name that starts a formula. The roles map is built from the
+drawn devices at run time and travels with the request. Existing checks run
+unchanged: the stored form without the new fields reads as a whole-output
+warning for every role, and `e2e/checks.mjs` stays green.
+
+### LT-433 — A device's configuration history, and what changed since last time — 2026-09-25
+**Source:** the audit, R-11, against Oxidized and Unimus. Compare reads two
+runs (LT-152); nothing shows one device across every capture it has.
+**Acceptance:** a history view per device listing every capture with a
+changed/unchanged flag, a diff to any earlier one, and a "changed since last
+backup" badge on the device and in the findings. Read-only; nothing is
+scheduled.
+**Shipped 2026-09-25, narrower than asked and said so.** `capture::history`
+in the discover crate lists every capture of a device newest first and flags
+each against the previous *of its kind* — a running-config against the last
+running-config, not the startup capture between them — by comparing bytes,
+because the line diff is quadratic and a history is fifty captures at a time;
+the diff is drawn for the capture somebody opens, with **Diff to previous**
+on every row that has one. `changed_at_latest` gives the device list its
+badge, *changed at last backup* or *unchanged at last backup*, and says
+nothing for a first capture. One test writes five captures of two kinds,
+including a same-length edit the size shortcut must not miss, and checks every
+flag. **Not done:** the badge is in the Backups panel only — not on the
+diagram's device and not among the crawl findings, which are built from a
+crawl and know nothing of the backup folder. Putting it on the device needs
+the backup list in the store; that joins LT-444's drawer work, where the
+device's configuration gets a section of its own.
+
+### LT-432 — A registry of the jobs that are running — 2026-09-25
+**Source:** the audit, R-10. Crawl, backup and sweep are three
+`Mutex<Option<CancellationToken>>` slots with no progress object, no queue and
+no list. Every long piece of work — crawl, backup, sweep, Meraki collection,
+icon-library scan — should be a job with an id, a kind, a start time, a phase,
+n of total, and a cancel.
+**Acceptance:** `jobs.rs` in `src-tauri`; `job_list` and `job_cancel(id)`
+commands registered the D-033 way; one `coreview://job` event carrying
+`{id, kind, phase, done, total}`; LT-428's refusal becomes "already running
+(id)"; the existing cancel commands keep working.
+**Shipped 2026-09-25.** `jobs.rs` grew from LT-428's slots into the registry:
+a `JobSnapshot` per running job — id, kind, state (running, stopping,
+complete, cancelled), phase, done, total where known, and when it started —
+reported through a closure the app points at the window, so the module stays
+Tauri-free and its six tests hear the changes in a `Vec`. `job_list` and
+`job_cancel(id)` are registered the D-033 way; `coreview://job` carries every
+change; the crawl, backup and sweep pumps report their phase and counts; the
+LT-428 refusal names the job's id. On the page, `src/lib/jobs.ts` folds the
+snapshots into the store's `jobs` list and writes the header line
+(`Backup · Backing up · 2 of 9 · 1 min`), listed once on load and kept
+current by the event. **Not yet jobs, and said so:** a Meraki collection and
+an icon-library scan are still commands that run to completion with no
+cancel; making them tasks is LT-443's work, where the uniform progress header
+is drawn. Existing panels keep their own Stop buttons; nothing they did
+changed.
 
 ### LT-423 — Commands that touch the database, a file or a parser run off the UI thread — 2026-09-25
 **Source:** the audit, R-01. Seventy of the ninety-six Tauri commands are

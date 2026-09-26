@@ -69,6 +69,8 @@ await page.addInitScript(({ p, inventory }) => {
       if (cmd === "describe_subnet") return Promise.resolve({ network: "192.0.2.0", broadcast: "192.0.2.255", prefix: 24, hosts: 254 });
       if (cmd === "plugin:dialog|open") return Promise.resolve("/home/user/inventory.csv");
       if (cmd === "plugin:dialog|save") return Promise.resolve(`/tmp/${args.options?.defaultPath ?? "out"}`);
+      if (cmd === "pick_export_target") return Promise.resolve({ token: `t-${next++}`, path: args.folder ? `${args.folder}/${args.filename}` : `/tmp/${args.filename}` });
+      if (cmd === "pick_export_folder") return Promise.resolve({ token: `f-${next++}`, path: args.folder ?? "/tmp/picked" });
       if (cmd === "read_import") return Promise.resolve(inventory);
       if (cmd === "start_crawl") return Promise.resolve(null);
       if (cmd === "save_crawl_run") return Promise.resolve("crawl-1");

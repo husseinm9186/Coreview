@@ -234,6 +234,10 @@ export interface DeviceNodeData extends Record<string, unknown> {
   role?: string;
   /** LT-214: why a crawl decided the role it wrote, when it wrote one. */
   roleEvidence?: string;
+  /** LT-438: where a crawl read each field from — `hostname`, `class`,
+   *  `platform`, `uptime`, `addresses`, `serial` — so the inspector can say
+   *  why it says what it says. Absent on anything drawn by hand. */
+  evidence?: Record<string, import('../lib/ipc').Evidence>;
   site?: string;
   rack?: string;
   /** Height in rack units (LT-171). Filled from the shape's defaults when the

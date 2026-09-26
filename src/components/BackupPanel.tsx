@@ -25,6 +25,7 @@ import {
   ipc,
   isDesktop,
   type BackupDevice,
+  type CaptureHistoryRow,
   type BackupEvent,
   type BackupRunSummary,
   type BackupTarget,
@@ -73,6 +74,9 @@ import { CredentialPicker } from './CredentialPicker';
 import { allNodes } from '../lib/pages';
 
 import { FILE_TOKENS, describeCapture, describeStamp, patternProblem, previewFileName } from '../lib/fileNames';
+import { t } from '../i18n';
+import { EmptyState } from './EmptyState';
+import { useRovingTabindex } from './useRovingTabindex';
 
 /**
  * Take configuration backups, and look at the ones already taken.
@@ -148,7 +152,11 @@ export function BackupPanel({
   // Browsing what is already there.
   const [devices, setDevices] = useState<BackupDevice[]>([]);
   const [openDevice, setOpenDevice] = useState<string | null>(null);
-  const [captures, setCaptures] = useState<string[]>([]);
+  const [captures, setCaptures] = useState<CaptureHistoryRow[]>([]);
+  // LT-445 / LT-447: the device list, filtered as you type and walked with the arrows.
+  const [deviceFilter, setDeviceFilter] = useState('');
+  const backupListRef = useRef<HTMLUListElement>(null);
+  useRovingTabindex(backupListRef, [devices.length, deviceFilter]);
   const [compare, setCompare] = useState<[string, string] | null>(null);
   const [diff, setDiff] = useState<DiffLine[] | null>(null);
   // LT-152: two whole runs, before and after a change.
@@ -464,7 +472,7 @@ export function BackupPanel({
     setOpenDevice(device);
     setDiff(null);
     setCompare(null);
-    void ipc.listDeviceCaptures(device).then(setCaptures).catch(() => setCaptures([]));
+    void ipc.deviceCaptureHistory(device).then(setCaptures).catch(() => setCaptures([]));
   };
 
   const runDiff = (device: string, before: string, after: string) => {
@@ -814,35 +822,52 @@ export function BackupPanel({
         <section>
           <h4 className="cv-backup-head">Backups taken</h4>
           {devices.length === 0 ? (
-            <p className="cv-help">No backups yet.</p>
+            <EmptyState what={t('empty.backups.what')} why={t('empty.backups.why')} />
           ) : (
-            <ul className="cv-backup-list">
-              {devices.map((d) => (
+            <>
+            {/* LT-445: filter as you type over the devices with backups. */}
+            {devices.length > 8 && (
+              <input className="cv-input cv-list-filter" value={deviceFilter} aria-label={t('filter.devices')} placeholder={t('filter.devices')}
+                onChange={(e) => setDeviceFilter(e.target.value)} />
+            )}
+            <ul className="cv-backup-list" role="list" ref={backupListRef}>
+              {devices.filter((d) => !deviceFilter.trim() || d.name.toLowerCase().includes(deviceFilter.trim().toLowerCase())).map((d) => (
                 <li key={d.name}>
                   <button type="button" className={openDevice === d.name ? 'is-open' : ''}
                     onClick={() => openCaptures(d.name)}>
-                    {d.name} <span className="cv-help">{d.captures} capture{d.captures === 1 ? '' : 's'}</span>
+                    {d.name} <span className="cv-help">{t('backup.captures', { count: d.captures })}</span>
+                    {/* LT-433: whether the last backup found the configuration
+                        changed. Said only where there is an earlier one to
+                        compare with; a first backup is neither. */}
+                    {d.changedAtLatest === true && <span className="cv-backup-badge is-changed">{t('backup.changedAtLatest')}</span>}
+                    {d.changedAtLatest === false && <span className="cv-backup-badge">{t('backup.unchangedAtLatest')}</span>}
                   </button>
                 </li>
               ))}
             </ul>
+            </>
           )}
 
           {openDevice && captures.length > 0 && (
             <div className="cv-backup-captures">
+              {/* LT-433: every capture, flagged against the previous of its
+                  kind; the diff is drawn for the one somebody opens. */}
               <p className="cv-help">
                 {captures.length > 1
-                  ? 'Pick two captures to see what changed between them.'
-                  : 'One capture so far — there is nothing to compare it with yet.'}
+                  ? t('backup.historyHint')
+                  : t('backup.historyOne')}
               </p>
               <ul>
-                {captures.map((c, i) => (
-                  <li key={c}>
-                    <span className="cv-mono">{describeCapture(c)}</span>
-                    {i === 0 && captures[1] !== undefined && (
+                {captures.map((c) => (
+                  <li key={c.file} data-changed={c.changed === null ? 'first' : c.changed ? 'yes' : 'no'}>
+                    <span className="cv-mono">{describeCapture(c.file)}</span>
+                    {c.changed === true && <span className="cv-backup-badge is-changed">{t('backup.rowChanged')}</span>}
+                    {c.changed === false && <span className="cv-backup-badge">{t('backup.rowUnchanged')}</span>}
+                    {c.changed === null && <span className="cv-backup-badge">{t('backup.rowFirst')}</span>}
+                    {c.previous && (
                       <button type="button" className="cv-btn cv-btn-small"
-                        onClick={() => runDiff(openDevice, captures[1] as string, c)}>
-                        Compare with previous
+                        onClick={() => runDiff(openDevice, c.previous as string, c.file)}>
+                        {t('backup.diffToPrevious')}
                       </button>
                     )}
                   </li>

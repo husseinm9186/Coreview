@@ -41,6 +41,12 @@ impl HostKeyVerdict {
 #[derive(Debug, Clone, Default)]
 pub struct HostKeyStore {
     keys: BTreeMap<String, String>,
+    /// LT-454: the keys remembered for the first time since this list was
+    /// last taken — host, port, fingerprint. Trust on first use is the norm
+    /// for a tool like this, and a first contact nobody is told about is how
+    /// a day-one interception stays invisible; a crawl writes these down as
+    /// findings.
+    newly_seen: Vec<(String, u16, String)>,
 }
 
 /// The identity a key is remembered against. Lower-cased so a host typed two
@@ -58,6 +64,7 @@ impl HostKeyStore {
     pub fn from_pairs(pairs: impl IntoIterator<Item = (String, String)>) -> Self {
         Self {
             keys: pairs.into_iter().collect(),
+            newly_seen: Vec::new(),
         }
     }
 
@@ -75,8 +82,16 @@ impl HostKeyStore {
     /// returned something acceptable — otherwise it would quietly paper over
     /// the one case the store exists to catch.
     pub fn remember(&mut self, host: &str, port: u16, fingerprint: &str) {
-        self.keys
-            .insert(host_id(host, port), fingerprint.to_string());
+        let first = self.keys.insert(host_id(host, port), fingerprint.to_string()).is_none();
+        if first {
+            self.newly_seen.push((host.to_string(), port, fingerprint.to_string()));
+        }
+    }
+
+    /// LT-454: every key remembered for the first time since this was last
+    /// called, and the list starts again.
+    pub fn take_newly_seen(&mut self) -> Vec<(String, u16, String)> {
+        std::mem::take(&mut self.newly_seen)
     }
 
     /// Forgets one device, so the next connection is treated as first contact.
@@ -130,6 +145,21 @@ mod tests {
 
     const KEY_A: &str = "SHA256:0zaqrPUcHnE0V0z+kM4ZmJmS7nDBn/8P9wYc4bTGf2E";
     const KEY_B: &str = "SHA256:9xyzQQQQQnE0V0z+kM4ZmJmS7nDBn/8P9wYc4bTGf2E";
+
+    /// LT-454: what was met for the first time is written down once, and a
+    /// key already known, or one that changed, is not "first contact".
+    #[test]
+    fn first_contacts_are_listed_once_and_only_when_genuinely_first() {
+        let mut store = HostKeyStore::new();
+        store.remember("192.0.2.1", 22, KEY_A);
+        store.remember("192.0.2.1", 22, KEY_A);
+        store.remember("192.0.2.2", 2222, KEY_B);
+        // A changed key is remembered over the old one; it is not a first contact.
+        store.remember("192.0.2.1", 22, KEY_B);
+        let seen = store.take_newly_seen();
+        assert_eq!(seen, vec![("192.0.2.1".to_string(), 22, KEY_A.to_string()), ("192.0.2.2".to_string(), 2222, KEY_B.to_string())]);
+        assert!(store.take_newly_seen().is_empty(), "taken means taken");
+    }
 
     #[test]
     fn a_device_never_seen_before_is_new() {

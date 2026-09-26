@@ -4,6 +4,7 @@ import { credentialsUsedBy } from '../lib/credentialScope';
 import { ipc, isDesktop, type CredentialSummary } from '../lib/ipc';
 import { useStore } from '../state/store';
 import { VaultPassphraseForm } from './VaultGate';
+import { t } from '../i18n';
 
 /**
  * Choose a saved credential, or type one for this run.
@@ -75,8 +76,10 @@ export function CredentialPicker({
   //
   // The vault is still one store per machine (D-034). What changes is the
   // view: the rest of it is one disclosure away and says what it is.
-  const doc = useStore((s) => s.doc);
-  const mine = useMemo(() => credentialsUsedBy(doc), [doc]);
+  // LT-452: only what the scope reads — the pages, the defaults, the rules.
+  const pages = useStore((s) => s.doc.pages);
+  const credentialRules = useStore((s) => s.doc.credentialRules);
+  const mine = useMemo(() => credentialsUsedBy({ pages, credentialDefaults: defaults, credentialRules }), [pages, defaults, credentialRules]);
   const [showEverything, setShowEverything] = useState(false);
   // Anything chosen while this form has been open stays on offer, even after
   // the project stops referring to it.
@@ -215,7 +218,7 @@ export function CredentialPicker({
     <>
       {projectLogin && (
         <label className="cv-check cv-check-inline cv-cred-project"
-          title="Tried before anything typed here. Saved under Tools ▸ Settings.">
+          title={t('credentialPicker.triedBeforeAnythingTyped')}>
           <input type="checkbox" checked={usingProject} disabled={disabled}
             onChange={(e) => {
               onChoose(e.target.checked ? wanted! : null);
@@ -226,7 +229,7 @@ export function CredentialPicker({
       )}
       {(usable || chosenUnresolved) && (
         <label className="cv-field cv-field-narrow">
-          <span>Credentials</span>
+          <span>{t('credentialPicker.credentials')}</span>
           <select
             className="cv-input"
             value={chosen ?? ''}
@@ -241,7 +244,7 @@ export function CredentialPicker({
               }
             }}
           >
-            <option value="">Type them below</option>
+            <option value="">{t('credentialPicker.typeThemBelow')}</option>
             {chosenUnresolved && (
               <option value={chosen!}>
                 {unlocked ? 'A credential no longer saved' : 'Kept for this project — unlocking the vault…'}
@@ -260,7 +263,7 @@ export function CredentialPicker({
           type="button"
           className="cv-btn cv-btn-small cv-cred-elsewhere"
           disabled={disabled}
-          title="The vault is shared by every project on this computer. This project does not use these."
+          title={t('credentialPicker.theVaultIsShared')}
           onClick={() => setShowEverything(true)}
         >
           Show {elsewhere} saved elsewhere on this computer
@@ -295,7 +298,7 @@ export function CredentialPicker({
                         })
                         .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)));
                     }}>
-                    Wipe it
+                    {t('credentialPicker.wipeIt')}
                   </button>
                   <button type="button" className="cv-btn cv-btn-small" onClick={() => setConfirmWipe(false)}>
                     Cancel
@@ -304,21 +307,21 @@ export function CredentialPicker({
               ) : (
                 <>
                   <button type="button" className="cv-btn cv-btn-small" disabled={disabled}
-                    title="Type a new username and password over this saved credential. Every project using it follows."
+                    title={t('credentialPicker.typeANewUsername')}
                     onClick={() => { setReplacing(true); setKept(null); setProblem(null); }}>
                     Replace
                   </button>
                   <button type="button" className="cv-btn cv-btn-small" disabled={disabled}
-                    title="This project stops using it. The credential stays in the vault."
+                    title={t('credentialPicker.thisProjectStopsUsing')}
                     onClick={() => {
                       useStore.getState().forgetCredential(kind, chosen);
                       onChoose(null);
                       setKept('This project no longer uses it. It is still in the vault.');
                     }}>
-                    Forget for this project
+                    {t('credentialPicker.forgetForThisProject')}
                   </button>
                   <button type="button" className="cv-btn cv-btn-small cv-btn-danger" disabled={disabled}
-                    title="Take the username and password out of the vault altogether. Every project using them loses them."
+                    title={t('credentialPicker.takeTheUsernameAnd')}
                     onClick={() => { setConfirmWipe(true); setKept(null); setProblem(null); }}>
                     Wipe
                   </button>
@@ -328,13 +331,12 @@ export function CredentialPicker({
           ) : replacing ? (
             <div className="cv-keep-cred-form">
               <p className="cv-help">
-                Type the new username and password above, then save. The same saved credential is
-                overwritten, so anything else using it gets the new password too.
+                {t('credentialPicker.typeTheNewUsername')}
               </p>
               <button type="button" className="cv-btn cv-btn-start" disabled={disabled || !fillable}
                 title={fillable ? undefined : 'Fill the username and password in first'}
                 onClick={() => void openThenKeep()}>
-                Save over it
+                {t('credentialPicker.saveOverIt')}
               </button>
               <button type="button" className="cv-btn cv-btn-small"
                 onClick={() => { setReplacing(false); setProblem(null); }}>
@@ -404,7 +406,7 @@ export function SavedCredentialSelect({
       onChange={(e) => onChange(e.target.value || undefined)}
     >
       <option value="">{!unlocked ? 'Vault locked' : saved?.length ? 'None' : 'Nothing saved yet'}</option>
-      {missing && <option value={value}>A credential no longer saved</option>}
+      {missing && <option value={value}>{t('credentialPicker.aCredentialNoLonger')}</option>}
       {(saved ?? []).map((c) => (
         <option key={c.id} value={c.id}>
           {c.label}{kind ? '' : ` (${c.kind.toUpperCase()})`}

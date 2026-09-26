@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { ipc } from '../../lib/ipc';
 import { availability, rttSpark, statusBars, type Sample } from '../../lib/sparkline';
 import { useStore } from '../../state/store';
+import { t } from '../../i18n';
 
 const W = 240;
 const H = 36;
@@ -49,8 +50,8 @@ export function ProbeHistory({ probeId }: { probeId: string }) {
   return (
     <div className="cv-probe-history">
       <div className="cv-probe-history-head">
-        <span>History</span>
-        <select className="cv-input" aria-label="History window" value={span} onChange={(e) => setSpan(Number(e.target.value))}>
+        <span>{t('probeHistory.history')}</span>
+        <select className="cv-input" aria-label={t('probeHistory.historyWindow')} value={span} onChange={(e) => setSpan(Number(e.target.value))}>
           {WINDOWS.map(([label, ms]) => <option key={ms} value={ms}>{label}</option>)}
         </select>
         <span className="cv-help" aria-live="polite">

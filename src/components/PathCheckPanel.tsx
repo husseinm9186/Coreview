@@ -13,6 +13,7 @@ import { targetOf } from '../lib/probeTemplates';
 import { useStore } from '../state/store';
 import type { DeviceNodeData } from '../types/domain';
 import { SavedCredentialSelect } from './CredentialPicker';
+import { t } from '../i18n';
 
 const THIS_MACHINE = '';
 
@@ -72,37 +73,37 @@ export function PathCheckPanel() {
     <div className="cv-path-check">
       <div className="cv-discover-form">
         <label className="cv-field cv-field-narrow">
-          <span>From</span>
+          <span>{t('pathCheckPanel.from')}</span>
           <select className="cv-input" value={from} onChange={(e) => { setFrom(e.target.value); setResult(null); }}>
-            <option value={THIS_MACHINE}>This machine</option>
+            <option value={THIS_MACHINE}>{t('pathCheckPanel.thisMachine')}</option>
             {devices.map((d) => <option key={d.id} value={d.id}>{d.label} ({d.address})</option>)}
           </select>
         </label>
         <label className="cv-field cv-field-narrow">
           <span>To</span>
           <select className="cv-input" value={to} onChange={(e) => { setTo(e.target.value); setResult(null); }}>
-            <option value="">Choose a device</option>
+            <option value="">{t('pathCheckPanel.chooseADevice')}</option>
             {devices.filter((d) => d.id !== from).map((d) => <option key={d.id} value={d.id}>{d.label} ({d.address})</option>)}
           </select>
         </label>
         {source ? (
           <label className="cv-field cv-field-narrow">
-            <span>Log in with</span>
+            <span>{t('pathCheckPanel.logInWith')}</span>
             <SavedCredentialSelect kind="ssh" label="Saved SSH credential for the source device" value={credentialId} onChange={setCredentialId} />
           </label>
         ) : (
           <>
             <label className="cv-field cv-field-narrow">
-              <span>Protocol</span>
+              <span>{t('pathCheckPanel.protocol')}</span>
               <select className="cv-input" value={protocol} onChange={(e) => setProtocol(e.target.value as typeof protocol)}>
-                <option value="icmp">ICMP ping</option>
-                <option value="tcp">TCP port</option>
-                <option value="udp">UDP port</option>
+                <option value="icmp">{t('pathCheckPanel.icmpPing')}</option>
+                <option value="tcp">{t('pathCheckPanel.tcpPort')}</option>
+                <option value="udp">{t('pathCheckPanel.udpPort')}</option>
               </select>
             </label>
             {protocol !== 'icmp' && (
               <label className="cv-field cv-field-narrow">
-                <span>Port</span>
+                <span>{t('pathCheckPanel.port')}</span>
                 <input className="cv-input" type="number" min={1} max={65535} value={port} onChange={(e) => setPort(Number(e.target.value) || 1)} />
               </label>
             )}
@@ -112,10 +113,10 @@ export function PathCheckPanel() {
           {running ? 'Checking…' : 'Check'}
         </button>
       </div>
-      {source && <p className="cv-help">From a device, the check is that device's own ping, run over SSH. Only an address is sent.</p>}
+      {source && <p className="cv-help">{t('pathCheckPanel.fromADeviceThe')}</p>}
 
       {source && target && (
-        <div className="cv-path-drawn" aria-label="The drawn path">
+        <div className="cv-path-drawn" aria-label={t('pathCheckPanel.theDrawnPath')}>
           {!path ? (
             <p className="cv-help">Nothing on the diagram links {source.label} to {target.label}.</p>
           ) : (

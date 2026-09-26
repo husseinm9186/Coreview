@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { t } from '../i18n';
+import { EmptyState } from './EmptyState';
+import { useRovingTabindex } from './useRovingTabindex';
 import { isInfrastructure, roleCounts } from '../lib/deviceRoles';
 import { useStore } from '../state/store';
 import {
@@ -26,6 +28,7 @@ import { reconcile, type Change } from '../lib/reconcile';
 import type { TopoNode } from '../state/store';
 import { readProfile, type CrawlProfile } from '../lib/crawlProfiles';
 import { crawlFindings, FINDING_LABEL, type DrawnLink } from '../lib/crawlFindings';
+import { INTENT_KINDS, intentFindings, intentUnjudged, newIntentRule, ruleComplete, ruleLabel, type IntentKind, type IntentRule } from '../lib/intentChecks';
 import { allEdges, allNodes } from '../lib/pages';
 import { reduceCrawlTable, stateCounts, STATE_LABEL, tableRows, type CrawlTable } from '../lib/crawlTable';
 import { SubnetList } from './SubnetList';
@@ -279,7 +282,7 @@ export function CrawlPanel({
   const [backupUsername, setBackupUsername] = useState('');
   const [backupPassword, setBackupPassword] = useState('');
   const [backupEnable, setBackupEnable] = useState('');
-  const [result, setResult] = useState<{ devices: CrawledDevice[]; notVisited: Neighbor[] } | null>(
+  const [result, setResult] = useState<{ devices: CrawledDevice[]; notVisited: Neighbor[]; firstSeenKeys?: CrawlResult['firstSeenKeys'] } | null>(
     null,
   );
 
@@ -411,7 +414,7 @@ export function CrawlPanel({
         // The adjacencies live here and nowhere else. Flattening to rows threw
         // away who is plugged into what, which is why the built diagram used
         // to be a grid of unconnected boxes.
-        setResult({ devices: r.devices, notVisited: r.notVisited });
+        setResult({ devices: r.devices, notVisited: r.notVisited, firstSeenKeys: r.firstSeenKeys });
       })
       .then((f) => {
         offResult = f;
@@ -1468,8 +1471,17 @@ function CredentialRules({ disabled }: { disabled: boolean }) {
 /** LT-210: one row per device, where it is in the crawl right now. Open while
  *  a run is going; a finished run's table stays until the next one starts. */
 function LiveCrawlTable({ table }: { table: CrawlTable }) {
-  const rows = tableRows(table);
+  const all = tableRows(table);
   const counts = stateCounts(table);
+  // LT-445: filter as you type, literally, over what the row shows.
+  const [filter, setFilter] = useState('');
+  const q = filter.trim().toLowerCase();
+  const rows = q
+    ? all.filter((r) => [r.address, r.name ?? '', STATE_LABEL[r.state], r.detail ?? ''].some((v) => v.toLowerCase().includes(q)))
+    : all;
+  // LT-447: one tab stop, arrows between rows.
+  const tableRef = useRef<HTMLDivElement>(null);
+  useRovingTabindex(tableRef, [rows.length]);
   return (
     <details className="cv-crawl-table" open>
       <summary>
@@ -1478,7 +1490,11 @@ function LiveCrawlTable({ table }: { table: CrawlTable }) {
           {Object.entries(counts).map(([state, n]) => `${n} ${STATE_LABEL[state as keyof typeof STATE_LABEL].toLowerCase()}`).join(' · ')}
         </span>
       </summary>
-      <div className="cv-table-scroll">
+      {all.length > 8 && (
+        <input className="cv-input cv-list-filter" value={filter} aria-label={t('filter.rows')} placeholder={t('filter.rows')}
+          onChange={(e) => setFilter(e.target.value)} />
+      )}
+      <div className="cv-table-scroll" ref={tableRef}>
         <table className="cv-table">
           <thead>
             <tr><th>Address</th><th>Name</th><th>Hops</th><th>State</th><th>Detail</th></tr>
@@ -1587,39 +1603,114 @@ function CrawlProfiles({
   );
 }
 
+// A stable empty list: a selector that made a fresh `[]` on every render
+// would never compare equal, and the panel would re-render until React
+// stopped it — which is exactly what the crawling harness caught.
+const NO_RULES: IntentRule[] = [];
+
 /** LT-213: what the crawl says is wrong, worst first. */
-function CrawlFindingsList({ result }: { result: Pick<CrawlResult, 'devices'> }) {
-  const doc = useStore((s) => s.doc);
+function CrawlFindingsList({ result }: { result: Pick<CrawlResult, 'devices' | 'firstSeenKeys'> }) {
+  // LT-452: the pages and the rules, not the whole document.
+  const pages = useStore((s) => s.doc.pages);
+  const intentRules = useStore((s) => s.doc.intentRules) ?? NO_RULES;
   const findings = useMemo(() => {
     // Links already drawn between devices, by the names a crawl knows them by.
     const nameOf = new Map(
-      allNodes(doc)
+      allNodes({ pages })
         .filter((n) => n.type === 'device')
         .map((n) => {
           const d = n.data as DeviceNodeData;
           return [n.id, d.hostname || d.label] as const;
         }),
     );
-    const drawn: DrawnLink[] = allEdges(doc)
+    const drawn: DrawnLink[] = allEdges({ pages })
       .map((e) => ({ a: nameOf.get(e.source) ?? '', b: nameOf.get(e.target) ?? '' }))
       .filter((l) => l.a && l.b);
-    return crawlFindings(result, drawn);
-  }, [doc, result]);
-  if (findings.length === 0) {
-    return <p className="cv-help cv-findings-none">No one-way links, loops, orphans or duplicate MACs found.</p>;
-  }
+    // LT-437: the operator's own rules, judged against the same crawl.
+    return [...crawlFindings(result, drawn), ...intentFindings(result.devices, intentRules)];
+  }, [pages, intentRules, result]);
+  const unjudged = useMemo(() => intentUnjudged(result.devices, intentRules), [intentRules, result]);
   return (
-    <details className="cv-findings" open>
+    <>
+      {findings.length === 0 ? (
+        <EmptyState what={t('empty.findings.what')} why={t('empty.findings.why')} />
+      ) : (
+        <details className="cv-findings" open>
+          <summary>
+            Findings <span className="cv-palette-count">{findings.length}</span>
+          </summary>
+          <ul>
+            {findings.map((f, i) => (
+              <li key={i} className={`is-${f.severity}`} data-kind={f.kind}>
+                <span className="cv-finding-kind">{FINDING_LABEL[f.kind]}</span> {f.message}{' '}
+                <button type="button" className="cv-btn cv-btn-small cv-finding-open"
+                  onClick={() => useStore.getState().openDrawer({ kind: 'finding', finding: f })}>
+                  {t('drawer.openFinding')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {unjudged.length > 0 && (
+        <p className="cv-help cv-intent-unjudged">
+          {t('intent.unjudged', { count: unjudged.length })} {unjudged.map(ruleLabel).join('; ')}.
+        </p>
+      )}
+      <IntentRulesEditor />
+    </>
+  );
+}
+
+/** LT-437: the rules about how the estate is meant to be. Kept in the
+ *  project; nothing ships pre-filled (D-027). */
+function IntentRulesEditor() {
+  const rules = useStore((s) => s.doc.intentRules) ?? NO_RULES;
+  const setRules = useStore((s) => s.setIntentRules);
+  const [kind, setKind] = useState<IntentKind>('trunkCarriesVlan');
+  const [value, setValue] = useState('');
+  const takes = INTENT_KINDS.find((k) => k.kind === kind)?.takes ?? null;
+  const add = () => {
+    const rule = newIntentRule(kind, value);
+    if (!ruleComplete(rule)) return;
+    setRules([...rules, rule]);
+    setValue('');
+  };
+  return (
+    <details className="cv-intent-rules">
       <summary>
-        Findings <span className="cv-palette-count">{findings.length}</span>
+        {t('intent.title')} <span className="cv-palette-count">{rules.length}</span>
       </summary>
-      <ul>
-        {findings.map((f, i) => (
-          <li key={i} className={`is-${f.severity}`} data-kind={f.kind}>
-            <span className="cv-finding-kind">{FINDING_LABEL[f.kind]}</span> {f.message}
-          </li>
-        ))}
-      </ul>
+      <p className="cv-help">{t('intent.help')}</p>
+      {rules.length > 0 && (
+        <ul className="cv-intent-list">
+          {rules.map((r) => (
+            <li key={r.id} data-kind={r.kind}>
+              <span>{ruleLabel(r)}</span>
+              <button type="button" className="cv-btn cv-btn-small" onClick={() => setRules(rules.filter((x) => x.id !== r.id))}>
+                {t('intent.remove')}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="cv-before-after-pick">
+        <label className="cv-field cv-field-wide">
+          <span>{t('intent.rule')}</span>
+          <select className="cv-input" value={kind} onChange={(e) => setKind(e.target.value as IntentKind)}>
+            {INTENT_KINDS.map((k) => <option key={k.kind} value={k.kind}>{k.label}</option>)}
+          </select>
+        </label>
+        {takes && (
+          <label className="cv-field cv-field-narrow">
+            <span>{takes === 'vlan' ? t('intent.vlan') : takes === 'vlans' ? t('intent.vlans') : t('intent.days')}</span>
+            <input className="cv-input cv-mono" value={value} onChange={(e) => setValue(e.target.value)} />
+          </label>
+        )}
+        <button type="button" className="cv-btn cv-btn-small" onClick={add} disabled={!ruleComplete(newIntentRule(kind, value))}>
+          {t('intent.add')}
+        </button>
+      </div>
     </details>
   );
 }

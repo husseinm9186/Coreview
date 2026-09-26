@@ -17,6 +17,8 @@ import { STATUS_LABEL } from '../types/domain';
 import { activePage, allEdges, allNodes } from '../lib/pages';
 import { SAVE_ACK_MS, saveIndicator } from '../lib/saveIndicator';
 import { drawioFile } from '../lib/drawio';
+import { netboxJson, netboxYaml } from '../lib/netboxExport';
+import { JobsBar } from './JobsBar';
 import { interactiveHtml } from '../lib/htmlExport';
 import { projectFolderFiles } from '../lib/projectFolder';
 import { reportPages, type ReportSection, type ReportTemplate } from '../lib/reportPdf';
@@ -604,15 +606,18 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   /** LT-255: the project as a folder of JSON and YAML, for version control. */
   const exportFolder = async () => {
     try {
-      const folder = store.settings.exportFolder || (await ipc.pickFolder('Where should the project folder go?'));
-      if (!folder) return;
+      // LT-456: the chosen export folder, or the folder dialog Rust shows.
+      const folder = store.settings.exportFolder || null;
       // What is on screen, not what was last saved.
       if (store.dirty) await store.saveProject();
       const pkg = await ipc.loadProject(meta.id);
       if (!pkg) return;
       const project = vendorSafe ? { ...pkg, document: vendorSafeDocument(pkg.document) } : pkg;
       const { json, yaml } = projectFolderFiles(project as unknown as Record<string, unknown>);
-      const dir = await ipc.saveProjectFolder(folder, slug(meta.name) || 'project', json, yaml);
+      // LT-456: the folder is a token a dialog (or the chosen export folder) gave.
+      const target = await ipc.pickExportFolder(folder);
+      if (!target) return;
+      const dir = await ipc.saveProjectFolder(target.token, slug(meta.name) || 'project', json, yaml);
       store.setStatusMessage(`Saved ${dir} — project.coreview opens in Coreview; project.yaml is the readable copy`);
     } catch (err) {
       store.setStatusMessage(err instanceof Error ? err.message : String(err));
@@ -680,6 +685,8 @@ export function TopBar({ onExit }: { onExit: () => void }) {
         </span>
         {meta.customer && <span className="cv-project-sub">{meta.customer}</span>}
         {meta.ticket && <span className="cv-ticket">{meta.ticket}</span>}
+        {/* LT-443: what is running, beside the save state, one line each. */}
+        <JobsBar compact />
         <span
           className={`cv-save-state is-${save.tone}`}
           data-tone={save.tone}
@@ -912,6 +919,15 @@ export function TopBar({ onExit }: { onExit: () => void }) {
             {/* LT-285: the address register. */}
             <button type="button" onClick={() => void runExport(`${slug(meta.name)}-addresses.csv`, () => ipamCsv(store.doc), 'text/csv')}>
               Addresses as CSV
+            </button>
+            {/* LT-436: devices, interfaces, addresses, cables and VLANs the
+                way NetBox and Nautobot read them, which is also what LT-247
+                reads back in. */}
+            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-netbox.json`, () => netboxJson(store.doc, meta), 'application/json')}>
+              For NetBox (JSON)
+            </button>
+            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-netbox.yaml`, () => netboxYaml(store.doc, meta), 'application/yaml')}>
+              For NetBox (YAML)
             </button>
             <button type="button" onClick={exportReport}>
               Validation report (Markdown)

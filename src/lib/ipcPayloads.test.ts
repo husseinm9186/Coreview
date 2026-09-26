@@ -40,9 +40,9 @@ const payloads: Record<string, unknown> = {
     credentialId: 'cred-ssh', targets: [{ address: '192.0.2.10', name: 'CORE-SW1', commands: ['show version'], site: 'HQ', ...extra }],
     kinds: ['running', 'startup'], secondFactor: false, port: 22, showCommands: ['show inventory'], paging: 'auto', filePattern: '{device}-{stamp}', ...extra,
   }),
-  sweep_options: sweepOptions({ timeoutMs: 800, concurrency: 64, identify: true, scanPorts: true, ...extra }),
+  sweep_options: sweepOptions({ timeoutMs: 800, concurrency: 64, identify: true, scanPorts: true, ports: [22, 161], ...extra }),
   save_credential: saveCredential({ id: 'cred-ssh', label: 'Read-only', kind: 'ssh', username: 'reader', secret: 'not-a-real-password', secondSecret: 'not-a-real-enable', detail: '', ...extra }),
-  check: backupCheck({ id: 'check-1', name: 'NTP synchronised', command: 'show ntp status', expect: 'contains', pattern: 'synchronized', ignoreCase: true, ...extra }),
+  check: backupCheck({ id: 'check-1', name: 'NTP synchronised', command: 'show ntp status', expect: 'contains', pattern: 'synchronized', ignoreCase: true, block: 'line vty', severity: 'critical', roles: ['router'], ...extra }),
   visio_drawing: visioDrawing({
     title: 'Lab', ...extra,
     pages: [{ name: 'Core', width: 1584, height: 1224, ...extra,

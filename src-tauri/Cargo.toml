@@ -13,6 +13,7 @@ rust-version = "1.77"
 tauri-build = { version = "2", features = ["isolation"] }
 
 [dependencies]
+coreview-formats = { path = "../crates/coreview-formats" }
 coreview-probe = { path = "../crates/coreview-probe" }
 coreview-discover = { path = "../crates/coreview-discover" }
 coreview-meraki = { path = "../crates/coreview-meraki" }

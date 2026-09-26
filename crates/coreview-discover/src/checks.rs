@@ -54,6 +54,32 @@ pub struct Check {
     pub pattern: String,
     #[serde(default)]
     pub ignore_case: bool,
+    /// LT-434: the stanza the check applies to, as the start of its heading
+    /// line — `interface`, `router bgp`, `line vty`. Empty means the whole
+    /// output. With a block named, the check runs once per stanza: *contains*
+    /// fails on the first stanza without the pattern, *does not contain*
+    /// fails on the first stanza with it.
+    #[serde(default)]
+    pub block: String,
+    /// LT-434: how much a failure matters. Carried onto the result so a
+    /// matrix can be read by severity.
+    #[serde(default)]
+    pub severity: Severity,
+    /// LT-434: which device roles the check is for, as the page names them.
+    /// Empty means every device; otherwise a device whose role is not listed
+    /// gets *not applicable*, never a fail.
+    #[serde(default)]
+    pub roles: Vec<String>,
+}
+
+/// LT-434: how much a failed check matters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Severity {
+    Info,
+    #[default]
+    Warning,
+    Critical,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -65,6 +91,9 @@ pub enum Verdict {
     NotCaptured,
     /// The command was sent and the device refused it.
     Rejected,
+    /// LT-434: the check is for other roles than this device's, or names a
+    /// block the output has none of. Neither is an answer about the device.
+    NotApplicable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -73,6 +102,11 @@ pub struct CheckResult {
     pub device: String,
     pub check_id: String,
     pub verdict: Verdict,
+    /// LT-434: the check's severity, repeated here so a result stands alone.
+    pub severity: Severity,
+    /// LT-434: the stanza that decided it, by its heading line, when the
+    /// check names a block.
+    pub block: Option<String>,
     /// Line number within that command's output, from 1.
     pub line: Option<usize>,
     /// The line that decided it: the match for a pass on *contains*, the
@@ -136,6 +170,76 @@ pub fn compile(check: &Check) -> Result<Regex, String> {
         })
 }
 
+/// LT-434: the stanzas of a command's output whose heading starts with
+/// `block`, each as (heading line number from 1, heading, body including
+/// the heading). A stanza is a line with no leading whitespace and every
+/// indented line that follows it — which is how every CLI this reads lays
+/// its configuration out.
+pub fn stanzas<'a>(output: &'a str, block: &str) -> Vec<(usize, &'a str, String)> {
+    let want = normal_command(block);
+    let lines: Vec<&str> = output.lines().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        let heading = !line.is_empty() && !line.starts_with([' ', '\t']);
+        if heading && normal_command(line).starts_with(&want) {
+            let mut body = vec![line];
+            let mut j = i + 1;
+            while j < lines.len() && (lines[j].starts_with([' ', '\t']) || lines[j].is_empty()) {
+                body.push(lines[j]);
+                j += 1;
+            }
+            out.push((i + 1, line, body.join("\n")));
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+/// LT-434: one check against every stanza of its block. The first stanza
+/// that decides the verdict is named; a pass says how many were read.
+pub fn evaluate_blocks(check: &Check, re: &Regex, output: &str) -> (Verdict, Option<usize>, Option<String>, Option<String>, String) {
+    let found = stanzas(output, &check.block);
+    if found.is_empty() {
+        return (
+            Verdict::NotApplicable,
+            None,
+            None,
+            None,
+            format!("no `{}` block in this output", check.block.trim()),
+        );
+    }
+    let wanted = matches!(check.expect, Expect::Contains | Expect::Matches);
+    for (at, heading, body) in &found {
+        let (verdict, line, evidence, why) = evaluate(check, re, body);
+        if verdict == Verdict::Fail {
+            // The line within the stanza, as a line of the whole output.
+            let line = line.map(|l| at + l - 1).or(Some(*at));
+            let evidence = evidence.or_else(|| Some(clip(heading)));
+            return (Verdict::Fail, line, evidence, Some(heading.to_string()), format!("{why} in `{}`", clip(heading)));
+        }
+    }
+    let n = found.len();
+    let what = if wanted { "has" } else { "is free of" };
+    (
+        Verdict::Pass,
+        None,
+        None,
+        None,
+        format!("every `{}` block ({n}) {what} {}", check.block.trim(), describe(check)),
+    )
+}
+
+fn describe(check: &Check) -> String {
+    match check.expect {
+        Expect::Contains | Expect::NotContains => format!("`{}`", check.pattern),
+        Expect::Matches | Expect::NotMatches => format!("/{}/", check.pattern),
+    }
+}
+
 /// One check against one command's output.
 pub fn evaluate(check: &Check, re: &Regex, output: &str) -> (Verdict, Option<usize>, Option<String>, String) {
     let hit = re.find(output).map(|m| {
@@ -163,7 +267,15 @@ pub fn evaluate(check: &Check, re: &Regex, output: &str) -> (Verdict, Option<usi
 /// is nothing to check. A device whose capture lacks the command is reported
 /// as *not captured* rather than failed: that is a gap in the collection, not
 /// an answer from the network, and the two must not be confused.
-pub fn run_checks(root: &Path, stamp: &str, checks: &[Check]) -> Result<Vec<CheckResult>, String> {
+///
+/// LT-434: `roles` says what each device is, by its folder name, so a check
+/// written for routers is *not applicable* to a switch rather than failed.
+pub fn run_checks(
+    root: &Path,
+    stamp: &str,
+    checks: &[Check],
+    roles: &std::collections::HashMap<String, String>,
+) -> Result<Vec<CheckResult>, String> {
     valid_stamp(stamp)?;
     if checks.is_empty() {
         return Err("add a check first".into());
@@ -192,10 +304,26 @@ pub fn run_checks(root: &Path, stamp: &str, checks: &[Check]) -> Result<Vec<Chec
                 device: device.clone(),
                 check_id: check.id.clone(),
                 verdict,
+                severity: check.severity,
+                block: None,
                 line,
                 evidence,
                 why,
             };
+            // LT-434: a check for other roles is not an answer about this device.
+            if !check.roles.is_empty() {
+                let role = roles.get(&device).map(String::as_str).unwrap_or("");
+                if !check.roles.iter().any(|r| r.eq_ignore_ascii_case(role)) {
+                    let named = if role.is_empty() { "a device with no role".to_string() } else { format!("a {role}") };
+                    out.push(base(
+                        Verdict::NotApplicable,
+                        None,
+                        None,
+                        format!("for {} only, and this is {named}", check.roles.join(", ")),
+                    ));
+                    continue;
+                }
+            }
             out.push(match found.iter().find(|s| normal_command(&s.command) == want) {
                 None => base(
                     Verdict::NotCaptured,
@@ -209,6 +337,10 @@ pub fn run_checks(root: &Path, stamp: &str, checks: &[Check]) -> Result<Vec<Chec
                     s.output.lines().next().map(clip),
                     "the device did not accept this command".into(),
                 ),
+                Some(s) if !check.block.trim().is_empty() => {
+                    let (verdict, line, evidence, block, why) = evaluate_blocks(check, re, &s.output);
+                    CheckResult { block, ..base(verdict, line, evidence, why) }
+                }
                 Some(s) => {
                     let (verdict, line, evidence, why) = evaluate(check, re, &s.output);
                     base(verdict, line, evidence, why)
@@ -231,7 +363,69 @@ mod tests {
     const LOG: &str = "*Mar  1 00:01:02: %SYS-5-CONFIG_I: Configured from console\n*Mar  1 00:02:03: %LINK-3-UPDOWN: Interface Gi0/1, changed state to down";
 
     fn check(expect: Expect, command: &str, pattern: &str) -> Check {
-        Check { id: "c".into(), name: String::new(), command: command.into(), expect, pattern: pattern.into(), ignore_case: false }
+        Check {
+            id: "c".into(),
+            name: String::new(),
+            command: command.into(),
+            expect,
+            pattern: pattern.into(),
+            ignore_case: false,
+            block: String::new(),
+            severity: Severity::Warning,
+            roles: Vec::new(),
+        }
+    }
+
+    // Invented configuration, the shape every CLI this reads lays out (D-027).
+    const CONFIG: &str = "hostname SW1\n!\ninterface GigabitEthernet0/1\n switchport mode access\n spanning-tree bpduguard enable\n!\ninterface GigabitEthernet0/2\n switchport mode access\n!\ninterface Vlan1\n no ip address\n shutdown\n!\nline vty 0 4\n transport input ssh\n!\nend";
+
+    /// LT-434: a block check runs once per stanza and names the first one
+    /// that decides it, as a line of the whole output.
+    #[test]
+    fn a_block_check_names_the_stanza_that_fails_and_counts_the_ones_that_pass() {
+        let mut c = check(Expect::Contains, "show running-config", "bpduguard enable");
+        c.block = "interface Gigabit".into();
+        let re = compile(&c).unwrap();
+        let (v, line, evidence, block, why) = evaluate_blocks(&c, &re, CONFIG);
+        assert_eq!(v, Verdict::Fail);
+        assert_eq!(block.as_deref(), Some("interface GigabitEthernet0/2"));
+        assert_eq!(line, Some(7), "the heading of the stanza that lacks it, as a line of the output");
+        assert!(why.contains("GigabitEthernet0/2"), "{why}");
+        assert!(evidence.is_some());
+
+        c.block = "line vty".into();
+        c.pattern = "transport input ssh".into();
+        let re = compile(&c).unwrap();
+        let (v, _, _, block, why) = evaluate_blocks(&c, &re, CONFIG);
+        assert_eq!((v, block), (Verdict::Pass, None));
+        assert!(why.contains("(1)"), "{why}");
+
+        // Does-not-contain fails on the first stanza that has it, at its line.
+        let mut n = check(Expect::NotContains, "show running-config", "shutdown");
+        n.block = "interface".into();
+        let re = compile(&n).unwrap();
+        let (v, line, evidence, block, _) = evaluate_blocks(&n, &re, CONFIG);
+        assert_eq!((v, block.as_deref()), (Verdict::Fail, Some("interface Vlan1")));
+        assert_eq!(line, Some(12), "the `shutdown` line, counted through the whole output");
+        assert_eq!(evidence.as_deref(), Some(" shutdown"));
+
+        // A block the output has none of is not an answer.
+        let mut o = check(Expect::Contains, "show running-config", "x");
+        o.block = "router bgp".into();
+        let re = compile(&o).unwrap();
+        assert_eq!(evaluate_blocks(&o, &re, CONFIG).0, Verdict::NotApplicable);
+    }
+
+    /// LT-434: the stanza splitter reads indentation, not punctuation, and a
+    /// blank line does not end a stanza.
+    #[test]
+    fn stanzas_are_headings_with_their_indented_lines() {
+        let found = stanzas(CONFIG, "interface");
+        assert_eq!(found.iter().map(|(_, h, _)| *h).collect::<Vec<_>>(), ["interface GigabitEthernet0/1", "interface GigabitEthernet0/2", "interface Vlan1"]);
+        assert_eq!(found[0].0, 3);
+        assert!(found[0].2.contains("bpduguard"));
+        assert!(!found[0].2.contains("Vlan1"));
+        assert!(stanzas(CONFIG, "INTERFACE  vlan").len() == 1, "case and spacing are ignored");
     }
 
     fn run(c: &Check, output: &str) -> (Verdict, Option<usize>, Option<String>, String) {
@@ -325,7 +519,7 @@ mod tests {
             Check { id: "log".into(), ..check(Expect::NotContains, "show logging", "UPDOWN") },
             Check { id: "bogus".into(), ..check(Expect::Contains, "show bogus", "x") },
         ];
-        let got = run_checks(&root, STAMP, &checks).unwrap();
+        let got = run_checks(&root, STAMP, &checks, &Default::default()).unwrap();
         let find = |d: &str, id: &str| got.iter().find(|r| r.device == d && r.check_id == id).unwrap();
 
         assert_eq!(got.len(), 6, "two devices, three checks — SW-C left out");
@@ -342,10 +536,10 @@ mod tests {
     fn a_run_that_is_not_a_stamp_or_no_checks_is_refused() {
         let root = temp_root("refuse");
         let c = vec![check(Expect::Contains, "show version", "x")];
-        assert!(run_checks(&root, "../../etc", &c).is_err());
-        assert!(run_checks(&root, STAMP, &[]).unwrap_err().contains("add a check"));
+        assert!(run_checks(&root, "../../etc", &c, &Default::default()).is_err());
+        assert!(run_checks(&root, STAMP, &[], &Default::default()).unwrap_err().contains("add a check"));
         let bad = vec![check(Expect::Matches, "show version", "(")];
-        assert!(run_checks(&root, STAMP, &bad).is_err());
+        assert!(run_checks(&root, STAMP, &bad, &Default::default()).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

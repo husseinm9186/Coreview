@@ -130,6 +130,7 @@ mod tests {
             default_next_hop: None,
             stack: None,
             dns_name: None,
+            evidence: Default::default(),
             details: DeviceDetails::default(),
         }
     }

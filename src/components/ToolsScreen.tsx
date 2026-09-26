@@ -22,14 +22,18 @@ import { RackPanel } from './RackPanel';
 import { SettingsView } from './SettingsView';
 import { VisioImportPanel } from './VisioImportPanel';
 import { useStore } from '../state/store';
+import { LifecyclePanel } from './LifecyclePanel';
 
-export type ToolsView = 'compare' | 'racks' | 'csv' | 'visio' | 'settings';
+export type ToolsView = 'compare' | 'racks' | 'csv' | 'visio' | 'lifecycle' | 'settings';
 
 const VIEWS: { id: ToolsView; label: () => string }[] = [
   { id: 'compare', label: () => t('tools.compare') },
   { id: 'racks', label: () => t('tools.racks') },
   { id: 'csv', label: () => t('tools.csv') },
   { id: 'visio', label: () => t('tools.visio') },
+  // LT-439: which drawn devices are past their vendor's dates, from a table
+  // the operator supplies.
+  { id: 'lifecycle', label: () => t('tools.lifecycle') },
   // LT-327: and Settings, which is a place to go rather than a panel about the
   // diagram, exactly like the rest of this screen.
   { id: 'settings', label: () => t('settings.title') },
@@ -75,6 +79,7 @@ export function ToolsScreen() {
         {view === 'compare' ? <ComparePanel />
           : view === 'racks' ? <RackPanel />
           : view === 'csv' ? <CsvImportPanel />
+          : view === 'lifecycle' ? <LifecyclePanel />
           : view === 'settings' ? <SettingsView />
           : <VisioImportPanel />}
       </div>

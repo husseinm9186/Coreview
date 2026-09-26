@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { ipc } from '../lib/ipc';
 import { useStore } from '../state/store';
+import { t } from '../i18n';
 
 /**
  * The step in front of every "save this password": is there a vault, and is it
@@ -124,7 +125,7 @@ export function VaultPassphraseForm({
           : `Saved credentials live in an encrypted vault. Choose a passphrase for it — at least ${minimum} characters. It is never stored, and there is no recovery, because a recovery path is a second way in.`}
       </p>
       <label className="cv-field cv-field-narrow">
-        <span>Vault passphrase</span>
+        <span>{t('vaultGate.vaultPassphrase')}</span>
         <input className="cv-input" type="password" value={passphrase} disabled={disabled}
           autoComplete={exists ? 'current-password' : 'new-password'}
           onChange={(e) => setPassphrase(e.target.value)}
@@ -132,7 +133,7 @@ export function VaultPassphraseForm({
       </label>
       {!exists && (
         <label className="cv-field cv-field-narrow">
-          <span>Again</span>
+          <span>{t('vaultGate.again')}</span>
           <input className="cv-input" type="password" value={again} autoComplete="new-password" disabled={disabled}
             onChange={(e) => setAgain(e.target.value)} />
         </label>
@@ -140,9 +141,9 @@ export function VaultPassphraseForm({
       {/* LT-262, and the point of the exercise: without this the passphrase is
           typed once per session instead of once ever. */}
       <label className="cv-check cv-check-inline"
-        title="The key that opens the vault — never the passphrase — is kept by Windows Credential Manager, the macOS Keychain or the Secret Service. Anyone who can use this computer's account can then use the saved credentials.">
+        title={t('vaultGate.theKeyThatOpens')}>
         <input type="checkbox" checked={keepKey} disabled={disabled} onChange={(e) => setKeepKey(e.target.checked)} />
-        Open the vault by itself on this computer
+        {t('vaultGate.openTheVaultBy')}
       </label>
       {/* Said where it is needed, not only in the paragraph above (LT-329). */}
       {waitingFor && <p className="cv-help cv-vault-waiting">{waitingFor}</p>}

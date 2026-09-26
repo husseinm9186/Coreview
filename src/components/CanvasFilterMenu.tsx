@@ -17,6 +17,7 @@ import { activePage } from '../lib/pages';
 import { useStore } from '../state/store';
 import type { DeviceNodeData } from '../types/domain';
 import { DEVICE_LABEL } from './icons';
+import { t } from '../i18n';
 
 export function CanvasFilterMenu() {
   const nodes = useStore((s) => activePage(s.doc).nodes);
@@ -55,9 +56,9 @@ export function CanvasFilterMenu() {
         Filter{hidden > 0 ? ` — ${hidden} hidden` : active ? ' ●' : ''}
       </summary>
       <div className="cv-dropdown-menu cv-filter-fields">
-        <p className="cv-help">What does not match is dimmed, not hidden.</p>
+        <p className="cv-help">{t('canvasFilterMenu.whatDoesNotMatch')}</p>
         <fieldset>
-          <legend>Type</legend>
+          <legend>{t('canvasFilterMenu.type')}</legend>
           {types.map((t) => (
             <label key={t} className="cv-check">
               <input
@@ -73,42 +74,42 @@ export function CanvasFilterMenu() {
           <label key={key} className="cv-field">
             <span>{label}</span>
             <select className="cv-input" value={filter[key] ?? ''} onChange={(e) => set({ [key]: e.target.value || undefined })}>
-              <option value="">Any</option>
+              <option value="">{t('canvasFilterMenu.any')}</option>
               {options.map((o) => <option key={o} value={o}>{o}</option>)}
             </select>
           </label>
         ))}
         <label className="cv-field">
-          <span>Status</span>
+          <span>{t('canvasFilterMenu.status')}</span>
           <select className="cv-input" value={filter.status ?? ''} onChange={(e) => set({ status: (e.target.value || undefined) as CanvasFilter['status'] })}>
-            <option value="">Any</option>
-            <option value="healthy">Healthy</option>
-            <option value="warning">Warning</option>
-            <option value="down">Down</option>
-            <option value="unknown">Unknown</option>
+            <option value="">{t('canvasFilterMenu.any')}</option>
+            <option value="healthy">{t('canvasFilterMenu.healthy')}</option>
+            <option value="warning">{t('canvasFilterMenu.warning')}</option>
+            <option value="down">{t('canvasFilterMenu.down')}</option>
+            <option value="unknown">{t('canvasFilterMenu.unknown')}</option>
           </select>
         </label>
         <label className="cv-field">
-          <span>Discovered</span>
+          <span>{t('canvasFilterMenu.discovered')}</span>
           <select className="cv-input" value={filter.crawl ?? ''} onChange={(e) => set({ crawl: (e.target.value || undefined) as CanvasFilter['crawl'] })}>
-            <option value="">Any</option>
-            <option value="logged-in">Logged in</option>
-            <option value="snmp">Over SNMP</option>
-            <option value="seen">Seen by a neighbour</option>
-            <option value="not-discovered">Not discovered</option>
+            <option value="">{t('canvasFilterMenu.any')}</option>
+            <option value="logged-in">{t('canvasFilterMenu.loggedIn')}</option>
+            <option value="snmp">{t('canvasFilterMenu.overSnmp')}</option>
+            <option value="seen">{t('canvasFilterMenu.seenByANeighbour')}</option>
+            <option value="not-discovered">{t('canvasFilterMenu.notDiscovered')}</option>
           </select>
         </label>
         <label className="cv-field">
-          <span>VLAN</span>
-          <input className="cv-input" value={filter.vlan ?? ''} placeholder="10 or a VLAN name" onChange={(e) => set({ vlan: e.target.value || undefined })} />
+          <span>{t('canvasFilterMenu.vlan')}</span>
+          <input className="cv-input" value={filter.vlan ?? ''} placeholder={t('canvasFilterMenu.10OrAVlan')} onChange={(e) => set({ vlan: e.target.value || undefined })} />
         </label>
         <label className="cv-field">
-          <span>Subnet</span>
+          <span>{t('canvasFilterMenu.subnet')}</span>
           <input className="cv-input cv-mono" value={filter.subnet ?? ''} placeholder="192.0.2.0/24" onChange={(e) => set({ subnet: e.target.value || undefined })} />
         </label>
         <label className="cv-field">
-          <span>Text</span>
-          <input className="cv-input" value={filter.text ?? ''} placeholder="In names, device notes and notes" onChange={(e) => set({ text: e.target.value || undefined })} />
+          <span>{t('canvasFilterMenu.text')}</span>
+          <input className="cv-input" value={filter.text ?? ''} placeholder={t('canvasFilterMenu.inNamesDeviceNotes')} onChange={(e) => set({ text: e.target.value || undefined })} />
         </label>
         <label className="cv-check cv-filter-hide">
           <input
@@ -117,7 +118,7 @@ export function CanvasFilterMenu() {
             disabled={!active}
             onChange={(e) => set({ hide: e.target.checked || undefined })}
           />
-          Hide what does not match
+          {t('canvasFilterMenu.hideWhatDoesNot')}
         </label>
         <p className="cv-help">
           {hidden > 0
@@ -125,7 +126,7 @@ export function CanvasFilterMenu() {
             : 'Nothing is deleted either way. Clearing the filter brings everything back.'}
         </p>
         <button type="button" className="cv-btn cv-btn-small" disabled={!active} onClick={() => setFilter(null)}>
-          Clear the filter
+          {t('canvasFilterMenu.clearTheFilter')}
         </button>
       </div>
     </details>

@@ -823,9 +823,18 @@ pub fn list_crawl_runs(conn: &Connection, project_id: &str) -> rusqlite::Result<
 /// its status. A run written before schema 3 carries its devices inside
 /// `result` and is returned as it was; one written since takes them from
 /// `crawl_run_devices`, in the order they were reached.
-pub fn crawl_run_result(conn: &Connection, id: &str) -> rusqlite::Result<Option<serde_json::Value>> {
+///
+/// LT-455: `project_id` must be the run's own. One operator on one machine
+/// makes this a label rather than a boundary, but LT-412–414 showed how a
+/// rule applied in one place reappears in another; a run id from a different
+/// project reads as *not kept* rather than as somebody else's estate.
+pub fn crawl_run_result(conn: &Connection, id: &str, project_id: &str) -> rusqlite::Result<Option<serde_json::Value>> {
     let row: Option<(String, String)> = conn
-        .query_row("SELECT result, status FROM crawl_runs WHERE id = ?1", params![id], |r| Ok((r.get(0)?, r.get(1)?)))
+        .query_row(
+            "SELECT result, status FROM crawl_runs WHERE id = ?1 AND project_id = ?2",
+            params![id, project_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
         .optional()?;
     let Some((result, status)) = row else { return Ok(None) };
     let mut value: serde_json::Value = serde_json::from_str(&result).unwrap_or_else(|_| serde_json::json!({}));
@@ -962,14 +971,19 @@ pub fn prune_samples(conn: &Connection, probe_id: &str) -> rusqlite::Result<usiz
 }
 
 /// A probe's samples since `since_ms`, oldest first, at most `limit`.
-pub fn samples_for(conn: &Connection, probe_id: &str, since_ms: i64, limit: i64) -> rusqlite::Result<Vec<SampleRow>> {
+///
+/// LT-455: only from sessions of `project_id` — a sample belongs to the
+/// session that took it, and the session to a project.
+pub fn samples_for(conn: &Connection, probe_id: &str, project_id: &str, since_ms: i64, limit: i64) -> rusqlite::Result<Vec<SampleRow>> {
     let mut stmt = conn.prepare(
         "SELECT timestamp_ms, status, outcome, rtt_ms FROM (
-            SELECT timestamp_ms, status, outcome, rtt_ms FROM probe_samples
-            WHERE probe_id = ?1 AND timestamp_ms >= ?2 ORDER BY timestamp_ms DESC LIMIT ?3)
+            SELECT s.timestamp_ms, s.status, s.outcome, s.rtt_ms FROM probe_samples s
+            JOIN validation_sessions v ON v.id = s.session_id
+            WHERE s.probe_id = ?1 AND v.project_id = ?4 AND s.timestamp_ms >= ?2
+            ORDER BY s.timestamp_ms DESC LIMIT ?3)
          ORDER BY timestamp_ms ASC",
     )?;
-    let rows = stmt.query_map(params![probe_id, since_ms, limit], |r| {
+    let rows = stmt.query_map(params![probe_id, since_ms, limit, project_id], |r| {
         Ok(SampleRow { timestamp_ms: r.get(0)?, status: r.get(1)?, outcome: r.get(2)?, rtt_ms: r.get(3)? })
     })?;
     rows.collect()
@@ -2106,11 +2120,13 @@ mod document_round_trip {
     fn probe_samples_round_trip_and_prune() {
         let c = Connection::open_in_memory().unwrap();
         super::migrate(&c).unwrap();
+        c.execute("INSERT INTO projects (id, name, created_at, updated_at) VALUES ('p1','P',0,0)", []).unwrap();
+        super::open_session(&c, "s1", "p1", "").unwrap();
         for i in 0..5 {
             super::insert_sample(&c, &super::NewSample { session_id: "s1", probe_id: "p1", timestamp_ms: 1_000 + i, status: if i == 3 { "down" } else { "healthy" }, outcome: "success", rtt_ms: Some(i as f64), summary: "" }).unwrap();
         }
         super::insert_sample(&c, &super::NewSample { session_id: "s1", probe_id: "other", timestamp_ms: 1_002, status: "healthy", outcome: "success", rtt_ms: None, summary: "" }).unwrap();
-        let got = super::samples_for(&c, "p1", 1_001, 3).unwrap();
+        let got = super::samples_for(&c, "p1", "p1", 1_001, 3).unwrap();
         assert_eq!(got.iter().map(|s| s.timestamp_ms).collect::<Vec<_>>(), vec![1_002, 1_003, 1_004]);
         assert_eq!(got[1].status, "down");
         let removed: usize = c
@@ -2120,8 +2136,14 @@ mod document_round_trip {
             )
             .unwrap();
         assert_eq!(removed, 3, "the same statement prune_samples runs, with a cap of two");
-        assert_eq!(super::samples_for(&c, "p1", 0, 100).unwrap().len(), 2);
+        assert_eq!(super::samples_for(&c, "p1", "p1", 0, 100).unwrap().len(), 2);
         assert_eq!(super::prune_samples(&c, "p1").unwrap(), 0, "under the real cap nothing more goes");
+        // LT-455: a sample from another project's session is never read as this project's.
+        c.execute("INSERT INTO projects (id, name, created_at, updated_at) VALUES ('p2','Q',0,0)", []).unwrap();
+        super::open_session(&c, "s2", "p2", "").unwrap();
+        super::insert_sample(&c, &super::NewSample { session_id: "s2", probe_id: "p1", timestamp_ms: 5_000, status: "down", outcome: "success", rtt_ms: None, summary: "" }).unwrap();
+        assert_eq!(super::samples_for(&c, "p1", "p1", 0, 100).unwrap().len(), 2, "still only this project's");
+        assert_eq!(super::samples_for(&c, "p1", "p2", 0, 100).unwrap().len(), 1);
     }
 
     /// LT-426: a project keeps its newest events and no more; another
@@ -2230,10 +2252,10 @@ mod document_round_trip {
         let runs = super::list_crawl_runs(&c, "p1").unwrap();
         assert_eq!(runs.len() as i64, super::CRAWL_RUNS_KEPT);
         assert_eq!(runs[0].id, format!("r{}", super::CRAWL_RUNS_KEPT + 2));
-        let old = super::crawl_run_result(&c, &runs[0].id).unwrap().expect("kept");
+        let old = super::crawl_run_result(&c, &runs[0].id, "p1").unwrap().expect("kept");
         assert_eq!(old["devices"], serde_json::json!([]), "a run written before schema 3 reads as it was");
         assert_eq!(old["status"], "complete");
-        assert!(super::crawl_run_result(&c, "r0").unwrap().is_none(), "the oldest went");
+        assert!(super::crawl_run_result(&c, "r0", "p1").unwrap().is_none(), "the oldest went");
     }
 
     /// LT-424: a run is on disk from the moment it starts, device by device,
@@ -2250,7 +2272,8 @@ mod document_round_trip {
         // No close: this is the process going down mid-crawl.
         let runs = super::list_crawl_runs(&c, "p1").unwrap();
         assert_eq!((runs.len(), runs[0].devices, runs[0].status.as_str()), (1, 3, "running"));
-        let partial = super::crawl_run_result(&c, "run-1").unwrap().expect("readable before it is closed");
+        let partial = super::crawl_run_result(&c, "run-1", "p1").unwrap().expect("readable before it is closed");
+        assert!(super::crawl_run_result(&c, "run-1", "another").unwrap().is_none(), "LT-455: a run is read only from its own project");
         assert_eq!(partial["devices"].as_array().map(Vec::len), Some(3));
         assert_eq!(partial["devices"][1]["hostname"], "DIST-A", "in the order they were reached");
         assert_eq!(partial["failures"], serde_json::json!([]));
@@ -2258,7 +2281,7 @@ mod document_round_trip {
 
         // The next start finds it and says what happened to it.
         assert_eq!(super::mark_abandoned_runs(&c).unwrap(), 1);
-        let after = super::crawl_run_result(&c, "run-1").unwrap().unwrap();
+        let after = super::crawl_run_result(&c, "run-1", "p1").unwrap().unwrap();
         assert_eq!(after["status"], "aborted");
         assert_eq!(after["devices"].as_array().map(Vec::len), Some(3), "nothing was thrown away");
         assert_eq!(super::mark_abandoned_runs(&c).unwrap(), 0);
@@ -2267,7 +2290,7 @@ mod document_round_trip {
         super::open_crawl_run(&c, "run-2", "p1", 20, "192.0.2.1").unwrap();
         super::append_crawl_device(&c, "run-2", "{\"hostname\":\"CORE\"}").unwrap();
         super::close_crawl_run(&c, "run-2", "cancelled", "{\"failures\":[{\"address\":\"192.0.2.9\"}],\"notVisited\":[],\"cancelled\":true}").unwrap();
-        let done = super::crawl_run_result(&c, "run-2").unwrap().unwrap();
+        let done = super::crawl_run_result(&c, "run-2", "p1").unwrap().unwrap();
         assert_eq!((done["status"].as_str(), done["cancelled"].as_bool()), (Some("cancelled"), Some(true)));
         assert_eq!(done["failures"][0]["address"], "192.0.2.9");
         assert_eq!(done["devices"][0]["hostname"], "CORE");
@@ -2276,7 +2299,7 @@ mod document_round_trip {
         for i in 0..super::CRAWL_RUNS_KEPT {
             super::open_crawl_run(&c, &format!("later-{i}"), "p1", 100 + i, "x").unwrap();
         }
-        assert!(super::crawl_run_result(&c, "run-1").unwrap().is_none());
+        assert!(super::crawl_run_result(&c, "run-1", "p1").unwrap().is_none());
         let orphans: i64 = c.query_row("SELECT COUNT(*) FROM crawl_run_devices WHERE run_id = 'run-1'", [], |r| r.get(0)).unwrap();
         assert_eq!(orphans, 0, "the cascade took the devices");
     }

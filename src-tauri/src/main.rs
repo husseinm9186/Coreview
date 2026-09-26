@@ -6,12 +6,10 @@ mod stencil_manifest;
 mod pdf;
 mod shapeconv;
 mod visio;
-mod visio_import;
-mod nmap_import;
 mod spreadsheet;
-mod drawio_import;
 mod ratelimit;
 mod jobs;
+mod timeline;
 mod keychain;
 #[cfg(test)]
 mod ipc_contract;
@@ -133,8 +131,16 @@ fn main() {
             vault_key: Mutex::new(None),
             limiter: ratelimit::RateLimiter::default(),
             sessions: std::sync::Arc::new(terminal::Sessions::default()),
+            export_targets: commands::ExportTargets::default(),
         })
         .setup(move |app| {
+            // LT-432: every change to a running job reaches the window on
+            // one event, whichever panel started it.
+            let jobs_window = app.handle().clone();
+            app.state::<AppState>().jobs.report_to(move |snapshot| {
+                use tauri::Emitter;
+                let _ = jobs_window.emit("coreview://job", &snapshot);
+            });
             commands::pump_events(app.handle().clone(), rx);
             register_snmp_uptime(app.handle().clone());
             fit_to_screen(app);
@@ -169,6 +175,9 @@ fn main() {
             commands::session_summary,
             commands::list_crawl_runs,
             commands::crawl_run_result,
+            commands::job_list,
+            commands::job_cancel,
+            commands::crawl_timeline,
             commands::list_events,
             commands::record_event,
             commands::app_info,
@@ -179,6 +188,8 @@ fn main() {
             commands::diagram_pdf,
             commands::diagram_vsdx,
             commands::save_export,
+            commands::pick_export_target,
+            commands::pick_export_folder,
             commands::read_import,
             commands::read_spreadsheet,
             commands::save_project_folder,
@@ -217,6 +228,7 @@ fn main() {
             discovery::cancel_backup,
             discovery::list_backup_devices,
             discovery::list_device_captures,
+            discovery::device_capture_history,
             discovery::read_capture,
             discovery::diff_captures,
             discovery::list_backup_runs,

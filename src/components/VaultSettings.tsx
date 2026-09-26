@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { ipc, isDesktop, type CredentialSummary, type CredentialUse, type VaultStatus } from '../lib/ipc';
 import { dtg } from '../lib/dtg';
+import { t } from '../i18n';
 
 /** The eye, drawn rather than imported so the app ships no third-party art. */
 function Eye({ open }: { open: boolean }) {
@@ -121,7 +122,7 @@ export function VaultSettings() {
 
   return (
     <section className="cv-vault">
-      <h2>Saved credentials</h2>
+      <h2>{t('vaultSettings.savedCredentials')}</h2>
 
       {!status.exists ? (
         <>
@@ -131,9 +132,7 @@ export function VaultSettings() {
             retyping the same enable password all day.
           </p>
           <p className="cv-help">
-            Credentials are encrypted with a key derived from a passphrase that is never stored.
-            Forget it and you re-enter the credentials; there is no recovery, because a recovery
-            path is a second way in.
+            Credentials are encrypted with a key derived from a passphrase that is never stored. Forget it and you re-enter the credentials; there is no recovery, because a recovery path is a second way in.
           </p>
           <div className="cv-discover-form">
             <label className="cv-field">
@@ -142,13 +141,13 @@ export function VaultSettings() {
                 onChange={(e) => setPassphrase(e.target.value)} />
             </label>
             <label className="cv-field">
-              <span>Again</span>
+              <span>{t('vaultSettings.again')}</span>
               <input className="cv-input" type="password" value={confirmPassphrase}
                 autoComplete="new-password" onChange={(e) => setConfirmPassphrase(e.target.value)} />
             </label>
             <button type="button" className="cv-btn cv-btn-start" onClick={create}
               disabled={passphrase.length < status.minimumPassphrase}>
-              Create vault
+              {t('vaultSettings.createVault')}
             </button>
           </div>
         </>
@@ -159,7 +158,7 @@ export function VaultSettings() {
           </p>
           <div className="cv-discover-form">
             <label className="cv-field">
-              <span>Passphrase</span>
+              <span>{t('vaultSettings.passphrase')}</span>
               <input className="cv-input" type="password" value={passphrase} autoComplete="current-password"
                 onChange={(e) => setPassphrase(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && act(ipc.unlockVault(passphrase), 'Unlocked.')} />
@@ -181,11 +180,11 @@ export function VaultSettings() {
               Lock
             </button>
             {/* LT-262: opt-in, per machine. */}
-            <label className="cv-check cv-check-inline" title="The key that opens the vault — never the passphrase — is kept by Windows Credential Manager, the macOS Keychain or the Secret Service, and the vault opens by itself when Coreview starts. Anyone who can use this computer's account can then use the saved credentials.">
+            <label className="cv-check cv-check-inline" title={t('vaultSettings.theKeyThatOpens')}>
               <input type="checkbox" checked={Boolean(status.keptInKeychain)}
                 onChange={(e) => act(e.target.checked ? ipc.rememberVaultKey() : ipc.forgetVaultKey(),
                   e.target.checked ? 'The vault will open by itself on this computer.' : 'The key is no longer kept; the passphrase is needed again.')} />
-              Open by itself on this computer
+              {t('vaultSettings.openByItselfOn')}
             </label>
             <button type="button" className="cv-btn cv-btn-small" onClick={() => setAdding((a) => !a)}>
               {adding ? 'Cancel' : 'Add credential'}
@@ -195,20 +194,20 @@ export function VaultSettings() {
           {adding && (
             <div className="cv-discover-form cv-vault-add">
               <label className="cv-field cv-field-narrow">
-                <span>Name</span>
-                <input className="cv-input" value={label} placeholder="Core switches"
+                <span>{t('vaultSettings.name')}</span>
+                <input className="cv-input" value={label} placeholder={t('vaultSettings.coreSwitches')}
                   onChange={(e) => setLabel(e.target.value)} />
               </label>
               <label className="cv-field cv-field-narrow">
-                <span>For</span>
+                <span>{t('vaultSettings.for')}</span>
                 <select className="cv-input" value={kind}
                   onChange={(e) => setKind(e.target.value as 'ssh' | 'snmp' | 'meraki')}>
-                  <option value="ssh">SSH</option>
-                  <option value="snmp">SNMP</option>
+                  <option value="ssh">{t('vaultSettings.ssh')}</option>
+                  <option value="snmp">{t('vaultSettings.snmp')}</option>
                   {/* LT-404: a Dashboard API key is a secret like any other,
                       so it is sealed by the same vault rather than getting a
                       store of its own. */}
-                  <option value="meraki">Meraki API key</option>
+                  <option value="meraki">{t('vaultSettings.merakiApiKey')}</option>
                 </select>
               </label>
               {kind !== 'meraki' && (
@@ -241,10 +240,10 @@ export function VaultSettings() {
             <table className="cv-table cv-vault-table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>For</th>
-                  <th>User</th>
-                  <th>Secret</th>
+                  <th>{t('vaultSettings.name')}</th>
+                  <th>{t('vaultSettings.for')}</th>
+                  <th>{t('vaultSettings.user')}</th>
+                  <th>{t('vaultSettings.secret')}</th>
                   <th />
                 </tr>
               </thead>
@@ -283,29 +282,28 @@ export function VaultSettings() {
 
       {credentials.length > 0 && (
         <details className="cv-credential-use" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open && !usage) loadUsage(''); }}>
-          <summary>Where they were used</summary>
+          <summary>{t('vaultSettings.whereTheyWereUsed')}</summary>
           <p className="cv-help">
-            Every time a saved credential is offered to a device — a crawl, a backup, a check, a ping from a device —
-            it is noted here, on this machine, and never sent anywhere. Uses within an hour for the same device are one line.
+            {t('vaultSettings.everyTimeASaved')}
           </p>
           <div className="cv-discover-actions">
             <label className="cv-field cv-field-narrow">
-              <span>Credential</span>
+              <span>{t('vaultSettings.credential')}</span>
               <select className="cv-input" value={usageFor} onChange={(e) => loadUsage(e.target.value)}>
-                <option value="">All</option>
+                <option value="">{t('vaultSettings.all')}</option>
                 {credentials.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
               </select>
             </label>
             <button type="button" className="cv-btn cv-btn-small" disabled={!usage?.length}
               onClick={() => act(ipc.clearCredentialUse().then(() => setUsage([])), 'The use log is cleared.')}>
-              Clear the log
+              {t('vaultSettings.clearTheLog')}
             </button>
           </div>
-          {usage && usage.length === 0 && <p className="cv-help">Nothing yet.</p>}
+          {usage && usage.length === 0 && <p className="cv-help">{t('vaultSettings.nothingYet')}</p>}
           {usage && usage.length > 0 && (
             <table className="cv-table cv-vault-table">
               <thead>
-                <tr><th>Credential</th><th>For</th><th>Device</th><th>Last used</th><th>Times</th></tr>
+                <tr><th>{t('vaultSettings.credential')}</th><th>{t('vaultSettings.for')}</th><th>{t('vaultSettings.device')}</th><th>{t('vaultSettings.lastUsed')}</th><th>{t('vaultSettings.times')}</th></tr>
               </thead>
               <tbody>
                 {usage.map((u, i) => (
@@ -333,17 +331,17 @@ export function VaultSettings() {
                 so there is nothing to keep. This cannot be undone.
               </span>
               <button type="button" className="cv-btn cv-btn-small" onClick={() => setConfirmDiscard(false)}>
-                Keep them
+                {t('vaultSettings.keepThem')}
               </button>
               <button type="button" className="cv-btn cv-btn-small cv-btn-danger"
                 onClick={() => { setConfirmDiscard(false); act(ipc.discardVault(), 'Vault discarded.'); }}>
-                Discard everything
+                {t('vaultSettings.discardEverything')}
               </button>
             </>
           ) : (
             <button type="button" className="cv-btn cv-btn-small"
               onClick={() => { setMessage(null); setConfirmDiscard(true); }}>
-              Forgot the passphrase — start again
+              {t('vaultSettings.forgotThePassphraseStart')}
             </button>
           )}
         </div>

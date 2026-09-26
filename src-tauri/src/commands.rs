@@ -33,6 +33,93 @@ pub struct AppState {
     /// LT-320: the interactive SSH sessions the window has open. Belongs to
     /// the window, never to a project — nothing here is ever written down.
     pub sessions: std::sync::Arc<crate::terminal::Sessions>,
+    /// LT-456: where a native dialog pointed, by token, until it is written
+    /// to once. The page never names a path to write; it names a token.
+    pub export_targets: ExportTargets,
+}
+
+/// LT-456: the paths a save or folder dialog returned, each spent by one
+/// write. A page that could send any path could write anywhere on the
+/// machine; a page that can only send back a token can write only where a
+/// person just pointed, and only once.
+#[derive(Default)]
+pub struct ExportTargets {
+    paths: Mutex<std::collections::HashMap<String, std::path::PathBuf>>,
+}
+
+impl ExportTargets {
+    /// Keeps a path the dialog returned and hands back the token for it.
+    pub fn keep(&self, path: std::path::PathBuf) -> String {
+        let token = Uuid::new_v4().to_string();
+        if let Ok(mut m) = self.paths.lock() {
+            m.insert(token.clone(), path);
+        }
+        token
+    }
+
+    /// The path behind a token, once. A second use, or a token nobody was
+    /// given, is refused.
+    pub fn take(&self, token: &str) -> Result<std::path::PathBuf, String> {
+        self.paths
+            .lock()
+            .map_err(|e| e.to_string())?
+            .remove(token)
+            .ok_or_else(|| "That save location is not one a dialog chose, or it was already written to.".to_string())
+    }
+}
+
+/// LT-456: where an export goes. `folder` is the project's chosen export
+/// folder, if any; with one, the file goes straight there without a dialog
+/// (a standing answer to "where should this go"); without one, the native
+/// save dialog is shown here, in Rust, and the page never sees the path
+/// except to tell the person where the file went.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportTarget {
+    pub token: String,
+    pub path: String,
+}
+
+#[tauri::command(async)]
+pub fn pick_export_target(app: AppHandle, state: State<'_, AppState>, filename: String, folder: Option<String>) -> CmdResult<Option<ExportTarget>> {
+    use tauri_plugin_dialog::DialogExt;
+    let name = std::path::Path::new(filename.trim())
+        .file_name()
+        .map(|f| f.to_string_lossy().into_owned())
+        .filter(|f| !f.is_empty())
+        .ok_or("An export needs a file name.")?;
+    let path = match folder.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
+        Some(dir) => std::path::PathBuf::from(dir).join(&name),
+        None => {
+            let ext = std::path::Path::new(&name).extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default();
+            let mut dialog = app.dialog().file().set_file_name(&name);
+            if !ext.is_empty() {
+                dialog = dialog.add_filter(ext.to_uppercase(), &[ext.as_str()]);
+            }
+            match dialog.blocking_save_file() {
+                Some(picked) => picked.into_path().map_err(|e| e.to_string())?,
+                None => return Ok(None),
+            }
+        }
+    };
+    let shown = path.to_string_lossy().into_owned();
+    Ok(Some(ExportTarget { token: state.export_targets.keep(path), path: shown }))
+}
+
+/// LT-456: the folder a project folder is written into — the chosen export
+/// folder, or the one a native folder dialog returns.
+#[tauri::command(async)]
+pub fn pick_export_folder(app: AppHandle, state: State<'_, AppState>, folder: Option<String>) -> CmdResult<Option<ExportTarget>> {
+    use tauri_plugin_dialog::DialogExt;
+    let path = match folder.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
+        Some(dir) => std::path::PathBuf::from(dir),
+        None => match app.dialog().file().blocking_pick_folder() {
+            Some(picked) => picked.into_path().map_err(|e| e.to_string())?,
+            None => return Ok(None),
+        },
+    };
+    let shown = path.to_string_lossy().into_owned();
+    Ok(Some(ExportTarget { token: state.export_targets.keep(path), path: shown }))
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -365,16 +452,16 @@ pub fn list_crawl_runs(state: State<'_, AppState>, project_id: String) -> CmdRes
 }
 
 #[tauri::command(async)]
-pub fn crawl_run_result(state: State<'_, AppState>, id: String) -> CmdResult<serde_json::Value> {
+pub fn crawl_run_result(state: State<'_, AppState>, id: String, project_id: String) -> CmdResult<serde_json::Value> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    db::crawl_run_result(&conn, &id).map_err(|e| e.to_string())?.ok_or_else(|| "That crawl is no longer kept.".into())
+    db::crawl_run_result(&conn, &id, &project_id).map_err(|e| e.to_string())?.ok_or_else(|| "That crawl is no longer kept.".into())
 }
 
 /// LT-224: a probe's recorded results since `since_ms`, oldest first.
 #[tauri::command(async)]
-pub fn probe_history(state: State<'_, AppState>, probe_id: String, since_ms: i64, limit: Option<i64>) -> CmdResult<Vec<db::SampleRow>> {
+pub fn probe_history(state: State<'_, AppState>, probe_id: String, project_id: String, since_ms: i64, limit: Option<i64>) -> CmdResult<Vec<db::SampleRow>> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    db::samples_for(&conn, &probe_id, since_ms, limit.unwrap_or(2_000).clamp(1, 20_000)).map_err(|e| e.to_string())
+    db::samples_for(&conn, &probe_id, &project_id, since_ms, limit.unwrap_or(2_000).clamp(1, 20_000)).map_err(|e| e.to_string())
 }
 
 // ------------------------------------------------------------------- icons
@@ -495,21 +582,26 @@ pub fn remove_stencil_pack(
 
 // ------------------------------------------------------------------ exports
 
-/// Writes an export to the path the user picked in the save dialog.
+/// Writes an export where a dialog pointed (LT-456).
 ///
 /// This is the only way anything in the webview can write to disk: there is no
-/// filesystem plugin, so the frontend cannot name a path on its own — it can
-/// only pass back one the user chose in a native dialog.
+/// filesystem plugin, and since LT-456 the page cannot name a path at all — it
+/// names the token `pick_export_target` gave it, which is spent by this write.
 ///
 /// Bytes arrive base64-encoded because one of the five exports (PNG) is binary
 /// and the other four are text. Encoding them all the same way keeps this to a
 /// single command rather than a text one and a binary one.
 #[tauri::command(async)]
-pub fn save_export(path: String, contents_b64: String) -> CmdResult<()> {
+pub fn save_export(state: State<'_, AppState>, token: String, contents_b64: String) -> CmdResult<()> {
+    let path = state.export_targets.take(&token)?;
+    write_export(&path, &contents_b64)
+}
+
+fn write_export(path: &std::path::Path, contents_b64: &str) -> CmdResult<()> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(contents_b64.as_bytes())
         .map_err(|e| format!("Export could not be encoded: {e}"))?;
-    std::fs::write(&path, bytes).map_err(|e| format!("Could not write {path}: {e}"))
+    std::fs::write(path, bytes).map_err(|e| format!("Could not write {}: {e}", path.display()))
 }
 
 /// Reads a project package the user picked in the open dialog.
@@ -530,18 +622,18 @@ pub fn save_export(path: String, contents_b64: String) -> CmdResult<()> {
 /// obviously not a project.
 /// LT-244: a draw.io drawing, read into the same preview a Visio one gets.
 #[tauri::command(async)]
-pub fn import_drawio(path: String) -> CmdResult<crate::visio_import::VisioImport> {
+pub fn import_drawio(path: String) -> CmdResult<coreview_formats::visio_import::VisioImport> {
     const MAX: u64 = 64 * 1024 * 1024;
     let size = std::fs::metadata(&path).map_err(|e| format!("Could not read {path}: {e}"))?.len();
     if size > MAX {
         return Err(format!("{path} is {} MB, which is larger than any drawing this can read.", size / (1024 * 1024)));
     }
     let text = std::fs::read_to_string(&path).map_err(|e| format!("Could not read {path}: {e}"))?;
-    crate::drawio_import::import_drawio(&text)
+    coreview_formats::drawio_import::import_drawio(&text)
 }
 
 #[tauri::command(async)]
-pub fn import_visio(path: String) -> CmdResult<crate::visio_import::VisioImport> {
+pub fn import_visio(path: String) -> CmdResult<coreview_formats::visio_import::VisioImport> {
     const MAX: u64 = 128 * 1024 * 1024;
     let size = std::fs::metadata(&path)
         .map_err(|e| format!("Could not read {path}: {e}"))?
@@ -553,7 +645,7 @@ pub fn import_visio(path: String) -> CmdResult<crate::visio_import::VisioImport>
         ));
     }
     let bytes = std::fs::read(&path).map_err(|e| format!("Could not read {path}: {e}"))?;
-    crate::visio_import::import_vsdx(&bytes)
+    coreview_formats::visio_import::import_vsdx(&bytes)
 }
 
 /// LT-258: where the isolation frame sends a message it refused. Nothing the
@@ -590,8 +682,10 @@ pub fn write_project_folder(folder: &str, name: &str, json: &str, yaml: &str) ->
 }
 
 #[tauri::command]
-pub fn save_project_folder(folder: String, name: String, json: String, yaml: String) -> CmdResult<String> {
-    write_project_folder(&folder, &name, &json, &yaml)
+pub fn save_project_folder(state: State<'_, AppState>, token: String, name: String, json: String, yaml: String) -> CmdResult<String> {
+    // LT-456: the folder is the one a dialog returned, spent by this write.
+    let folder = state.export_targets.take(&token)?;
+    write_project_folder(&folder.to_string_lossy(), &name, &json, &yaml)
 }
 
 /// LT-245: every sheet of an Excel workbook the user chose, as rows of text.
@@ -671,6 +765,17 @@ mod export_tests {
     }
     use super::*;
 
+    /// LT-456: a token is spent by one write, and a token nobody was given
+    /// opens nothing.
+    #[test]
+    fn a_save_location_is_used_once_and_only_when_a_dialog_gave_it() {
+        let targets = super::ExportTargets::default();
+        let token = targets.keep(std::path::PathBuf::from("/tmp/coreview-lt456/out.svg"));
+        assert_eq!(targets.take(&token).unwrap(), std::path::PathBuf::from("/tmp/coreview-lt456/out.svg"));
+        assert!(targets.take(&token).unwrap_err().contains("already written"), "spent");
+        assert!(targets.take("made-up").unwrap_err().contains("not one a dialog chose"));
+    }
+
     #[test]
     fn writes_decoded_bytes_to_the_given_path() {
         let dir = std::env::temp_dir().join(format!("coreview-export-{}", Uuid::new_v4()));
@@ -680,7 +785,7 @@ mod export_tests {
         let png = [0x89u8, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
         let b64 = base64::engine::general_purpose::STANDARD.encode(png);
 
-        save_export(path.to_string_lossy().into_owned(), b64).unwrap();
+        write_export(&path, &b64).unwrap();
 
         assert_eq!(std::fs::read(&path).unwrap(), png);
         std::fs::remove_dir_all(&dir).ok();
@@ -691,8 +796,7 @@ mod export_tests {
         let path = std::env::temp_dir().join("coreview-should-not-appear");
         std::fs::remove_file(&path).ok();
 
-        let err = save_export(path.to_string_lossy().into_owned(), "not base64!!".into())
-            .unwrap_err();
+        let err = write_export(&path, "not base64!!").unwrap_err();
 
         assert!(err.contains("could not be encoded"), "unexpected error: {err}");
         // Fail closed: a bad payload must not leave a truncated or empty file.
@@ -702,7 +806,7 @@ mod export_tests {
     #[test]
     fn reports_the_path_when_the_directory_does_not_exist() {
         let path = std::env::temp_dir().join("coreview-no-such-dir").join("x.svg");
-        let err = save_export(path.to_string_lossy().into_owned(), String::new()).unwrap_err();
+        let err = write_export(&path, "").unwrap_err();
         assert!(err.contains("Could not write"), "unexpected error: {err}");
     }
 }
@@ -908,11 +1012,18 @@ pub async fn start_sweep(
     // silently replacing the first.
     let ticket = state.jobs.start(crate::jobs::Kind::Sweep)?;
     let token = ticket.token();
+    let progress = ticket.progress();
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<SweepEvent>(1024);
     let emitter = app.clone();
     tauri::async_runtime::spawn(async move {
         while let Some(event) = rx.recv().await {
+            // LT-432: the registry hears where the sweep is.
+            match &event {
+                SweepEvent::Started { total } => progress.set("Sweeping", 0, Some(u64::from(*total))),
+                SweepEvent::Progress { done, total } => progress.set("Sweeping", u64::from(*done), Some(u64::from(*total))),
+                _ => {}
+            }
             let _ = emitter.emit("coreview://sweep", &event);
         }
     });
@@ -924,6 +1035,59 @@ pub async fn start_sweep(
     });
 
     Ok(total)
+}
+
+/// LT-435: what changed across every kept crawl, oldest run first, and the
+/// newest run's changes counted by field for the landing line.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CrawlTimeline {
+    pub entries: Vec<crate::timeline::TimelineEntry>,
+    pub newest_run: Option<String>,
+    pub runs: usize,
+    pub since_last: std::collections::BTreeMap<String, usize>,
+}
+
+/// A kept run as the timeline reads it: its id, when it was taken, and its devices.
+type LoadedRun = (String, i64, Vec<serde_json::Value>);
+
+#[tauri::command(async)]
+pub fn crawl_timeline(state: State<'_, AppState>, project_id: String, device: Option<String>) -> CmdResult<CrawlTimeline> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    // Newest first from the database; the timeline wants oldest first.
+    let mut rows = db::list_crawl_runs(&conn, &project_id).map_err(|e| e.to_string())?;
+    rows.reverse();
+    let mut loaded: Vec<LoadedRun> = Vec::with_capacity(rows.len());
+    for r in &rows {
+        // A run still running or aborted is a partial picture; comparing a
+        // whole estate against half of one would report half of it gone.
+        if r.status != "complete" && r.status != "cancelled" {
+            continue;
+        }
+        let Some(result) = db::crawl_run_result(&conn, &r.id, &project_id).map_err(|e| e.to_string())? else { continue };
+        let devices = result.get("devices").and_then(|d| d.as_array()).cloned().unwrap_or_default();
+        loaded.push((r.id.clone(), r.taken_at, devices));
+    }
+    let runs: Vec<crate::timeline::Run<'_>> = loaded
+        .iter()
+        .map(|(id, taken_at, devices)| crate::timeline::Run { id, taken_at: *taken_at, devices })
+        .collect();
+    let entries = crate::timeline::timeline(&runs, device.as_deref());
+    let newest_run = loaded.last().map(|(id, _, _)| id.clone());
+    let since_last = newest_run.as_deref().map(|n| crate::timeline::since_last(&entries, n)).unwrap_or_default();
+    Ok(CrawlTimeline { entries, newest_run, runs: loaded.len(), since_last })
+}
+
+/// LT-432: every job running or stopping right now.
+#[tauri::command]
+pub fn job_list(state: State<'_, AppState>) -> CmdResult<Vec<crate::jobs::JobSnapshot>> {
+    Ok(state.jobs.list())
+}
+
+/// LT-432: stops one job by its id. Says whether there was one to stop.
+#[tauri::command]
+pub fn job_cancel(state: State<'_, AppState>, id: u64) -> CmdResult<bool> {
+    Ok(state.jobs.cancel_id(id))
 }
 
 /// Stops the running sweep. Harmless when none is running, so the UI can call

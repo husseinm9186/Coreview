@@ -8,6 +8,8 @@ import { addReply, addThread, openThreads, setResolved, type CommentThread } fro
 import { uid } from '../../lib/id';
 import { formatTime } from '../../lib/timeFormat';
 import { useStore } from '../../state/store';
+// The catalogue's `t`, aliased: this file already has a `t` of its own.
+import { t as tr } from '../../i18n';
 
 const AUTHOR_KEY = 'coreview.commentAuthor';
 
@@ -37,7 +39,7 @@ export function CommentsSection({ threads, onChange }: { threads: CommentThread[
   };
 
   return (
-    <section className="cv-section cv-comments" aria-label="Comments">
+    <section className="cv-section cv-comments" aria-label={tr('commentsSection.comments')}>
       <h3>
         Comments <span className="cv-palette-count">{openThreads(list)} open</span>
       </h3>
@@ -62,7 +64,7 @@ export function CommentsSection({ threads, onChange }: { threads: CommentThread[
             </div>
           ))}
           <div className="cv-row cv-row-tight">
-            <input className="cv-input" aria-label="Reply" placeholder="Reply" value={replying[t.id] ?? ''}
+            <input className="cv-input" aria-label={tr('commentsSection.reply')} placeholder={tr('commentsSection.reply')} value={replying[t.id] ?? ''}
               onChange={(e) => setReplying((x) => ({ ...x, [t.id]: e.target.value }))}
               onKeyDown={(e) => {
                 if (e.key !== 'Enter' || !(replying[t.id] ?? '').trim()) return;
@@ -73,8 +75,8 @@ export function CommentsSection({ threads, onChange }: { threads: CommentThread[
         </article>
       ))}
       <div className="cv-comment-new">
-        <input className="cv-input" aria-label="Your name" placeholder="Your name" value={author} onChange={(e) => remember(e.target.value)} />
-        <textarea className="cv-input" aria-label="New comment" rows={2} placeholder="Ask or note something about this" value={text} onChange={(e) => setText(e.target.value)} />
+        <input className="cv-input" aria-label={tr('commentsSection.yourName')} placeholder={tr('commentsSection.yourName')} value={author} onChange={(e) => remember(e.target.value)} />
+        <textarea className="cv-input" aria-label={tr('commentsSection.newComment')} rows={2} placeholder={tr('commentsSection.askOrNoteSomething')} value={text} onChange={(e) => setText(e.target.value)} />
         <button type="button" className="cv-btn cv-btn-small" disabled={!text.trim()}
           onClick={() => {
             onChange(addThread(list, author, text, Date.now(), uid()), 'Comment');

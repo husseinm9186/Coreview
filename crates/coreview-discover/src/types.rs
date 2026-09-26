@@ -126,6 +126,56 @@ impl DeviceClass {
     }
 }
 
+/// Where a fact about a device came from (LT-438, D-050).
+///
+/// Every field a crawl fills in was read from somewhere — a prompt, `show
+/// version`, sysDescr, an LLDP advertisement, a MAC's OUI, a FortiGate's
+/// device store — and the inspector can only answer "why does it say this?"
+/// if that somewhere travels with the value. `source` is a short fixed name
+/// for the mechanism; `seen_by` is the device that reported it, where it was
+/// a neighbour and not the device itself; `seen_at_ms` is when.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Evidence {
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seen_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seen_at_ms: Option<i64>,
+    /// What was actually read, clipped: the version line, the sysDescr, the
+    /// OUI's maker. Empty where the source says it all.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detail: String,
+}
+
+impl Evidence {
+    pub fn now(source: &str) -> Evidence {
+        Evidence { source: source.to_string(), seen_by: None, seen_at_ms: Some(now_ms()), detail: String::new() }
+    }
+
+    pub fn from_device(source: &str, seen_by: &str) -> Evidence {
+        Evidence { seen_by: Some(seen_by.to_string()), ..Evidence::now(source) }
+    }
+
+    pub fn saying(mut self, detail: impl AsRef<str>) -> Evidence {
+        let d = detail.as_ref().trim();
+        self.detail = d.chars().take(120).collect();
+        self
+    }
+}
+
+/// Milliseconds since the epoch, for `Evidence::seen_at_ms`.
+pub fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or_default()
+}
+
+/// The evidence behind a device's fields, keyed by what they are called on
+/// the wire: `hostname`, `class`, `platform`, `uptime`, `addresses`, `serial`.
+pub type EvidenceMap = std::collections::BTreeMap<String, Evidence>;
+
 /// An address learned from a device, with enough context to choose between
 /// several sensibly.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

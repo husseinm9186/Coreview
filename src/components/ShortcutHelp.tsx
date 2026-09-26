@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 /**
  * What the keyboard does. Opened with "?", because a shortcut nobody can
  * discover is a shortcut nobody has.
@@ -53,12 +54,12 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
       <div
         className="cv-help-card"
         role="dialog"
-        aria-label="Keyboard shortcuts"
+        aria-label={t('shortcutHelp.keyboardShortcuts')}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="cv-help-head">
-          <h2>Keyboard</h2>
-          <button type="button" onClick={onClose} aria-label="Close">×</button>
+          <h2>{t('shortcutHelp.keyboard')}</h2>
+          <button type="button" onClick={onClose} aria-label={t('shortcutHelp.close')}>×</button>
         </div>
         <div className="cv-help-cols">
           {GROUPS.map(([title, rows]) => (

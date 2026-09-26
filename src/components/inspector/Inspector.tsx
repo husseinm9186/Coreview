@@ -3,6 +3,9 @@ import { DEFAULTS, deviceColor } from '../../theme';
 
 import { useStore } from '../../state/store';
 import { InventorySection } from './InventorySection';
+import { whySays } from '../../lib/evidence';
+// The catalogue's `t`, aliased: this file already has a `t` of its own.
+import { t as tr } from '../../i18n';
 import { ProbeHistory } from './ProbeHistory';
 import { AttachmentsSection, NeighboursSection } from './DeviceRelations';
 import { PortView } from './PortView';
@@ -151,7 +154,7 @@ function TextStyleFields({
           type="button"
           className={`cv-btn cv-btn-small${t.bold ? ' is-active' : ''}`}
           aria-pressed={Boolean(t.bold)}
-          title="Bold"
+          title={tr('inspector.bold')}
           onClick={() => set({ bold: !t.bold })}
         >
           <b>B</b>
@@ -160,7 +163,7 @@ function TextStyleFields({
           type="button"
           className={`cv-btn cv-btn-small${t.italic ? ' is-active' : ''}`}
           aria-pressed={Boolean(t.italic)}
-          title="Italic"
+          title={tr('inspector.italic')}
           onClick={() => set({ italic: !t.italic })}
         >
           <i>I</i>
@@ -170,7 +173,7 @@ function TextStyleFields({
           type="number"
           min={MIN_TEXT_SIZE}
           max={MAX_TEXT_SIZE}
-          placeholder="Size"
+          placeholder={tr('inspector.size')}
           aria-label={`${title} size`}
           value={t.size ?? ''}
           onChange={(e) => set({ size: e.target.value === '' ? undefined : safeSize(Number(e.target.value)) })}
@@ -182,9 +185,9 @@ function TextStyleFields({
             value={t.align ?? 'center'}
             onChange={(e) => set({ align: e.target.value === 'center' ? undefined : (e.target.value as TextAlign) })}
           >
-            <option value="left">Left</option>
-            <option value="center">Centre</option>
-            <option value="right">Right</option>
+            <option value="left">{tr('inspector.left')}</option>
+            <option value="center">{tr('inspector.centre')}</option>
+            <option value="right">{tr('inspector.right')}</option>
           </select>
         )}
       </div>
@@ -223,7 +226,7 @@ export function Inspector() {
   if (!meta) return null;
 
   return (
-    <aside className="cv-inspector" aria-label="Inspector">
+    <aside className="cv-inspector" aria-label={tr('inspector.inspector')}>
       {many.length > 1 ? (
         <MultiInspector ids={many.map((n) => n.id)} />
       ) : manyLinks.length > 1 && many.length === 0 ? (
@@ -287,38 +290,38 @@ function MultiLinkInspector({ ids }: { ids: string[] }) {
         {ids.length} links selected
       </h2>
       <Field label="Cable" hint={mixed(cable) ? 'Mixed — choosing one sets them all' : undefined}>
-        <select className="cv-input" aria-label="Cable for every selected link" value={cable.kind === 'same' ? cable.value : '__mixed'}
+        <select className="cv-input" aria-label={tr('inspector.cableForEverySelected')} value={cable.kind === 'same' ? cable.value : '__mixed'}
           onChange={(e) => updateMany(ids, { cableType: isCableType(e.target.value) ? e.target.value : undefined }, 'Set cable')}>
-          {mixed(cable) && <option value="__mixed" disabled>Mixed</option>}
-          <option value="">Not set</option>
+          {mixed(cable) && <option value="__mixed" disabled>{tr('inspector.mixed')}</option>}
+          <option value="">{tr('inspector.notSet')}</option>
           {CABLE_TYPES.map((c) => <option key={c} value={c}>{CABLES[c].label}</option>)}
         </select>
       </Field>
       <Field label="Path" hint={mixed(path) ? 'Mixed — choosing one sets them all' : undefined}>
-        <select className="cv-input" aria-label="Path for every selected link" value={path.kind === 'same' ? path.value : '__mixed'}
+        <select className="cv-input" aria-label={tr('inspector.pathForEverySelected')} value={path.kind === 'same' ? path.value : '__mixed'}
           onChange={(e) => updateMany(ids, { pathType: e.target.value as LinkData['pathType'] }, 'Set path')}>
-          {mixed(path) && <option value="__mixed" disabled>Mixed</option>}
-          <option value="smoothstep">Right angles, rounded</option>
-          <option value="step">Right angles</option>
-          <option value="straight">Straight</option>
-          <option value="bezier">Curved</option>
-          <option value="avoid">Around devices</option>
+          {mixed(path) && <option value="__mixed" disabled>{tr('inspector.mixed')}</option>}
+          <option value="smoothstep">{tr('inspector.rightAnglesRounded')}</option>
+          <option value="step">{tr('inspector.rightAngles')}</option>
+          <option value="straight">{tr('inspector.straight')}</option>
+          <option value="bezier">{tr('inspector.curved')}</option>
+          <option value="avoid">{tr('inspector.aroundDevices')}</option>
         </select>
       </Field>
       <div className="cv-row">
         <Field label="Line" hint={mixed(style) ? 'Mixed' : undefined}>
-          <select className="cv-input" aria-label="Line style for every selected link" value={style.kind === 'same' ? style.value : '__mixed'}
+          <select className="cv-input" aria-label={tr('inspector.lineStyleForEvery')} value={style.kind === 'same' ? style.value : '__mixed'}
             onChange={(e) => updateMany(ids, { lineStyle: e.target.value as LinkData['lineStyle'] }, 'Set line style')}>
-            {mixed(style) && <option value="__mixed" disabled>Mixed</option>}
-            <option value="auto">By status</option>
-            <option value="solid">Solid</option>
-            <option value="dashed">Dashed</option>
-            <option value="dotted">Dotted</option>
-            <option value="dash-dot">Dash-dot</option>
+            {mixed(style) && <option value="__mixed" disabled>{tr('inspector.mixed')}</option>}
+            <option value="auto">{tr('inspector.byStatus')}</option>
+            <option value="solid">{tr('inspector.solid')}</option>
+            <option value="dashed">{tr('inspector.dashed')}</option>
+            <option value="dotted">{tr('inspector.dotted')}</option>
+            <option value="dash-dot">{tr('inspector.dashDot')}</option>
           </select>
         </Field>
         <Field label="Width" hint={mixed(width) ? 'Mixed' : undefined}>
-          <input className="cv-input" type="number" min={1} max={12} aria-label="Width for every selected link"
+          <input className="cv-input" type="number" min={1} max={12} aria-label={tr('inspector.widthForEverySelected')}
             value={width.kind === 'same' ? width.value : ''} placeholder={mixed(width) ? 'Mixed' : ''}
             onChange={(e) => e.target.value && updateMany(ids, { width: Math.max(1, Math.min(12, Number(e.target.value))) }, 'Set width')} />
         </Field>
@@ -390,7 +393,7 @@ function MultiInspector({ ids }: { ids: string[] }) {
 
       {sel.devices.length === 0 ? (
         <p className="cv-field-hint">
-          Notes have nothing in common to edit together. Select them one at a time.
+          {tr('inspector.notesHaveNothingIn')}
         </p>
       ) : (
         <>
@@ -431,7 +434,7 @@ function MultiInspector({ ids }: { ids: string[] }) {
             <Field label="Add a check from a template" hint="Each device gets its own, aimed at its primary address">
               <select
                 className="cv-input"
-                aria-label="Add a check from a template to the selection"
+                aria-label={tr('inspector.addACheckFrom')}
                 value=""
                 onChange={(e) => {
                   const t = templates.find((x) => x.id === e.target.value);
@@ -443,7 +446,7 @@ function MultiInspector({ ids }: { ids: string[] }) {
                   );
                 }}
               >
-                <option value="">Choose a template…</option>
+                <option value="">{tr('inspector.chooseATemplate')}</option>
                 {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </Field>
@@ -466,7 +469,7 @@ function MultiInspector({ ids }: { ids: string[] }) {
               <input
                 className="cv-input"
                 value={newTag}
-                placeholder="site-hq"
+                placeholder={tr('inspector.siteHq')}
                 onChange={(e) => setNewTag(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -663,7 +666,7 @@ function TriCheck({
         onChange={(e) => onSet(state.kind === 'mixed' ? true : e.target.checked)}
       />
       {label}
-      {state.kind === 'mixed' && <span className="cv-field-hint"> — mixed</span>}
+      {state.kind === 'mixed' && <span className="cv-field-hint"> {tr('inspector.mixed2')}</span>}
     </label>
   );
 }
@@ -737,7 +740,7 @@ function StatusStrip({ nodeId }: { nodeId: string }) {
   return (
     <div className="cv-history">
       <div className="cv-history-head">
-        <span className="cv-field-label">Recent status</span>
+        <span className="cv-field-label">{tr('inspector.recentStatus')}</span>
         <div className="cv-history-windows">
           {WINDOWS.map((w) => (
             <button
@@ -759,7 +762,7 @@ function StatusStrip({ nodeId }: { nodeId: string }) {
         aria-label={summary
           .map((t) => `${STATUS_LABEL[t.status]} ${shortDuration(t.ms)}`)
           .join(', ')}
-        title="Click to enlarge"
+        title={tr('inspector.clickToEnlarge')}
         onClick={() => setExpanded((e) => !e)}
         onPointerMove={(e) => scrubTo(e.clientX)}
         onPointerLeave={() => setScrubAt(null)}
@@ -786,7 +789,7 @@ function StatusStrip({ nodeId }: { nodeId: string }) {
 
       <div className="cv-history-legend">
         {summary.length === 0 ? (
-          <span className="cv-field-hint">Nothing recorded yet.</span>
+          <span className="cv-field-hint">{tr('inspector.nothingRecordedYet')}</span>
         ) : (
           summary.map((t) => (
             <span key={t.status} className="cv-history-key">
@@ -873,7 +876,7 @@ function ProjectInspector() {
   const updateMeta = useStore((s) => s.updateMeta);
   return (
     <>
-      <h2 className="cv-inspector-title">Project</h2>
+      <h2 className="cv-inspector-title">{tr('inspector.project')}</h2>
       <Field label="Project name">
         <input
           className="cv-input"
@@ -920,8 +923,7 @@ function ProjectInspector() {
       <ProjectCheckTiming />
 
       <p className="cv-help">
-        Select a node or a link to configure targets and health rules. Checks run from this
-        machine only.
+        {tr('inspector.selectANodeOr')}
       </p>
     </>
   );
@@ -961,15 +963,15 @@ function ProjectCheckTiming() {
 
   return (
     <div className="cv-timing">
-      <span className="cv-subnets-label">Checks</span>
+      <span className="cv-subnets-label">{tr('inspector.checks')}</span>
       <div className="cv-timing-row">
         <label className="cv-field cv-field-narrow">
-          <span>Every</span>
+          <span>{tr('inspector.every')}</span>
           <input className="cv-input" type="number" min={1} max={3600} value={everySeconds}
             onChange={(e) => setEverySeconds(Number(e.target.value) || 1)} />
         </label>
         <label className="cv-field cv-field-narrow">
-          <span>Missed before down</span>
+          <span>{tr('inspector.missedBeforeDown')}</span>
           <input className="cv-input" type="number" min={1} max={60} value={misses}
             onChange={(e) => setMisses(Number(e.target.value) || 1)} />
         </label>
@@ -1000,7 +1002,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
     const d = node.data as NoteNodeData;
     return (
       <>
-        <h2 className="cv-inspector-title">Note</h2>
+        <h2 className="cv-inspector-title">{tr('inspector.note')}</h2>
         <Field label="Title">
           <input
             className="cv-input"
@@ -1044,9 +1046,9 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
               value={d.variant}
               onChange={(e) => update(nodeId, { variant: e.target.value as NoteNodeData['variant'] })}
             >
-              <option value="plain">Plain note</option>
-              <option value="change">Change note</option>
-              <option value="sticky">Sticky note</option>
+              <option value="plain">{tr('inspector.plainNote')}</option>
+              <option value="change">{tr('inspector.changeNote')}</option>
+              <option value="sticky">{tr('inspector.stickyNote')}</option>
             </select>
           </Field>
         </div>
@@ -1082,7 +1084,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
             checked={d.locked}
             onChange={(e) => update(nodeId, { locked: e.target.checked })}
           />
-          Lock this note
+          {tr('inspector.lockThisNote')}
         </label>
       </>
     );
@@ -1109,6 +1111,11 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
           {STATUS_GLYPH[status]} {STATUS_LABEL[status]}
         </span>
       </h2>
+      {/* LT-444: the same sections, at a width this rail cannot give. */}
+      <button type="button" className="cv-btn cv-btn-small cv-open-drawer"
+        onClick={() => useStore.getState().openDrawer({ kind: 'device', nodeId })}>
+        {tr('drawer.openDevice')}
+      </button>
 
       <Field label={d.deviceType === 'text' || d.deviceType === 'callout' ? 'Text' : 'Display name'}>
         {d.deviceType === 'text' || d.deviceType === 'callout' ? (
@@ -1128,7 +1135,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
         )}
       </Field>
       <TextStyleFields
-        title="Name text"
+        title={tr('inspector.nameText')}
         value={d.labelStyle}
         allowAlign
         defaultColor={DEFAULTS.labelInk}
@@ -1148,7 +1155,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
                 })
               }
             >
-              <option value="">Plain section</option>
+              <option value="">{tr('inspector.plainSection')}</option>
               {BOUNDARY_KINDS.map((k) => (
                 <option key={k} value={k}>
                   {BOUNDARIES[k].label}
@@ -1173,7 +1180,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
         </div>
       )}
       <div className="cv-row">
-        <Field label="Device type">
+        <Field label="Device type" hint={whySays(d.evidence, 'class') ?? undefined}>
           <select
             className="cv-input"
             value={d.deviceType}
@@ -1204,7 +1211,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
             onChange={(e) => update(nodeId, { vendor: e.target.value })}
           />
         </Field>
-        <Field label="Model">
+        <Field label="Model" hint={whySays(d.evidence, 'platform') ?? undefined}>
           <input
             className="cv-input"
             value={d.model ?? ''}
@@ -1248,7 +1255,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
         </Field>
       </div>
       <div className="cv-row">
-        <Field label="Hostname">
+        <Field label="Hostname" hint={whySays(d.evidence, 'hostname') ?? undefined}>
           <input
             className="cv-input"
             value={d.hostname ?? ''}
@@ -1283,7 +1290,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
             className="cv-input cv-mono"
             value={d.serial ?? ''}
             spellCheck={false}
-            placeholder="FOC1932X0AA, FOC1932X0BB"
+            placeholder={tr('inspector.foc1932x0aaFoc1932x0bb')}
             onChange={(e) => update(nodeId, { serial: e.target.value })}
           />
         </Field>
@@ -1333,7 +1340,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
             className="cv-input cv-mono"
             value={d.switchPort ?? ''}
             spellCheck={false}
-            placeholder="LAB-CORE-SW1 Gi1/0/11"
+            placeholder={tr('inspector.labCoreSw1Gi1')}
             onChange={(e) => update(nodeId, { switchPort: e.target.value })}
           />
         </Field>
@@ -1374,7 +1381,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
             className="cv-input cv-mono"
             value={d.openPorts ?? ''}
             spellCheck={false}
-            placeholder="22/SSH, 443/HTTPS"
+            placeholder={tr('inspector.22Ssh443Https')}
             onChange={(e) => update(nodeId, { openPorts: e.target.value })}
           />
         </Field>
@@ -1405,14 +1412,14 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
       {/* LT-318: and the other half — typing one here, rather than only being
           able to choose one that somebody has already built in Settings. */}
       <details className="cv-cred-overrides">
-        <summary>Its own username and password</summary>
+        <summary>{tr('inspector.itsOwnUsernameAnd')}</summary>
         <CredentialOverride kind="ssh" device={deviceLabel} credentialId={d.sshCredentialId}
           testAddress={d.addresses?.find((a) => a.isPrimary)?.address ?? d.addresses?.[0]?.address}
           onChange={(id) => update(nodeId, { sshCredentialId: id })} />
         <CredentialOverride kind="snmp" device={deviceLabel} credentialId={d.snmpCredentialId}
           onChange={(id) => update(nodeId, { snmpCredentialId: id })} />
       </details>
-      {d.inventory && <InventorySection inventory={d.inventory} />}
+      {d.inventory && <InventorySection inventory={d.inventory} uptimeWhy={whySays(d.evidence, 'uptime')} />}
       {/* LT-234. */}
       <NeighboursSection nodeId={nodeId} />
       <AttachmentsSection nodeId={nodeId} data={d} />
@@ -1452,9 +1459,9 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
             else resetColor('glyphVariant');
           }}
         >
-          <option value="">As the page draws them</option>
-          <option value="outline">Outline</option>
-          <option value="solid">Solid tile</option>
+          <option value="">{tr('inspector.asThePageDraws')}</option>
+          <option value="outline">{tr('inspector.outline')}</option>
+          <option value="solid">{tr('inspector.solidTile')}</option>
         </select>
       </Field>
       <Field label="Tags" hint="Comma separated">
@@ -1495,7 +1502,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
             checked={d.showDetails}
             onChange={(e) => update(nodeId, { showDetails: e.target.checked })}
           />
-          Show address and status on the canvas
+          {tr('inspector.showAddressAndStatus')}
         </label>
         <label className="cv-check">
           <input
@@ -1503,7 +1510,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
             checked={d.locked}
             onChange={(e) => update(nodeId, { locked: e.target.checked })}
           />
-          Lock position
+          {tr('inspector.lockPosition')}
         </label>
         <label className="cv-check">
           <input
@@ -1511,20 +1518,20 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
             checked={d.maintenance}
             onChange={(e) => update(nodeId, { maintenance: e.target.checked })}
           />
-          Maintenance — suppress status
+          {tr('inspector.maintenanceSuppressStatus')}
         </label>
         {/* LT-160: an HA pair or cluster discovery cannot see. Discovery never
             writes this, so a re-crawl never unticks it. */}
         <label
           className="cv-check"
-          title="Draws the stacked glyph — for a firewall pair, a cluster, or a stack not yet crawled"
+          title={tr('inspector.drawsTheStackedGlyph')}
         >
           <input
             type="checkbox"
             checked={Boolean(d.ha)}
             onChange={(e) => update(nodeId, { ha: e.target.checked })}
           />
-          HA pair or cluster — draw as stacked
+          {tr('inspector.haPairOrCluster')}
         </label>
       </div>
 
@@ -1562,19 +1569,19 @@ function AddressList({ nodeId }: { nodeId: string }) {
             ])
           }
         >
-          Add address
+          {tr('inspector.addAddress')}
         </button>
       </h3>
       {addresses.length === 0 && (
-        <p className="cv-help">No addresses yet. Add one, then create a probe that uses it.</p>
+        <p className="cv-help">{tr('inspector.noAddressesYetAdd')}</p>
       )}
       {addresses.map((a, i) => (
         <div className="cv-addr" key={a.id}>
           <input
             className="cv-input cv-addr-label"
-            aria-label="Address label"
+            aria-label={tr('inspector.addressLabel')}
             value={a.label}
-            placeholder="Label"
+            placeholder={tr('inspector.label')}
             onChange={(e) => {
               const next = [...addresses];
               next[i] = { ...a, label: e.target.value };
@@ -1584,8 +1591,8 @@ function AddressList({ nodeId }: { nodeId: string }) {
           <input
             className="cv-input cv-mono"
             value={a.address}
-            placeholder="10.10.10.1 or fw.example.net"
-            aria-label="Address"
+            placeholder={tr('inspector.1010101')}
+            aria-label={tr('inspector.address')}
             onChange={(e) => {
               const next = [...addresses];
               next[i] = { ...a, address: e.target.value };
@@ -1595,7 +1602,7 @@ function AddressList({ nodeId }: { nodeId: string }) {
           <button
             type="button"
             className={`cv-btn cv-btn-small ${a.isPrimary ? 'is-active' : ''}`}
-            title="Mark as the primary address"
+            title={tr('inspector.markAsThePrimary')}
             onClick={() => set(addresses.map((x, j) => ({ ...x, isPrimary: j === i })))}
           >
             Primary
@@ -1646,26 +1653,26 @@ function ProbeList({ objectKind, objectId }: { objectKind: 'node' | 'link'; obje
           className="cv-btn cv-btn-small"
           onClick={() => upsert(newProbe(objectKind, objectId, meta.id, suggestedTarget))}
         >
-          Add probe
+          {tr('inspector.addProbe')}
         </button>
         {objectKind === 'node' && templates.length > 0 && (
           <select
             className="cv-input cv-probe-template-pick"
-            aria-label="Add a probe from a template"
+            aria-label={tr('inspector.addAProbeFrom')}
             value=""
             onChange={(e) => {
               const t = templates.find((x) => x.id === e.target.value);
               if (t) upsert(probeFromTemplate(t, 'node', objectId, meta.id, suggestedTarget, uid()));
             }}
           >
-            <option value="">From a template…</option>
+            <option value="">{tr('inspector.fromATemplate')}</option>
             {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         )}
       </h3>
       {probes.length === 0 && (
         <p className="cv-help">
-          No probes configured. Nothing here is checked until you add one and start validation.
+          {tr('inspector.noProbesConfiguredNothing')}
         </p>
       )}
       {probes.map((p) => (
@@ -1724,9 +1731,9 @@ function ProbeEditor({
             {STATUS_GLYPH[runtime.status]} {STATUS_LABEL[runtime.status]}
           </span>
         )}
-        <button type="button" className="cv-btn cv-btn-small" title="Save these settings to add to other devices"
+        <button type="button" className="cv-btn cv-btn-small" title={tr('inspector.saveTheseSettingsTo')}
           onClick={() => setTemplateName(templateName === null ? probe.name : null)}>
-          Save as template
+          {tr('inspector.saveAsTemplate')}
         </button>
         <button type="button" className="cv-btn cv-btn-small is-danger" onClick={onRemove}>
           Remove
@@ -1743,9 +1750,9 @@ function ProbeEditor({
             setTemplateName(null);
           }}
         >
-          <input className="cv-input" aria-label="Template name" value={templateName} autoFocus
+          <input className="cv-input" aria-label={tr('inspector.templateName')} value={templateName} autoFocus
             onChange={(e) => setTemplateName(e.target.value)} />
-          <button type="submit" className="cv-btn cv-btn-small" disabled={!templateName.trim()}>Save</button>
+          <button type="submit" className="cv-btn cv-btn-small" disabled={!templateName.trim()}>{tr('inspector.save')}</button>
         </form>
       )}
 
@@ -1759,14 +1766,14 @@ function ProbeEditor({
                 value={probe.kind}
                 onChange={(e) => patch({ kind: e.target.value as ProbeKind })}
               >
-                <option value="icmp">ICMP ping</option>
-                <option value="tcp">TCP port connect</option>
-                <option value="dns">DNS resolution</option>
-                <option value="http">HTTP GET</option>
-                <option value="https">HTTPS GET</option>
-                <option value="udp">UDP service reply</option>
-                <option value="snmp">SNMP uptime</option>
-                <option value="manual">Manual / disabled</option>
+                <option value="icmp">{tr('inspector.icmpPing')}</option>
+                <option value="tcp">{tr('inspector.tcpPortConnect')}</option>
+                <option value="dns">{tr('inspector.dnsResolution')}</option>
+                <option value="http">{tr('inspector.httpGet')}</option>
+                <option value="https">{tr('inspector.httpsGet')}</option>
+                <option value="udp">{tr('inspector.udpServiceReply')}</option>
+                <option value="snmp">{tr('inspector.snmpUptime')}</option>
+                <option value="manual">{tr('inspector.manualDisabled')}</option>
               </select>
             </Field>
             <Field label="Target">
@@ -1797,7 +1804,7 @@ function ProbeEditor({
                 <input
                   className="cv-input cv-mono"
                   value={probe.httpPath ?? '/'}
-                  placeholder="/health"
+                  placeholder={tr('inspector.health')}
                   onChange={(e) => patch({ httpPath: e.target.value })}
                 />
               </Field>
@@ -1808,7 +1815,7 @@ function ProbeEditor({
                     checked={probe.ignoreCertErrors ?? false}
                     onChange={(e) => patch({ ignoreCertErrors: e.target.checked })}
                   />
-                  Ignore certificate errors
+                  {tr('inspector.ignoreCertificateErrors')}
                 </label>
               )}
             </div>
@@ -1820,7 +1827,7 @@ function ProbeEditor({
                 <input
                   className="cv-input cv-mono"
                   value={probe.expectedBody ?? ''}
-                  placeholder="Application OK — blank checks the status code only"
+                  placeholder={tr('inspector.applicationOkBlankChecks')}
                   onChange={(e) => patch({ expectedBody: e.target.value || null })}
                 />
               </Field>
@@ -1836,10 +1843,10 @@ function ProbeEditor({
                   value={['dns', 'ntp', ''].includes(probe.udpPayload ?? '') ? (probe.udpPayload ?? '') : 'hex'}
                   onChange={(e) => patch({ udpPayload: e.target.value === 'hex' ? '00' : e.target.value || null })}
                 >
-                  <option value="dns">A DNS query</option>
-                  <option value="ntp">An NTP time request</option>
-                  <option value="">An empty datagram</option>
-                  <option value="hex">Bytes, in hex</option>
+                  <option value="dns">{tr('inspector.aDnsQuery')}</option>
+                  <option value="ntp">{tr('inspector.anNtpTimeRequest')}</option>
+                  <option value="">{tr('inspector.anEmptyDatagram')}</option>
+                  <option value="hex">{tr('inspector.bytesInHex')}</option>
                 </select>
               </Field>
               {!['dns', 'ntp', ''].includes(probe.udpPayload ?? '') && (
@@ -1901,7 +1908,7 @@ function ProbeEditor({
                 <input
                   className="cv-input cv-mono"
                   value={probe.expectedAddress ?? ''}
-                  placeholder="10.20.30.40 — blank accepts any answer"
+                  placeholder={tr('inspector.10203040')}
                   onChange={(e) => patch({ expectedAddress: e.target.value || null })}
                 />
               </Field>
@@ -1977,7 +1984,7 @@ function ProbeEditor({
                 checked={probe.isPrimary}
                 onChange={(e) => patch({ isPrimary: e.target.checked })}
               />
-              Primary probe for this object
+              {tr('inspector.primaryProbeForThis')}
             </label>
             <label className="cv-check">
               <input
@@ -1995,7 +2002,7 @@ function ProbeEditor({
               className="cv-btn"
               onClick={runTest}
               disabled={testing || !probe.target}
-              title="Runs this check once. It does not start ongoing monitoring."
+              title={tr('inspector.runsThisCheckOnce')}
             >
               {testing ? 'Testing…' : 'Test now'}
             </button>
@@ -2017,7 +2024,9 @@ function ProbeEditor({
 
 function LinkInspector({ edgeId }: { edgeId: string }) {
   const edge = useStore((s) => activePage(s.doc).edges.find((e) => e.id === edgeId));
-  const doc = useStore((s) => s.doc);
+  // LT-452: the probes and the page's nodes, not the whole document.
+  const probes = useStore((s) => s.doc.probes);
+  const pageNodes = useStore((s) => activePage(s.doc).nodes);
   const runtime = useStore((s) => s.runtime);
   const sessionRunning = useStore((s) => s.session.state === 'running');
   const nodeStatusOf = useStore((s) => s.nodeStatus);
@@ -2031,17 +2040,17 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
     link: { enabled: d.enabled, maintenance: d.maintenance, healthRule: rule },
     sourceStatus: nodeStatusOf(edge.source),
     targetStatus: nodeStatusOf(edge.target),
-    linkProbes: doc.probes.filter((p) => p.objectId === edgeId),
-    allProbes: doc.probes,
+    linkProbes: probes.filter((p) => p.objectId === edgeId),
+    allProbes: probes,
     runtime,
     sessionRunning,
   });
 
-  const nodeProbes = doc.probes.filter((p) => p.objectKind === 'node');
+  const nodeProbes = probes.filter((p) => p.objectKind === 'node');
   const nameOf = (id: string) =>
-    (activePage(doc).nodes.find((n) => n.id === id)?.data as DeviceNodeData | undefined)?.label ?? id;
+    (pageNodes.find((n) => n.id === id)?.data as DeviceNodeData | undefined)?.label ?? id;
   const portsOf = (id: string) =>
-    portNames(activePage(doc).nodes.find((n) => n.id === id)?.data as DeviceNodeData | undefined);
+    portNames(pageNodes.find((n) => n.id === id)?.data as DeviceNodeData | undefined);
   const sourcePorts = portsOf(edge.source);
   const targetPorts = portsOf(edge.target);
 
@@ -2056,7 +2065,7 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
       <p className="cv-help">
         {nameOf(edge.source)} → {nameOf(edge.target)}
         <br />
-        Driven by: {describeRule(rule, [...doc.probes])}
+        Driven by: {describeRule(rule, [...probes])}
       </p>
 
       <div className="cv-row">
@@ -2096,14 +2105,14 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
         />
       </Field>
       <TextStyleFields
-        title="Label text"
+        title={tr('inspector.labelText')}
         value={d.labelStyle}
         defaultColor={DEFAULTS.labelInk}
         defaultBackground={DEFAULTS.labelBackground}
         onChange={(labelStyle) => update(edgeId, { labelStyle })}
       />
       <TextStyleFields
-        title="Port label text"
+        title={tr('inspector.portLabelText')}
         value={d.portLabelStyle}
         defaultColor={DEFAULTS.labelInk}
         defaultBackground={DEFAULTS.labelBackground}
@@ -2117,11 +2126,11 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
             value={d.pathType}
             onChange={(e) => update(edgeId, { pathType: e.target.value as LinkData['pathType'] })}
           >
-            <option value="smoothstep">Smooth step</option>
-            <option value="step">Step</option>
-            <option value="bezier">Bezier</option>
-            <option value="straight">Straight</option>
-            <option value="avoid">Around devices</option>
+            <option value="smoothstep">{tr('inspector.smoothStep')}</option>
+            <option value="step">{tr('inspector.step')}</option>
+            <option value="bezier">{tr('inspector.bezier')}</option>
+            <option value="straight">{tr('inspector.straight')}</option>
+            <option value="avoid">{tr('inspector.aroundDevices')}</option>
           </select>
         </Field>
         <Field label="Flow direction">
@@ -2130,10 +2139,10 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
             value={d.direction}
             onChange={(e) => update(edgeId, { direction: e.target.value as LinkData['direction'] })}
           >
-            <option value="forward">Source → target</option>
-            <option value="reverse">Target → source</option>
-            <option value="both">Bidirectional</option>
-            <option value="none">No direction</option>
+            <option value="forward">{tr('inspector.sourceTarget')}</option>
+            <option value="reverse">{tr('inspector.targetSource')}</option>
+            <option value="both">{tr('inspector.bidirectional')}</option>
+            <option value="none">{tr('inspector.noDirection')}</option>
           </select>
         </Field>
       </div>
@@ -2143,7 +2152,7 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
           value={d.cableType ?? ''}
           onChange={(e) => update(edgeId, { cableType: isCableType(e.target.value) ? e.target.value : undefined })}
         >
-          <option value="">Not set</option>
+          <option value="">{tr('inspector.notSet')}</option>
           {CABLE_TYPES.map((c) => (
             <option key={c} value={c}>
               {CABLES[c].label} ({CABLES[c].tag})
@@ -2164,14 +2173,14 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
 
       {/* LT-235: what a crawl read about the port at each end. */}
       <PortView
-        source={activePage(doc).nodes.find((n) => n.id === edge.source)?.data as DeviceNodeData | undefined}
-        target={activePage(doc).nodes.find((n) => n.id === edge.target)?.data as DeviceNodeData | undefined}
+        source={pageNodes.find((n) => n.id === edge.source)?.data as DeviceNodeData | undefined}
+        target={pageNodes.find((n) => n.id === edge.target)?.data as DeviceNodeData | undefined}
         sourcePort={d.sourcePortLabel ?? ''}
         targetPort={d.targetPortLabel ?? ''}
       />
 
       <section className="cv-section">
-        <h3>Health rule</h3>
+        <h3>{tr('inspector.healthRule')}</h3>
         <Field
           label="What determines this link's state"
           hint="This is a rule you choose. Coreview does not trace the physical path."
@@ -2225,7 +2234,7 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
                 update(edgeId, { healthRule: { ...rule, probeId: e.target.value } })
               }
             >
-              <option value="">Select a probe</option>
+              <option value="">{tr('inspector.selectAProbe')}</option>
               {nodeProbes.map((p) => (
                 <option key={p.id} value={p.id}>
                   {nameOf(p.objectId)} — {p.name} ({p.target})
@@ -2243,7 +2252,7 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
             checked={d.enabled}
             onChange={(e) => update(edgeId, { enabled: e.target.checked })}
           />
-          Link enabled
+          {tr('inspector.linkEnabled')}
         </label>
         <label className="cv-check">
           <input
@@ -2251,7 +2260,7 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
             checked={d.maintenance}
             onChange={(e) => update(edgeId, { maintenance: e.target.checked })}
           />
-          Maintenance — suppress status
+          {tr('inspector.maintenanceSuppressStatus')}
         </label>
       </div>
 
@@ -2268,8 +2277,8 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
           value={d.kind ?? 'link'}
           onChange={(e) => update(edgeId, { kind: e.target.value as LinkData['kind'] })}
         >
-          <option value="link">A link between devices</option>
-          <option value="leader">A leader, pointing at something</option>
+          <option value="link">{tr('inspector.aLinkBetweenDevices')}</option>
+          <option value="leader">{tr('inspector.aLeaderPointingAt')}</option>
         </select>
       </Field>
 
@@ -2280,11 +2289,11 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
             value={d.lineStyle ?? 'auto'}
             onChange={(e) => update(edgeId, { lineStyle: e.target.value as LinkData['lineStyle'] })}
           >
-            <option value="auto">Auto — follows health</option>
-            <option value="solid">Solid</option>
-            <option value="dashed">Dashed</option>
-            <option value="dotted">Dotted</option>
-            <option value="dash-dot">Dash-dot</option>
+            <option value="auto">{tr('inspector.autoFollowsHealth')}</option>
+            <option value="solid">{tr('inspector.solid')}</option>
+            <option value="dashed">{tr('inspector.dashed')}</option>
+            <option value="dotted">{tr('inspector.dotted')}</option>
+            <option value="dash-dot">{tr('inspector.dashDot')}</option>
           </select>
         </Field>
         <Field label="Thickness">
@@ -2340,8 +2349,8 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
               update(edgeId, { colorMode: e.target.value as LinkData['colorMode'] })
             }
           >
-            <option value="status">Follow health</option>
-            <option value="fixed">A colour of its own</option>
+            <option value="status">{tr('inspector.followHealth')}</option>
+            <option value="fixed">{tr('inspector.aColourOfIts')}</option>
           </select>
         </Field>
         {d.colorMode === 'fixed' && (
@@ -2363,11 +2372,10 @@ function LinkInspector({ edgeId }: { edgeId: string }) {
             checked={Boolean(d.pinnedSides)}
             onChange={(e) => update(edgeId, { pinnedSides: e.target.checked })}
           />
-          Hold this link to the sides it is on now
+          {tr('inspector.holdThisLinkTo')}
         </label>
         <span className="cv-field-hint">
-          Links normally swing round to face wherever their devices have been moved. Hold one when
-          you have deliberately drawn it the long way round.
+          {tr('inspector.linksNormallySwingRound')}
         </span>
       </div>
 

@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { fuzzyScore, search, searchIndex, type SearchItem, type SearchKind } from '../lib/search';
 import { useStore } from '../state/store';
 import { DEVICE_LABEL, PALETTE_GROUPS } from './icons';
+import { t } from '../i18n';
 
 export interface PaletteCommand {
   id: string;
@@ -92,7 +93,7 @@ export function CommandPalette({
 
   return (
     <div className="cv-palette-backdrop" role="presentation" onMouseDown={onClose}>
-      <div className="cv-command-palette" role="dialog" aria-label="Command palette" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="cv-command-palette" role="dialog" aria-label={t('commandPalette.commandPalette')} onMouseDown={(e) => e.stopPropagation()}>
         <input
           ref={input}
           className="cv-input cv-command-input"

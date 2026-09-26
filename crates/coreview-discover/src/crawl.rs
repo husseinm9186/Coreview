@@ -27,7 +27,7 @@ use crate::interfaces::{addresses_from, parse_ip_interface_brief};
 use crate::lldp::parse_lldp_detail;
 use crate::snmp::{classify_identity, identify, SnmpAuth};
 use crate::ssh::{Credentials, Device, SshError, SshOptions, SshProgress, Secret};
-use crate::types::{AddressPreference, DeviceAddress, DeviceClass, Neighbor};
+use crate::types::{AddressPreference, DeviceAddress, DeviceClass, Evidence, Neighbor};
 
 #[derive(Clone, Debug)]
 pub struct CrawlOptions {
@@ -185,6 +185,11 @@ pub struct CrawledDevice {
     /// estate has a PTR record for it.
     #[serde(default)]
     pub dns_name: Option<String>,
+    /// LT-438: where each of the fields above came from, by field name —
+    /// `hostname`, `class`, `platform`, `uptime`, `addresses`, `serial` — so
+    /// the inspector can say why it says what it says (D-050).
+    #[serde(default)]
+    pub evidence: crate::types::EvidenceMap,
 }
 
 /// What a command line says about a device beyond its identity and
@@ -458,6 +463,18 @@ pub struct CrawlResult {
     /// outside the subnet filter. Still worth drawing.
     pub not_visited: Vec<Neighbor>,
     pub cancelled: bool,
+    /// LT-454: the host keys this crawl met for the first time and now
+    /// trusts. A finding, so that day-one trust is visible afterwards.
+    pub first_seen_keys: Vec<FirstSeenKey>,
+}
+
+/// LT-454: one host key trusted on first contact during a crawl.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirstSeenKey {
+    pub host: String,
+    pub port: u16,
+    pub fingerprint: String,
 }
 
 /// Everything one device contributes, so the visiting step is independent of
@@ -915,6 +932,14 @@ pub async fn crawl_from(
             cancelled: result.cancelled,
         })
         .await;
+    // LT-454: every key this crawl trusted on first contact, as findings.
+    if let Ok(mut keys) = store.lock() {
+        result.first_seen_keys = keys
+            .take_newly_seen()
+            .into_iter()
+            .map(|(host, port, fingerprint)| FirstSeenKey { host, port, fingerprint })
+            .collect();
+    }
     result
 }
 
@@ -1191,10 +1216,32 @@ pub fn device_from_snmp(
     // SNMP's view of what a device *is* is often weaker than a neighbour's:
     // sysServices is frequently 0 on equipment that plainly bridges. Prefer
     // whichever of the two actually knows something.
-    let class = match classify_identity(&identity) {
-        DeviceClass::Unknown => known.map(|n| n.class).unwrap_or(DeviceClass::Unknown),
-        decided => decided,
+    let (class, class_evidence) = match classify_identity(&identity) {
+        DeviceClass::Unknown => (
+            known.map(|n| n.class).unwrap_or(DeviceClass::Unknown),
+            match known {
+                Some(n) => Evidence::from_device("neighbour-report", &n.short_name).saying(n.platform.as_deref().unwrap_or("")),
+                None => Evidence::now("snmp:sysServices"),
+            },
+        ),
+        decided => (decided, Evidence::now("snmp:sysServices").saying(identity.description.as_deref().unwrap_or(""))),
     };
+    // LT-438: which reading each field came from.
+    let mut evidence = crate::types::EvidenceMap::new();
+    evidence.insert("hostname".into(), Evidence::now("snmp:sysName").saying(&hostname));
+    evidence.insert("class".into(), class_evidence);
+    evidence.insert("addresses".into(), Evidence::now("snmp:reached-on"));
+    if let Some(model) = identity.models.first() {
+        evidence.insert("platform".into(), Evidence::now("snmp:entity-mib").saying(model));
+    } else if let Some(d) = identity.description.as_deref() {
+        evidence.insert("platform".into(), Evidence::now("snmp:sysDescr").saying(d));
+    }
+    if !identity.serials.is_empty() {
+        evidence.insert("serial".into(), Evidence::now("snmp:entity-mib"));
+    }
+    if identity.uptime_ticks.is_some() {
+        evidence.insert("uptime".into(), Evidence::now("snmp:sysUpTime"));
+    }
 
     Some(CrawledDevice {
         hostname,
@@ -1242,6 +1289,7 @@ pub fn device_from_snmp(
             ..DeviceDetails::default()
         },
         dns_name: None,
+        evidence,
     })
 }
 
@@ -1465,7 +1513,9 @@ async fn visit(
     // `version` is the platform hint because it is already in hand and says
     // "Cisco IOS Software", "FortiOS" or the like.
     let mut default_next_hop = None;
-    for command in crate::defaultroute::commands_for(&version) {
+    // LT-451: one reading of the banner decides every command.
+    let dialect = crate::dialect::dialect_for(&version);
+    for command in dialect.default_route_commands() {
         let out = device.run(command).await.unwrap_or_default();
         if let Some(hop) = crate::defaultroute::parse_default_route(&out) {
             default_next_hop = Some(hop.to_string());
@@ -1482,7 +1532,7 @@ async fn visit(
     // from vendor documentation (D-026) and each result says so, so nothing
     // downstream can present a guess as a fact.
     let mut stack = None;
-    for command in crate::stacking::commands_for(&version) {
+    for command in dialect.stack_commands() {
         let out = device.run(command).await.unwrap_or_default();
         if let Some(found) = crate::stacking::parse_any(&out) {
             // A stack of one is a standalone switch. Recording it would put a
@@ -1858,8 +1908,22 @@ async fn visit(
 
     let reported = forti
         .as_ref()
-        .map(|f| reported_access_points(&f.access_points))
+        .map(|f| reported_access_points(&f.access_points, &hostname))
         .unwrap_or_default();
+
+    // LT-438: which reading each field came from. The prompt named it; the
+    // version banner said what it is and what it runs; the interface table
+    // gave its addresses; `show version` (or the FortiOS status) its uptime.
+    let mut evidence = crate::types::EvidenceMap::new();
+    evidence.insert("hostname".into(), Evidence::now("prompt").saying(&hostname));
+    evidence.insert("class".into(), Evidence::now("ssh:show version").saying(version_line.unwrap_or("")));
+    if platform.is_some() {
+        evidence.insert("platform".into(), Evidence::now("ssh:show version").saying(version_line.unwrap_or("")));
+    }
+    evidence.insert("addresses".into(), Evidence::now("ssh:show ip interface brief"));
+    if details.uptime_seconds.is_some() {
+        evidence.insert("uptime".into(), Evidence::now("ssh:show version"));
+    }
 
     Ok(Visit {
         reported,
@@ -1885,6 +1949,7 @@ async fn visit(
             stack,
             details,
             dns_name: None,
+            evidence,
         },
         neighbors,
     })
@@ -1894,8 +1959,10 @@ async fn visit(
 /// that rejects one gives an empty part, never a failed visit.
 async fn read_details(device: &mut Session, version: &str, wanted: DetailOptions) -> DeviceDetails {
     let mut details = DeviceDetails { uptime_seconds: crate::uptime::parse_uptime(version), ..DeviceDetails::default() };
+    // LT-451: the platform, read once, asked for every command below.
+    let platform = crate::dialect::dialect_for(version);
     if wanted.routes {
-        for command in crate::routes::commands_for(version) {
+        for command in platform.route_commands() {
             let out = device.run(command).await.unwrap_or_default();
             details.routes.extend(crate::routes::parse_routes(&out));
         }
@@ -1903,7 +1970,7 @@ async fn read_details(device: &mut Session, version: &str, wanted: DetailOptions
     // LT-347: each VRF's own table. Read after the global one so a device
     // that does not know the command has already answered everything else.
     if wanted.vrfs {
-        let dialect = crate::vrftables::dialect_for(version);
+        let dialect = platform.vrf();
         let listing = device.run(dialect.list_command()).await.unwrap_or_default();
         let vrfs = crate::vrftables::parse_vrf_list(&listing, dialect);
 
@@ -1948,7 +2015,7 @@ async fn read_details(device: &mut Session, version: &str, wanted: DetailOptions
 
     // LT-347: VTEPs, VNIs and the EVPN routes that say what is behind each.
     if wanted.overlay {
-        let dialect = crate::overlay::dialect_for(version);
+        let dialect = platform.overlay();
         let mut found = crate::overlay::Overlay::default();
         for command in dialect.commands() {
             let out = device.run(command).await.unwrap_or_default();
@@ -2076,7 +2143,7 @@ async fn read_device_store(device: &mut Session) -> Vec<crate::fortios::Endpoint
 /// cable, so no link to the FortiGate is produced. The AP's own LLDP is a
 /// cable, and it becomes the AP's neighbour — which is how a switch that
 /// answers nothing else ends up correctly drawn, attached to the right port.
-fn reported_access_points(aps: &[crate::fortios::AccessPoint]) -> Vec<CrawledDevice> {
+fn reported_access_points(aps: &[crate::fortios::AccessPoint], controller: &str) -> Vec<CrawledDevice> {
     aps.iter()
         .filter_map(|ap| {
             // Without an address there is nothing to probe and nothing to
@@ -2111,6 +2178,12 @@ fn reported_access_points(aps: &[crate::fortios::AccessPoint]) -> Vec<CrawledDev
                 port_channels: Vec::new(),
                 details: DeviceDetails::default(),
                 dns_name: None,
+                // LT-438: everything here is the controller's word for it.
+                evidence: crate::types::EvidenceMap::from([
+                    ("hostname".to_string(), Evidence::from_device("fortigate:wtp", controller).saying(&ap.name)),
+                    ("class".to_string(), Evidence::from_device("fortigate:wtp", controller)),
+                    ("addresses".to_string(), Evidence::from_device("fortigate:wtp", controller)),
+                ]),
             })
         })
         .collect()
@@ -2505,6 +2578,12 @@ mod tests {
             &std::collections::HashMap::new(),
             None,
         )
+        .inspect(|d| {
+            // LT-438: each field says which SNMP object it was read from.
+            assert_eq!(d.evidence.get("uptime").map(|e| e.source.as_str()), Some("snmp:sysUpTime"));
+            assert_eq!(d.evidence.get("hostname").map(|e| e.detail.as_str()), Some("LAB-CORE-SW1"));
+            assert!(d.evidence.get("uptime").and_then(|e| e.seen_at_ms).is_some());
+        })
         .expect("the device is named, so it is a device");
         // sysUpTime counts hundredths of a second.
         assert_eq!(d.details.uptime_seconds, Some(5_379_774));

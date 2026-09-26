@@ -65,9 +65,39 @@ pub struct OpenPort {
     pub service: String,
 }
 
+/// LT-440: the registered names of the ports an operator is likely to type
+/// beyond the common eighteen — the IANA registry's names, not anything
+/// observed on any network. What normally listens there, never what does.
+pub const KNOWN_SERVICES: &[(u16, &str)] = &[
+    (20, "FTP-data"), (25, "SMTP"), (49, "TACACS+"), (67, "DHCP"), (69, "TFTP"), (88, "Kerberos"),
+    (110, "POP3"), (111, "rpcbind"), (123, "NTP"), (143, "IMAP"), (161, "SNMP"), (162, "SNMP-trap"),
+    (179, "BGP"), (389, "LDAP"), (427, "SLP"), (465, "SMTPS"), (500, "IKE"), (514, "syslog"),
+    (520, "RIP"), (546, "DHCPv6"), (587, "Submission"), (631, "IPP"), (636, "LDAPS"), (830, "NETCONF"),
+    (873, "rsync"), (902, "VMware"), (993, "IMAPS"), (995, "POP3S"), (1080, "SOCKS"), (1194, "OpenVPN"),
+    (1433, "MSSQL"), (1521, "Oracle"), (1723, "PPTP"), (1812, "RADIUS"), (1813, "RADIUS-acct"), (1883, "MQTT"),
+    (2049, "NFS"), (2181, "ZooKeeper"), (2375, "Docker"), (2379, "etcd"), (3128, "Squid"), (5000, "HTTP-5000"),
+    (5060, "SIP"), (5061, "SIPS"), (5222, "XMPP"), (5601, "Kibana"), (5672, "AMQP"), (5985, "WinRM"),
+    (5986, "WinRM-HTTPS"), (6379, "Redis"), (6443, "Kubernetes"), (8000, "HTTP-8000"), (8081, "HTTP-8081"),
+    (8291, "Winbox"), (8728, "RouterOS-API"), (8883, "MQTTS"), (9090, "Prometheus"), (9200, "Elasticsearch"),
+    (10000, "Webmin"), (27017, "MongoDB"),
+];
+
 /// The registered name for a port number, where this knows one.
 pub fn service_for(port: u16) -> Option<&'static str> {
-    COMMON_PORTS.iter().find(|(p, _)| *p == port).map(|(_, name)| *name)
+    COMMON_PORTS
+        .iter()
+        .chain(KNOWN_SERVICES.iter())
+        .find(|(p, _)| *p == port)
+        .map(|(_, name)| *name)
+}
+
+/// LT-440: the list a sweep scans — the operator's own ports where given,
+/// named from the registry where known, otherwise the common eighteen.
+pub fn ports_to_scan(chosen: &[u16]) -> Vec<(u16, &'static str)> {
+    if chosen.is_empty() {
+        return COMMON_PORTS.to_vec();
+    }
+    chosen.iter().map(|p| (*p, service_for(*p).unwrap_or(""))).collect()
 }
 
 /// Tries every port at once and reports those that answered, in order.

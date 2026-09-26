@@ -10,6 +10,7 @@ import { useMemo } from 'react';
 import { useStore } from '../state/store';
 import { legendFor, type ColourBy } from '../lib/tinting';
 import { activePage } from '../lib/pages';
+import { t } from '../i18n';
 
 const WHAT: Record<ColourBy, string> = {
   health: 'Health',
@@ -39,7 +40,7 @@ export function ColourLegend() {
         <button
           type="button"
           className="cv-legend-off"
-          title="Go back to colouring by health"
+          title={t('colourLegend.goBackToColouring')}
           onClick={() => setCanvas({ colourBy: 'health' })}
         >
           ×

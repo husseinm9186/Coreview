@@ -3106,7 +3106,8 @@ await dismissRecovery();
   });
   await page.locator(".cv-tabs button", { hasText: "Event timeline" }).click();
   await page.waitForTimeout(400);
-  const timeCell = () => page.locator(".cv-panel table tbody tr td").first().innerText();
+  // LT-446 put a tick column first; the time is the first monospaced cell.
+  const timeCell = () => page.locator(".cv-panel table tbody tr td.cv-mono").first().innerText();
 
   await page.evaluate(() => window.__cvStore.getState().setSettings({ timeFormat: "dtg-zulu" }));
   await page.waitForTimeout(300);

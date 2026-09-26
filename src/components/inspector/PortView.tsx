@@ -6,6 +6,7 @@
  */
 import { shortInterface } from '../../lib/topology';
 import type { DeviceNodeData, InventoryPort } from '../../types/domain';
+import { t } from '../../i18n';
 
 export function findPort(d: DeviceNodeData | undefined, label: string | undefined): InventoryPort | undefined {
   if (!d?.inventory || !label?.trim()) return undefined;
@@ -26,11 +27,11 @@ function End({ device, port, partner }: { device: DeviceNodeData | undefined; po
         <p className="cv-help">{port ? 'No crawl has read this port yet.' : 'Name the port to see what a crawl read about it.'}</p>
       ) : (
         <dl className="cv-port-facts">
-          <dt>Plugged into</dt><dd>{partner}</dd>
-          <dt>Status</dt><dd>{p.status}</dd>
-          <dt>Speed</dt><dd>{[p.speed, p.duplex].filter(Boolean).join(', ') || '—'}</dd>
-          <dt>VLAN</dt><dd>{p.mode === 'trunk' ? `trunk${p.vlan !== undefined ? `, native ${p.vlan}` : ''}${p.trunkVlans ? ` (${p.trunkVlans})` : ''}` : (p.vlan ?? p.mode ?? '—')}</dd>
-          <dt>Errors</dt>
+          <dt>{t('portView.pluggedInto')}</dt><dd>{partner}</dd>
+          <dt>{t('portView.status')}</dt><dd>{p.status}</dd>
+          <dt>{t('portView.speed')}</dt><dd>{[p.speed, p.duplex].filter(Boolean).join(', ') || '—'}</dd>
+          <dt>{t('portView.vlan')}</dt><dd>{p.mode === 'trunk' ? `trunk${p.vlan !== undefined ? `, native ${p.vlan}` : ''}${p.trunkVlans ? ` (${p.trunkVlans})` : ''}` : (p.vlan ?? p.mode ?? '—')}</dd>
+          <dt>{t('portView.errors')}</dt>
           <dd className={bad ? 'is-warning' : ''}>
             {e ? `${e.input} in (${e.crc} CRC), ${e.output} out, ${e.collisions} collisions, ${e.drops} dropped, ${e.resets} resets` : 'not read'}
           </dd>
@@ -52,8 +53,8 @@ export function PortView({
   targetPort: string;
 }) {
   return (
-    <section className="cv-section cv-port-view" aria-label="Ports">
-      <h3>Ports</h3>
+    <section className="cv-section cv-port-view" aria-label={t('portView.ports')}>
+      <h3>{t('portView.ports')}</h3>
       <End device={source} port={sourcePort} partner={`${target?.label ?? '?'} ${targetPort}`.trim()} />
       <End device={target} port={targetPort} partner={`${source?.label ?? '?'} ${sourcePort}`.trim()} />
     </section>

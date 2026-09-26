@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { ipc, isDesktop, type HostKeyRow } from '../lib/ipc';
+import { t } from '../i18n';
 
 /**
  * The SSH host keys Coreview has remembered, and the ways to forget them.
@@ -51,25 +52,22 @@ export function HostKeySettings() {
 
   return (
     <section className="cv-hostkeys">
-      <h2>SSH host keys</h2>
+      <h2>{t('hostKeySettings.sshHostKeys')}</h2>
 
       {keys.length === 0 ? (
         <p className="cv-help">
-          None remembered yet. Coreview records a device's key the first time it connects, and
-          refuses to connect again if it changes.
+          {t('hostKeySettings.noneRememberedYetCoreview')}
         </p>
       ) : (
         <>
           <p className="cv-help">
-            Recorded on first contact. If one of these ever changes, Coreview will refuse to
-            connect until you forget the old key — which is the point, because a rebuilt device
-            and an intercepted connection look the same from here.
+            {t('hostKeySettings.recordedOnFirstContact')}
           </p>
           <table className="cv-table cv-hostkey-table">
             <thead>
               <tr>
-                <th>Device</th>
-                <th>Fingerprint</th>
+                <th>{t('hostKeySettings.device')}</th>
+                <th>{t('hostKeySettings.fingerprint')}</th>
                 <th />
               </tr>
             </thead>
@@ -98,16 +96,16 @@ export function HostKeySettings() {
               becomes first contact again, and a key that has changed will be accepted silently.
             </span>
             <button type="button" className="cv-btn cv-btn-small" onClick={() => setConfirming(false)}>
-              Keep them
+              {t('hostKeySettings.keepThem')}
             </button>
             <button type="button" className="cv-btn cv-btn-small cv-btn-danger" onClick={clearAll}>
-              Forget all
+              {t('hostKeySettings.forgetAll')}
             </button>
           </>
         ) : (
           <button type="button" className="cv-btn cv-btn-small" disabled={keys.length === 0}
             onClick={() => { setMessage(null); setConfirming(true); }}>
-            Clear saved host keys
+            {t('hostKeySettings.clearSavedHostKeys')}
           </button>
         )}
       </div>

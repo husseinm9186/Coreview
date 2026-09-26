@@ -15,6 +15,7 @@ import type {
   AttachedDevice,
   CrawledDevice,
   DeviceClassName,
+  Evidence,
   Neighbor,
   StackInfo,
 } from './ipc';
@@ -388,6 +389,8 @@ interface Entry {
   role?: InferredRole;
   /** How it was reached, in words an operator reads. */
   via?: string | null;
+  /** LT-438: where each field came from. */
+  evidence?: Record<string, Evidence>;
   reached: boolean;
   depth: number;
 }
@@ -454,6 +457,7 @@ export function buildTopology(
       stack: d.stack,
       inventory: inventoryOf(d, opts.collectedAt ?? Date.now()),
       dnsName: d.dnsName,
+      evidence: d.evidence,
       via:
         d.reachedBy === 'ssh'
           ? 'Logged in'
@@ -466,18 +470,25 @@ export function buildTopology(
   }
 
   // Neighbours, from the devices that reported them and from the leftovers.
-  const fromNeighbor = (n: Neighbor, depth: number): Entry => ({
-    key: identity(n.shortName || n.deviceId, n.addresses[0]?.ip ?? ''),
-    name: n.shortName || n.deviceId,
-    vendor: n.vendor,
-    address: n.addresses[0]?.ip ?? '',
-    klass: n.class,
-    platform: n.platform,
-    serial: n.serial,
-    reached: false,
-    depth,
-  });
-  for (const d of src.devices) for (const n of d.neighbors) note(fromNeighbor(n, d.hops + 1));
+  // LT-438: a device nobody logged into is known only by what a neighbour
+  // advertised, and every field says so, naming the neighbour where there
+  // is one.
+  const fromNeighbor = (n: Neighbor, depth: number, seenBy?: string): Entry => {
+    const said: Evidence = { source: 'neighbour-report', ...(seenBy ? { seenBy } : {}), detail: n.platform ?? '' };
+    return {
+      key: identity(n.shortName || n.deviceId, n.addresses[0]?.ip ?? ''),
+      name: n.shortName || n.deviceId,
+      vendor: n.vendor,
+      address: n.addresses[0]?.ip ?? '',
+      klass: n.class,
+      platform: n.platform,
+      serial: n.serial,
+      evidence: { hostname: said, class: said, platform: said, addresses: said, ...(n.serial ? { serial: said } : {}) },
+      reached: false,
+      depth,
+    };
+  };
+  for (const d of src.devices) for (const n of d.neighbors) note(fromNeighbor(n, d.hops + 1, d.hostname));
   for (const n of src.notVisited) note(fromNeighbor(n, 1));
 
   // Which bundle each member port belongs to, per device (LT-009). Two
@@ -687,6 +698,12 @@ export function buildTopology(
         Object.assign(patch, stackFields(e.stack));
         if (e.inventory) patch.inventory = e.inventory;
         if (e.dnsName) patch.dnsName = e.dnsName;
+        // LT-438: newer evidence replaces older per field; what this crawl
+        // did not read keeps its earlier source.
+        if (e.evidence && Object.keys(e.evidence).length > 0) {
+          const before = drawnDataById.get(seen)?.evidence ?? alreadyDrawnData.get(e.key)?.evidence ?? {};
+          patch.evidence = { ...before, ...e.evidence };
+        }
         // LT-214: a role only where nobody has written one; the glyph a person
         // chose is left alone.
         if (e.role && !(drawnDataById.get(seen)?.role ?? alreadyDrawnData.get(e.key)?.role)) {
@@ -726,6 +743,7 @@ export function buildTopology(
         deviceType: glyphFor(e.klass, e.role?.role),
         tags: [e.reached ? 'discovered' : 'seen-only'],
         ...(e.role ? { role: ROLE_LABEL[e.role.role], roleEvidence: e.role.reasons.join('; ') } : {}),
+        ...(e.evidence && Object.keys(e.evidence).length > 0 ? { evidence: e.evidence } : {}),
         addresses: e.address
           ? [{ id: uid(), label: 'Discovered', address: e.address, isPrimary: true }]
           : [],

@@ -46,6 +46,7 @@ import {
   subscribePaths,
 } from './pathRegistry';
 import { setTraced, tracedEdge } from './traced';
+import { t } from '../../i18n';
 
 /** Kept as a named export because the diagram exporter and several panels
  *  import it. The canvas uses the ground-aware set instead. */
@@ -994,7 +995,7 @@ function LiveEdgeInner(props: EdgeProps) {
             <div
               key={`grip-${g.index}`}
               className="cv-edge-grip nodrag nopan"
-              title="Drag to move this segment · press and hold to reset"
+              title={t('liveEdge.dragToMoveThis')}
               style={{ transform: `translate(-50%, -50%) translate(${g.at.x}px, ${g.at.y}px)` }}
               onPointerDown={dragElbow(pathVertices(livePath), g.index)}
             />
@@ -1002,7 +1003,7 @@ function LiveEdgeInner(props: EdgeProps) {
         {selected && isBezier && (
           <div
             className="cv-edge-curve nodrag nopan"
-            title="Drag to change how far the link curves"
+            title={t('liveEdge.dragToChangeHow')}
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
             onPointerDown={dragCurve}
             onDoubleClick={(e) => {
@@ -1057,7 +1058,7 @@ function LiveEdgeInner(props: EdgeProps) {
           <>
             <div
               className="cv-edge-endpoint nodrag nopan"
-              title="Drag to attach this end anywhere around the shape"
+              title={t('liveEdge.dragToAttachThis')}
               style={{ transform: `translate(-50%, -50%) translate(${sourceX}px, ${sourceY}px)` }}
               onPointerDown={dragAnchorEnd('source')}
               onDoubleClick={(e) => {
@@ -1072,7 +1073,7 @@ function LiveEdgeInner(props: EdgeProps) {
             />
             <div
               className="cv-edge-endpoint nodrag nopan"
-              title="Drag to attach this end anywhere around the shape"
+              title={t('liveEdge.dragToAttachThis')}
               style={{ transform: `translate(-50%, -50%) translate(${targetX}px, ${targetY}px)` }}
               onPointerDown={dragAnchorEnd('target')}
               onDoubleClick={(e) => {

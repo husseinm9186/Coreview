@@ -244,6 +244,74 @@ pub fn list_captures(root: &Path, name: &str, address: &str) -> Vec<PathBuf> {
     files
 }
 
+/// The kind a capture's file name carries, matched anywhere in the name
+/// because a filename pattern decides where `{kind}` goes (LT-151).
+fn kind_in(filename: &str) -> Option<BackupKind> {
+    [BackupKind::Running, BackupKind::Startup, BackupKind::ShowCommands, BackupKind::Session]
+        .into_iter()
+        .find(|k| filename.contains(k.slug()))
+}
+
+/// One capture in a device's history (LT-433).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureHistory {
+    /// The file name, which is what the other capture commands take.
+    pub file: String,
+    pub stamp: Option<String>,
+    /// `running-config`, `startup-config`, `show-commands` or `session`.
+    pub kind: Option<String>,
+    pub bytes: u64,
+    /// The next older capture of the same kind, if there is one — the thing a
+    /// diff of this one is against.
+    pub previous: Option<String>,
+    /// Whether this capture differs from `previous`. `None` for the first of
+    /// its kind, which has nothing to differ from.
+    pub changed: Option<bool>,
+}
+
+/// Every capture of one device, newest first, each flagged against the one
+/// before it of the same kind (LT-433).
+///
+/// **By bytes, not by diff.** The line diff is quadratic in the length of a
+/// configuration, and a history is asked for fifty captures at a time; a
+/// byte comparison answers "did it change" exactly, and the diff is drawn
+/// only for the capture somebody opens.
+pub fn history(root: &Path, name: &str) -> Vec<CaptureHistory> {
+    let files = list_captures(root, name, "");
+    let names: Vec<String> = files
+        .iter()
+        .filter_map(|p| p.file_name().map(|f| f.to_string_lossy().to_string()))
+        .collect();
+    let kinds: Vec<Option<BackupKind>> = names.iter().map(|n| kind_in(n)).collect();
+    let mut out = Vec::with_capacity(files.len());
+    for (i, path) in files.iter().enumerate() {
+        let previous = (i + 1..files.len()).find(|&j| kinds[j].is_some() && kinds[j] == kinds[i]);
+        let bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        let changed = previous.map(|j| {
+            // Sizes first: a different size is a change without a read.
+            let other = std::fs::metadata(&files[j]).map(|m| m.len()).unwrap_or(0);
+            other != bytes || std::fs::read(path).ok() != std::fs::read(&files[j]).ok()
+        });
+        out.push(CaptureHistory {
+            file: names[i].clone(),
+            stamp: crate::backup::stamp_in(&names[i]).map(str::to_string),
+            kind: kinds[i].map(|k| k.slug().to_string()),
+            bytes,
+            previous: previous.map(|j| names[j].clone()),
+            changed,
+        });
+    }
+    out
+}
+
+/// Whether a device's newest capture differs from the one before it of the
+/// same kind — the "changed since last backup" badge (LT-433). `None` where
+/// there is nothing to compare.
+pub fn changed_at_latest(root: &Path, name: &str) -> Option<bool> {
+    history(root, name).into_iter().next().and_then(|h| h.changed)
+}
+
 /// The most recent capture of one kind, if there is one.
 ///
 /// Matched on the kind anywhere in the name rather than at its end, because a
@@ -624,6 +692,41 @@ mod tests {
     }
 
     const CONFIG: &str = "version 15.2\n!\nhostname SW1\n!\ninterface Gi0/1\n!\nend";
+
+    /// LT-433: each capture is flagged against the one before it *of its
+    /// kind*, the first of a kind has nothing to differ from, and the badge
+    /// reads off the newest.
+    #[test]
+    fn a_devices_history_flags_what_changed_against_the_previous_of_its_kind() {
+        let root = temp_root("history");
+        let dev = "CORE-SW-01";
+        write_capture(&root, dev, "", "20260901-090000", BackupKind::Running, CONFIG).unwrap();
+        write_capture(&root, dev, "", "20260902-090000", BackupKind::Running, CONFIG).unwrap();
+        write_capture(&root, dev, "", "20260902-090100", BackupKind::Startup, CONFIG).unwrap();
+        let edited = CONFIG.replace("Gi0/1", "Gi0/2");
+        write_capture(&root, dev, "", "20260903-090000", BackupKind::Running, &edited).unwrap();
+        // Same length, different bytes: the size shortcut must not say "same".
+        let swapped = CONFIG.replace("SW1", "SW2");
+        write_capture(&root, dev, "", "20260904-090000", BackupKind::Startup, &swapped).unwrap();
+
+        let rows = history(&root, dev);
+        let seen: Vec<(Option<&str>, Option<&str>, Option<bool>)> =
+            rows.iter().map(|r| (r.stamp.as_deref(), r.kind.as_deref(), r.changed)).collect();
+        assert_eq!(
+            seen,
+            vec![
+                (Some("20260904-090000"), Some("startup-config"), Some(true)),
+                (Some("20260903-090000"), Some("running-config"), Some(true)),
+                (Some("20260902-090100"), Some("startup-config"), None),
+                (Some("20260902-090000"), Some("running-config"), Some(false)),
+                (Some("20260901-090000"), Some("running-config"), None),
+            ]
+        );
+        assert!(rows[1].previous.as_deref().unwrap().contains("20260902-090000"), "the running diff is against the previous running capture, not the startup one between them");
+        assert_eq!(changed_at_latest(&root, dev), Some(true));
+        assert_eq!(changed_at_latest(&root, "nobody"), None);
+        std::fs::remove_dir_all(&root).ok();
+    }
 
     #[test]
     fn a_capture_lands_in_a_folder_named_after_the_device() {

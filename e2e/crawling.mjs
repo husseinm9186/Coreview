@@ -260,7 +260,8 @@ const noSaveCall = await page.evaluate(() => window.__calls.filter((c) => c.cmd 
 check("every crawl is kept, by the crawl itself rather than by the page (LT-227, LT-424)",
   started?.input?.projectId === "crawling" && noSaveCall === 0, JSON.stringify({ projectId: started?.input?.projectId, noSaveCall }));
 // -------------------------------------------------------- LT-213 findings
-const findings = await panel.locator(".cv-findings li").evaluateAll((lis) => lis.map((li) => [li.dataset.kind, li.textContent]));
+// LT-444 put a Details button on each finding; the finding is the text without it.
+const findings = await panel.locator(".cv-findings li").evaluateAll((lis) => lis.map((li) => [li.dataset.kind, Array.from(li.childNodes).filter((n) => n.nodeName !== "BUTTON").map((n) => n.textContent).join("").trim()]));
 check("the result lists what is wrong", JSON.stringify(findings) === JSON.stringify([
   ["unidentified", "Unidentified link CORE-SW1 Gi0/1 is an up trunk with no neighbour reporting on it."],
   ["orphan", "Orphan CORE-SW1 was reached but has no link to anything the crawl found."],

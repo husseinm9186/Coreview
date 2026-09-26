@@ -17,6 +17,7 @@ import { diffTopology, hasChanges } from '../lib/topologyDiff';
 import type { CrawledDevice, Neighbor } from '../lib/ipc';
 import { useStore } from '../state/store';
 import { activePage } from '../lib/pages';
+import { t } from '../i18n';
 
 function Group({
   title,
@@ -101,9 +102,9 @@ export function ChangeReport({
   if (!hasChanges(change)) {
     return (
       <div className="cv-change">
-        <h3>Nothing has changed</h3>
+        <h3>{t('changeReport.nothingHasChanged')}</h3>
         <p className="cv-help">
-          Every device and link on the diagram is still where this crawl found it.
+          {t('changeReport.everyDeviceAndLink')}
         </p>
       </div>
     );
@@ -111,9 +112,9 @@ export function ChangeReport({
 
   return (
     <div className="cv-change">
-      <h3>What changed since the diagram was drawn</h3>
+      <h3>{t('changeReport.whatChangedSinceThe')}</h3>
       <Group
-        title="Gone"
+        title={t('changeReport.gone')}
         hint="On the diagram, not found by this crawl. Either it has been removed, or the crawl could not reach it."
         items={change.missing.map((m) => ({
           key: m.id,
@@ -123,7 +124,7 @@ export function ChangeReport({
         onShow={show}
       />
       <Group
-        title="New"
+        title={t('changeReport.new')}
         hint="Found by this crawl and not on the diagram."
         items={change.added.map((a) => ({
           key: a.key,
@@ -131,7 +132,7 @@ export function ChangeReport({
         }))}
       />
       <Group
-        title="Moved address"
+        title={t('changeReport.movedAddress')}
         hint="Same device, different address to the one drawn."
         items={change.changed.map((c) => ({
           key: c.id,
@@ -141,13 +142,13 @@ export function ChangeReport({
         onShow={show}
       />
       <Group
-        title="Links gone"
+        title={t('changeReport.linksGone')}
         hint="Drawn on the diagram, not seen by this crawl."
         items={change.linksGone.map((l) => ({ key: l.id, text: l.description, edgeId: l.id }))}
         onShow={show}
       />
       <Group
-        title="Links new"
+        title={t('changeReport.linksNew')}
         hint="Seen by this crawl, not drawn. A link that is both gone and new is a cable that moved port."
         items={change.linksNew.map((l) => ({ key: l.description, text: l.description }))}
       />
