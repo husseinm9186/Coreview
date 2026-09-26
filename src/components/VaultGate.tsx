@@ -91,7 +91,7 @@ export function VaultPassphraseForm({
     if (exists) return null;
     if (passphrase.length < minimum) {
       const short = minimum - passphrase.length;
-      return `${short} more character${short === 1 ? '' : 's'} — a new vault's passphrase must be at least ${minimum}.`;
+      return `${t('plural.moreCharacter', { count: short })} — a new vault's passphrase must be at least ${minimum}.`;
     }
     if (!again) return 'Type the passphrase again to confirm it.';
     if (again !== passphrase) return 'The two passphrases do not match.';

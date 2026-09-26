@@ -20,11 +20,9 @@ use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
-use crate::cdp::parse_cdp_detail;
 use crate::filter::DiscoveryFilter;
 use crate::hostkeys::HostKeyStore;
 use crate::interfaces::{addresses_from, parse_ip_interface_brief};
-use crate::lldp::parse_lldp_detail;
 use crate::snmp::{classify_identity, identify, SnmpAuth};
 use crate::ssh::{Credentials, Device, SshError, SshOptions, SshProgress, Secret};
 use crate::types::{AddressPreference, DeviceAddress, DeviceClass, Evidence, Neighbor};
@@ -1023,22 +1021,19 @@ fn worth_retrying(e: &SshError) -> bool {
     }
 }
 
-/// CDP neighbours, from whichever form the device answered in (LT-391).
-fn cdp_neighbours(cisco: &str, aruba: &str) -> Vec<Neighbor> {
-    let found = parse_cdp_detail(cisco);
-    if found.is_empty() {
-        return crate::arubasw::parse_cdp_neighbors(aruba);
+/// Asks each way of reading a table in turn and keeps the first that yields
+/// anything, with the command that did (LT-461). Every command is best
+/// effort: a platform that rejects one gives an empty answer, never a failed
+/// visit.
+async fn read_first<T>(device: &mut Session, readings: &'static [crate::dialect::Reading<T>]) -> (Vec<T>, Option<&'static str>) {
+    for reading in readings {
+        let out = device.run(reading.command).await.unwrap_or_default();
+        let found = (reading.parse)(&out);
+        if !found.is_empty() {
+            return (found, Some(reading.command));
+        }
     }
-    found
-}
-
-/// LLDP neighbours, the same way.
-fn lldp_neighbours(cisco: &str, aruba: &str) -> Vec<Neighbor> {
-    let found = parse_lldp_detail(cisco);
-    if found.is_empty() {
-        return crate::arubasw::parse_lldp_remote_devices(aruba);
-    }
-    found
+    (Vec::new(), None)
 }
 
 /// Whatever the login stream collected, if anything (LT-384).
@@ -1390,42 +1385,23 @@ async fn visit(
 
     let hostname = device.hostname().to_string();
 
+    // LT-461: the banner first, because the dialect it names decides how
+    // every table below is asked. It used to be read after the neighbours,
+    // which is why the Dell question had to wait until after it.
+    let version = device.run("show version").await.unwrap_or_default();
+    // LT-451: one reading of the banner decides every command.
+    let dialect = crate::dialect::dialect_for(&version);
+    // LT-407: Dell speaks three dialects and none of them is Cisco's; the
+    // VLAN and model readers further down still ask which.
+    let dell = crate::dell::detect(&version);
     // Both protocols, always. CDP misses everything that is not Cisco, and
     // LLDP is off by default on plenty of Cisco kit — asking only one leaves a
-    // silent hole in the map.
-    let cdp = device.run("show cdp neighbors detail").await.unwrap_or_default();
-    let lldp = device.run("show lldp neighbors detail").await.unwrap_or_default();
-    // LT-391: ArubaOS-Switch answers both of those and means something else by
-    // them. Its `show cdp neighbors detail` returned 453 lines on the
-    // operator's switch and produced not one neighbour, because what came back
-    // is a fixed-width table and the parser was reading Cisco paragraphs.
-    //
-    // Asked only when the Cisco form found nothing, so a Cisco that genuinely
-    // has no neighbours pays one extra rejected command and a working estate
-    // pays nothing.
-    let aruba_cdp = if parse_cdp_detail(&cdp).is_empty() {
-        device.run("show cdp neighbors").await.unwrap_or_default()
-    } else {
-        String::new()
-    };
-    let aruba_lldp = if parse_lldp_detail(&lldp).is_empty() {
-        device.run("show lldp info remote-device").await.unwrap_or_default()
-    } else {
-        String::new()
-    };
+    // silent hole in the map. Each is asked the dialect's way: the Cisco form
+    // first, and the other spellings only when it produced nothing (LT-391,
+    // LT-407) — the sequence is written down in `dialect.rs`, not here.
+    let (cdp_found, cdp_via) = read_first(&mut device, dialect.cdp_readings()).await;
+    let (lldp_found, lldp_via) = read_first(&mut device, dialect.lldp_readings()).await;
     let brief = device.run("show ip interface brief").await.unwrap_or_default();
-    let version = device.run("show version").await.unwrap_or_default();
-    // LT-407: Dell speaks three dialects and none of them is Cisco's. Known
-    // here, because everything that asks a Dell-shaped question comes after
-    // this line and nothing before it can know the platform.
-    let dell = crate::dell::detect(&version);
-    // Asked here, while the session is still open: the neighbours are merged
-    // further down, after it has been closed.
-    let dell_lldp = if dell.is_some() && parse_lldp_detail(&lldp).is_empty() {
-        device.run("show lldp neighbors").await.unwrap_or_default()
-    } else {
-        String::new()
-    };
     // LLDP does not require a device to advertise a management address, and
     // plenty do not — a FortiSwitch on the network this was built against is
     // named and classified correctly and has nowhere to connect. The switch
@@ -1437,47 +1413,26 @@ async fn visit(
     let near: Option<std::net::Ipv4Addr> = address.parse().ok();
     let inside = |ip: std::net::Ipv4Addr| options.filter.allows_address(&ip.to_string());
     let read_arp = |text: &str| crate::arp::parse_arp_table_near(text, near, inside);
-    let mut arp = read_arp(&device.run("show ip arp").await.unwrap_or_default());
-    // LT-391: ArubaOS-Switch spells it `show arp`, and until now every one of
-    // these was asked in Cisco and answered with a rejection. The fallback is
-    // by *result* rather than by platform string on purpose: a device that
-    // answered the first command with nothing has cost us one more command,
-    // and a platform string that is wrong costs nothing at all.
-    //
     // The ARP parser itself needs no help — it finds the first address and the
     // first MAC on each line rather than reading by position, and Aruba's
-    // `aabbcc-001122` spelling is a MAC by that rule already.
-    if arp.is_empty() {
-        arp = read_arp(&device.run("show arp").await.unwrap_or_default());
+    // `aabbcc-001122` spelling is a MAC by that rule already — so one parser
+    // reads every spelling the dialect lists (LT-391), first answer kept.
+    let mut arp = HashMap::new();
+    for command in dialect.arp_commands() {
+        arp = read_arp(&device.run(command).await.unwrap_or_default());
+        if !arp.is_empty() {
+            break;
+        }
     }
     // What the switch has learned on each port. Discovery protocols only see
     // devices that speak them; a printer or a workstation announces nothing,
-    // and on a real diagram those are most of what is plugged in.
-    let mut learned = crate::mac_table::parse_mac_table(
-        &device.run("show mac address-table").await.unwrap_or_default(),
-    );
-    if learned.is_empty() {
-        learned = crate::arubasw::parse_mac_address_table(
-            &device.run("show mac-address").await.unwrap_or_default(),
-        );
-    }
-    // LT-407: OS9 spells the same table with hyphens, and OS10 writes its
-    // ports as `ethernet1/1/6` rather than `Gi1/0/6`.
-    if learned.is_empty() {
-        if let Some(os) = dell {
-            let command = if os == crate::dell::DellOs::Os9 {
-                "show mac-address-table"
-            } else {
-                "show mac address-table"
-            };
-            learned = crate::dell::parse_mac_address_table(&device.run(command).await.unwrap_or_default());
-        }
-    }
-    // What is aggregated (LT-009). FortiOS rejects the command harmlessly and
-    // the parser reads an empty answer as no bundles.
-    let mut port_channels = crate::etherchannel::parse_etherchannel_summary(
-        &device.run("show etherchannel summary").await.unwrap_or_default(),
-    );
+    // and on a real diagram those are most of what is plugged in. Cisco's
+    // spelling, then Aruba's, then Dell's (LT-407), as the dialect lists them.
+    let (mut learned, _) = read_first(&mut device, dialect.mac_table_readings()).await;
+    // What is aggregated (LT-009): Cisco's summary, and `show trunks` on an
+    // ArubaOS-Switch (LT-395) or `show port-channel summary` on a Dell
+    // (LT-407) when that produced nothing.
+    let (port_channels, _) = read_first(&mut device, dialect.port_channel_readings()).await;
     // LT-395: ArubaOS-Switch. Its `show version` never says "Aruba", so the
     // arms keyed on that word missed it; the image stamp is its signature.
     // Asked by platform rather than by result here, because a Cisco with no
@@ -1498,14 +1453,6 @@ async fn visit(
     } else {
         crate::arubasw::System::default()
     };
-    if aruba_switch && port_channels.is_empty() {
-        port_channels = crate::arubasw::parse_trunks(&device.run("show trunks").await.unwrap_or_default());
-    }
-    if dell.is_some() && port_channels.is_empty() {
-        port_channels = crate::dell::parse_port_channel_summary(
-            &device.run("show port-channel summary").await.unwrap_or_default(),
-        );
-    }
 
     // LT-131: which way this device sends unknown traffic. One line, not a
     // forwarding table — the operator asked for direction and warned it must
@@ -1513,8 +1460,6 @@ async fn visit(
     // `version` is the platform hint because it is already in hand and says
     // "Cisco IOS Software", "FortiOS" or the like.
     let mut default_next_hop = None;
-    // LT-451: one reading of the banner decides every command.
-    let dialect = crate::dialect::dialect_for(&version);
     for command in dialect.default_route_commands() {
         let out = device.run(command).await.unwrap_or_default();
         if let Some(hop) = crate::defaultroute::parse_default_route(&out) {
@@ -1745,24 +1690,21 @@ async fn visit(
         });
     }
 
-    let cdp_found = cdp_neighbours(&cdp, &aruba_cdp);
-    let mut lldp_found = lldp_neighbours(&lldp, &aruba_lldp);
-    // LT-407: OS10 answers `show lldp neighbors` with a four-column table
-    // rather than Cisco's paragraph per neighbour.
-    if lldp_found.is_empty() && !dell_lldp.is_empty() {
-        lldp_found = crate::dell::parse_lldp_neighbors(&dell_lldp);
-    }
     // LT-392: what each protocol produced and which way of asking it
     // answered. A switch with no neighbours on the diagram is either one that
     // has none or one whose answer was not understood, and only this says
     // which.
+    let via = |answered: Option<&'static str>, first: &'static str| match answered {
+        Some(command) if command != first => format!(" from `{command}`"),
+        _ => String::new(),
+    };
     crate::say!(
         crate::debuglog::Area::Crawl,
         "{address}: CDP gave {} neighbour(s){}, LLDP gave {}{}; ARP {} entr(ies), MAC table {} entr(ies) on {} port(s)",
         cdp_found.len(),
-        if aruba_cdp.is_empty() { "" } else { " from `show cdp neighbors`" },
+        via(cdp_via, dialect.cdp_readings()[0].command),
         lldp_found.len(),
-        if aruba_lldp.is_empty() { "" } else { " from `show lldp info remote-device`" },
+        via(lldp_via, dialect.lldp_readings()[0].command),
         arp.len(),
         learned.len(),
         crate::mac_table::count_by_port(&learned).len(),

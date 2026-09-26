@@ -130,7 +130,8 @@ function toDraft(pages: ImportedPage[]): DraftPage[] {
 }
 
 export function VisioImportPanel() {
-  const store = useStore();
+  const doc = useStore((s) => s.doc);
+  const meta = useStore((s) => s.meta);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -221,7 +222,7 @@ export function VisioImportPanel() {
     draft.forEach((page, pageIndex) => {
       // The first page goes onto whatever is open; the rest get their own, so
       // an 18-page drawing does not land on top of itself.
-      if (pageIndex > 0) store.addPage(page.name || `Page ${pageIndex + 1}`);
+      if (pageIndex > 0) useStore.getState().addPage(page.name || `Page ${pageIndex + 1}`);
 
       const { placed, point } = placeDrawing(
         page.devices.map((d) => ({
@@ -284,12 +285,12 @@ export function VisioImportPanel() {
           const asset = shapeProperty(d.properties, 'Asset Number', 'Asset Tag', 'Asset ID');
           if (asset) data.assetTag = asset;
         }
-        store.addNode(node);
+        useStore.getState().addNode(node);
         idToNode.set(d.id, node.id);
         devices += 1;
 
-        if (withProbes && store.meta && d.address) {
-          store.upsertProbe(newProbe('node', node.id, store.meta.id, d.address, 'Imported'));
+        if (withProbes && meta && d.address) {
+          useStore.getState().upsertProbe(newProbe('node', node.id, meta.id, d.address, 'Imported'));
         }
       }
 
@@ -299,15 +300,15 @@ export function VisioImportPanel() {
         if (!a || !b) continue;
         // Imported links take this diagram's own link style, with the two
         // departures `importedLinkData` explains.
-        const style = linkStyleDefaults(activePage(store.doc).canvas.linkStyle);
+        const style = linkStyleDefaults(activePage(doc).canvas.linkStyle);
         const data = importedLinkData(style, { ...l, waypoints: l.waypoints.map(([x, y]) => point(x, y)) });
-        store.addEdge({ id: uid(), source: a, target: b, data } as TopoEdge);
+        useStore.getState().addEdge({ id: uid(), source: a, target: b, data } as TopoEdge);
         links += 1;
       }
     });
 
-    store.setStatusMessage(
-      `Imported ${devices} device${devices === 1 ? '' : 's'} and ${links} link${links === 1 ? '' : 's'} from ${file}`,
+    useStore.getState().setStatusMessage(
+      `Imported ${t('plural.device', { count: devices })} and ${t('plural.link', { count: links })} from ${file}`,
     );
     setDraft(null);
     setWarnings([]);
@@ -368,8 +369,7 @@ export function VisioImportPanel() {
           </label>
 
           <p className="cv-field-hint">
-            {file}: {totals.devices} devices, {totals.links} links across {draft.length} page
-            {draft.length === 1 ? '' : 's'} — {totals.named} named, {totals.addressed} with an
+            {file}: {totals.devices} devices, {totals.links} links across {t('plural.page', { count: draft.length })} — {totals.named} named, {totals.addressed} with an
             address, {totals.ported} with a port.
           </p>
 

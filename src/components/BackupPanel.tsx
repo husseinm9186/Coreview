@@ -96,7 +96,9 @@ export function BackupPanel({
   fromCrawl?: { address: string; name: string }[];
   onConsumed?: () => void;
 } = {}) {
-  const store = useStore();
+  const doc = useStore((s) => s.doc);
+  const meta = useStore((s) => s.meta);
+  const settings = useStore((s) => s.settings);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [enablePassword, setEnablePassword] = useState('');
@@ -173,7 +175,7 @@ export function BackupPanel({
   const targets = useMemo(() => {
     // Every page (LT-094): a device's config doesn't care which page it is
     // drawn on, the same reasoning as the Monitored Objects table.
-    const fromDiagram = allNodes(store.doc)
+    const fromDiagram = allNodes(doc)
       .filter((n) => n.type === 'device')
       .map((n) => {
         const data = n.data as {
@@ -193,7 +195,7 @@ export function BackupPanel({
           role: data.role,
           tags: data.tags ?? [],
           // The device's own Site, else the project's, for `{site}` (LT-151).
-          site: data.site?.trim() || store.meta?.site || '',
+          site: data.site?.trim() || meta?.site || '',
           // Matching sets first, then the device's own list (LT-150).
           commands: commandsFor(sets, data),
           own: parseCommandList(data.showCommands).length,
@@ -216,10 +218,10 @@ export function BackupPanel({
           commands: [] as string[],
           own: 0,
           setNames: [] as string[],
-          site: store.meta?.site ?? '',
+          site: meta?.site ?? '',
         })),
     ];
-  }, [store.doc, store.meta, fromCrawl, sets]);
+  }, [doc, meta, fromCrawl, sets]);
 
   const refreshDevices = () => {
     void ipc
@@ -311,7 +313,7 @@ export function BackupPanel({
       .onBackupEvent((e: BackupEvent) => {
         switch (e.kind) {
           case 'started':
-            setStatus(`Backing up ${e.devices} device${e.devices === 1 ? '' : 's'}…`);
+            setStatus(`Backing up ${t('plural.device', { count: e.devices })}…`);
             // The group launched last is now really running (LT-154).
             if (queueRef.current) queueRef.current.started = true;
             break;
@@ -405,7 +407,7 @@ export function BackupPanel({
     if (q.stopOnFailure && groupFailed > 0) {
       setRunning(false);
       setAwaitingNext({ index: i + 1, name: next.name,
-        why: `${name} had ${groupFailed} failure${groupFailed === 1 ? '' : 's'}` });
+        why: `${name} had ${t('plural.failure', { count: groupFailed })}` });
       return;
     }
     if (q.pause) {
@@ -505,7 +507,7 @@ export function BackupPanel({
     );
   }
 
-  if (!store.settings.backupFolder) {
+  if (!settings.backupFolder) {
     return (
       <p className="cv-help cv-discover-empty">
         Choose a backup folder first, on the Coreview start screen. Configurations are written
@@ -667,7 +669,7 @@ export function BackupPanel({
                 <span className={`cv-verdict is-${p.state === 'done' && p.failed > 0 ? 'fail' : p.state}`}>
                   {STEP_LABEL[p.state]}
                 </span>{' '}
-                {p.name} · {p.devices} device{p.devices === 1 ? '' : 's'}
+                {p.name} · {t('plural.device', { count: p.devices })}
                 {p.state === 'done' && ` — ${p.saved} saved, ${p.failed} failed`}
               </li>
             ))}
@@ -759,7 +761,7 @@ export function BackupPanel({
 
       <p className="cv-discover-status">
         {problem ? <span className="cv-discover-problem">{problem}</span>
-          : status ?? `Saving to ${store.settings.backupFolder}`}
+          : status ?? `Saving to ${settings.backupFolder}`}
       </p>
 
       <div className="cv-backup-columns">
@@ -881,7 +883,7 @@ export function BackupPanel({
               <p className="cv-help">
                 {changed === 0
                   ? 'Identical — nothing changed between these two captures.'
-                  : `${changed} line${changed === 1 ? '' : 's'} differ.`}
+                  : `${t('plural.line', { count: changed })} differ.`}
               </p>
               {changed > 0 && (
                 <pre className="cv-diff-body">
@@ -917,7 +919,7 @@ export function BackupPanel({
                 <select className="cv-input" value={beforeRun} onChange={(e) => setBeforeRun(e.target.value)}>
                   {runs.map((r) => (
                     <option key={r.stamp} value={r.stamp}>
-                      {describeStamp(r.stamp)} · {r.devices} device{r.devices === 1 ? '' : 's'}
+                      {describeStamp(r.stamp)} · {t('plural.device', { count: r.devices })}
                     </option>
                   ))}
                 </select>
@@ -927,7 +929,7 @@ export function BackupPanel({
                 <select className="cv-input" value={afterRun} onChange={(e) => setAfterRun(e.target.value)}>
                   {runs.map((r) => (
                     <option key={r.stamp} value={r.stamp}>
-                      {describeStamp(r.stamp)} · {r.devices} device{r.devices === 1 ? '' : 's'}
+                      {describeStamp(r.stamp)} · {t('plural.device', { count: r.devices })}
                     </option>
                   ))}
                 </select>
@@ -949,9 +951,7 @@ export function BackupPanel({
                 <p className="cv-help">
                   {comparison.length === 0
                     ? 'Neither run has any captures to compare.'
-                    : `${comparison.filter((d) => d.changed > 0).length} of ${comparison.length} capture${
-                        comparison.length === 1 ? '' : 's'
-                      } changed between ${describeStamp(beforeRun)} and ${describeStamp(afterRun)}.`}
+                    : `${comparison.filter((d) => d.changed > 0).length} of ${t('plural.capture', { count: comparison.length })} changed between ${describeStamp(beforeRun)} and ${describeStamp(afterRun)}.`}
                 </p>
                 {comparison
                   .filter((d) => !onlyChanged || d.changed > 0)

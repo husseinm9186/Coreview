@@ -39,7 +39,8 @@ function nameSourceLabel(source: SweepHit['nameSource']): string {
  * of a busy subnet finds printers and laptops nobody wants on a diagram.
  */
 export function DiscoverPanel() {
-  const store = useStore();
+  const doc = useStore((s) => s.doc);
+  const meta = useStore((s) => s.meta);
   const [subnets, setSubnets] = useState<string[]>(['192.168.1.0/24']);
   const [timeoutMs, setTimeoutMs] = useState(1000);
   const [concurrency, setConcurrency] = useState(64);
@@ -135,7 +136,7 @@ export function DiscoverPanel() {
       const r = await ipc.readNmapXml(await file.text());
       seen.current = new Set(r.hosts.map((h) => h.ip));
       setHits(r.hosts.map((h) => ({ ...h, picked: true })));
-      setSummary(`${r.hosts.length} host${r.hosts.length === 1 ? '' : 's'} up in ${file.name}${r.scanned ? ` (of ${r.scanned} scanned)` : ''}`);
+      setSummary(`${t('plural.host', { count: r.hosts.length })} up in ${file.name}${r.scanned ? ` (of ${r.scanned} scanned)` : ''}`);
     } catch (err) {
       setProblem(err instanceof Error ? err.message : String(err));
     }
@@ -173,8 +174,8 @@ export function DiscoverPanel() {
           }),
         );
         setGatewayNote(
-          `Read ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} from ${gateway}'s ARP table; ` +
-            `filled ${filled} MAC ${filled === 1 ? 'address' : 'addresses'} this machine could not see.`,
+          `Read ${t('plural.entry', { count: entries.length })} from ${gateway}'s ARP table; ` +
+            `filled ${t('plural.macAddress', { count: filled })} this machine could not see.`,
         );
       })
       .catch((err: unknown) => setProblem(err instanceof Error ? err.message : String(err)))
@@ -185,15 +186,15 @@ export function DiscoverPanel() {
   // about each host. Every page, because a crawl may have drawn a site on a
   // page other than the one being looked at.
   const known = useMemo(() => {
-    const nodes = allNodes(store.doc);
+    const nodes = allNodes(doc);
     return new Map(hits.map((h) => [h.ip, knownOnDiagram(nodes, h)] as const));
-  }, [hits, store.doc]);
+  }, [hits, doc]);
 
   /** Drops the ticked addresses onto the canvas as generic devices, laid out
    *  in a grid clear of whatever is already there. */
   const addPicked = () => {
     if (!picked.length) return;
-    const existing = activePage(store.doc).nodes;
+    const existing = activePage(doc).nodes;
     const bottom = existing.reduce((m, n) => Math.max(m, n.position.y + 120), 0);
     // Placed below whatever is already drawn, so a sweep never lands on top
     // of an existing diagram.
@@ -215,7 +216,7 @@ export function DiscoverPanel() {
         // "Ping sweep" over "SSH login" or its own weaker name over the one
         // the device gave.
         const current = existing.find((n) => n.id === already)?.data as Partial<DeviceNodeData> | undefined;
-        store.updateNodeData(already, sweepPatch(current ?? {}, h) as DeviceNodeData);
+        useStore.getState().updateNodeData(already, sweepPatch(current ?? {}, h) as DeviceNodeData);
         updated += 1;
         return;
       }
@@ -246,18 +247,18 @@ export function DiscoverPanel() {
       if (h.ports.length) data.openPorts = h.ports.map((p) => `${p.port}/${p.service}`).join(', ');
       data.discoveredVia = 'Ping sweep';
       data.addresses = [{ id: uid(), label: 'Discovered', address: h.ip, isPrimary: true }];
-      store.addNode(node);
+      useStore.getState().addNode(node);
       // The sweep just proved this address answers ICMP. Drawing it as an
       // object nothing ever checks would throw that away and leave the
       // operator adding twenty probes by hand.
-      if (store.meta) store.upsertProbe(newProbe('node', node.id, store.meta.id, h.ip, 'Discovered'));
+      if (meta) useStore.getState().upsertProbe(newProbe('node', node.id, meta.id, h.ip, 'Discovered'));
     });
     // Says what actually happened. "Added 20" when twelve were already drawn
     // is how the duplication went unnoticed for as long as it did.
     const parts = [];
-    if (placed) parts.push(`Added ${placed} ${placed === 1 ? 'device' : 'devices'}`);
+    if (placed) parts.push(`Added ${t('plural.device', { count: placed })}`);
     if (updated) parts.push(`updated ${updated} already on the diagram`);
-    store.setStatusMessage(parts.length ? parts.join(', ') : 'Everything picked was already drawn');
+    useStore.getState().setStatusMessage(parts.length ? parts.join(', ') : 'Everything picked was already drawn');
     setHits((prev) => prev.map((h) => ({ ...h, picked: false })));
   };
 

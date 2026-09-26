@@ -30,5 +30,10 @@ describe('the running jobs (LT-432)', () => {
     expect(line).toBe('Backup · Backing up · 2 of 9 · 1 min');
     const stopping = jobLine(snap({ kind: 'sweep', phase: 'Sweeping', done: 10, total: 254, state: 'stopping', startedMs: 0 }), 5_000);
     expect(stopping).toBe('Sweep · Sweeping · 10 of 254 · 5 s · stopping');
+    // LT-460: the two kinds that used to run outside the registry.
+    const meraki = jobLine(snap({ kind: 'meraki', phase: 'Backing up Branch', done: 1, total: 4, startedMs: 0 }), 3_000);
+    expect(meraki).toBe('Meraki · Backing up Branch · 1 of 4 · 3 s');
+    const scan = jobLine(snap({ kind: 'icon-scan', phase: 'Converting EMF/WMF', done: 40, total: 120, startedMs: 0 }), 3_000);
+    expect(scan).toBe('Icon library · Converting EMF/WMF · 40 of 120 · 3 s');
   });
 });

@@ -57,7 +57,7 @@ export function ProbeHistory({ probeId }: { probeId: string }) {
         <span className="cv-help" aria-live="polite">
           {samples.length === 0
             ? span === 0 ? 'Nothing yet — start validation' : 'Nothing recorded in this window'
-            : `${samples.length} result${samples.length === 1 ? '' : 's'}${up !== null ? ` · ${up}% up` : ''}${spark.min !== null ? ` · ${Math.round(spark.min)}–${Math.round(spark.max!)} ms` : ''}`}
+            : `${t('plural.result', { count: samples.length })}${up !== null ? ` · ${up}% up` : ''}${spark.min !== null ? ` · ${Math.round(spark.min)}–${Math.round(spark.max!)} ms` : ''}`}
         </span>
       </div>
       {samples.length > 0 && (

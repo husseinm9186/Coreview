@@ -208,7 +208,8 @@ export function CrawlPanel({
    *  right. */
   onBackup: (targets: { address: string; name: string }[]) => void;
 }) {
-  const store = useStore();
+  const doc = useStore((s) => s.doc);
+  const meta = useStore((s) => s.meta);
   const [seed, setSeed] = useState('');
   const [subnets, setSubnets] = useState<string[]>([]);
   const [username, setUsername] = useState('');
@@ -393,7 +394,7 @@ export function CrawlPanel({
             setStatus(
               e.cancelled
                 ? `Stopped — reached ${e.reached}, ${e.failed} failed`
-                : `Reached ${e.reached} device${e.reached === 1 ? '' : 's'}, ${e.failed} failed`,
+                : `Reached ${t('plural.device', { count: e.reached })}, ${e.failed} failed`,
             );
             break;
         }
@@ -450,7 +451,7 @@ export function CrawlPanel({
     setRows(resultRows(walked, seenKeys.current));
     setFailures([]);
     setResult(walked);
-    const read = `Read ${devices.length} device${devices.length === 1 ? '' : 's'} from ${files.length} walk file${files.length === 1 ? '' : 's'}${walked.notVisited.length ? `, and ${walked.notVisited.length} neighbour${walked.notVisited.length === 1 ? '' : 's'} they report` : ''}.`;
+    const read = `Read ${t('plural.device', { count: devices.length })} from ${files.length} walk file${files.length === 1 ? '' : 's'}${walked.notVisited.length ? `, and ${t('plural.neighbour', { count: walked.notVisited.length })} they report` : ''}.`;
     setStatus(read);
     if (notes.length) setProblem(`${read} ${notes.join(' ')}`);
   };
@@ -544,8 +545,8 @@ export function CrawlPanel({
 
   const backUp = () => {
     if (!backupable.length) return;
-    store.setStatusMessage(
-      `Sending ${backupable.length} device${backupable.length === 1 ? '' : 's'} to the Backups tab`,
+    useStore.getState().setStatusMessage(
+      `Sending ${t('plural.device', { count: backupable.length })} to the Backups tab`,
     );
     onBackup(backupable.map((r) => ({ address: r.probeTarget || r.address, name: r.name })));
   };
@@ -606,7 +607,7 @@ export function CrawlPanel({
   );
 
   const build = () => {
-    if (!result || !store.meta) return;
+    if (!result || !meta) return;
     // LT-417: the ticked rows, by every identity each one has.
     //
     // This used to be a set of row keys — hostnames — matched against the
@@ -621,10 +622,10 @@ export function CrawlPanel({
     // Identity is the thing both sides already agree on: `identity()` is what
     // the topology keys devices by, and `identitiesOfNode` is its inverse.
     const keep = new Set(picked.flatMap((r) => [identity(r.name, r.address), `a:${r.address.trim()}`]).filter((k) => k && k !== 'a:'));
-    const page = activePage(store.doc);
+    const page = activePage(doc);
     const bottom = page.nodes.reduce((m, n) => Math.max(m, n.position.y + 120), 0);
 
-    const topo = buildTopology(result, store.meta.id, {
+    const topo = buildTopology(result, meta.id, {
       origin: { x: 80, y: bottom + 80 },
       attached: showAttached ? chosenAttached : [],
       inferred: showAttached ? inferred : [],
@@ -675,20 +676,20 @@ export function CrawlPanel({
   };
 
   const applyReview = () => {
-    if (!review || !store.meta) return;
+    if (!review || !meta) return;
     const accepted = review.changes.filter((c) => review.ticked.has(c.id));
-    const added = store.applyCrawlChanges(accepted);
+    const added = useStore.getState().applyCrawlChanges(accepted);
     for (const node of added) {
       const address = (node.data as DeviceNodeData).addresses?.[0]?.address;
       // Ticking the row was the decision (LT-061): everything placed with an
       // address arrives monitored, not just what was logged into.
-      if (address) store.upsertProbe(newProbe('node', node.id, store.meta.id, address, 'Discovered'));
+      if (address) useStore.getState().upsertProbe(newProbe('node', node.id, meta.id, address, 'Discovered'));
     }
     const count = (kind: string) => accepted.filter((c) => c.kind === kind).length;
-    const parts = [`Applied ${accepted.length} of ${review.changes.length} change${review.changes.length === 1 ? '' : 's'}:`,
+    const parts = [`Applied ${accepted.length} of ${t('plural.change', { count: review.changes.length })}:`,
       `${count('added')} added, ${count('changed')} updated, ${count('moved')} moved, ${count('removed')} removed.`];
     if (review.dangling) parts.push(`${review.dangling} link ends were not on the diagram.`);
-    store.setStatusMessage(parts.join(' '));
+    useStore.getState().setStatusMessage(parts.join(' '));
     setReview(null);
     setAllVisible(false);
   };
@@ -753,7 +754,7 @@ export function CrawlPanel({
                 const found = seedsFromCsv(text);
                 setSeed((s) => [...new Set([...s.split(/[\s,;]+/).filter(Boolean), ...found])].join(', '));
                 useStore.getState().setStatusMessage(
-                  found.length ? `Read ${found.length} seed${found.length === 1 ? '' : 's'} from ${file.name}.` : `Nothing in ${file.name} looked like an address or a hostname.`,
+                  found.length ? `Read ${t('plural.seed', { count: found.length })} from ${file.name}.` : `Nothing in ${file.name} looked like an address or a hostname.`,
                 );
               });
             }} />
@@ -777,7 +778,7 @@ export function CrawlPanel({
             }
             if (found.subnets.length) setSubnets((was) => [...new Set([...was, ...found.subnets])]);
             useStore.getState().setStatusMessage(
-              `Filled in ${found.seeds.length} seed${found.seeds.length === 1 ? '' : 's'} and ${found.subnets.length} subnet${found.subnets.length === 1 ? '' : 's'} from this project. Change anything before you scan.`,
+              `Filled in ${t('plural.seed', { count: found.seeds.length })} and ${t('plural.subnet', { count: found.subnets.length })} from this project. Change anything before you scan.`,
             );
           }}>
           Fill from this project
@@ -1285,7 +1286,7 @@ export function CrawlPanel({
 
       {running && liveFailed > 0 && (
         <p className="cv-help cv-discover-live-failed">
-          {liveFailed} device{liveFailed === 1 ? '' : 's'} could not be reached so far
+          {t('plural.device', { count: liveFailed })} could not be reached so far
         </p>
       )}
 
@@ -1293,7 +1294,7 @@ export function CrawlPanel({
         <details className="cv-attached" open={showAttached}
           onToggle={(e) => setShowAttached((e.currentTarget as HTMLDetailsElement).open)}>
           <summary>
-            {attachedTotal} more {attachedTotal === 1 ? 'device was' : 'devices were'} seen on
+            {t('plural.moreDeviceWas', { count: attachedTotal })} seen on
             switch ports without announcing anything
           </summary>
 
@@ -1348,7 +1349,7 @@ export function CrawlPanel({
           {inferred.length > 0 && (
             <p className="cv-help cv-inferred-note">
               <strong>{inferred.length}</strong>{' '}
-              {inferred.length === 1 ? 'port has' : 'ports have'} several devices behind them and
+              {t('plural.portHas', { count: inferred.length })} several devices behind them and
               nothing on them answered LLDP or CDP, so each will be drawn as an unmanaged switch
               with its devices hanging off it:{' '}
               {inferred
@@ -1364,7 +1365,7 @@ export function CrawlPanel({
 
       {!running && failures.length > 0 && (
         <details className="cv-discover-failures">
-          <summary>{failures.length} device{failures.length === 1 ? '' : 's'} could not be reached</summary>
+          <summary>{t('plural.device', { count: failures.length })} could not be reached</summary>
           {/* LT-144: grouped by why, with what to do about it. Four
               controller-managed access points used to read as four identical
               timeouts, which invites the wrong fix — a longer timeout. They
@@ -1801,7 +1802,7 @@ function ReconcileReview({
       ))}
       <div className="cv-discover-actions">
         <button type="button" className="cv-btn cv-btn-small cv-btn-start" onClick={onApply} disabled={review.ticked.size === 0}>
-          Apply {review.ticked.size} change{review.ticked.size === 1 ? '' : 's'}
+          Apply {t('plural.change', { count: review.ticked.size })}
         </button>
         <button type="button" className="cv-btn cv-btn-small" onClick={onCancel}>Cancel</button>
       </div>

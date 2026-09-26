@@ -386,8 +386,8 @@ function MultiInspector({ ids }: { ids: string[] }) {
       <h2 className="cv-inspector-title">
         {chosen.length} selected
         <span className="cv-inspector-sub">
-          {sel.devices.length} device{sel.devices.length === 1 ? '' : 's'}
-          {sel.notes.length > 0 && `, ${sel.notes.length} note${sel.notes.length === 1 ? '' : 's'}`}
+          {tr('plural.device', { count: sel.devices.length })}
+          {sel.notes.length > 0 && `, ${tr('plural.note', { count: sel.notes.length })}`}
         </span>
       </h2>
 
@@ -441,8 +441,8 @@ function MultiInspector({ ids }: { ids: string[] }) {
                   if (!t) return;
                   const got = applyTemplate(t.id, deviceIds);
                   useStore.getState().setStatusMessage(
-                    `Added ${t.name} to ${got.added} device${got.added === 1 ? '' : 's'}` +
-                      (got.skipped.length ? `; ${got.skipped.join(', ')} ${got.skipped.length === 1 ? 'has' : 'have'} no address.` : '.'),
+                    `Added ${t.name} to ${tr('plural.device', { count: got.added })}` +
+                      (got.skipped.length ? `; ${got.skipped.join(', ')} ${tr('plural.hasHave', { count: got.skipped.length })} no address.` : '.'),
                   );
                 }}
               >
@@ -984,7 +984,7 @@ function ProjectCheckTiming() {
       </p>
       <button type="button" className="cv-btn cv-btn-small" onClick={apply}
         disabled={probes.length === 0}>
-        Apply to all {probes.length} check{probes.length === 1 ? '' : 's'}
+        Apply to all {tr('plural.check', { count: probes.length })}
       </button>
     </div>
   );

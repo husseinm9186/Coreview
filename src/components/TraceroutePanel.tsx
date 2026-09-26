@@ -81,7 +81,7 @@ export function TraceroutePanel({ target, onClose }: { target: string; onClose: 
               {!hadPreviousRun
                 ? 'First trace to this target this session.'
                 : changed.size > 0
-                  ? `Path changed at ${changed.size} hop${changed.size === 1 ? '' : 's'} since the last trace — highlighted below.`
+                  ? `Path changed at ${t('plural.hop', { count: changed.size })} since the last trace — highlighted below.`
                   : 'Same path as the last trace to this target.'}
             </p>
             <table className="cv-tr-table">

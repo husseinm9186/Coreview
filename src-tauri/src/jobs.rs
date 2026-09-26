@@ -32,6 +32,12 @@ pub enum Kind {
     Crawl,
     Backup,
     Sweep,
+    /// LT-460: a Meraki backup, health check or discovery — one slot for
+    /// the three, because they share one key's rate limit (LT-404).
+    Meraki,
+    /// LT-460: the icon-library scan, which converts stencils through
+    /// LibreOffice and can run for minutes on a big folder.
+    IconScan,
 }
 
 impl Kind {
@@ -40,6 +46,8 @@ impl Kind {
             Kind::Crawl => "A crawl",
             Kind::Backup => "A backup",
             Kind::Sweep => "A sweep",
+            Kind::Meraki => "A Meraki collection",
+            Kind::IconScan => "An icon-library scan",
         }
     }
 }
@@ -292,6 +300,20 @@ mod tests {
         let sink = Arc::clone(&heard);
         jobs.report_to(move |s| sink.lock().unwrap().push(s));
         heard
+    }
+
+    /// LT-460: the two kinds the header did not show, in their own slots,
+    /// named on the wire as the page spells them.
+    #[test]
+    fn a_meraki_collection_and_an_icon_scan_are_jobs_of_their_own() {
+        let jobs = Arc::new(Jobs::default());
+        let _meraki = jobs.start(Kind::Meraki).unwrap();
+        let _scan = jobs.start(Kind::IconScan).unwrap();
+        let refused = jobs.start(Kind::Meraki).err().unwrap();
+        assert!(refused.starts_with("A Meraki collection is already running"), "{refused}");
+        assert!(jobs.start(Kind::IconScan).err().unwrap().starts_with("An icon-library scan is already running"));
+        let kinds: Vec<String> = jobs.list().iter().map(|j| serde_json::to_string(&j.kind).unwrap()).collect();
+        assert_eq!(kinds, ["\"meraki\"", "\"icon-scan\""]);
     }
 
     #[test]

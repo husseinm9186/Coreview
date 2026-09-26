@@ -396,7 +396,9 @@ fn humanise(id: &str) -> String {
 }
 
 /// Index a directory of SVGs. Optional `index.json` supplies names/categories:
-/// `{"icons":[{"id","name","category","file"}]}`.
+/// `{"icons":[{"id","name","category","file"}]}`. The app itself goes through
+/// `scan_watched`, so it can be stopped (LT-460); this is the tests' plain way in.
+#[cfg(test)]
 pub fn scan(dir: &str) -> Result<IconLibrary, String> {
     scan_excluding(dir, &[])
 }
@@ -408,6 +410,25 @@ pub fn scan(dir: &str) -> Result<IconLibrary, String> {
 /// running it — so what a pack *is* to the palette is decided here rather than
 /// by whether its folder still exists.
 pub fn scan_excluding(dir: &str, skip: &[String]) -> Result<IconLibrary, String> {
+    scan_watched(dir, skip, &|_, _, _| {}, &|| false)
+}
+
+/// What a scan says as it goes: a phase, how many files are read, and how
+/// many there are once that is known.
+pub type ScanProgress<'a> = &'a (dyn Fn(&str, u64, Option<u64>) + Sync);
+
+/// The same scan, reporting as it goes and stopping when asked (LT-460).
+///
+/// Stopped means refused, not shortened: a palette drawn from half a folder
+/// would look like the whole folder, so a stopped scan hands back an error
+/// and the palette keeps what it had. Whatever was converted on the way is
+/// cleaned up as it would have been.
+pub fn scan_watched(
+    dir: &str,
+    skip: &[String],
+    progress: ScanProgress<'_>,
+    stopped: &(dyn Fn() -> bool + Sync),
+) -> Result<IconLibrary, String> {
     let root = PathBuf::from(dir);
     if !root.is_dir() {
         return Err(format!("{dir} is not a directory"));
@@ -451,6 +472,7 @@ pub fn scan_excluding(dir: &str, skip: &[String]) -> Result<IconLibrary, String>
         )
     };
     let mut found = Found::default();
+    progress("Listing files", 0, None);
     collect(&root, 0, &mut found, skip)?;
     // LT-081: a zip is opened and walked like a folder, not refused —
     // whatever it holds joins the same svgs/convertible/visio/lucid lists a
@@ -493,8 +515,20 @@ pub fn scan_excluding(dir: &str, skip: &[String]) -> Result<IconLibrary, String>
         skipped.push(format!("{n}: a Lucidchart stencil — its converter is not built yet"));
     }
     let entries = std::mem::take(&mut found.svgs);
+    // One count for the whole scan, so the header's "n of total" does not
+    // start over at each kind of file.
+    let total = (entries.len() + found.visio.len() + found.convertible.len()) as u64;
+    let mut read: u64 = 0;
+    progress("Reading SVGs", read, Some(total));
+    let mut halted = false;
 
     for path in entries {
+        if stopped() {
+            halted = true;
+            break;
+        }
+        read += 1;
+        progress("Reading SVGs", read, Some(total));
         if icons.len() >= MAX_ICONS {
             skipped.push(format!("stopped at {MAX_ICONS} icons"));
             break;
@@ -543,7 +577,7 @@ pub fn scan_excluding(dir: &str, skip: &[String]) -> Result<IconLibrary, String>
     // LT-012/LT-045: a Visio file — a My Shapes folder full of .vss and
     // .vssx, or a loose .vsd — converts through libvisio. A stencil's
     // masters each become their own icon; a drawing's pages likewise.
-    if !found.visio.is_empty() {
+    if !halted && !found.visio.is_empty() {
         if !crate::shapeconv::libvisio_available() {
             skipped.push(format!(
                 "{} Visio file(s) need libvisio-tools to convert — install it and reload",
@@ -552,8 +586,14 @@ pub fn scan_excluding(dir: &str, skip: &[String]) -> Result<IconLibrary, String>
         } else {
             found.visio.sort();
             'files: for src in &found.visio {
+                if stopped() {
+                    halted = true;
+                    break;
+                }
                 let file_name =
                     src.file_name().and_then(|f| f.to_str()).unwrap_or("?").to_string();
+                read += 1;
+                progress(&format!("Converting {file_name}"), read, Some(total));
                 let svgs = match crate::shapeconv::convert_visio(src) {
                     Ok(v) => v,
                     Err(e) => {
@@ -593,7 +633,7 @@ pub fn scan_excluding(dir: &str, skip: &[String]) -> Result<IconLibrary, String>
     // LT-003: EMF and WMF convert here rather than being refused with a
     // count. LibreOffice draws them; the tidy pass is the same one the PPTX
     // pipeline needed — crop the A4 page away, make the bitmaps legal.
-    if !found.convertible.is_empty() {
+    if !halted && !found.convertible.is_empty() {
         if !crate::shapeconv::soffice_available() {
             skipped.push(format!(
                 "{} EMF/WMF file(s) need LibreOffice to convert — install libreoffice-draw and reload",
@@ -609,10 +649,16 @@ pub fn scan_excluding(dir: &str, skip: &[String]) -> Result<IconLibrary, String>
             let work = crate::shapeconv::unique_work_dir("coreview-conv");
             let _ = std::fs::create_dir_all(&work);
             for batch in found.convertible.chunks(25) {
+                if stopped() {
+                    halted = true;
+                    break;
+                }
                 if icons.len() >= MAX_ICONS {
                     skipped.push(format!("stopped at {MAX_ICONS} icons"));
                     break;
                 }
+                progress("Converting EMF/WMF", read, Some(total));
+                read += batch.len() as u64;
                 let produced = match crate::shapeconv::convert_batch(batch, &work) {
                     Ok(p) => p,
                     Err(e) => {
@@ -660,6 +706,9 @@ pub fn scan_excluding(dir: &str, skip: &[String]) -> Result<IconLibrary, String>
 
     if let Some(scratch) = zip_root {
         let _ = std::fs::remove_dir_all(scratch);
+    }
+    if halted {
+        return Err("The icon-library scan was stopped; the palette keeps what it had.".into());
     }
 
     Ok(IconLibrary {
@@ -754,6 +803,34 @@ pub fn remove_pack(dir: &str, name: &str) -> Result<PackRemoval, String> {
 #[cfg(test)]
 mod pack_tests {
     use super::*;
+
+    /// LT-460: a scan says where it is, and a stopped one is refused rather
+    /// than handed back short.
+    #[test]
+    fn a_scan_reports_as_it_goes_and_a_stopped_one_keeps_nothing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        for name in ["a.svg", "b.svg", "c.svg"] {
+            std::fs::write(dir.path().join(name), "<svg xmlns='http://www.w3.org/2000/svg'><rect/></svg>").unwrap();
+        }
+        let root = dir.path().to_str().unwrap();
+        let heard: std::sync::Mutex<Vec<(String, u64, Option<u64>)>> = Default::default();
+        let whole = scan_watched(root, &[], &|phase, done, total| heard.lock().unwrap().push((phase.to_string(), done, total)), &|| false).unwrap();
+        assert_eq!(whole.icons.len(), 3);
+        let heard = heard.into_inner().unwrap();
+        assert_eq!(heard[0], ("Listing files".to_string(), 0, None));
+        assert_eq!(heard[1], ("Reading SVGs".to_string(), 0, Some(3)));
+        assert_eq!(heard.last().unwrap(), &("Reading SVGs".to_string(), 3, Some(3)));
+
+        // Stopped after the first file: an error, not a two-icon library.
+        let seen = std::sync::atomic::AtomicUsize::new(0);
+        let stopped = scan_watched(
+            root,
+            &[],
+            &|_, _, _| {},
+            &|| seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 1,
+        );
+        assert!(stopped.unwrap_err().contains("stopped"));
+    }
 
     #[test]
     fn a_removed_pack_is_gone_from_the_palette_even_when_its_files_remain() {

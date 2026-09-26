@@ -154,7 +154,7 @@ export function VaultSettings() {
       ) : !status.unlocked ? (
         <>
           <p className="cv-help">
-            Locked. {status.credentials} credential{status.credentials === 1 ? '' : 's'} saved.
+            Locked. {t('plural.credential', { count: status.credentials })} saved.
           </p>
           <div className="cv-discover-form">
             <label className="cv-field">
@@ -326,8 +326,7 @@ export function VaultSettings() {
           {confirmDiscard ? (
             <>
               <span className="cv-help">
-                Discard the vault and all {status.credentials} credential
-                {status.credentials === 1 ? '' : 's'}? Without the passphrase they cannot be read,
+                Discard the vault and all {t('plural.credential', { count: status.credentials })}? Without the passphrase they cannot be read,
                 so there is nothing to keep. This cannot be undone.
               </span>
               <button type="button" className="cv-btn cv-btn-small" onClick={() => setConfirmDiscard(false)}>

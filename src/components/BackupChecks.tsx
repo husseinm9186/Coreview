@@ -198,14 +198,14 @@ export function BackupChecks({ runs }: { runs: BackupRunSummary[] }) {
               <select className="cv-input" value={run} onChange={(e) => setRun(e.target.value)}>
                 {showRuns.map((r) => (
                   <option key={r.stamp} value={r.stamp}>
-                    {describeStamp(r.stamp)} · {r.devices} device{r.devices === 1 ? '' : 's'}
+                    {describeStamp(r.stamp)} · {t('plural.device', { count: r.devices })}
                   </option>
                 ))}
               </select>
             </label>
             <button type="button" className="cv-btn cv-btn-small" onClick={runChecks}
               disabled={checking || !run || ready.length === 0}>
-              {checking ? 'Checking…' : `Run ${ready.length || ''} check${ready.length === 1 ? '' : 's'}`}
+              {checking ? 'Checking…' : `Run ${t('plural.check', { count: ready.length })}`}
             </button>
             <label className="cv-check cv-check-inline">
               <input type="checkbox" checked={onlyProblems} onChange={(e) => setOnlyProblems(e.target.checked)} />
@@ -216,7 +216,7 @@ export function BackupChecks({ runs }: { runs: BackupRunSummary[] }) {
       </div>
       {checks.length > ready.length && (
         <p className="cv-help">
-          {checks.length - ready.length} check{checks.length - ready.length === 1 ? ' is' : 's are'} missing a
+          {t('plural.checkIs', { count: checks.length - ready.length })} missing a
           command or text and will not run.
         </p>
       )}

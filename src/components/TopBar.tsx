@@ -47,7 +47,12 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   const savedAck = useStore((s) => s.savedAck);
   const session = useStore((s) => s.session);
   const settings = useStore((s) => s.settings);
-  const store = useStore();
+  const doc = useStore((s) => s.doc);
+  const events = useStore((s) => s.events);
+  const linkStatus = useStore((s) => s.linkStatus);
+  const nodeStatus = useStore((s) => s.nodeStatus);
+  const recentSamples = useStore((s) => s.recentSamples);
+  const runtime = useStore((s) => s.runtime);
   const rf = useReactFlow();
   const exportMenu = useRef<HTMLDetailsElement>(null);
   const [about, setAbout] = useState(false);
@@ -67,9 +72,9 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   // belongs to a save somebody pressed for.
   useEffect(() => {
     if (!meta || !dirty) return;
-    const t = setTimeout(() => void store.saveProject({ auto: true }), 2500);
+    const t = setTimeout(() => void useStore.getState().saveProject({ auto: true }), 2500);
     return () => clearTimeout(t);
-  }, [meta, dirty, store]);
+  }, [meta, dirty]);
 
   // LT-380: the acknowledgement goes stale on a clock rather than on an
   // event, so something has to come back and repaint when it does. One timer
@@ -117,7 +122,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   // Named `pg` rather than `page` — this file already uses "page" to mean
   // the paper an export is sized to, a different thing from a Pages (LT-094)
   // ProjectPage, and the two must not be confused inside this one file.
-  const pg = activePage(store.doc);
+  const pg = activePage(doc);
   /** Said in the menu, because "A3 landscape" does not tell anyone whether
    *  their diagram will still be readable on it. */
   const pageNote = (() => {
@@ -158,14 +163,14 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   };
   const shown = printedOf(pg);
   /** LT-251: the pages a drawing export covers. */
-  const exportPages = () => (pageScope === 'all' ? store.doc.pages : [pg]);
+  const exportPages = () => (pageScope === 'all' ? doc.pages : [pg]);
   /** A file name for one page of several. */
   const pageFile = (page: ProjectPage, ext: string) =>
     exportPages().length > 1 ? `${slug(meta.name)}-${slug(page.name) || 'page'}.${ext}` : `${slug(meta.name)}-diagram.${ext}`;
 
   // LT-170: what the project holds of other people's artwork. Every page: a
   // package carries them all.
-  const artwork = artworkSummary(allNodes(store.doc));
+  const artwork = artworkSummary(allNodes(doc));
   const exportNodes = vendorSafe ? vendorSafeNodes(shown.nodes) : shown.nodes;
   const exportNodesOf = (page: ProjectPage) => (vendorSafe ? vendorSafeNodes(printedOf(page).nodes) : printedOf(page).nodes);
 
@@ -178,14 +183,14 @@ export function TopBar({ onExit }: { onExit: () => void }) {
     try {
       const content = build();
       if (content === null) return;
-      const path = await saveExport(filename, content, mime, store.settings.exportFolder);
+      const path = await saveExport(filename, content, mime, settings.exportFolder);
       const warn =
         path && carriesArtwork && artwork.devices > 0 && !vendorSafe
           ? ' — it includes artwork from imported stencils; check you may share it, or use a vendor-safe export'
           : '';
-      store.setStatusMessage(path ? `Saved ${path}${warn}` : null);
+      useStore.getState().setStatusMessage(path ? `Saved ${path}${warn}` : null);
     } catch (err) {
-      store.setStatusMessage(err instanceof Error ? err.message : String(err));
+      useStore.getState().setStatusMessage(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -199,8 +204,8 @@ export function TopBar({ onExit }: { onExit: () => void }) {
       // document must not reappear in the document.
       nodes: exportNodesOf(page),
       edges: printed.edges,
-      nodeStatus: (id) => store.nodeStatus(id),
-      linkStatus: (id) => store.linkStatus(id),
+      nodeStatus: (id) => nodeStatus(id),
+      linkStatus: (id) => linkStatus(id),
       includeTitleBlock: true,
       nodeStyle: page.canvas.nodeStyle ?? 'glyph',
       lineJumps: page.canvas.lineJumps ?? true,
@@ -253,10 +258,10 @@ export function TopBar({ onExit }: { onExit: () => void }) {
    *  sheet; when none is set, the single-sheet SVG is written instead. */
   const exportSheets = async () => {
     const tiles = sheetTiles();
-    if (tiles.length <= 1 || !store.settings.exportFolder) {
+    if (tiles.length <= 1 || !settings.exportFolder) {
       exportSvg();
       if (tiles.length > 1) {
-        store.setStatusMessage('Set an export folder to write one file per sheet.');
+        useStore.getState().setStatusMessage('Set an export folder to write one file per sheet.');
       }
       return;
     }
@@ -268,8 +273,8 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           meta,
           nodes: exportNodes,
           edges: shown.edges,
-          nodeStatus: (id) => store.nodeStatus(id),
-          linkStatus: (id) => store.linkStatus(id),
+          nodeStatus: (id) => nodeStatus(id),
+          linkStatus: (id) => linkStatus(id),
           includeTitleBlock: true,
           nodeStyle: pg.canvas.nodeStyle ?? 'glyph',
           lineJumps: pg.canvas.lineJumps ?? true,
@@ -284,12 +289,12 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           `${slug(meta.name)}-sheet-r${t.row + 1}c${t.col + 1}.svg`,
           svg,
           'image/svg+xml',
-          store.settings.exportFolder,
+          settings.exportFolder,
         );
       }
-      store.setStatusMessage(last ? `Saved ${tiles.length} sheets to ${store.settings.exportFolder}` : null);
+      useStore.getState().setStatusMessage(last ? `Saved ${tiles.length} sheets to ${settings.exportFolder}` : null);
     } catch (err) {
-      store.setStatusMessage(err instanceof Error ? err.message : String(err));
+      useStore.getState().setStatusMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(null);
     }
@@ -305,7 +310,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
       const bytes = pages.length > 1 ? await ipc.diagramPdfPages(pages.map((p) => svgFor(p))) : await ipc.diagramPdf(svgFor(pg));
       await runExport(`${slug(meta.name)}-diagram.pdf`, () => bytes, 'application/pdf', true);
     } catch (err) {
-      store.setStatusMessage(err instanceof Error ? err.message : String(err));
+      useStore.getState().setStatusMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(null);
     }
@@ -357,7 +362,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
         'application/vnd.ms-visio.drawing',
       );
     } catch (err) {
-      store.setStatusMessage(err instanceof Error ? err.message : String(err));
+      useStore.getState().setStatusMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(null);
     }
@@ -375,7 +380,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
         await runExport(pageFile(page, 'png'), () => bytes, 'image/png', true);
       }
     } catch (err) {
-      store.setStatusMessage(err instanceof Error ? err.message : String(err));
+      useStore.getState().setStatusMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(null);
     }
@@ -392,8 +397,8 @@ export function TopBar({ onExit }: { onExit: () => void }) {
         if (sessions.length >= 2) {
           const [after, before] = [await ipc.sessionSummary(sessions[0]!.id), await ipc.sessionSummary(sessions[1]!.id)];
           const probeName = (id: string) => {
-            const p = store.doc.probes.find((x) => x.id === id);
-            const owner = p ? (allNodes(store.doc).find((n) => n.id === p.objectId)?.data as DeviceNodeData | undefined)?.label : undefined;
+            const p = doc.probes.find((x) => x.id === id);
+            const owner = p ? (allNodes(doc).find((n) => n.id === p.objectId)?.data as DeviceNodeData | undefined)?.label : undefined;
             return p ? `${owner ?? 'Link'} — ${p.name}` : id;
           };
           diffs.push({ title: 'Validation sessions', rows: diffSessions(before, after, probeName) });
@@ -406,9 +411,9 @@ export function TopBar({ onExit }: { onExit: () => void }) {
       }
       const svgs = reportPages(
         reportInput({
-          meta, doc: store.doc, template, sections, generatedAt: new Date(),
-          runtime: store.runtime, samples: store.recentSamples, events: store.events,
-          nodeStatus: (id) => store.nodeStatus(id),
+          meta, doc: doc, template, sections, generatedAt: new Date(),
+          runtime: runtime, samples: recentSamples, events: events,
+          nodeStatus: (id) => nodeStatus(id),
           typeLabel: (t) => DEVICE_LABEL[t as keyof typeof DEVICE_LABEL] ?? t,
           diagrams: sections.includes('diagrams') ? exportPages().map((page) => ({ name: page.name, svg: svgFor(page) })) : [],
           diffs,
@@ -416,10 +421,10 @@ export function TopBar({ onExit }: { onExit: () => void }) {
       );
       const bytes = await ipc.diagramPdfPages(svgs);
       await runExport(`${slug(meta.name)}-${template.id}-report.pdf`, () => bytes, 'application/pdf', sections.includes('diagrams'));
-      store.noteGuide('report');
+      useStore.getState().noteGuide('report');
       setReporting(false);
     } catch (err) {
-      store.setStatusMessage(err instanceof Error ? err.message : String(err));
+      useStore.getState().setStatusMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(null);
     }
@@ -449,7 +454,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
                   id: n.id,
                   label: d.label,
                   type: DEVICE_LABEL[d.deviceType] ?? d.deviceType,
-                  status: STATUS_LABEL[store.nodeStatus(n.id)],
+                  status: STATUS_LABEL[nodeStatus(n.id)],
                   addresses: (d.addresses ?? []).map((a) => a.address).filter(Boolean),
                   facts: facts(d),
                 };
@@ -472,7 +477,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   };
 
   const exportCsv = () => {
-    void runExport(`${slug(meta.name)}-events.csv`, () => eventsToCsv(store.events), 'text/csv');
+    void runExport(`${slug(meta.name)}-events.csv`, () => eventsToCsv(events), 'text/csv');
   };
 
   /** The diagram as the two files the importer reads back. Every page
@@ -480,21 +485,21 @@ export function TopBar({ onExit }: { onExit: () => void }) {
    *  from it because the wrong tab was open would be a real surprise. */
   /** LT-198: every cable between devices, on every page. */
   const exportCableSchedule = () => {
-    const rows = cableSchedule(store.doc);
+    const rows = cableSchedule(doc);
     if (rows.length === 0) {
-      store.setStatusMessage('There are no links between devices to list.');
+      useStore.getState().setStatusMessage('There are no links between devices to list.');
       return;
     }
     void runExport(`${slug(meta.name)}-cable-schedule.csv`, () => cableScheduleCsv(rows), 'text/csv');
   };
 
   const exportTopologyCsv = () => {
-    const devices = allNodes(store.doc).filter((n) => n.type === 'device');
+    const devices = allNodes(doc).filter((n) => n.type === 'device');
     const nameOf = new Map(
       devices.map((n) => [n.id, String((n.data as DeviceNodeData).label ?? '')]),
     );
     const probeFor = (nodeId: string) =>
-      store.doc.probes.find((p) => p.objectKind === 'node' && p.objectId === nodeId);
+      doc.probes.find((p) => p.objectKind === 'node' && p.objectId === nodeId);
 
     const rows = devices.map((n) => {
       const d = n.data as DeviceNodeData;
@@ -535,7 +540,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
 
     // Links reference devices by name, because that is what the importer
     // matches on and what a person reading the file can follow.
-    const links = allEdges(store.doc)
+    const links = allEdges(doc)
       .filter((e) => nameOf.has(e.source) && nameOf.has(e.target))
       .map((e) => {
         const d = (e.data ?? {}) as LinkData;
@@ -571,17 +576,17 @@ export function TopBar({ onExit }: { onExit: () => void }) {
     document.head.appendChild(style);
 
     const was = settings.ground;
-    if (was !== 'light') store.setSettings({ ground: 'light' });
+    if (was !== 'light') useStore.getState().setSettings({ ground: 'light' });
     // LT-184: views set not to print come off the canvas for the print job.
-    store.setPrinting(true);
+    useStore.getState().setPrinting(true);
     // Two frames: one for React to render the new ground, one for the
     // browser to paint it. Printing before the paint captures the old one.
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     try {
       window.print();
     } finally {
-      store.setPrinting(false);
-      if (was !== 'light') store.setSettings({ ground: was });
+      useStore.getState().setPrinting(false);
+      if (was !== 'light') useStore.getState().setSettings({ ground: was });
       style.remove();
     }
   };
@@ -589,14 +594,14 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   const exportReport = () => {
     const md = buildMarkdownReport({
       meta,
-      events: store.events,
+      events: events,
       counts,
       // Every page (LT-094): a validation report is a record, not a drawing.
-      nodeCount: allNodes(store.doc).filter((n) => n.type === 'device').length,
-      linkCount: allEdges(store.doc).length,
+      nodeCount: allNodes(doc).filter((n) => n.type === 'device').length,
+      linkCount: allEdges(doc).length,
       sessionStart: session.startedAt,
       sessionEnd: session.state === 'stopped' ? Date.now() : null,
-      cables: cableSchedule(store.doc),
+      cables: cableSchedule(doc),
       // LT-253: the pages asked for, drawn into the report.
       diagrams: exportPages().map((page) => ({ name: page.name, svg: svgFor(page) })),
     });
@@ -607,9 +612,9 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   const exportFolder = async () => {
     try {
       // LT-456: the chosen export folder, or the folder dialog Rust shows.
-      const folder = store.settings.exportFolder || null;
+      const folder = settings.exportFolder || null;
       // What is on screen, not what was last saved.
-      if (store.dirty) await store.saveProject();
+      if (dirty) await useStore.getState().saveProject();
       const pkg = await ipc.loadProject(meta.id);
       if (!pkg) return;
       const project = vendorSafe ? { ...pkg, document: vendorSafeDocument(pkg.document) } : pkg;
@@ -618,9 +623,9 @@ export function TopBar({ onExit }: { onExit: () => void }) {
       const target = await ipc.pickExportFolder(folder);
       if (!target) return;
       const dir = await ipc.saveProjectFolder(target.token, slug(meta.name) || 'project', json, yaml);
-      store.setStatusMessage(`Saved ${dir} — project.coreview opens in Coreview; project.yaml is the readable copy`);
+      useStore.getState().setStatusMessage(`Saved ${dir} — project.coreview opens in Coreview; project.yaml is the readable copy`);
     } catch (err) {
-      store.setStatusMessage(err instanceof Error ? err.message : String(err));
+      useStore.getState().setStatusMessage(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -652,10 +657,10 @@ export function TopBar({ onExit }: { onExit: () => void }) {
             Unsaved work from {new Date(recovery.savedAt).toLocaleTimeString()} was found —
             this session ended before it could be saved.
           </span>
-          <button type="button" className="cv-btn cv-btn-small" onClick={() => store.restoreRecovery()}>
+          <button type="button" className="cv-btn cv-btn-small" onClick={() => useStore.getState().restoreRecovery()}>
             Restore it
           </button>
-          <button type="button" className="cv-btn cv-btn-small" onClick={() => store.discardRecovery()}>
+          <button type="button" className="cv-btn cv-btn-small" onClick={() => useStore.getState().discardRecovery()}>
             Keep what was saved
           </button>
         </div>
@@ -702,13 +707,13 @@ export function TopBar({ onExit }: { onExit: () => void }) {
       </div>
 
       <div className="cv-topbar-actions">
-        <button type="button" className="cv-btn" onClick={() => void store.saveProject()}>
+        <button type="button" className="cv-btn" onClick={() => void useStore.getState().saveProject()}>
           Save
         </button>
-        <button type="button" className="cv-btn" onClick={store.undo} title="Ctrl+Z">
+        <button type="button" className="cv-btn" onClick={useStore.getState().undo} title="Ctrl+Z">
           Undo
         </button>
-        <button type="button" className="cv-btn" onClick={store.redo} title="Ctrl+Y">
+        <button type="button" className="cv-btn" onClick={useStore.getState().redo} title="Ctrl+Y">
           Redo
         </button>
         <button
@@ -736,7 +741,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           <button
             type="button"
             className="cv-btn cv-btn-stop"
-            onClick={() => void store.stopValidation()}
+            onClick={() => void useStore.getState().stopValidation()}
           >
             Stop validation
           </button>
@@ -744,7 +749,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           <button
             type="button"
             className="cv-btn cv-btn-start"
-            onClick={() => void store.startValidation()}
+            onClick={() => void useStore.getState().startValidation()}
             disabled={session.state === 'starting'}
           >
             Start validation
@@ -770,7 +775,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
             place to go rather than a panel about the diagram. */}
         <button type="button" className="cv-btn cv-btn-register"
           title="Subnets, addresses, ranges and the planning tools, on a screen of their own"
-          onClick={() => store.setRegisterOpen(true)}>
+          onClick={() => useStore.getState().setRegisterOpen(true)}>
           {t('register.open')}
         </button>
 
@@ -779,7 +784,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
             the bottom panel's width to say so. */}
         <button type="button" className="cv-btn cv-btn-tools"
           title="Settings, comparing two backup runs, rack elevations, and bringing devices in from a file or a drawing"
-          onClick={() => store.setToolsOpen(true)}>
+          onClick={() => useStore.getState().setToolsOpen(true)}>
           {t('tools.open')}
         </button>
 
@@ -799,7 +804,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
             {artwork.devices > 0 && (
               <div className="cv-dropdown-field cv-export-artwork" onClick={(e) => e.stopPropagation()}>
                 <p className="cv-help" role="note">
-                  ⚠ {artwork.devices} device{artwork.devices === 1 ? ' uses' : 's use'} imported stencils —
+                  ⚠ {t('plural.deviceUses', { count: artwork.devices })} imported stencils —
                   exports may include third-party artwork.
                   {artwork.licences.length > 0 && <> Licences: {artwork.licences.join('; ')}.</>}
                   {artwork.undescribed > 0 && <> {artwork.undescribed} with no licence statement.</>}
@@ -825,12 +830,12 @@ export function TopBar({ onExit }: { onExit: () => void }) {
               />
               Print-friendly — greys on white, less ink
             </label>
-            {store.doc.pages.length > 1 && (
+            {doc.pages.length > 1 && (
               <label className="cv-dropdown-field" onClick={(e) => e.stopPropagation()}>
                 Pages
                 <select className="cv-input" aria-label="Pages to export" value={pageScope} onChange={(e) => setPageScope(e.target.value as 'page' | 'all')}>
                   <option value="page">This page</option>
-                  <option value="all">All {store.doc.pages.length} pages</option>
+                  <option value="all">All {doc.pages.length} pages</option>
                 </select>
               </label>
             )}
@@ -861,7 +866,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
                 <select
                   className="cv-input"
                   value={settings.paper}
-                  onChange={(e) => store.setSettings({ paper: e.target.value })}
+                  onChange={(e) => useStore.getState().setSettings({ paper: e.target.value })}
                 >
                   {PAPERS.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -877,7 +882,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
                     className="cv-input"
                     value={settings.orientation}
                     onChange={(e) =>
-                      store.setSettings({
+                      useStore.getState().setSettings({
                         orientation: e.target.value as 'portrait' | 'landscape',
                       })
                     }
@@ -907,26 +912,26 @@ export function TopBar({ onExit }: { onExit: () => void }) {
               Cable schedule as CSV
             </button>
             {/* LT-252: the rest of the project's tables. */}
-            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-ports.csv`, () => portsCsv(store.doc), 'text/csv')}>
+            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-ports.csv`, () => portsCsv(doc), 'text/csv')}>
               Ports as CSV
             </button>
-            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-vlans.csv`, () => vlansCsv(store.doc), 'text/csv')}>
+            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-vlans.csv`, () => vlansCsv(doc), 'text/csv')}>
               VLANs as CSV
             </button>
-            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-probe-results.csv`, () => probeResultsCsv(store.doc, store.runtime, store.recentSamples), 'text/csv')}>
+            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-probe-results.csv`, () => probeResultsCsv(doc, runtime, recentSamples), 'text/csv')}>
               Probe results as CSV
             </button>
             {/* LT-285: the address register. */}
-            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-addresses.csv`, () => ipamCsv(store.doc), 'text/csv')}>
+            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-addresses.csv`, () => ipamCsv(doc), 'text/csv')}>
               Addresses as CSV
             </button>
             {/* LT-436: devices, interfaces, addresses, cables and VLANs the
                 way NetBox and Nautobot read them, which is also what LT-247
                 reads back in. */}
-            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-netbox.json`, () => netboxJson(store.doc, meta), 'application/json')}>
+            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-netbox.json`, () => netboxJson(doc, meta), 'application/json')}>
               For NetBox (JSON)
             </button>
-            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-netbox.yaml`, () => netboxYaml(store.doc, meta), 'application/yaml')}>
+            <button type="button" onClick={() => void runExport(`${slug(meta.name)}-netbox.yaml`, () => netboxYaml(doc, meta), 'application/yaml')}>
               For NetBox (YAML)
             </button>
             <button type="button" onClick={exportReport}>
@@ -958,7 +963,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           className={`cv-btn${gridSnap ? ' is-active' : ''}`}
           aria-pressed={gridSnap}
           title="Snap dragged objects to the grid where no alignment guide applies (Ctrl+Shift+G; Alt while dragging does the opposite)"
-          onClick={() => store.setGridSnap(!gridSnap)}
+          onClick={() => useStore.getState().setGridSnap(!gridSnap)}
         >
           Grid snap {gridSnap ? 'on' : 'off'}
         </button>
@@ -967,7 +972,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           className="cv-btn"
           title="Draw on white — for a document, a projector, or daylight. Every colour is chosen against the ground it is on, not inverted."
           onClick={() =>
-            store.setSettings({ ground: settings.ground === 'light' ? 'dark' : 'light' })
+            useStore.getState().setSettings({ ground: settings.ground === 'light' ? 'dark' : 'light' })
           }
         >
           {settings.ground === 'light' ? 'Dark background' : 'White background'}
@@ -977,7 +982,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           <input
             type="checkbox"
             checked={settings.minimap}
-            onChange={(e) => store.setSettings({ minimap: e.target.checked })}
+            onChange={(e) => useStore.getState().setSettings({ minimap: e.target.checked })}
           />
           Overview
         </label>
@@ -986,7 +991,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           <input
             type="checkbox"
             checked={settings.reduceMotion}
-            onChange={(e) => store.setSettings({ reduceMotion: e.target.checked })}
+            onChange={(e) => useStore.getState().setSettings({ reduceMotion: e.target.checked })}
           />
           Reduce motion
         </label>
@@ -995,7 +1000,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           <input
             type="checkbox"
             checked={settings.highContrast}
-            onChange={(e) => store.setSettings({ highContrast: e.target.checked })}
+            onChange={(e) => useStore.getState().setSettings({ highContrast: e.target.checked })}
           />
           High contrast
         </label>
@@ -1013,7 +1018,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           <select
             className="cv-input cv-input-inline"
             value={settings.timeFormat}
-            onChange={(e) => store.setSettings({ timeFormat: e.target.value as TimeFormat })}
+            onChange={(e) => useStore.getState().setSettings({ timeFormat: e.target.value as TimeFormat })}
           >
             {TIME_FORMATS.map((f) => (
               <option key={f.value} value={f.value}>
@@ -1026,7 +1031,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
         {/* LT-303: the guide is in the app, not only in the repository. */}
         <button type="button" className="cv-btn cv-btn-help"
           title="How to use Coreview — the whole user guide, searchable"
-          onClick={() => store.setHelpOpen(true)}>
+          onClick={() => useStore.getState().setHelpOpen(true)}>
           {t('help.open')}
         </button>
         <button type="button" className="cv-btn" onClick={() => setAbout(true)}>
@@ -1036,7 +1041,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           type="button"
           className="cv-btn"
           onClick={() => {
-            void store.closeProject().then(onExit);
+            void useStore.getState().closeProject().then(onExit);
           }}
         >
           Close project

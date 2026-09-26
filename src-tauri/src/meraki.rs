@@ -127,6 +127,12 @@ pub async fn meraki_backup(
     .ok_or("Choose a backup folder for this project before backing anything up.")?;
     let root = std::path::PathBuf::from(root);
 
+    // LT-460: a job like a crawl — listed, counted, and stopped from the
+    // jobs header. The three Meraki commands share one slot.
+    let ticket = state.jobs.start(crate::jobs::Kind::Meraki)?;
+    let token = ticket.token();
+    let progress = ticket.progress();
+    progress.set("Listing networks", 0, None);
     let client = client_for(&state, &credential_id, "meraki backup")?;
     let organizations = client.organizations().await.map_err(|e| e.to_string())?;
     let organization = organizations
@@ -140,7 +146,15 @@ pub async fn meraki_backup(
         return Err("None of the chosen networks are in that organisation.".into());
     }
 
-    let taken = client.backup(&organization, &chosen, |_, _, _| {}).await.map_err(|e| e.to_string())?;
+    // Stop drops the request in flight; nothing half-written reaches disk,
+    // because the file is written only after every network has answered.
+    let taken = tokio::select! {
+        taken = client.backup(&organization, &chosen, |i, n, name| progress.set(format!("Backing up {name}"), i as u64, Some(n as u64))) => {
+            taken.map_err(|e| e.to_string())?
+        }
+        _ = token.cancelled() => return Err("The Meraki backup was stopped before anything was written.".into()),
+    };
+    progress.set("Writing", chosen.len() as u64, Some(chosen.len() as u64));
     let (read, asked) = taken
         .networks
         .iter()
@@ -198,6 +212,10 @@ pub async fn meraki_health_check(
         crate::db::project_settings(&conn, &project_id).map_err(db_err)?.get("backupFolder").cloned()
     };
 
+    let ticket = state.jobs.start(crate::jobs::Kind::Meraki)?;
+    let token = ticket.token();
+    let progress = ticket.progress();
+    progress.set("Listing networks", 0, None);
     let client = client_for(&state, &credential_id, "meraki health check")?;
     let organization = client
         .organizations()
@@ -214,7 +232,10 @@ pub async fn meraki_health_check(
         .find(|n| n.id == network_id)
         .ok_or("That network is not in that organisation.")?;
 
-    let mut collected: collect::Collected = client.collect(&organization, &network, |_| {}).await;
+    let mut collected: collect::Collected = tokio::select! {
+        collected = client.collect(&organization, &network, |phase| progress.set(format!("Reading {phase}"), 0, None)) => collected,
+        _ = token.cancelled() => return Err("The Meraki health check was stopped.".into()),
+    };
     collected.has_backup = has_backup(root.as_deref().map(std::path::Path::new), &organization.name, &network.id);
 
     let profile = health::profile(profile.as_deref().unwrap_or(health::DEFAULT_PROFILE));
@@ -239,6 +260,10 @@ pub async fn meraki_discover(
     organization_id: String,
     network_ids: Vec<String>,
 ) -> CmdResult<Discovered> {
+    let ticket = state.jobs.start(crate::jobs::Kind::Meraki)?;
+    let token = ticket.token();
+    let progress = ticket.progress();
+    progress.set("Listing networks", 0, None);
     let client = client_for(&state, &credential_id, "meraki discovery")?;
     let organization = client
         .organizations()
@@ -258,7 +283,10 @@ pub async fn meraki_discover(
         return Err("None of the chosen networks are in that organisation.".into());
     }
 
-    let found = client.discover(&organization, &chosen, |_, _, _| {}).await;
+    let found = tokio::select! {
+        found = client.discover(&organization, &chosen, |i, n, name| progress.set(format!("Reading {name}"), i as u64, Some(n as u64))) => found,
+        _ = token.cancelled() => return Err("The Meraki discovery was stopped.".into()),
+    };
     Ok(as_crawl_result(found))
 }
 

@@ -316,6 +316,86 @@ pulled into Phase 1.*
 
 ## Done
 
+### LT-459 — The strings built inside JSX expressions read from the catalogue — 2026-09-26
+**Source:** "Do it and continue", 2026-09-26, after LT-448 recorded what its
+rule could not reach: ternaries, template literals, `count === 1` plurals
+that predate LT-272, and status words held in arrays.
+**Acceptance:** those move to `t()` with `Intl.PluralRules` forms where they
+were ternary plurals; English unchanged to the character; every harness green.
+**Shipped 2026-09-26.** Seventy-three `count === 1 ? … : …` plurals in
+twenty components are `t('plural.<word>', { count })`, each an
+`Intl.PluralRules` object in `en.ts`; where the verb agreed too (`device is`
+/ `devices are`, `port has` / `ports have`, `check is` / `checks are`) the
+whole phrase is the form, and where the count is drawn separately in bold
+only the words are. English is unchanged to the character except one
+disabled button: BackupChecks' "Run  checks" at zero — two spaces, from an
+empty interpolation — now reads "Run 0 checks". No ternary plural remains in
+`src/components`; the catalogue test holds it.
+
+### LT-460 — A Meraki collection and an icon-library scan are jobs — 2026-09-26
+**Source:** the same instruction; LT-432 and LT-443 both recorded that these
+two still run to completion as commands, with no id, no progress and no
+cancel, so they never show in the jobs header.
+**Acceptance:** each starts through `jobs.rs`, reports its phase and count on
+`coreview://job`, can be cancelled, and appears in `JobsBar` like the rest.
+**Shipped 2026-09-26.** `jobs::Kind` gains `Meraki` and `IconScan`. The
+three Meraki commands share the Meraki slot — one key, one rate limit
+(LT-404) — and each takes a ticket, reports the network or phase it is on
+through the crate's existing progress callbacks, and runs under
+`tokio::select!` against the ticket's token, so Stop drops the request in
+flight: a stopped backup writes nothing, because the file is written only
+after every network answered. The icon scan reports "Listing files",
+"Reading SVGs", "Converting <file>" and "Converting EMF/WMF" with one count
+across every kind of file, checks for Stop at each file and each batch, and
+a stopped scan is refused rather than handed back short — a palette drawn
+from half a folder would look like the whole folder — with the work
+directories cleaned up as before. The page knows the two kinds by name in
+the header; cancel is the header's existing `job_cancel`. Tests: the slots
+and their wire names (`jobs.rs`), a scan's progress and its refusal when
+stopped (`icons.rs`), the two header lines (`jobs.test.ts`).
+
+### LT-461 — The identity half of a visit moves behind the `Dialect` — 2026-09-26
+**Source:** the same instruction; LT-451 shipped the command half and said
+the banner's parsing, the neighbour tables, MAC and ARP, and the FortiOS and
+ArubaOS-Switch branches inside `crawl::visit` were the next thing to move.
+**Acceptance:** `visit` asks the dialect for what to run and how to read it;
+no fixture changes; the equivalence test grows to cover it; the unverified
+list is unchanged.
+**Shipped 2026-09-26.** `Dialect` gains `cdp_readings`, `lldp_readings`,
+`arp_commands`, `mac_table_readings` and `port_channel_readings`; a
+`Reading` is a command and the parser that reads it, and `visit` keeps the
+first that yields anything through one `read_first`. `show version` is read
+first, because the dialect it names decides how every table is asked; it
+used to come after the neighbours, which is why the Dell question had to
+wait. The sequences are exactly the ones `visit` built inline — Cisco, then
+ArubaOS-Switch's spelling when that answered nothing, then Dell's — written
+down once each and checked by a second equivalence test over eleven banners
+including OS9, OS10, an N-series, a Force10 and an ArubaOS-Switch, plus a
+test that each command kept its parser. The Dell and ArubaOS-Switch readings
+key on `dell::detect` and `arubasw::is_arubaos_switch`, the two predicates
+the crawler applied, not on `family_of`: they differ on a Force10 banner
+that never says "Dell", and folding them would change that switch's route
+commands — the seam is named in the module doc. **Still in the crawler, by
+design:** the FortiOS `get …` branch and ArubaOS-Switch's own `show ip` and
+`show system`. No fixture changed; the fake network is green; the
+unverified list is unchanged.
+
+### LT-462 — The canvas, the palette and the register read the slices they use — 2026-09-26
+**Source:** the same instruction; LT-452 left the canvas, the command
+palette, the register panel and the workbench reading the whole document,
+and the last two the whole store through a bare `useStore()`.
+**Acceptance:** no bare `useStore()` in a component; each of the four
+subscribes to what it draws from; the canvas benchmark no worse.
+**Shipped 2026-09-26.** No component holds a bare `useStore()` any more —
+the canvas, the top bar, the command palette, the register panel and the
+workbench, the project screen, the crawl, discover, Visio-import and backup
+panels and the folder settings each subscribe to the slices they draw from
+and reach actions through `useStore.getState()`; the workbench hands its
+children one snapshot for the same reason. Two dependency arrays that had
+hidden behind `store` are completed. The canvas benchmark was not re-run —
+LT-453's entry says why — so "no worse" is by construction (fewer
+subscriptions, the same renders), not by measurement.
+
 ### LT-448 — The rest of the interface reads from the catalogue — 2026-09-25
 **Source:** the audit, R-26. Twenty of sixty-one components use `t()`
 (LT-272); forty-one carry literal strings.
@@ -457,6 +537,12 @@ honoured is a file that is silently not converted, which is worse than the
 bug. So `soffice_args` builds the argument list with every file as an
 absolute path, which can never begin with `-`, and a test hands it
 `--odd.emf` and checks what soffice would see. Still conditional on Q-018.
+**Test corrected 2026-09-26.** The first test asserted a Unix-absolute
+`/abs/--other.wmf` and failed on the Windows leg of CI, where it came back
+as `D:/abs/--other.wmf`. It now builds its already-absolute fixture from
+the host's temp dir and asserts the stronger things — the relative name
+comes back `is_absolute()` and ending in its name, the absolute one passes
+through unchanged, and no argument starts with `-` — which holds on both.
 
 ### LT-455 — A run, a capture and a probe's history belong to a project — 2026-09-25
 **Source:** the audit, R-33. `crawl_run_result(id)`, `read_capture` and

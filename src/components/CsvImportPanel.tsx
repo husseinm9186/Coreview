@@ -108,7 +108,7 @@ export function CsvImportPanel() {
         store.upsertProbe(probe);
       }
     });
-    return `Added ${rows.length} device${rows.length === 1 ? '' : 's'}.`;
+    return `Added ${t('plural.device', { count: rows.length })}.`;
   };
 
   const addLinks = (rows: LinkCsvRow[]) => {
@@ -147,7 +147,7 @@ export function CsvImportPanel() {
     }
     const unmatched = [...new Set(missing)];
     return (
-      `Added ${added} link${added === 1 ? '' : 's'}.` +
+      `Added ${t('plural.link', { count: added })}.` +
       (unmatched.length
         ? ` ${unmatched.length} skipped — no device on the diagram called ${unmatched.slice(0, 3).map((n) => `"${n}"`).join(', ')}${unmatched.length > 3 ? '…' : ''}.`
         : '')
@@ -238,8 +238,8 @@ export function CsvImportPanel() {
 
       {loaded?.kind === 'netbox' && (
         <p className="cv-help">
-          {fileName(loaded.source)} — {loaded.found.devices.length} device{loaded.found.devices.length === 1 ? '' : 's'} and{' '}
-          {loaded.found.links.length} cable{loaded.found.links.length === 1 ? '' : 's'} from NetBox
+          {fileName(loaded.source)} — {t('plural.device', { count: loaded.found.devices.length })} and{' '}
+          {t('plural.cable', { count: loaded.found.links.length })} from NetBox
         </p>
       )}
 
@@ -249,7 +249,7 @@ export function CsvImportPanel() {
             const errors = loaded.kind === 'netbox' ? loaded.found.problems : (mapped?.errors ?? []);
             return errors.length > 0 && (
               <details className="cv-discover-failures">
-                <summary>{errors.length} row{errors.length === 1 ? '' : 's'} could not be used</summary>
+                <summary>{t('plural.row', { count: errors.length })} could not be used</summary>
                 <ul>{errors.slice(0, 20).map((e) => <li key={e}>{e}</li>)}</ul>
               </details>
             );

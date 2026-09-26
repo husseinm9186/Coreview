@@ -581,7 +581,7 @@ export type Evidence = {
 };
 
 /** LT-432: one running job as `jobs.rs` reports it. */
-export type JobKind = 'crawl' | 'backup' | 'sweep';
+export type JobKind = 'crawl' | 'backup' | 'sweep' | 'meraki' | 'icon-scan';
 export type JobState = 'running' | 'stopping' | 'complete' | 'cancelled';
 export type JobSnapshot = {
   id: number;

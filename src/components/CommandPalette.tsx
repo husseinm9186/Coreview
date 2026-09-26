@@ -143,7 +143,7 @@ export function CommandPalette({
           ))}
         </ul>
         <p className="cv-command-foot">
-          {query && rows.length === 0 ? 'Nothing matches.' : commandMode ? `${rows.length} command${rows.length === 1 ? '' : 's'}` : query ? `${rows.length} found` : 'Type to search every page. > for commands.'}
+          {query && rows.length === 0 ? 'Nothing matches.' : commandMode ? `${t('plural.command', { count: rows.length })}` : query ? `${rows.length} found` : 'Type to search every page. > for commands.'}
         </p>
       </div>
     </div>

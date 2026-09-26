@@ -12,7 +12,6 @@ import { t } from '../i18n';
 
 export function ProjectScreen() {
   const projects = useStore((s) => s.projects);
-  const store = useStore();
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<ProjectMeta | null>(null);
@@ -29,10 +28,10 @@ export function ProjectScreen() {
   const [vaultNote, setVaultNote] = useState<string | null>(null);
 
   useEffect(() => {
-    void store.refreshProjects();
+    void useStore.getState().refreshProjects();
     // The chosen folders live in the database, so they have to be read back
     // before anything can use them.
-    void store.loadSettings();
+    void useStore.getState().loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -41,7 +40,7 @@ export function ProjectScreen() {
   type Package = { meta: ProjectMeta; document: ProjectDocument; vault?: unknown };
 
   const openImported = (pkg: Package) =>
-    store.createProject(
+    useStore.getState().createProject(
       { ...pkg.meta, name: `${pkg.meta.name} (imported)` },
       pkg.document as ProjectDocument,
     );
@@ -106,8 +105,8 @@ export function ProjectScreen() {
         setPending(null);
         setVaultPassphrase('');
         await openImported(pkg);
-        store.setStatusMessage(
-          `Imported ${n} credential${n === 1 ? '' : 's'}, re-sealed with this machine's passphrase.`,
+        useStore.getState().setStatusMessage(
+          `Imported ${t('plural.credential', { count: n })}, re-sealed with this machine's passphrase.`,
         );
       })
       .catch((e: unknown) => setVaultNote(e instanceof Error ? e.message : String(e)));
@@ -119,7 +118,7 @@ export function ProjectScreen() {
     setPending(null);
     setVaultPassphrase('');
     void openImported(pkg).then(() =>
-      store.setStatusMessage('Credentials left in the file. The project was imported without them.'),
+      useStore.getState().setStatusMessage('Credentials left in the file. The project was imported without them.'),
     );
   };
 
@@ -219,7 +218,7 @@ export function ProjectScreen() {
                   <button
                     type="button"
                     className="cv-project-open"
-                    onClick={() => void store.openProject(p.id)}
+                    onClick={() => void useStore.getState().openProject(p.id)}
                   >
                     <span className="cv-project-title">{p.name}</span>
                     <span className="cv-project-meta">
@@ -233,7 +232,7 @@ export function ProjectScreen() {
                     <button
                       type="button"
                       className="cv-btn cv-btn-small"
-                      onClick={() => void store.duplicateProject(p.id)}
+                      onClick={() => void useStore.getState().duplicateProject(p.id)}
                     >
                       Duplicate
                     </button>
@@ -243,7 +242,7 @@ export function ProjectScreen() {
                       onClick={() =>
                         void ipc
                           .setArchived(p.id, !p.archived)
-                          .then(() => store.refreshProjects())
+                          .then(() => useStore.getState().refreshProjects())
                       }
                     >
                       {p.archived ? 'Restore' : 'Archive'}
@@ -274,7 +273,7 @@ export function ProjectScreen() {
                 type="button"
                 className="cv-sample"
                 onClick={() =>
-                  void store.createProject(
+                  void useStore.getState().createProject(
                     { name: s.name, customer: 'Example Customer', site: 'Example site', engineer: '' },
                     s.build(),
                   )
@@ -314,7 +313,7 @@ export function ProjectScreen() {
                 type="button"
                 className="cv-btn is-danger"
                 onClick={() => {
-                  void store.deleteProject(confirmDelete.id);
+                  void useStore.getState().deleteProject(confirmDelete.id);
                   setConfirmDelete(null);
                 }}
               >

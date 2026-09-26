@@ -133,7 +133,7 @@ export function RackPanel() {
                 ? got.full.length
                   ? `No room for ${got.full.join(', ')}.`
                   : 'Nothing to add: every device that names a rack is already in it.'
-                : `Added ${got.racks} rack${got.racks === 1 ? '' : 's'} and placed ${got.placed} device${got.placed === 1 ? '' : 's'}.` +
+                : `Added ${t('plural.rack', { count: got.racks })} and placed ${t('plural.device', { count: got.placed })}.` +
                     (got.full.length ? ` No room for ${got.full.join(', ')}.` : ''),
             );
           }}

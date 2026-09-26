@@ -26,6 +26,10 @@ export function jobName(kind: JobKind): string {
       return t('jobs.kind.backup');
     case 'sweep':
       return t('jobs.kind.sweep');
+    case 'meraki':
+      return t('jobs.kind.meraki');
+    case 'icon-scan':
+      return t('jobs.kind.iconScan');
   }
 }
 

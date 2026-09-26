@@ -855,14 +855,21 @@ mod tests {
     /// absolute path, never as something that looks like an option.
     #[test]
     fn a_file_named_like_an_option_is_passed_as_an_absolute_path() {
-        let args = super::soffice_args(std::path::Path::new("/tmp/profile"), std::path::Path::new("/tmp/out"), &["--odd.emf".into(), "/abs/--other.wmf".into()]);
-        let files: Vec<String> = args[6..].iter().map(|a| a.to_string_lossy().into_owned()).collect();
+        // A path that is absolute on *this* host — `/abs/x` is not one on
+        // Windows, where the CI leg found the first version of this test
+        // asserting a Unix shape (HANDOVER §6.3, the same class of thing).
+        let already = std::env::temp_dir().join("--other.wmf");
+        let out = std::env::temp_dir().join("out");
+        let args = super::soffice_args(std::path::Path::new("profile"), &out, &["--odd.emf".into(), already.clone()]);
+        let files: Vec<PathBuf> = args[6..].iter().map(PathBuf::from).collect();
         assert_eq!(files.len(), 2);
-        assert!(std::path::Path::new(&files[0]).is_absolute(), "{files:?}");
-        assert!(files[0].ends_with("--odd.emf"));
-        assert_eq!(files[1], "/abs/--other.wmf");
-        assert!(files.iter().all(|f| !f.starts_with('-')));
-        assert_eq!(args[1..6].iter().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>(), ["--headless", "--convert-to", "svg", "--outdir", "/tmp/out"]);
+        assert!(files[0].is_absolute(), "{files:?}");
+        assert!(files[0].ends_with("--odd.emf"), "{files:?}");
+        assert_eq!(files[1], already, "an absolute path is passed through unchanged");
+        assert!(files.iter().all(|f| !f.to_string_lossy().starts_with('-')));
+        let flags: Vec<String> = args[1..6].iter().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert_eq!(flags[..4], ["--headless", "--convert-to", "svg", "--outdir"]);
+        assert_eq!(PathBuf::from(&flags[4]), out);
     }
 
     use super::*;

@@ -142,7 +142,6 @@ const matches = (a: IpamAddress, needle: string, fields: readonly IpamCustomFiel
 
 export function IpamPanel() {
   const doc = useStore((s) => s.doc);
-  const store = useStore();
   const model = useMemo(() => buildIpam(allNodes(doc), doc.ipam), [doc]);
   // LT-298
   const hidden = useStore((s) => s.settings.registerHiddenColumns);
@@ -244,8 +243,8 @@ export function IpamPanel() {
     };
     // A declared subnet is edited; a derived one is adopted by declaring it.
     const said = block?.subnetId
-      ? store.updateIpamSubnet(block.subnetId, { cidr: subnetForm.cidr, ...patch })
-      : store.addIpamSubnet(subnetForm.cidr, patch);
+      ? useStore.getState().updateIpamSubnet(block.subnetId, { cidr: subnetForm.cidr, ...patch })
+      : useStore.getState().addIpamSubnet(subnetForm.cidr, patch);
     setProblem(said);
     if (!said) closeForms();
   };
@@ -273,21 +272,21 @@ export function IpamPanel() {
       deviceInterface: deviceId ? deviceInterface || undefined : undefined,
       custom: cleanCustom(fields, 'address', custom),
     };
-    const said = id ? store.updateIpamEntry(id, patch) : store.addIpamEntry(patch);
+    const said = id ? useStore.getState().updateIpamEntry(id, patch) : useStore.getState().addIpamEntry(patch);
     setProblem(said);
     if (!said) closeForms();
   };
 
   const saveDevice = (a: IpamAddress) => {
     if (!deviceForm || !a.nodeId) return;
-    const said = store.editDeviceAddress(a.nodeId, a.addressId, deviceForm);
+    const said = useStore.getState().editDeviceAddress(a.nodeId, a.addressId, deviceForm);
     setProblem(said);
     if (!said) closeForms();
   };
 
   const saveRange = (id?: string) => {
     if (!rangeForm) return;
-    const said = id ? store.updateIpamRange(id, rangeForm) : store.addIpamRange(rangeForm);
+    const said = id ? useStore.getState().updateIpamRange(id, rangeForm) : useStore.getState().addIpamRange(rangeForm);
     setProblem(said);
     if (!said) closeForms();
   };
@@ -400,7 +399,7 @@ export function IpamPanel() {
             onClick={() => {
               const name = window.prompt(t('ipam.viewName'), filter.trim().slice(0, 40));
               if (name === null) return;
-              setProblem(store.saveIpamView(name, filter));
+              setProblem(useStore.getState().saveIpamView(name, filter));
             }}>
             {t('ipam.saveView')}
           </button>
@@ -409,7 +408,7 @@ export function IpamPanel() {
           <button type="button" className="cv-btn cv-btn-small"
             onClick={() => {
               const v = (doc.ipam?.views ?? []).find((x) => x.query === filter.trim());
-              if (v) store.removeIpamView(v.id);
+              if (v) useStore.getState().removeIpamView(v.id);
             }}>
             {t('ipam.forgetView')}
           </button>
@@ -431,7 +430,7 @@ export function IpamPanel() {
             <button type="button" className="cv-btn cv-btn-small"
               disabled={bulkPlan.changes.length === 0}
               onClick={() => {
-                const n = store.applyIpamBulk(bulkPlan.changes, t(`ipam.bulkWhat.${bulkKind}` as 'ipam.bulkWhat.add-tags'));
+                const n = useStore.getState().applyIpamBulk(bulkPlan.changes, t(`ipam.bulkWhat.${bulkKind}` as 'ipam.bulkWhat.add-tags'));
                 setBulkValue('');
                 setProblem(n ? null : null);
               }}>
@@ -495,12 +494,12 @@ export function IpamPanel() {
                   onAddRange={() => addRange(b)}
                   onEditRange={(r) => editRange(b, r)}
                   onSaveRange={saveRange}
-                  onRemoveRange={(id) => store.removeIpamRange(id)}
+                  onRemoveRange={(id) => useStore.getState().removeIpamRange(id)}
                   onSaveEntry={saveEntry}
                   onSaveDevice={saveDevice}
                   onEditAddress={editAddress}
-                  onRemoveEntry={(id) => store.removeIpamEntry(id)}
-                  onRemove={b.subnetId ? () => store.removeIpamSubnet(b.subnetId!) : undefined}
+                  onRemoveEntry={(id) => useStore.getState().removeIpamEntry(id)}
+                  onRemove={b.subnetId ? () => useStore.getState().removeIpamSubnet(b.subnetId!) : undefined}
                   onCancel={closeForms}
                 />
               ))}

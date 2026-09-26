@@ -48,7 +48,9 @@ const assignmentWord = (a: AssignmentType) => t(`ipam.assignment.${a}`);
 export function IpamWorkbench({ view: fixed }: { view?: WorkbenchView } = {}) {
   const doc = useStore((s) => s.doc);
   const timeFormat = useStore((s) => s.settings.timeFormat);
-  const store = useStore();
+  // LT-462: not a subscription. The children call actions through it, which
+  // never change; what this component draws comes from `doc` above.
+  const store = useStore.getState();
   const model = useMemo(() => buildIpam(allNodes(doc), doc.ipam), [doc]);
 
   const [own, setOwn] = useState<WorkbenchView>('hierarchy');

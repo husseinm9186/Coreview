@@ -327,7 +327,10 @@ export function Canvas() {
   const [menu, setMenu] = useState<MenuState | null>(null);
 
   const doc = useStore((s) => s.doc);
-  const store = useStore();
+  const bundledIcons = useStore((s) => s.bundledIcons);
+  const canPaste = useStore((s) => s.canPaste);
+  const iconLibrary = useStore((s) => s.iconLibrary);
+  const presenting = useStore((s) => s.presenting);
   // The page being drawn (LT-094) — this component renders exactly one.
   const pg = activePage(doc);
 
@@ -365,7 +368,7 @@ export function Canvas() {
           // A leader to a note is straight on purpose — a curved pointer at a
           // label is just harder to follow — and it points at nothing, so it
           // has no direction. A real link between two devices names neither:
-          // `store.addEdge` gives it the document's default style, which is
+          // `useStore.getState().addEdge` gives it the document's default style, which is
           // Bezier unless the operator saved something else (LT-130).
           ...(leader
             ? {
@@ -383,10 +386,10 @@ export function Canvas() {
           healthRule: leader ? { type: 'manual' } : { type: 'both-endpoints' },
         },
       } as unknown as TopoEdge;
-      store.addEdge(edge);
-      store.select(null, edge.id);
+      useStore.getState().addEdge(edge);
+      useStore.getState().select(null, edge.id);
     },
-    [store, pg.nodes],
+    [pg.nodes],
   );
 
   const onDrop = useCallback(
@@ -401,11 +404,11 @@ export function Canvas() {
         // The user's own folder first, so an id clash resolves to their
         // icon; the bundled set (D-022) backs it, then whatever this
         // project has captured from its own canvas (LT-104).
-        iconLibrary: [...store.iconLibrary, ...store.bundledIcons, ...(store.doc.customShapes ?? [])],
+        iconLibrary: [...iconLibrary, ...bundledIcons, ...(doc.customShapes ?? [])],
       });
-      if (node) store.addNode(node);
+      if (node) useStore.getState().addNode(node);
     },
-    [rf, store],
+    [rf, iconLibrary, bundledIcons, doc.customShapes],
   );
 
   const nodeMenu = (nodeId: string): MenuItem[] => {
@@ -427,7 +430,7 @@ export function Canvas() {
     const node = pg.nodes.find((n) => n.id === nodeId);
     const locked = Boolean((node?.data as { locked?: boolean } | undefined)?.locked);
     const maintenance = Boolean((node?.data as DeviceNodeData | undefined)?.maintenance);
-    const members = store.groupMembers(nodeId);
+    const members = useStore.getState().groupMembers(nodeId);
     const selectedCount = pg.nodes.filter((n) => n.selected).length;
     // The same target a device's own primary check is aimed at (LT-061), so
     // "where is this actually going" traces the address being monitored,
@@ -435,11 +438,11 @@ export function Canvas() {
     const nodeProbes = doc.probes.filter((p) => p.objectId === nodeId);
     const primaryTarget = (nodeProbes.find((p) => p.isPrimary) ?? nodeProbes[0])?.target.trim();
     return [
-      { label: 'Edit properties', onSelect: () => store.select(nodeId, null) },
+      { label: 'Edit properties', onSelect: () => useStore.getState().select(nodeId, null) },
       // LT-233: this device, or the selection it is part of, and its neighbours.
       ...[1, 2].map((hops) => ({
-        label: `Focus on ${selectedCount > 1 && node?.selected ? 'the selection' : 'this'} — ${hops} link${hops === 1 ? '' : 's'} out`,
-        onSelect: () => store.setFocus({ ids: selectedCount > 1 && node?.selected ? pg.nodes.filter((n) => n.selected).map((n) => n.id) : [nodeId], hops }),
+        label: `Focus on ${selectedCount > 1 && node?.selected ? 'the selection' : 'this'} — ${t('plural.link', { count: hops })} out`,
+        onSelect: () => useStore.getState().setFocus({ ids: selectedCount > 1 && node?.selected ? pg.nodes.filter((n) => n.selected).map((n) => n.id) : [nodeId], hops }),
       })),
       ...(primaryTarget
         ? [{ label: 'Traceroute', onSelect: () => setTracerouteTarget(primaryTarget) }]
@@ -456,11 +459,11 @@ export function Canvas() {
               onSelect: () => {
                 const was = collapsed.includes(nodeId);
                 const n = hiddenByAll([nodeId], pg.nodes, pg.edges).size;
-                store.toggleCollapsed(nodeId);
-                store.setStatusMessage(
+                useStore.getState().toggleCollapsed(nodeId);
+                useStore.getState().setStatusMessage(
                   was
-                    ? `Expanded — ${n} device${n === 1 ? '' : 's'} back on the page.`
-                    : `Collapsed — ${n} device${n === 1 ? '' : 's'} folded into this one. Nothing was deleted.`,
+                    ? `Expanded — ${t('plural.device', { count: n })} back on the page.`
+                    : `Collapsed — ${t('plural.device', { count: n })} folded into this one. Nothing was deleted.`,
                 );
               },
             },
@@ -471,8 +474,8 @@ export function Canvas() {
             {
               label: `Expand everything — ${collapsed.length} collapsed`,
               onSelect: () => {
-                store.expandAll();
-                store.setStatusMessage('Everything is expanded.');
+                useStore.getState().expandAll();
+                useStore.getState().setStatusMessage('Everything is expanded.');
               },
             },
           ]
@@ -496,7 +499,7 @@ export function Canvas() {
         label: 'Duplicate',
         onSelect: () => {
           if (!node) return;
-          store.addNode({
+          useStore.getState().addNode({
             ...node,
             id: uid(),
             position: { x: node.position.x + 40, y: node.position.y + 40 },
@@ -510,18 +513,18 @@ export function Canvas() {
               label: 'Save to shape library',
               onSelect: () => {
                 const d = node.data as DeviceNodeData;
-                store.saveCustomShape(nodeId, d.label || DEVICE_LABEL[d.deviceType]);
+                useStore.getState().saveCustomShape(nodeId, d.label || DEVICE_LABEL[d.deviceType]);
               },
             },
           ]
         : []),
       {
         label: maintenance ? 'Clear maintenance' : 'Set maintenance',
-        onSelect: () => store.updateNodeData(nodeId, { maintenance: !maintenance }),
+        onSelect: () => useStore.getState().updateNodeData(nodeId, { maintenance: !maintenance }),
       },
       {
         label: locked ? 'Unlock' : 'Lock',
-        onSelect: () => store.updateNodeData(nodeId, { locked: !locked }),
+        onSelect: () => useStore.getState().updateNodeData(nodeId, { locked: !locked }),
       },
       ...(selectedCount > 1
         ? ([
@@ -537,11 +540,11 @@ export function Canvas() {
             label,
             onSelect: () => {
               const ids = pg.nodes.filter((n) => n.selected).map((n) => n.id);
-              const moved = store.arrange(ids, how);
-              store.setStatusMessage(
+              const moved = useStore.getState().arrange(ids, how);
+              useStore.getState().setStatusMessage(
                 moved === 0
                   ? 'They are already arranged that way.'
-                  : `Moved ${moved} object${moved === 1 ? '' : 's'}.`,
+                  : `Moved ${t('plural.object', { count: moved })}.`,
               );
             },
           }))
@@ -559,11 +562,11 @@ export function Canvas() {
             },
             {
               label: `Ungroup (${members.length} objects)`,
-              onSelect: () => store.ungroup(nodeId),
+              onSelect: () => useStore.getState().ungroup(nodeId),
             },
           ]
         : selectedCount > 1
-          ? [{ label: `Group ${selectedCount} objects`, onSelect: () => store.groupSelected() }]
+          ? [{ label: `Group ${selectedCount} objects`, onSelect: () => useStore.getState().groupSelected() }]
           : []),
       // LT-174: the whole selection when this is part of one.
       { label: 'Bring to front (Ctrl+Shift+])', onSelect: () => reorder(nodeId, 'front') },
@@ -574,8 +577,8 @@ export function Canvas() {
         label: 'Delete',
         danger: true,
         onSelect: () => {
-          store.select(nodeId, null);
-          store.deleteSelected();
+          useStore.getState().select(nodeId, null);
+          useStore.getState().deleteSelected();
         },
       },
     ];
@@ -589,21 +592,21 @@ export function Canvas() {
       const ids = new Set(nodeId && !selected.includes(nodeId) ? [nodeId] : selected);
       const nodes = restack(pg.nodes, ids, how);
       if (sameOrder(nodes, pg.nodes)) return;
-      store.commit();
+      useStore.getState().commit();
       useStore.setState((s) => ({ doc: withPage(s.doc, { nodes }), dirty: true }));
     },
-    [pg.nodes, store],
+    [pg.nodes],
   );
 
   const edgeMenu = (edgeId: string): MenuItem[] => {
     const edge = pg.edges.find((e) => e.id === edgeId);
     const data = edge?.data;
     return [
-      { label: 'Edit link properties', onSelect: () => store.select(null, edgeId) },
+      { label: 'Edit link properties', onSelect: () => useStore.getState().select(null, edgeId) },
       {
         label: 'Reverse flow direction',
         onSelect: () =>
-          store.updateEdgeData(edgeId, {
+          useStore.getState().updateEdgeData(edgeId, {
             direction: data?.direction === 'forward' ? 'reverse' : 'forward',
           }),
       },
@@ -612,40 +615,40 @@ export function Canvas() {
         onSelect: () => {
           const order = ['smoothstep', 'bezier', 'step', 'straight', 'avoid'] as const;
           const next = order[(order.indexOf(data?.pathType ?? 'smoothstep') + 1) % order.length]!;
-          store.updateEdgeData(edgeId, { pathType: next });
+          useStore.getState().updateEdgeData(edgeId, { pathType: next });
         },
       },
       // LT-068: hand a link back to auto-routing.
       ...(data?.waypoints?.length
-        ? [{ label: 'Reset routing', onSelect: () => store.updateEdgeData(edgeId, { waypoints: [] }) }]
+        ? [{ label: 'Reset routing', onSelect: () => useStore.getState().updateEdgeData(edgeId, { waypoints: [] }) }]
         : []),
       // LT-079: back to the look the operator chose — colour, path, flow,
       // width, line style — leaving the ports, label and health rule alone.
       {
         label: 'Reset to default style',
         onSelect: () => {
-          store.commit();
-          store.updateEdgeData(edgeId, resetToDefault(pg.canvas.linkStyle));
+          useStore.getState().commit();
+          useStore.getState().updateEdgeData(edgeId, resetToDefault(pg.canvas.linkStyle));
         },
       },
       {
         label: 'Save this style as the default',
         onSelect: () => {
           if (!data) return;
-          store.setDefaultLinkStyle(styleOf(data));
-          store.setStatusMessage('New links will look like this one, on every page.');
+          useStore.getState().setDefaultLinkStyle(styleOf(data));
+          useStore.getState().setStatusMessage('New links will look like this one, on every page.');
         },
       },
       {
         label: data?.maintenance ? 'Clear maintenance' : 'Set maintenance',
-        onSelect: () => store.updateEdgeData(edgeId, { maintenance: !data?.maintenance }),
+        onSelect: () => useStore.getState().updateEdgeData(edgeId, { maintenance: !data?.maintenance }),
       },
       {
         label: 'Delete',
         danger: true,
         onSelect: () => {
-          store.select(null, edgeId);
-          store.deleteSelected();
+          useStore.getState().select(null, edgeId);
+          useStore.getState().deleteSelected();
         },
       },
     ];
@@ -654,21 +657,21 @@ export function Canvas() {
   const paneMenu = (clientX: number, clientY: number): MenuItem[] => {
     const p = rf.screenToFlowPosition({ x: clientX, y: clientY });
     return [
-      { label: 'Add note', onSelect: () => store.addNode(makeNote(p.x, p.y)) },
-      { label: 'Add change note', onSelect: () => store.addNode(makeNote(p.x, p.y, 'change')) },
-      { label: 'Add sticky note', onSelect: () => store.addNode(makeNote(p.x, p.y, 'sticky')) },
-      { label: 'Add container', onSelect: () => store.addNode(makeDeviceNode('site', p.x, p.y)) },
+      { label: 'Add note', onSelect: () => useStore.getState().addNode(makeNote(p.x, p.y)) },
+      { label: 'Add change note', onSelect: () => useStore.getState().addNode(makeNote(p.x, p.y, 'change')) },
+      { label: 'Add sticky note', onSelect: () => useStore.getState().addNode(makeNote(p.x, p.y, 'sticky')) },
+      { label: 'Add container', onSelect: () => useStore.getState().addNode(makeDeviceNode('site', p.x, p.y)) },
       {
         label: 'Paste in place (Ctrl+Shift+V)',
-        disabled: !store.canPaste(),
-        onSelect: () => store.pasteInPlace(),
+        disabled: !canPaste(),
+        onSelect: () => useStore.getState().pasteInPlace(),
       },
       { label: 'Fit view', onSelect: () => fitEverything() },
       // LT-192 / LT-193.
       { label: 'Zoom to selection', onSelect: () => zoomToSelection() },
       {
-        label: store.doc.gridSnap ? 'Stop snapping to the grid (Ctrl+Shift+G)' : 'Snap to the grid (Ctrl+Shift+G)',
-        onSelect: () => store.setGridSnap(!store.doc.gridSnap),
+        label: doc.gridSnap ? 'Stop snapping to the grid (Ctrl+Shift+G)' : 'Snap to the grid (Ctrl+Shift+G)',
+        onSelect: () => useStore.getState().setGridSnap(!doc.gridSnap),
       },
       { label: 'Save this view', onSelect: () => saveViewpoint() },
       ...(pg.canvas.viewpoints ?? []).map((v, i) => ({
@@ -678,12 +681,12 @@ export function Canvas() {
       ...(pg.canvas.viewpoints ?? []).map((v) => ({
         label: `Forget ${v.name}`,
         onSelect: () =>
-          store.setCanvas({ viewpoints: (pg.canvas.viewpoints ?? []).filter((x) => x.id !== v.id) }),
+          useStore.getState().setCanvas({ viewpoints: (pg.canvas.viewpoints ?? []).filter((x) => x.id !== v.id) }),
       })),
-      { label: 'Present (F5)', onSelect: () => store.setPresenting(true) },
+      { label: 'Present (F5)', onSelect: () => useStore.getState().setPresenting(true) },
       {
         label: pg.canvas.minimapHealth ? 'Draw the minimap plain' : 'Colour the minimap by health',
-        onSelect: () => store.setCanvas({ minimapHealth: !pg.canvas.minimapHealth }),
+        onSelect: () => useStore.getState().setCanvas({ minimapHealth: !pg.canvas.minimapHealth }),
       },
       {
         label: 'Fit page to content',
@@ -691,8 +694,8 @@ export function Canvas() {
           // The one deliberate shrink. Growth is automatic; going back is not,
           // because a sheet that snaps smaller on its own makes the layout
           // jump under the pointer.
-          store.setCanvas({ sheetRect: pageForContent(pg.nodes) });
-          store.setStatusMessage('The page now fits what is on it.');
+          useStore.getState().setCanvas({ sheetRect: pageForContent(pg.nodes) });
+          useStore.getState().setStatusMessage('The page now fits what is on it.');
         },
       },
       { label: 'Find a device…', onSelect: () => setFinding(true) },
@@ -706,7 +709,7 @@ export function Canvas() {
         : []),
       {
         label: pg.canvas.gridEnabled ? 'Hide grid' : 'Show grid',
-        onSelect: () => store.setCanvas({ gridEnabled: !pg.canvas.gridEnabled }),
+        onSelect: () => useStore.getState().setCanvas({ gridEnabled: !pg.canvas.gridEnabled }),
       },
       {
         label:
@@ -714,21 +717,19 @@ export function Canvas() {
             ? 'Draw devices as cards'
             : 'Draw devices as symbols',
         onSelect: () =>
-          store.setCanvas({
+          useStore.getState().setCanvas({
             nodeStyle: (pg.canvas.nodeStyle ?? 'glyph') === 'glyph' ? 'card' : 'glyph',
           }),
       },
       {
         label: 'Tidy the layout',
         onSelect: () => {
-          const { moved, rows, locked } = store.tidyLayout();
-          store.setStatusMessage(
+          const { moved, rows, locked } = useStore.getState().tidyLayout();
+          useStore.getState().setStatusMessage(
             moved === 0
               ? 'Nothing to tidy — the spacing is already even.'
-              : `Evened out ${moved} device${moved === 1 ? '' : 's'} across ${rows} row${
-                  rows === 1 ? '' : 's'
-                }. Nothing was rearranged.` +
-                (locked ? ` ${locked} locked device${locked === 1 ? '' : 's'} left alone.` : ''),
+              : `Evened out ${t('plural.device', { count: moved })} across ${t('plural.row', { count: rows })}. Nothing was rearranged.` +
+                (locked ? ` ${t('plural.lockedDevice', { count: locked })} left alone.` : ''),
           );
         },
       },
@@ -740,14 +741,14 @@ export function Canvas() {
       ] as const).map(([kind, label]) => ({
         label,
         onSelect: () => {
-          const { moved, scope, locked, tooMany } = store.autoLayout(kind);
-          store.setStatusMessage(
+          const { moved, scope, locked, tooMany } = useStore.getState().autoLayout(kind);
+          useStore.getState().setStatusMessage(
             tooMany
               ? `A mesh layout is limited to ${tooMany.toLocaleString()} devices at once. Select part of the diagram and try again.`
               : moved === 0
               ? 'Nothing to lay out.'
-              : `Laid out ${moved} device${moved === 1 ? '' : 's'} ${scope === 'selection' ? 'in the selection' : 'on this page'}.` +
-                  (locked ? ` ${locked} locked device${locked === 1 ? '' : 's'} left alone.` : '') +
+              : `Laid out ${t('plural.device', { count: moved })} ${scope === 'selection' ? 'in the selection' : 'on this page'}.` +
+                  (locked ? ` ${t('plural.lockedDevice', { count: locked })} left alone.` : '') +
                   ' Undo puts it back.',
           );
         },
@@ -759,14 +760,12 @@ export function Canvas() {
         // not. Named for what it produces rather than for the algorithm.
         label: 'Arrange top to bottom',
         onSelect: () => {
-          const { moved, tiers, locked } = store.flowLayout();
-          store.setStatusMessage(
+          const { moved, tiers, locked } = useStore.getState().flowLayout();
+          useStore.getState().setStatusMessage(
             moved === 0
               ? 'Nothing to arrange on this page.'
-              : `Arranged ${moved} device${moved === 1 ? '' : 's'} into ${tiers} layer${
-                  tiers === 1 ? '' : 's'
-                }, internet at the top.` +
-                (locked ? ` ${locked} locked device${locked === 1 ? '' : 's'} left alone.` : '') +
+              : `Arranged ${t('plural.device', { count: moved })} into ${t('plural.layer', { count: tiers })}, internet at the top.` +
+                (locked ? ` ${t('plural.lockedDevice', { count: locked })} left alone.` : '') +
                 ' Undo puts it back.',
           );
         },
@@ -782,27 +781,27 @@ export function Canvas() {
                 : by === 'vlan'
                 ? 'Colour devices by VLAN'
                 : `Colour devices by ${by}`,
-          onSelect: () => store.setCanvas({ colourBy: by }),
+          onSelect: () => useStore.getState().setCanvas({ colourBy: by }),
         })),
       {
         // LT-168: outline or solid glyphs for the whole page.
         label: (pg.canvas.glyphVariant ?? 'outline') === 'solid' ? 'Draw devices as outlines' : 'Draw devices as solid tiles',
         onSelect: () =>
-          store.setCanvas({ glyphVariant: (pg.canvas.glyphVariant ?? 'outline') === 'solid' ? 'outline' : 'solid' }),
+          useStore.getState().setCanvas({ glyphVariant: (pg.canvas.glyphVariant ?? 'outline') === 'solid' ? 'outline' : 'solid' }),
       },
       {
         label: (pg.canvas.lineJumps ?? true) ? 'Stop hopping crossed links' : 'Hop crossed links',
         onSelect: () =>
-          store.setCanvas({ lineJumps: !(pg.canvas.lineJumps ?? true) }),
+          useStore.getState().setCanvas({ lineJumps: !(pg.canvas.lineJumps ?? true) }),
       },
       {
         label: 'Let every link follow its devices',
         onSelect: () => {
-          const freed = store.unpinLinks();
-          store.setStatusMessage(
+          const freed = useStore.getState().unpinLinks();
+          useStore.getState().setStatusMessage(
             freed === 0
               ? 'Every link already follows its devices.'
-              : `${freed} link${freed === 1 ? '' : 's'} released. They will swing round to the ` +
+              : `${t('plural.link', { count: freed })} released. They will swing round to the ` +
                 'nearer side as you move things.',
           );
         },
@@ -810,18 +809,18 @@ export function Canvas() {
       {
         label: 'Group each subnet together',
         onSelect: () => {
-          const { groups, ungrouped } = store.groupBySubnet();
-          store.setStatusMessage(
+          const { groups, ungrouped } = useStore.getState().groupBySubnet();
+          useStore.getState().setStatusMessage(
             groups === 0
               ? 'Nothing to group — no two devices share a /24.'
-              : `Grouped ${groups} subnet${groups === 1 ? '' : 's'}. Dragging one device now moves its whole subnet.` +
-                (ungrouped ? ` ${ungrouped} device${ungrouped === 1 ? '' : 's'} left ungrouped.` : ''),
+              : `Grouped ${t('plural.subnet', { count: groups })}. Dragging one device now moves its whole subnet.` +
+                (ungrouped ? ` ${t('plural.device', { count: ungrouped })} left ungrouped.` : ''),
           );
         },
       },
       {
         label: settings.minimap ? 'Hide the overview box' : 'Show the overview box',
-        onSelect: () => store.setSettings({ minimap: !settings.minimap }),
+        onSelect: () => useStore.getState().setSettings({ minimap: !settings.minimap }),
       },
     ];
   };
@@ -847,12 +846,12 @@ export function Canvas() {
       (node.data as DeviceNodeData).label = 'Text';
       node.width = 140;
       node.height = 30;
-      store.addNode(node);
-      store.beginEditing(node.id);
+      useStore.getState().addNode(node);
+      useStore.getState().beginEditing(node.id);
     };
     el.addEventListener('dblclick', write, true);
     return () => el.removeEventListener('dblclick', write, true);
-  }, [rf, store]);
+  }, [rf]);
 
   /** Fit the sheet, not just what is on it.
    *
@@ -877,7 +876,7 @@ export function Canvas() {
   const zoomToSelection = useCallback(() => {
     const sel = pg.nodes.filter((n) => n.selected);
     if (sel.length === 0) {
-      store.setStatusMessage('Select something to zoom to.');
+      useStore.getState().setStatusMessage('Select something to zoom to.');
       return;
     }
     let x1 = Infinity;
@@ -894,7 +893,7 @@ export function Canvas() {
     }
     rf.fitBounds({ x: x1, y: y1, width: x2 - x1, height: y2 - y1 }, { padding: 0.3 });
     if (rf.getZoom() > 2) rf.zoomTo(2);
-  }, [pg.nodes, rf, store]);
+  }, [pg.nodes, rf]);
 
   /** LT-230: what the palette can do after `>`. */
   const paletteCommands: PaletteCommand[] = useMemo(() => {
@@ -955,12 +954,12 @@ export function Canvas() {
     while (taken.has(`View ${n}`)) n += 1;
     const name = `View ${n}`;
     const { x, y, zoom } = rf.getViewport();
-    store.setCanvas({ viewpoints: [...list, { id: uid(), name, x, y, zoom }] });
+    useStore.getState().setCanvas({ viewpoints: [...list, { id: uid(), name, x, y, zoom }] });
     const place = list.length + 1;
-    store.setStatusMessage(
+    useStore.getState().setStatusMessage(
       place <= 9 ? `Saved ${name}. Alt+${place} comes back to it.` : `Saved ${name}. The canvas menu comes back to it.`,
     );
-  }, [pg.canvas.viewpoints, rf, store]);
+  }, [pg.canvas.viewpoints, rf]);
 
   const goToViewpoint = useCallback(
     (index: number) => {
@@ -1075,11 +1074,11 @@ export function Canvas() {
           const ids = pg.nodes.filter((n) => n.selected).map((n) => n.id);
           if (ids.length > 1) {
             e.preventDefault();
-            const moved = store.arrange(ids, how);
-            store.setStatusMessage(
+            const moved = useStore.getState().arrange(ids, how);
+            useStore.getState().setStatusMessage(
               moved === 0
                 ? 'They are already arranged that way.'
-                : `Moved ${moved} object${moved === 1 ? '' : 's'}.`,
+                : `Moved ${t('plural.object', { count: moved })}.`,
             );
             return;
           }
@@ -1087,20 +1086,20 @@ export function Canvas() {
       }
       // LT-193: in presentation the keys are for moving between pages and
       // leaving; nothing edits the diagram.
-      if (store.presenting) {
-        const pages = store.doc.pages;
-        const at = pages.findIndex((p) => p.id === store.doc.activePageId);
+      if (presenting) {
+        const pages = doc.pages;
+        const at = pages.findIndex((p) => p.id === doc.activePageId);
         if (e.key === 'Escape' || e.key === 'F5') {
           e.preventDefault();
-          store.setPresenting(false);
+          useStore.getState().setPresenting(false);
         } else if (['PageDown', 'ArrowRight', 'ArrowDown', ' '].includes(e.key)) {
           e.preventDefault();
           const next = pages[Math.min(pages.length - 1, Math.max(0, at) + 1)];
-          if (next) store.setActivePage(next.id);
+          if (next) useStore.getState().setActivePage(next.id);
         } else if (['PageUp', 'ArrowLeft', 'ArrowUp'].includes(e.key)) {
           e.preventDefault();
           const prev = pages[Math.max(0, at - 1)];
-          if (prev) store.setActivePage(prev.id);
+          if (prev) useStore.getState().setActivePage(prev.id);
         } else if (e.key === 'f' || e.key === 'F') {
           fitEverything();
         }
@@ -1108,16 +1107,16 @@ export function Canvas() {
       }
       if (e.key === 'F5') {
         e.preventDefault();
-        store.setPresenting(true);
+        useStore.getState().setPresenting(true);
         return;
       }
       // LT-183: Ctrl+PageUp/PageDown steps through the pages.
       if (mod && (e.key === 'PageDown' || e.key === 'PageUp')) {
         e.preventDefault();
-        const pages = store.doc.pages;
-        const at = Math.max(0, pages.findIndex((p) => p.id === store.doc.activePageId));
+        const pages = doc.pages;
+        const at = Math.max(0, pages.findIndex((p) => p.id === doc.activePageId));
         const to = pages[Math.min(pages.length - 1, Math.max(0, at + (e.key === 'PageDown' ? 1 : -1)))];
-        if (to) store.setActivePage(to.id);
+        if (to) useStore.getState().setActivePage(to.id);
         return;
       }
       // LT-192: Alt+1…9 goes back to a saved view on this page.
@@ -1127,32 +1126,32 @@ export function Canvas() {
       }
       if (mod && e.key.toLowerCase() === 'a') {
         e.preventDefault();
-        store.selectAll();
+        useStore.getState().selectAll();
       } else if (mod && e.key.toLowerCase() === 'c') {
-        const copied = store.copySelection();
+        const copied = useStore.getState().copySelection();
         if (copied > 0) {
           e.preventDefault();
-          store.setStatusMessage(`Copied ${copied} object${copied === 1 ? '' : 's'}.`);
+          useStore.getState().setStatusMessage(`Copied ${t('plural.object', { count: copied })}.`);
         }
       } else if (mod && e.shiftKey && e.key.toLowerCase() === 'v') {
         // LT-186.
         e.preventDefault();
-        const pasted = store.pasteInPlace();
-        store.setStatusMessage(
-          pasted > 0 ? `Pasted ${pasted} object${pasted === 1 ? '' : 's'} where they were copied from.` : 'Nothing has been copied.',
+        const pasted = useStore.getState().pasteInPlace();
+        useStore.getState().setStatusMessage(
+          pasted > 0 ? `Pasted ${t('plural.object', { count: pasted })} where they were copied from.` : 'Nothing has been copied.',
         );
       } else if (mod && e.key.toLowerCase() === 'v') {
-        const pasted = store.paste();
+        const pasted = useStore.getState().paste();
         if (pasted > 0) {
           e.preventDefault();
-          store.setStatusMessage(`Pasted ${pasted} object${pasted === 1 ? '' : 's'}.`);
+          useStore.getState().setStatusMessage(`Pasted ${t('plural.object', { count: pasted })}.`);
         }
       } else if (mod && e.shiftKey && e.key.toLowerCase() === 'g') {
         // LT-175.
         e.preventDefault();
-        const on = !store.doc.gridSnap;
-        store.setGridSnap(on);
-        store.setStatusMessage(on ? 'Snapping to the grid.' : 'Not snapping to the grid.');
+        const on = !doc.gridSnap;
+        useStore.getState().setGridSnap(on);
+        useStore.getState().setStatusMessage(on ? 'Snapping to the grid.' : 'Not snapping to the grid.');
       } else if (mod && (e.code === 'BracketRight' || e.code === 'BracketLeft')) {
         // LT-174: Ctrl+] / Ctrl+[ a step, with Shift all the way.
         e.preventDefault();
@@ -1167,21 +1166,21 @@ export function Canvas() {
         setFinding(true);
       } else if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        void store.saveProject();
+        void useStore.getState().saveProject();
       } else if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
-        store.undo();
+        useStore.getState().undo();
       } else if (mod && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
         e.preventDefault();
-        store.redo();
+        useStore.getState().redo();
       } else if (mod && e.key.toLowerCase() === 'd') {
         e.preventDefault();
         const sel = pg.nodes.find((n) => n.selected);
         if (sel) {
           // Offset by one grid step, and the copy takes the selection — the
           // original must let go of it, or the next Delete removes both.
-          store.selectNone();
-          store.addNode({
+          useStore.getState().selectNone();
+          useStore.getState().addNode({
             ...sel,
             id: uid(),
             position: { x: sel.position.x + 60, y: sel.position.y + 60 },
@@ -1201,8 +1200,8 @@ export function Canvas() {
         const dir = e.key.slice(5).toLowerCase() as Direction;
         const target = selectedNow.length === 1 ? nearestInDirection(boxes, selectedNow[0]!.id, dir) : nearestTo(boxes, middle.x, middle.y);
         if (!target) return;
-        store.onNodesChange(pg.nodes.map((n) => ({ type: 'select' as const, id: n.id, selected: n.id === target })));
-        store.select(pg.nodes.find((n) => n.id === target)?.type === 'note' ? null : target, null);
+        useStore.getState().onNodesChange(pg.nodes.map((n) => ({ type: 'select' as const, id: n.id, selected: n.id === target })));
+        useStore.getState().select(pg.nodes.find((n) => n.id === target)?.type === 'note' ? null : target, null);
         const b = boxes.find((x) => x.id === target)!;
         const { x: vx, y: vy, zoom } = rf.getViewport();
         const sx = b.x * zoom + vx;
@@ -1212,7 +1211,7 @@ export function Canvas() {
         }
         // Announced for a screen reader through the live status line.
         const d = pg.nodes.find((n) => n.id === target)?.data as DeviceNodeData | undefined;
-        store.setStatusMessage(`${d?.label ?? 'Note'} selected`);
+        useStore.getState().setStatusMessage(`${d?.label ?? 'Note'} selected`);
       } else if (e.key.startsWith('Arrow') && !mod) {
         // Arrows nudge by a pixel, Shift-arrows by a grid step. The keyboard
         // is how the last two pixels of a layout actually get done.
@@ -1224,7 +1223,7 @@ export function Canvas() {
           const step = e.shiftKey ? 60 : 1;
           const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
           const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
-          store.onNodesChange(
+          useStore.getState().onNodesChange(
             pg.nodes
               .filter((n) => ids.includes(n.id))
               .map((n) => ({
@@ -1241,18 +1240,18 @@ export function Canvas() {
           setHelp(false);
           return;
         }
-        if (store.focus) {
-          store.setFocus(null);
+        if (useStore.getState().focus) {
+          useStore.getState().setFocus(null);
           return;
         }
-        store.selectNone();
+        useStore.getState().selectNone();
         setGuides([]);
       } else if (e.key === '?') {
         e.preventDefault();
         setHelp((h) => !h);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
-        store.deleteSelected();
+        useStore.getState().deleteSelected();
       } else if (e.key === 'F' && e.shiftKey && !mod) {
         zoomToSelection();
       } else if (e.key === 'f' && !mod) {
@@ -1261,7 +1260,7 @@ export function Canvas() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [pg.nodes, rf, store, fitEverything, help, zoomToSelection, goToViewpoint, reorder]);
+  }, [pg.nodes, rf, fitEverything, help, zoomToSelection, goToViewpoint, reorder, doc.activePageId, doc.gridSnap, doc.pages, presenting]);
 
   // React Flow decides whether a node can be dragged from a `draggable` field
   // on the node itself. `locked` lives in `data`, which it never looks at, so
@@ -1437,11 +1436,11 @@ export function Canvas() {
         // LT-273: a drag is one undo step, taken as it starts — before anything
         // has moved — so one Ctrl+Z puts back everything it carried. A click
         // that moves nothing sends no position and takes no step.
-        if (!dragNodesRef.current) store.commit();
+        if (!dragNodesRef.current) useStore.getState().commit();
         let next = moveGroups(flying, dragNodesRef.current ?? page.nodes);
         if (rest.length > 0) {
           next = applyNodeChanges(rest, next) as TopoNode[];
-          store.onNodesChange(rest);
+          useStore.getState().onNodesChange(rest);
         }
         dragNodesRef.current = next;
         setDragNodes(next);
@@ -1455,9 +1454,9 @@ export function Canvas() {
         setDragNodes(null);
         useDragOverlay.getState().publish(null);
       }
-      store.onNodesChange(changes);
+      useStore.getState().onNodesChange(changes);
     },
-    [store],
+    [],
   );
 
   /** A drag that ended without its last position arriving still lands where
@@ -1641,12 +1640,12 @@ export function Canvas() {
             const flow = screen.map((p) => rf.screenToFlowPosition(p));
             const caught = new Set(lassoed(activePage(useStore.getState().doc).nodes, flow));
             const nodes = activePage(useStore.getState().doc).nodes;
-            store.onNodesChange(
+            useStore.getState().onNodesChange(
               nodes
                 .filter((n) => (adding ? caught.has(n.id) && !n.selected : Boolean(n.selected) !== caught.has(n.id)))
                 .map((n) => ({ type: 'select', id: n.id, selected: caught.has(n.id) || (adding && Boolean(n.selected)) })),
             );
-            if (caught.size > 0) store.setStatusMessage(`Lasso caught ${caught.size} object${caught.size === 1 ? '' : 's'}.`);
+            if (caught.size > 0) useStore.getState().setStatusMessage(`Lasso caught ${t('plural.object', { count: caught.size })}.`);
           };
           window.addEventListener('pointermove', move);
           window.addEventListener('pointerup', up);
@@ -1668,7 +1667,7 @@ export function Canvas() {
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
-        onEdgesChange={store.onEdgesChange}
+        onEdgesChange={useStore.getState().onEdgesChange}
         onConnect={onConnect}
         onNodeDragStop={() => {
           setGuides([]);
@@ -1688,8 +1687,8 @@ export function Canvas() {
           else if (far && viewport.zoom > 0.45) useStore.getState().setFarZoom(false);
         }}
         maxZoom={100}
-        onNodeClick={(_, n) => store.select(n.id, null)}
-        onEdgeClick={(_, e) => store.select(null, e.id)}
+        onNodeClick={(_, n) => useStore.getState().select(n.id, null)}
+        onEdgeClick={(_, e) => useStore.getState().select(null, e.id)}
         /* LT-052: double-click a spot on a link and write straight onto it.
            The empty text renders as an open caret; committing nothing removes
            it, so a stray double-click leaves no debris. */
@@ -1704,21 +1703,21 @@ export function Canvas() {
             at,
             text: '',
           });
-          store.commit();
-          store.updateEdgeData(edge.id, { texts });
+          useStore.getState().commit();
+          useStore.getState().updateEdgeData(edge.id, { texts });
         }}
         onPaneClick={() => {
-          store.select(null, null);
+          useStore.getState().select(null, null);
           setMenu(null);
         }}
         onNodeContextMenu={(e, n) => {
           e.preventDefault();
-          store.select(n.id, null);
+          useStore.getState().select(n.id, null);
           setMenu({ x: e.clientX, y: e.clientY, items: nodeMenu(n.id) });
         }}
         onEdgeContextMenu={(e, edge) => {
           e.preventDefault();
-          store.select(null, edge.id);
+          useStore.getState().select(null, edge.id);
           setMenu({ x: e.clientX, y: e.clientY, items: edgeMenu(edge.id) });
         }}
         onPaneContextMenu={(e) => {
@@ -1810,10 +1809,10 @@ export function Canvas() {
       )}
       {(focus || lit) && (
         <div className="cv-dim-chip" role="status">
-          {focus ? `Focused on ${focus.ids.length === 1 ? ((pg.nodes.find((n) => n.id === focus.ids[0])?.data as DeviceNodeData | undefined)?.label ?? 'a device') : `${focus.ids.length} devices`}, ${focus.hops} link${focus.hops === 1 ? '' : 's'} out` : 'Filtered'}
+          {focus ? `Focused on ${focus.ids.length === 1 ? ((pg.nodes.find((n) => n.id === focus.ids[0])?.data as DeviceNodeData | undefined)?.label ?? 'a device') : `${focus.ids.length} devices`}, ${t('plural.link', { count: focus.hops })} out` : 'Filtered'}
           {lit && ` · ${lit.size} of ${view.nodes.length} lit`}
-          {focus && <button type="button" className="cv-btn cv-btn-small" onClick={() => store.setFocus(null)}>Leave focus</button>}
-          {canvasFilter && <button type="button" className="cv-btn cv-btn-small" onClick={() => store.setCanvasFilter(null)}>Clear filter</button>}
+          {focus && <button type="button" className="cv-btn cv-btn-small" onClick={() => useStore.getState().setFocus(null)}>Leave focus</button>}
+          {canvasFilter && <button type="button" className="cv-btn cv-btn-small" onClick={() => useStore.getState().setCanvasFilter(null)}>Clear filter</button>}
         </div>
       )}
       <InkTools />
@@ -1826,7 +1825,7 @@ export function Canvas() {
           commands={paletteCommands}
           onGoTo={(item) => {
             if (!item.nodeId) return;
-            if (item.pageId && item.pageId !== store.doc.activePageId) store.setActivePage(item.pageId);
+            if (item.pageId && item.pageId !== doc.activePageId) useStore.getState().setActivePage(item.pageId);
             const id = item.nodeId;
             // After the page has rendered, select it and bring it into view.
             window.setTimeout(() => {
@@ -1840,8 +1839,8 @@ export function Canvas() {
           onAddShape={(type) => {
             const box = document.querySelector('.cv-canvas')?.getBoundingClientRect();
             const at = rf.screenToFlowPosition({ x: (box?.left ?? 0) + (box?.width ?? 800) / 2, y: (box?.top ?? 0) + (box?.height ?? 600) / 2 });
-            store.addNode(makeDeviceNode(type as DeviceType, at.x, at.y));
-            store.setStatusMessage(`Added ${DEVICE_LABEL[type as DeviceType]} in the middle of the view.`);
+            useStore.getState().addNode(makeDeviceNode(type as DeviceType, at.x, at.y));
+            useStore.getState().setStatusMessage(`Added ${DEVICE_LABEL[type as DeviceType]} in the middle of the view.`);
           }}
         />
       )}

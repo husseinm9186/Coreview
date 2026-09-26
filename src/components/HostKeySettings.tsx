@@ -33,7 +33,7 @@ export function HostKeySettings() {
       setMessage(
         n === 0
           ? 'There were none to forget.'
-          : `Forgot ${n} host key${n === 1 ? '' : 's'}. The next connection to each device is treated as first contact.`,
+          : `Forgot ${t('plural.hostKey', { count: n })}. The next connection to each device is treated as first contact.`,
       );
       refresh();
     });
@@ -92,7 +92,7 @@ export function HostKeySettings() {
         {confirming ? (
           <>
             <span className="cv-help">
-              Forget all {keys.length} remembered key{keys.length === 1 ? '' : 's'}? Every device
+              Forget all {t('plural.rememberedKey', { count: keys.length })}? Every device
               becomes first contact again, and a key that has changed will be accepted silently.
             </span>
             <button type="button" className="cv-btn cv-btn-small" onClick={() => setConfirming(false)}>

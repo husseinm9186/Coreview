@@ -128,7 +128,7 @@ export function PageNavigator({ onClose }: { onClose: () => void }) {
                 <span className="cv-page-nav-name">{p.name}</span>
               )}
               <span className="cv-page-nav-count">
-                {p.nodes.length} object{p.nodes.length === 1 ? '' : 's'} · {p.edges.length} link{p.edges.length === 1 ? '' : 's'}
+                {t('plural.object', { count: p.nodes.length })} · {t('plural.link', { count: p.edges.length })}
               </span>
             </span>
           </li>

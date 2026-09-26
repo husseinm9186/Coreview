@@ -132,7 +132,7 @@ export function PathCheckPanel() {
               <p className="cv-help">
                 {verdict?.firstDown
                   ? `Down on the drawing at ${verdict.firstDown.kind === 'device' ? labelOf(verdict.firstDown.id) : 'the link after ' + labelOf(path.nodeIds[path.edgeIds.indexOf(verdict.firstDown.id)]!)}.`
-                  : `${path.edgeIds.length} link${path.edgeIds.length === 1 ? '' : 's'} on the drawing, none down${verdict?.unchecked ? `; ${verdict.unchecked} device${verdict.unchecked === 1 ? ' is' : 's are'} not being checked` : ''}.`}
+                  : `${t('plural.link', { count: path.edgeIds.length })} on the drawing, none down${verdict?.unchecked ? `; ${verdict.unchecked} device${verdict.unchecked === 1 ? ' is' : 's are'} not being checked` : ''}.`}
               </p>
             </>
           )}

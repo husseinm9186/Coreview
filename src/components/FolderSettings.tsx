@@ -11,8 +11,8 @@ import { t } from '../i18n';
  * how a backup ends up attached to an email.
  */
 export function FolderSettings() {
-  const store = useStore();
-  const { backupFolder, exportFolder } = store.settings;
+  const settings = useStore((s) => s.settings);
+  const { backupFolder, exportFolder } = settings;
 
   if (!isDesktop) {
     return (
@@ -36,11 +36,11 @@ export function FolderSettings() {
       <div className="cv-folder-head">
         <span className="cv-folder-title">{title}</span>
         <span className="cv-folder-actions">
-          <button type="button" className="cv-btn cv-btn-small" onClick={() => void store.chooseFolder(which)}>
+          <button type="button" className="cv-btn cv-btn-small" onClick={() => void useStore.getState().chooseFolder(which)}>
             {value ? 'Change' : 'Choose folder'}
           </button>
           {value && (
-            <button type="button" className="cv-btn cv-btn-small" onClick={() => void store.clearFolder(which)}>
+            <button type="button" className="cv-btn cv-btn-small" onClick={() => void useStore.getState().clearFolder(which)}>
               Clear
             </button>
           )}

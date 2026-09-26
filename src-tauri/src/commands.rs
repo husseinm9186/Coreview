@@ -472,9 +472,15 @@ pub fn probe_history(state: State<'_, AppState>, probe_id: String, project_id: S
 /// bundled or committed. Returns sanitised SVG source plus the list of files
 /// that were skipped and why, so the palette can say what it could not read
 /// rather than quietly showing fewer icons.
+///
+/// LT-460: a job, because a folder of stencils converts through LibreOffice
+/// and that takes minutes; the header shows the count and Stop ends it.
 #[tauri::command(async)]
-pub fn list_icon_library(dir: String) -> CmdResult<crate::icons::IconLibrary> {
-    crate::icons::scan(&dir)
+pub fn list_icon_library(state: State<'_, AppState>, dir: String) -> CmdResult<crate::icons::IconLibrary> {
+    let ticket = state.jobs.start(crate::jobs::Kind::IconScan)?;
+    let token = ticket.token();
+    let progress = ticket.progress();
+    crate::icons::scan_watched(&dir, &[], &|phase, done, total| progress.set(phase, done, total), &|| token.is_cancelled())
 }
 
 /// The diagram as a PDF (LT-077). The frontend renders the drawing to SVG —

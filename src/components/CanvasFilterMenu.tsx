@@ -122,7 +122,7 @@ export function CanvasFilterMenu() {
         </label>
         <p className="cv-help">
           {hidden > 0
-            ? `${hidden} of ${total} ${total === 1 ? 'device is' : 'devices are'} off the page. Nothing is deleted — clear the filter to bring them back.`
+            ? `${hidden} of ${t('plural.deviceIs', { count: total })} off the page. Nothing is deleted — clear the filter to bring them back.`
             : 'Nothing is deleted either way. Clearing the filter brings everything back.'}
         </p>
         <button type="button" className="cv-btn cv-btn-small" disabled={!active} onClick={() => setFilter(null)}>
