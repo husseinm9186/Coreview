@@ -12,7 +12,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 /// Bumped whenever the diagram document shape changes; the frontend migrates.
 pub const DOCUMENT_VERSION: i64 = 1;
 
@@ -365,15 +365,28 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         CREATE INDEX IF NOT EXISTS idx_samples_session
             ON probe_samples(session_id, timestamp_ms DESC);
         -- LT-227: each crawl's result, so two can be compared.
+        -- LT-424: a run is opened when the crawl starts and closed when it
+        -- ends; `status` is running, complete, cancelled or aborted. Devices
+        -- go into crawl_run_devices as they are reached, so an unclean exit
+        -- keeps what was found. `result` holds the rest of the summary —
+        -- failures, neighbours not visited, cancelled — and, for runs written
+        -- before schema 3, the devices as well.
         CREATE TABLE IF NOT EXISTS crawl_runs (
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
             taken_at INTEGER NOT NULL,
             seed TEXT NOT NULL DEFAULT '',
             devices INTEGER NOT NULL DEFAULT 0,
-            result TEXT NOT NULL
+            result TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'complete'
         );
         CREATE INDEX IF NOT EXISTS idx_crawl_runs_project ON crawl_runs(project_id, taken_at DESC);
+        CREATE TABLE IF NOT EXISTS crawl_run_devices (
+            run_id TEXT NOT NULL REFERENCES crawl_runs(id) ON DELETE CASCADE,
+            seq INTEGER NOT NULL,
+            device TEXT NOT NULL,
+            PRIMARY KEY (run_id, seq)
+        );
 
         -- LT-264: where a saved credential was offered, and when. Rolled up by
         -- the hour, so a check that reads a device every minute is one row an
@@ -396,23 +409,46 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         "#,
     )?;
 
-    let current: Option<i64> = conn
+    apply_migrations(conn, MIGRATIONS)
+}
+
+/// One step of the schema's history: the version it brings the database *to*,
+/// and what it does. Applied in order, each once, inside one transaction.
+type Migration = (i64, fn(&Connection) -> rusqlite::Result<()>);
+
+/// Every migration ever written, oldest first. Adding a column is a new entry
+/// here and a bump of `SCHEMA_VERSION`, never an edit to an old one — a
+/// database in the field may be at any version in this list.
+const MIGRATIONS: &[Migration] = &[(2, split_settings_per_project), (3, crawl_runs_written_as_they_go)];
+
+/// LT-430: the steps that take a database from its version to
+/// `SCHEMA_VERSION`, in one transaction with the version bump last.
+///
+/// Before this the steps and the bump ran bare, so a crash between them left
+/// a half-migrated database that the next start would try to migrate again.
+/// The one migration that existed was idempotent by luck; the first
+/// `ALTER TABLE ADD COLUMN` would not have been. Now either every step lands
+/// and the version moves, or nothing does and the next start tries again.
+fn apply_migrations(conn: &Connection, steps: &[Migration]) -> rusqlite::Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    let current: Option<i64> = tx
         .query_row("SELECT version FROM schema_info LIMIT 1", [], |r| r.get(0))
         .optional()?;
     match current {
         None => {
-            conn.execute("INSERT INTO schema_info (version) VALUES (?1)", params![SCHEMA_VERSION])?;
+            tx.execute("INSERT INTO schema_info (version) VALUES (?1)", params![SCHEMA_VERSION])?;
         }
         Some(v) if v < SCHEMA_VERSION => {
-            // Migrations are applied here in order before the bump.
-            if v < 2 {
-                split_settings_per_project(conn)?;
+            for (to, step) in steps {
+                if v < *to {
+                    step(&tx)?;
+                }
             }
-            conn.execute("UPDATE schema_info SET version = ?1", params![SCHEMA_VERSION])?;
+            tx.execute("UPDATE schema_info SET version = ?1", params![SCHEMA_VERSION])?;
         }
         _ => {}
     }
-    Ok(())
+    tx.commit()
 }
 
 /// Schema 2 (LT-414): project-shaped settings move out of the machine-wide
@@ -452,6 +488,26 @@ fn split_settings_per_project(conn: &Connection) -> rusqlite::Result<()> {
     }
     for (key, _) in &moving {
         conn.execute("DELETE FROM app_settings WHERE key = ?1", params![key])?;
+    }
+    Ok(())
+}
+
+/// Schema 3 (LT-424): a run gets a status, and its devices get a table of
+/// their own. The table is in the base schema; this adds the column to a
+/// database that already had the old `crawl_runs`. Every run written before
+/// this is complete by definition, which is the column's default.
+///
+/// A column that is already there is left alone, so a database whose base
+/// schema was built at 3 and then had its version wound back — the upgrade
+/// tests do exactly that — migrates cleanly.
+fn crawl_runs_written_as_they_go(conn: &Connection) -> rusqlite::Result<()> {
+    let has_status = conn
+        .prepare("PRAGMA table_info(crawl_runs)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "status");
+    if !has_status {
+        conn.execute("ALTER TABLE crawl_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'complete'", [])?;
     }
     Ok(())
 }
@@ -691,11 +747,17 @@ pub struct CrawlRunRow {
     pub taken_at: i64,
     pub seed: String,
     pub devices: i64,
+    /// LT-424: `running`, `complete`, `cancelled` or `aborted`.
+    pub status: String,
 }
 
 /// How many crawls a project keeps.
 pub const CRAWL_RUNS_KEPT: i64 = 50;
 
+/// A run as it was written before schema 3 — whole, with its devices inside
+/// `result`. The app no longer writes one (LT-424); the tests keep it to
+/// prove such a run still reads.
+#[cfg(test)]
 pub fn insert_crawl_run(conn: &Connection, id: &str, project_id: &str, taken_at: i64, seed: &str, devices: i64, result: &str) -> rusqlite::Result<()> {
     conn.execute(
         "INSERT INTO crawl_runs (id, project_id, taken_at, seed, devices, result) VALUES (?1,?2,?3,?4,?5,?6)",
@@ -709,14 +771,84 @@ pub fn insert_crawl_run(conn: &Connection, id: &str, project_id: &str, taken_at:
     Ok(())
 }
 
+/// LT-424: opens a run the moment a crawl starts, so that whatever it reaches
+/// is on disk before it ends. Keeps the project to its last `CRAWL_RUNS_KEPT`;
+/// the cascade takes a pruned run's devices with it.
+pub fn open_crawl_run(conn: &Connection, id: &str, project_id: &str, taken_at: i64, seed: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO crawl_runs (id, project_id, taken_at, seed, devices, result, status) VALUES (?1,?2,?3,?4,0,'{}','running')",
+        params![id, project_id, taken_at, seed],
+    )?;
+    conn.execute(
+        "DELETE FROM crawl_runs WHERE project_id = ?1 AND id NOT IN (
+            SELECT id FROM crawl_runs WHERE project_id = ?1 ORDER BY taken_at DESC LIMIT ?2)",
+        params![project_id, CRAWL_RUNS_KEPT],
+    )?;
+    Ok(())
+}
+
+/// One device, as it was reached. `device` is its JSON, exactly as the
+/// interface receives it in the event stream.
+pub fn append_crawl_device(conn: &Connection, run_id: &str, device: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO crawl_run_devices (run_id, seq, device) VALUES (?1,
+            (SELECT COALESCE(MAX(seq), 0) + 1 FROM crawl_run_devices WHERE run_id = ?1), ?2)",
+        params![run_id, device],
+    )?;
+    conn.execute("UPDATE crawl_runs SET devices = devices + 1 WHERE id = ?1", params![run_id])?;
+    Ok(())
+}
+
+/// Closes a run with everything but its devices — failures, neighbours not
+/// visited, whether it was cancelled — and the status it ended in.
+pub fn close_crawl_run(conn: &Connection, id: &str, status: &str, summary: &str) -> rusqlite::Result<()> {
+    conn.execute("UPDATE crawl_runs SET status = ?2, result = ?3 WHERE id = ?1", params![id, status, summary])?;
+    Ok(())
+}
+
+/// Run once at startup: nothing can still be running, so a run left `running`
+/// is one the process died under. Marked rather than removed — its devices
+/// are the whole point of writing them as they arrive.
+pub fn mark_abandoned_runs(conn: &Connection) -> rusqlite::Result<usize> {
+    conn.execute("UPDATE crawl_runs SET status = 'aborted' WHERE status = 'running'", [])
+}
+
 pub fn list_crawl_runs(conn: &Connection, project_id: &str) -> rusqlite::Result<Vec<CrawlRunRow>> {
-    let mut stmt = conn.prepare("SELECT id, taken_at, seed, devices FROM crawl_runs WHERE project_id = ?1 ORDER BY taken_at DESC")?;
-    let rows = stmt.query_map(params![project_id], |r| Ok(CrawlRunRow { id: r.get(0)?, taken_at: r.get(1)?, seed: r.get(2)?, devices: r.get(3)? }))?;
+    let mut stmt = conn.prepare("SELECT id, taken_at, seed, devices, status FROM crawl_runs WHERE project_id = ?1 ORDER BY taken_at DESC")?;
+    let rows = stmt.query_map(params![project_id], |r| Ok(CrawlRunRow { id: r.get(0)?, taken_at: r.get(1)?, seed: r.get(2)?, devices: r.get(3)?, status: r.get(4)? }))?;
     rows.collect()
 }
 
-pub fn crawl_run_result(conn: &Connection, id: &str) -> rusqlite::Result<Option<String>> {
-    conn.query_row("SELECT result FROM crawl_runs WHERE id = ?1", params![id], |r| r.get(0)).optional()
+/// A run as the interface reads it: the summary with its devices in place and
+/// its status. A run written before schema 3 carries its devices inside
+/// `result` and is returned as it was; one written since takes them from
+/// `crawl_run_devices`, in the order they were reached.
+pub fn crawl_run_result(conn: &Connection, id: &str) -> rusqlite::Result<Option<serde_json::Value>> {
+    let row: Option<(String, String)> = conn
+        .query_row("SELECT result, status FROM crawl_runs WHERE id = ?1", params![id], |r| Ok((r.get(0)?, r.get(1)?)))
+        .optional()?;
+    let Some((result, status)) = row else { return Ok(None) };
+    let mut value: serde_json::Value = serde_json::from_str(&result).unwrap_or_else(|_| serde_json::json!({}));
+    if !value.is_object() {
+        value = serde_json::json!({});
+    }
+    if value.get("devices").and_then(|d| d.as_array()).is_none() {
+        let mut stmt = conn.prepare("SELECT device FROM crawl_run_devices WHERE run_id = ?1 ORDER BY seq")?;
+        let devices: Vec<serde_json::Value> = stmt
+            .query_map(params![id], |r| r.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .filter_map(|text| serde_json::from_str(&text).ok())
+            .collect();
+        value["devices"] = serde_json::Value::Array(devices);
+    }
+    let cancelled = serde_json::json!(status == "cancelled");
+    for (key, empty) in [("failures", serde_json::json!([])), ("notVisited", serde_json::json!([])), ("cancelled", cancelled)] {
+        if value.get(key).is_none() {
+            value[key] = empty;
+        }
+    }
+    value["status"] = serde_json::Value::String(status);
+    Ok(Some(value))
 }
 
 /// LT-264: one line of the credential use log.
@@ -841,6 +973,23 @@ pub fn samples_for(conn: &Connection, probe_id: &str, since_ms: i64, limit: i64)
         Ok(SampleRow { timestamp_ms: r.get(0)?, status: r.get(1)?, outcome: r.get(2)?, rtt_ms: r.get(3)? })
     })?;
     rows.collect()
+}
+
+/// How many events a project keeps (LT-426). Every probe transition is one
+/// row and nothing ever removed one, so the table grew for the life of the
+/// database. The page shows the newest 5,000; twenty times that is a long
+/// history without being a disk.
+pub const EVENTS_PER_PROJECT: i64 = 100_000;
+
+/// Drops a project's oldest events past the cap. The same shape as
+/// `prune_samples`, and cheap: `idx_events_project_time` serves it.
+pub fn prune_events(conn: &Connection, project_id: &str) -> rusqlite::Result<usize> {
+    conn.execute(
+        "DELETE FROM events WHERE project_id = ?1 AND timestamp_ms < (
+            SELECT timestamp_ms FROM events WHERE project_id = ?1
+            ORDER BY timestamp_ms DESC LIMIT 1 OFFSET ?2)",
+        params![project_id, EVENTS_PER_PROJECT - 1],
+    )
 }
 
 pub fn insert_event(conn: &Connection, e: &EventRow) -> rusqlite::Result<()> {
@@ -1975,6 +2124,88 @@ mod document_round_trip {
         assert_eq!(super::prune_samples(&c, "p1").unwrap(), 0, "under the real cap nothing more goes");
     }
 
+    /// LT-426: a project keeps its newest events and no more; another
+    /// project's are not touched by the prune.
+    #[test]
+    fn events_are_capped_per_project() {
+        let c = Connection::open_in_memory().unwrap();
+        super::migrate(&c).unwrap();
+        for (id, name) in [("p1", "A"), ("p2", "B")] {
+            c.execute("INSERT INTO projects (id, name, created_at, updated_at) VALUES (?1, ?2, 0, 0)", [id, name]).unwrap();
+        }
+        let row = |project: &str, i: i64| EventRow {
+            id: format!("{project}-{i}"),
+            project_id: project.into(),
+            session_id: None,
+            timestamp_ms: 1_000 + i,
+            object_type: "node".into(),
+            object_id: "n1".into(),
+            object_name: "core".into(),
+            event_type: "transition".into(),
+            previous_status: None,
+            current_status: Some("down".into()),
+            probe_type: None,
+            target: None,
+            rtt_ms: None,
+            message: String::new(),
+        };
+        for i in 0..(super::EVENTS_PER_PROJECT + 25) {
+            super::insert_event(&c, &row("p1", i)).unwrap();
+        }
+        for i in 0..3 {
+            super::insert_event(&c, &row("p2", i)).unwrap();
+        }
+        let removed = super::prune_events(&c, "p1").unwrap();
+        assert_eq!(removed, 25, "everything past the cap goes");
+        let count = |p: &str| -> i64 {
+            c.query_row("SELECT COUNT(*) FROM events WHERE project_id = ?1", [p], |r| r.get(0)).unwrap()
+        };
+        assert_eq!(count("p1"), super::EVENTS_PER_PROJECT);
+        assert_eq!(count("p2"), 3, "the other project is untouched");
+        // What is kept is the newest.
+        let oldest: i64 = c
+            .query_row("SELECT MIN(timestamp_ms) FROM events WHERE project_id = 'p1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(oldest, 1_000 + 25);
+        assert_eq!(super::prune_events(&c, "p1").unwrap(), 0, "under the cap nothing more goes");
+    }
+
+    /// LT-430: a migration that fails leaves the version and the tables as
+    /// they were, so the next start tries again rather than running on top
+    /// of half a change.
+    #[test]
+    fn a_failing_migration_leaves_the_database_at_its_old_version() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        conn.execute("UPDATE schema_info SET version = 1", []).unwrap();
+        set_setting(&conn, "backupFolder", Some("/shared")).unwrap();
+
+        fn adds_a_marker(c: &Connection) -> rusqlite::Result<()> {
+            c.execute("INSERT INTO app_settings (key, value) VALUES ('migrated', 'yes')", [])?;
+            Ok(())
+        }
+        fn fails(_: &Connection) -> rusqlite::Result<()> {
+            Err(rusqlite::Error::InvalidQuery)
+        }
+        let steps: &[super::Migration] = &[(2, adds_a_marker), (2, fails)];
+        assert!(super::apply_migrations(&conn, steps).is_err());
+
+        let version: i64 = conn
+            .query_row("SELECT version FROM schema_info LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 1, "the bump did not land");
+        let shared = all_settings(&conn).unwrap();
+        assert_eq!(shared.get("migrated"), None, "the step before the failure was rolled back");
+        assert_eq!(shared.get("backupFolder").map(String::as_str), Some("/shared"), "nothing else moved");
+
+        // And the real list still takes it the rest of the way.
+        migrate(&conn).unwrap();
+        let version: i64 = conn
+            .query_row("SELECT version FROM schema_info LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+    }
+
     /// LT-226, LT-227: sessions summarise per probe, crawls are kept and capped.
     #[test]
     fn sessions_summarise_and_crawls_are_kept() {
@@ -1999,8 +2230,55 @@ mod document_round_trip {
         let runs = super::list_crawl_runs(&c, "p1").unwrap();
         assert_eq!(runs.len() as i64, super::CRAWL_RUNS_KEPT);
         assert_eq!(runs[0].id, format!("r{}", super::CRAWL_RUNS_KEPT + 2));
-        assert_eq!(super::crawl_run_result(&c, &runs[0].id).unwrap().as_deref(), Some("{\"devices\":[]}"));
+        let old = super::crawl_run_result(&c, &runs[0].id).unwrap().expect("kept");
+        assert_eq!(old["devices"], serde_json::json!([]), "a run written before schema 3 reads as it was");
+        assert_eq!(old["status"], "complete");
         assert!(super::crawl_run_result(&c, "r0").unwrap().is_none(), "the oldest went");
+    }
+
+    /// LT-424: a run is on disk from the moment it starts, device by device,
+    /// so a process that dies under it leaves what it had found.
+    #[test]
+    fn a_run_written_as_it_goes_survives_the_process_dying() {
+        let c = Connection::open_in_memory().unwrap();
+        super::migrate(&c).unwrap();
+        c.execute("INSERT INTO projects (id, name, created_at, updated_at) VALUES ('p1','P',0,0)", []).unwrap();
+        super::open_crawl_run(&c, "run-1", "p1", 10, "192.0.2.1").unwrap();
+        for host in ["CORE", "DIST-A", "DIST-B"] {
+            super::append_crawl_device(&c, "run-1", &format!("{{\"hostname\":\"{host}\",\"address\":\"192.0.2.1\"}}")).unwrap();
+        }
+        // No close: this is the process going down mid-crawl.
+        let runs = super::list_crawl_runs(&c, "p1").unwrap();
+        assert_eq!((runs.len(), runs[0].devices, runs[0].status.as_str()), (1, 3, "running"));
+        let partial = super::crawl_run_result(&c, "run-1").unwrap().expect("readable before it is closed");
+        assert_eq!(partial["devices"].as_array().map(Vec::len), Some(3));
+        assert_eq!(partial["devices"][1]["hostname"], "DIST-A", "in the order they were reached");
+        assert_eq!(partial["failures"], serde_json::json!([]));
+        assert_eq!(partial["cancelled"], false);
+
+        // The next start finds it and says what happened to it.
+        assert_eq!(super::mark_abandoned_runs(&c).unwrap(), 1);
+        let after = super::crawl_run_result(&c, "run-1").unwrap().unwrap();
+        assert_eq!(after["status"], "aborted");
+        assert_eq!(after["devices"].as_array().map(Vec::len), Some(3), "nothing was thrown away");
+        assert_eq!(super::mark_abandoned_runs(&c).unwrap(), 0);
+
+        // A run that ends properly carries its summary and its status.
+        super::open_crawl_run(&c, "run-2", "p1", 20, "192.0.2.1").unwrap();
+        super::append_crawl_device(&c, "run-2", "{\"hostname\":\"CORE\"}").unwrap();
+        super::close_crawl_run(&c, "run-2", "cancelled", "{\"failures\":[{\"address\":\"192.0.2.9\"}],\"notVisited\":[],\"cancelled\":true}").unwrap();
+        let done = super::crawl_run_result(&c, "run-2").unwrap().unwrap();
+        assert_eq!((done["status"].as_str(), done["cancelled"].as_bool()), (Some("cancelled"), Some(true)));
+        assert_eq!(done["failures"][0]["address"], "192.0.2.9");
+        assert_eq!(done["devices"][0]["hostname"], "CORE");
+
+        // Pruning a run takes its devices with it.
+        for i in 0..super::CRAWL_RUNS_KEPT {
+            super::open_crawl_run(&c, &format!("later-{i}"), "p1", 100 + i, "x").unwrap();
+        }
+        assert!(super::crawl_run_result(&c, "run-1").unwrap().is_none());
+        let orphans: i64 = c.query_row("SELECT COUNT(*) FROM crawl_run_devices WHERE run_id = 'run-1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(orphans, 0, "the cascade took the devices");
     }
 }
 #[cfg(test)]

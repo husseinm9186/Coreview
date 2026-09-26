@@ -300,6 +300,10 @@ pub enum FailureKind {
     HostKeyChanged,
     /// It answered, then stopped part way through a command.
     CommandTimedOut,
+    /// LT-427: it answered and kept answering — more than the ceiling on one
+    /// command's output, with no prompt in sight. A `terminal monitor` left
+    /// on, or a log that never pages.
+    OutputTooLarge,
     /// Anything else, including a protocol error.
     Other,
 }
@@ -323,6 +327,10 @@ impl FailureKind {
             FailureKind::NoPrompt => "It accepted the session but never gave a prompt; it may not have a CLI.",
             FailureKind::HostKeyChanged => "The host key has changed. Confirm why before logging in again.",
             FailureKind::CommandTimedOut => "It answered, then stopped responding part way through.",
+            FailureKind::OutputTooLarge => {
+                "It kept sending with no prompt in sight, so the command was abandoned. Check for \
+                 `terminal monitor` or a debug left running on the device."
+            }
             FailureKind::Other => "See the message for what the device said.",
         }
     }
@@ -372,6 +380,7 @@ async fn classify_failure(error: &crate::ssh::SshError, address: &str) -> Failur
         SshError::NoPrompt { .. } => FailureKind::NoPrompt,
         SshError::HostKeyChanged(_) => FailureKind::HostKeyChanged,
         SshError::CommandTimeout { .. } => FailureKind::CommandTimedOut,
+        SshError::OutputTooLarge { .. } => FailureKind::OutputTooLarge,
         SshError::Connect { source, .. }
             if source.kind() == std::io::ErrorKind::ConnectionRefused =>
         {

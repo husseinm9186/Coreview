@@ -38,6 +38,14 @@ use crate::screen::Screen;
 /// what was negotiated will wrap its output in the wrong place.
 const PTY_COLS: u16 = 200;
 const PTY_ROWS: u16 = 200;
+
+/// The most a single command's output may grow to before it is abandoned
+/// (LT-427). A device left in `terminal monitor`, or a `show log` that never
+/// pages, otherwise streams for the whole `command_timeout` into a string that
+/// only ever grows, with the screen rendered on every chunk. Thirty-two
+/// megabytes is several times the largest running-config or forwarding table
+/// a real device produces, and far short of what would hurt.
+pub const DEFAULT_MAX_OUTPUT_BYTES: usize = 32 * 1024 * 1024;
 use crate::hostkeys::{changed_key_message, HostKeyStore, HostKeyVerdict};
 
 /// A password, kept out of anything that prints.
@@ -87,6 +95,11 @@ pub struct SshOptions {
     pub auth_timeout: Duration,
     /// How long to wait for a command's output to finish arriving.
     pub command_timeout: Duration,
+    /// The most one command's output may grow to before the command is
+    /// abandoned with `SshError::OutputTooLarge` (LT-427). A cap in bytes
+    /// rather than only in seconds, because a device that streams answers
+    /// the timeout with a sixty-second string.
+    pub max_output_bytes: usize,
     /// Where the login stream is written, when anybody wants it (LT-384).
     ///
     /// An out-parameter rather than an option, which is untidy — but it is the
@@ -109,6 +122,7 @@ impl Default for SshOptions {
             connect_timeout: Duration::from_secs(8),
             auth_timeout: Duration::from_secs(90),
             command_timeout: Duration::from_secs(60),
+            max_output_bytes: DEFAULT_MAX_OUTPUT_BYTES,
             login_transcript: None,
         }
     }
@@ -169,6 +183,15 @@ pub enum SshError {
         /// a banner. A command's output can hold a running-config, and an
         /// error message is the wrong place for one (D-006).
         last_seen: String,
+    },
+    /// LT-427: the command was abandoned because its output passed
+    /// `SshOptions::max_output_bytes`. Nothing of the output is kept in the
+    /// error, for the same reason `CommandTimeout` keeps none of a command's.
+    #[error("{host} sent more than {} MB in reply to `{command}` and was still sending; the command was abandoned", .limit / (1024 * 1024))]
+    OutputTooLarge {
+        host: String,
+        command: String,
+        limit: usize,
     },
     #[error("ssh error talking to {host}: {source}")]
     Protocol {
@@ -587,6 +610,21 @@ impl Device {
                 record_login(&self.options.login_transcript, &data);
             }
             buffer.push_str(&String::from_utf8_lossy(&data));
+            // LT-427: bounded in bytes as well as in seconds.
+            if buffer.len() > self.options.max_output_bytes {
+                crate::say!(
+                    crate::debuglog::Area::Ssh,
+                    "{}: `{}` passed {} bytes without a prompt; abandoned",
+                    self.host,
+                    command.unwrap_or("<login>"),
+                    self.options.max_output_bytes,
+                );
+                return Err(SshError::OutputTooLarge {
+                    host: self.host.clone(),
+                    command: command.unwrap_or("<login>").to_string(),
+                    limit: self.options.max_output_bytes,
+                });
+            }
 
             // LT-379 / D-054: the device measuring the terminal. It will not
             // draw a prompt until it is told where the cursor is, which is the

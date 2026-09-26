@@ -34,7 +34,7 @@ const payloads: Record<string, unknown> = {
     snmp: [{ version: 'v3', community: 'not-a-real-community', username: 'reader', authProtocol: 'sha', authPassword: 'not-a-real-auth', privacy: 'aes 256', privacyPassword: 'not-a-real-priv', ...extra }],
     credentialId: 'cred-ssh', snmpCredentialIds: ['cred-snmp'], details: { routes: true, spanningTree: false, vlans: true, ...extra },
     bindings: [{ scope: 'subnet', value: '192.0.2.0/24', credentialId: 'cred-ssh', ...extra }], reverseDns: true, concurrency: 4,
-    perHostTimeoutSecs: 120, retries: 1, ...extra,
+    perHostTimeoutSecs: 120, retries: 1, projectId: 'project-1', ...extra,
   }),
   backup_input: backupInput({
     credentialId: 'cred-ssh', targets: [{ address: '192.0.2.10', name: 'CORE-SW1', commands: ['show version'], site: 'HQ', ...extra }],

@@ -9,7 +9,6 @@ use coreview_probe::sweep::{parse_sweepable_cidr, sweep_many, SweepEvent, SweepO
 use coreview_probe::{run_traceroute, Engine, ProbeConfig, ProbeResult, ProbeSnapshot, TracerouteResult};
 use base64::Engine as _;
 use rusqlite::Connection;
-use tokio_util::sync::CancellationToken;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
@@ -21,15 +20,11 @@ pub struct AppState {
     pub db: Mutex<Connection>,
     pub session_id: Mutex<Option<String>>,
     pub project_id: Mutex<Option<String>>,
-    /// Cancels the sweep that is currently running, if any. A sweep is a
-    /// one-shot job rather than a session, so it needs its own handle — the
-    /// validation engine's Stop must not cancel a discovery scan, and vice
-    /// versa.
-    pub sweep_cancel: Mutex<Option<CancellationToken>>,
-    /// Cancels the running crawl. Separate from the sweep and the backup: they
-    /// are three different jobs and stopping one must not stop the others.
-    pub crawl_cancel: Mutex<Option<CancellationToken>>,
-    pub backup_cancel: Mutex<Option<CancellationToken>>,
+    /// LT-428: the crawl, the backup and the sweep that are running, one of
+    /// each at most. Three separate slots because they are three different
+    /// jobs and stopping one must not stop the others — and the validation
+    /// engine's Stop must not touch any of them.
+    pub jobs: Arc<crate::jobs::Jobs>,
     /// The unlocked vault key, for as long as the app is running. Never
     /// written anywhere, and zeroed when it is dropped.
     pub vault_key: Mutex<Option<coreview_discover::vault::VaultKey>>,
@@ -48,31 +43,31 @@ fn db_err(e: impl std::fmt::Display) -> String {
 
 // ---------------------------------------------------------------- projects
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_projects(state: State<'_, AppState>) -> CmdResult<Vec<ProjectMeta>> {
     let conn = state.db.lock().map_err(db_err)?;
     db::list_projects(&conn).map_err(db_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_project(state: State<'_, AppState>, package: ProjectPackage) -> CmdResult<()> {
     let conn = state.db.lock().map_err(db_err)?;
     db::upsert_project(&conn, &package).map_err(db_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_project(state: State<'_, AppState>, id: String) -> CmdResult<Option<ProjectPackage>> {
     let conn = state.db.lock().map_err(db_err)?;
     db::load_project(&conn, &id).map_err(db_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_project(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     let conn = state.db.lock().map_err(db_err)?;
     db::delete_project(&conn, &id).map_err(db_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_project_archived(
     state: State<'_, AppState>,
     id: String,
@@ -126,10 +121,14 @@ pub fn open_external_url(url: String) -> CmdResult<()> {
 /// LT-234: the kinds of file a device attachment may open as. Documents,
 /// pictures, drawings and text — never anything the system would run, because
 /// a path can arrive inside an imported project file.
+///
+/// LT-429: the legacy Office formats (`.doc`, `.xls`, `.ppt`) and `.rtf` are
+/// not here, because they carry macros behind a prompt people click through;
+/// nor is `.zip`, because an archive can hold anything. The OOXML forms without
+/// a macro suffix (`.docx`, `.xlsx`, `.pptx`) stay.
 const ATTACHMENT_KINDS: &[&str] = &[
     "pdf", "txt", "log", "cfg", "conf", "md", "csv", "json", "xml", "yaml", "yml", "png", "jpg", "jpeg", "gif", "svg",
-    "webp", "bmp", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "vsd", "vsdx", "drawio", "pcap",
-    "pcapng", "rtf", "zip",
+    "webp", "bmp", "docx", "xlsx", "pptx", "odt", "ods", "odp", "vsd", "vsdx", "drawio", "pcap", "pcapng",
 ];
 
 /// Whether a path may be opened as a device attachment: absolute, an existing
@@ -284,7 +283,7 @@ pub async fn probe_snapshot(state: State<'_, AppState>) -> CmdResult<Vec<ProbeSn
 
 // ------------------------------------------------------------------ events
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_events(
     state: State<'_, AppState>,
     project_id: String,
@@ -296,13 +295,16 @@ pub fn list_events(
 
 /// The frontend records the object *name* alongside the transition, because the
 /// engine only knows ids.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn record_event(state: State<'_, AppState>, event: EventRow) -> CmdResult<()> {
     let conn = state.db.lock().map_err(db_err)?;
-    db::insert_event(&conn, &event).map_err(db_err)
+    db::insert_event(&conn, &event).map_err(db_err)?;
+    // LT-426: the table is capped per project, the way samples are per probe.
+    db::prune_events(&conn, &event.project_id).map_err(db_err)?;
+    Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn app_info() -> CmdResult<serde_json::Value> {
     Ok(serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
@@ -340,50 +342,36 @@ pub fn pump_events(app: AppHandle, mut rx: tokio::sync::mpsc::UnboundedReceiver<
 }
 
 /// LT-226: a project's validation sessions, newest first.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_sessions(state: State<'_, AppState>, project_id: String) -> CmdResult<Vec<db::SessionRow>> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     db::list_sessions(&conn, &project_id).map_err(|e| e.to_string())
 }
 
 /// LT-226: what each probe did in one session.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn session_summary(state: State<'_, AppState>, session_id: String) -> CmdResult<Vec<db::ProbeSummary>> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     db::session_summary(&conn, &session_id).map_err(|e| e.to_string())
 }
 
-/// LT-227: keeps a crawl's result so it can be compared with another. The
-/// result is what the crawl already returned to the interface; it holds no
-/// secret. Capped at 64 MB, so a runaway payload cannot fill the disk.
-#[tauri::command]
-pub fn save_crawl_run(state: State<'_, AppState>, project_id: String, seed: String, result: serde_json::Value) -> CmdResult<String> {
-    let text = result.to_string();
-    if text.len() > 64 * 1024 * 1024 {
-        return Err("That crawl result is too large to keep.".into());
-    }
-    let devices = result.get("devices").and_then(|d| d.as_array()).map(|a| a.len() as i64).unwrap_or(0);
-    let id = format!("crawl-{}", db::now_ms());
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    db::insert_crawl_run(&conn, &id, &project_id, db::now_ms(), &seed, devices, &text).map_err(|e| e.to_string())?;
-    Ok(id)
-}
-
-#[tauri::command]
+/// LT-227: the crawls a project has kept, so two can be compared. Since
+/// LT-424 a run is written by the crawl itself, device by device, so there is
+/// no command to save one — see `discovery::start_crawl`.
+#[tauri::command(async)]
 pub fn list_crawl_runs(state: State<'_, AppState>, project_id: String) -> CmdResult<Vec<db::CrawlRunRow>> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     db::list_crawl_runs(&conn, &project_id).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn crawl_run_result(state: State<'_, AppState>, id: String) -> CmdResult<serde_json::Value> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let text = db::crawl_run_result(&conn, &id).map_err(|e| e.to_string())?.ok_or("That crawl is no longer kept.")?;
-    serde_json::from_str(&text).map_err(|e| e.to_string())
+    db::crawl_run_result(&conn, &id).map_err(|e| e.to_string())?.ok_or_else(|| "That crawl is no longer kept.".into())
 }
 
 /// LT-224: a probe's recorded results since `since_ms`, oldest first.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn probe_history(state: State<'_, AppState>, probe_id: String, since_ms: i64, limit: Option<i64>) -> CmdResult<Vec<db::SampleRow>> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     db::samples_for(&conn, &probe_id, since_ms, limit.unwrap_or(2_000).clamp(1, 20_000)).map_err(|e| e.to_string())
@@ -397,7 +385,7 @@ pub fn probe_history(state: State<'_, AppState>, probe_id: String, since_ms: i64
 /// bundled or committed. Returns sanitised SVG source plus the list of files
 /// that were skipped and why, so the palette can say what it could not read
 /// rather than quietly showing fewer icons.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_icon_library(dir: String) -> CmdResult<crate::icons::IconLibrary> {
     crate::icons::scan(&dir)
 }
@@ -405,20 +393,20 @@ pub fn list_icon_library(dir: String) -> CmdResult<crate::icons::IconLibrary> {
 /// The diagram as a PDF (LT-077). The frontend renders the drawing to SVG —
 /// one function, the same one the screen and the SVG export use — and this
 /// turns it into a vector PDF the operator can attach to a change record.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn diagram_pdf(svg: String) -> CmdResult<Vec<u8>> {
     crate::pdf::svg_to_pdf(&svg)
 }
 
 /// LT-251: every page asked for, as one PDF.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn diagram_pdf_pages(svgs: Vec<String>) -> CmdResult<Vec<u8>> {
     crate::pdf::svgs_to_pdf(&svgs)
 }
 
 /// The diagram as a Visio drawing (LT-078). Shapes and connectors, not a
 /// picture: a colleague without Coreview can open it and move things.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn diagram_vsdx(drawing: crate::visio::VisioDrawing) -> CmdResult<Vec<u8>> {
     crate::visio::to_vsdx(&drawing)
 }
@@ -457,7 +445,7 @@ fn removed_packs(state: &State<'_, AppState>) -> Vec<String> {
 /// user's own folder, minus any pack the operator has removed. Ships empty:
 /// vendor packs are no longer bundled (D-028, superseding D-022), and a test
 /// keeps it that way.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_bundled_icons(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -468,7 +456,7 @@ pub fn list_bundled_icons(
 /// The bundled stencil packs (LT-103) — none ship since D-028 — each an
 /// immediate subdirectory of the same resource
 /// `list_bundled_icons` scans.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_stencil_packs(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -483,7 +471,7 @@ pub fn list_stencil_packs(
 /// operator actually asked for; then its files are deleted to free the space,
 /// which cannot happen on a read-only install. The result says which, so the
 /// interface can stop claiming space was freed when it was not.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_stencil_pack(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -516,7 +504,7 @@ pub fn remove_stencil_pack(
 /// Bytes arrive base64-encoded because one of the five exports (PNG) is binary
 /// and the other four are text. Encoding them all the same way keeps this to a
 /// single command rather than a text one and a binary one.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_export(path: String, contents_b64: String) -> CmdResult<()> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(contents_b64.as_bytes())
@@ -541,7 +529,7 @@ pub fn save_export(path: String, contents_b64: String) -> CmdResult<()> {
 /// rather than borrowing the one below, which exists to reject a file that is
 /// obviously not a project.
 /// LT-244: a draw.io drawing, read into the same preview a Visio one gets.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_drawio(path: String) -> CmdResult<crate::visio_import::VisioImport> {
     const MAX: u64 = 64 * 1024 * 1024;
     let size = std::fs::metadata(&path).map_err(|e| format!("Could not read {path}: {e}"))?.len();
@@ -552,7 +540,7 @@ pub fn import_drawio(path: String) -> CmdResult<crate::visio_import::VisioImport
     crate::drawio_import::import_drawio(&text)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_visio(path: String) -> CmdResult<crate::visio_import::VisioImport> {
     const MAX: u64 = 128 * 1024 * 1024;
     let size = std::fs::metadata(&path)
@@ -607,7 +595,7 @@ pub fn save_project_folder(folder: String, name: String, json: String, yaml: Str
 }
 
 /// LT-245: every sheet of an Excel workbook the user chose, as rows of text.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_spreadsheet(path: String) -> CmdResult<Vec<crate::spreadsheet::Sheet>> {
     const MAX: u64 = 64 * 1024 * 1024;
     let size = std::fs::metadata(&path).map_err(|e| format!("Could not read {path}: {e}"))?.len();
@@ -618,7 +606,7 @@ pub fn read_spreadsheet(path: String) -> CmdResult<Vec<crate::spreadsheet::Sheet
     crate::spreadsheet::read_xlsx(&bytes)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_import(path: String) -> CmdResult<String> {
     const MAX: u64 = 64 * 1024 * 1024;
     let size = std::fs::metadata(&path)
@@ -665,6 +653,17 @@ mod export_tests {
         std::fs::write(&script, b"x").unwrap();
         assert_eq!(super::attachment_problem(&doc), None);
         assert!(super::attachment_problem(&script).unwrap().contains(".sh file is not opened"));
+        // LT-429: what carries a macro, or anything at all, is not opened.
+        for legacy in ["rack.xls", "notes.doc", "deck.ppt", "memo.rtf", "bundle.zip", "sheet.xlsm", "form.docm"] {
+            let f = dir.join(legacy);
+            std::fs::write(&f, b"x").unwrap();
+            assert!(super::attachment_problem(&f).unwrap().contains("not opened from here"), "{legacy}");
+        }
+        for fine in ["rack.xlsx", "notes.docx", "deck.pptx"] {
+            let f = dir.join(fine);
+            std::fs::write(&f, b"x").unwrap();
+            assert_eq!(super::attachment_problem(&f), None, "{fine}");
+        }
         assert!(super::attachment_problem(std::path::Path::new("relative.pdf")).unwrap().contains("full path"));
         assert!(super::attachment_problem(&dir.join("gone.pdf")).unwrap().contains("not there"));
         assert!(super::attachment_problem(&dir.join("folder.pdf")).is_some());
@@ -742,7 +741,7 @@ mod link_tests {
 /// These are the folders the user has chosen — backups, exports, icon library
 /// — and nothing else. No secret is stored here: the table is unencrypted and
 /// sits in the same database as the projects.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_settings(
     state: State<'_, AppState>,
     project_id: Option<String>,
@@ -759,7 +758,7 @@ pub fn get_settings(
 }
 
 /// Stores a preference, or clears it when `value` is absent or empty.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_setting(
     state: State<'_, AppState>,
     key: String,
@@ -851,7 +850,7 @@ pub fn set_setting(
 /// is not the same as being able to write into it — a read-only mount or a
 /// removed USB stick both pick cleanly and fail later, at which point the
 /// failure looks like the backup feature being broken.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_folder_writable(path: String) -> CmdResult<()> {
     let dir = std::path::Path::new(&path);
     if !dir.is_dir() {
@@ -905,13 +904,10 @@ pub async fn start_sweep(
         ));
     }
 
-    let token = CancellationToken::new();
-    {
-        let mut slot = state.sweep_cancel.lock().map_err(db_err)?;
-        if let Some(previous) = slot.replace(token.clone()) {
-            previous.cancel();
-        }
-    }
+    // LT-428: one sweep at a time, and a second is refused rather than
+    // silently replacing the first.
+    let ticket = state.jobs.start(crate::jobs::Kind::Sweep)?;
+    let token = ticket.token();
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<SweepEvent>(1024);
     let emitter = app.clone();
@@ -923,6 +919,8 @@ pub async fn start_sweep(
 
     tauri::async_runtime::spawn(async move {
         sweep_many(cidrs, options, tx, token).await;
+        // The slot empties when the sweep does, however it ended.
+        drop(ticket);
     });
 
     Ok(total)
@@ -932,9 +930,7 @@ pub async fn start_sweep(
 /// it without first asking whether there is anything to stop.
 #[tauri::command]
 pub fn cancel_sweep(state: State<'_, AppState>) -> CmdResult<()> {
-    if let Some(token) = state.sweep_cancel.lock().map_err(db_err)?.take() {
-        token.cancel();
-    }
+    state.jobs.cancel(crate::jobs::Kind::Sweep);
     Ok(())
 }
 

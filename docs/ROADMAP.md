@@ -14,9 +14,10 @@ shipped differs from what was asked, the Done entry says so.
 of work and does not count against that.*
 
 *Swept 2026-09-12: thirty-seven finished items moved to Done, where they
-belonged. What is left below is genuinely open — work blocked on hardware, on
-the operator's own eyes, or not yet started. The "never more than three" rule
-this section was written with has not held for a long time and is not what is
+belonged. Swept again 2026-09-25 (LT-431): thirty-two more. What is left below
+is genuinely open — work blocked on hardware, on the operator's ruling, or the
+audit items not yet started (nine of the thirty-six shipped the same day). The "never more than three" rule this
+section was written with has not held for a long time and is not what is
 keeping it honest; the sweep is.*
 
 **Build order set by the operator, 2026-09-13** — "do it after we finish
@@ -77,6 +78,576 @@ rather than my assumption:**
    A row per address is a different model. Both can coexist — a stored record
    layered over a derived view — and that is what Phase 1 builds, but it changes
    D-035 and is recorded as such.
+
+**The audit of 2026-09-25 — thirty-six items, approved as a set.** The
+operator asked for "a deep-dive audit, competitive benchmark, enterprise-grade
+redesign" with a hard approval gate, and answered the report with "Approved"
+and, asked whether that meant the recommended first slice or everything, "All
+36, in the ranked order". So they are LT-423 to LT-458 below, one per
+recommendation, in the report's order: critical fixes (R-01–R-09), competitive
+additions (R-10–R-19), UI and design system (R-20–R-28), architecture and
+security (R-29–R-36). Each names what was verified in the code rather than
+assumed; anything the report marked *suspected* is reproduced before it is
+fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
+D-056.
+
+### LT-432 — A registry of the jobs that are running — 2026-09-25
+**Source:** the audit, R-10. Crawl, backup and sweep are three
+`Mutex<Option<CancellationToken>>` slots with no progress object, no queue and
+no list. Every long piece of work — crawl, backup, sweep, Meraki collection,
+icon-library scan — should be a job with an id, a kind, a start time, a phase,
+n of total, and a cancel.
+**Acceptance:** `jobs.rs` in `src-tauri`; `job_list` and `job_cancel(id)`
+commands registered the D-033 way; one `coreview://job` event carrying
+`{id, kind, phase, done, total}`; LT-428's refusal becomes "already running
+(id)"; the existing cancel commands keep working.
+
+### LT-433 — A device's configuration history, and what changed since last time — 2026-09-25
+**Source:** the audit, R-11, against Oxidized and Unimus. Compare reads two
+runs (LT-152); nothing shows one device across every capture it has.
+**Acceptance:** a history view per device listing every capture with a
+changed/unchanged flag, a diff to any earlier one, and a "changed since last
+backup" badge on the device and in the findings. Read-only; nothing is
+scheduled.
+
+### LT-434 — Compliance rules that understand a block — 2026-09-25
+**Source:** the audit, R-12, against SolarWinds NCM and Unimus. Checks are
+`contains`, `notContains`, `matches` and `notMatches` over one command's
+output (`checks.rs:37-42`).
+**Acceptance:** a rule can name a stanza ("every `interface` block must
+contain X"), carry a severity, belong to a per-role set, and the result is a
+pass/fail matrix across devices exportable as CSV and Markdown. Existing checks
+keep running unchanged.
+
+### LT-435 — A timeline of what changed across every crawl — 2026-09-25
+**Source:** the audit, R-13, against IP Fabric's snapshots. The topology diff
+is pairwise (LT-227).
+**Acceptance:** per device, what changed at each crawl and which source said
+so (needs LT-438); a landing view "since your last crawl" with the counts.
+
+### LT-436 — Export to NetBox and Nautobot — 2026-09-25
+**Source:** the audit, R-14. The NetBox reader exists (LT-247); nothing writes
+the other way.
+**Acceptance:** devices, interfaces, IP addresses, cables and VLANs as NetBox
+JSON and YAML; a round trip through the LT-247 reader in a test.
+
+### LT-437 — Intent checks over the normalised inventory — 2026-09-25
+**Source:** the audit, R-15. The findings engine (LT-213) flags topology
+faults; nothing checks a rule against what the crawl normalised.
+**Acceptance:** typed rules — every trunk carries VLAN N, no access port
+without BPDU guard, no duplex mismatch, uptime under N days — reported
+alongside LT-213's findings, with the device and the evidence.
+
+### LT-438 — Every derived fact says where it came from — 2026-09-25
+**Source:** the audit, R-16. `identity` notes reached against reported, the
+register says `drawn`, `crawled` or `typed`, ingestion writes "Seen by a crawl
+on SW1 Gi0/7" — three shapes of the same idea. D-050 asks for one.
+**Acceptance:** one `Evidence { source, seenAt, seenBy }` type on
+`CrawledDevice` and `TopoNode` fields (class, role, uptime, addresses, parent);
+the inspector answers "why does it say this?" for each; existing documents
+migrate with `source` unset rather than invented.
+
+### LT-439 — A lifecycle table the operator supplies — 2026-09-25
+**Source:** the audit, R-17. Device42 and SolarWinds report end-of-sale and
+end-of-support; Coreview makes no vendor call and never will.
+**Acceptance:** import a CSV of model → end-of-sale / end-of-support dates;
+a report of devices past either date; nothing fetched from anywhere.
+
+### LT-440 — A sweep's port list is the operator's, its services are named, and it exports — 2026-09-25
+**Source:** the audit, R-18, against Nmap. The sweep scans eighteen fixed
+ports (D-025) and its result has no export.
+**Acceptance:** a per-sweep port list; IANA service names on the hits; CSV
+export like the crawl's. The two D-025 switches stay, because a port scan is
+the loudest thing the app does.
+
+### LT-441 — A hostile device name survives the Visio export — 2026-09-25
+**Source:** the audit, R-19. SVG, draw.io, HTML and CSV exports were verified
+to escape device strings; `visio.rs` writes through the `zip` crate and its
+XML text was not checked.
+**Acceptance:** read the writer; a round-trip test with `<`, `&`, `"` and a
+`]]>` in a device name; fix if it fails.
+
+### LT-442 — A type and spacing scale, as tokens, guarded — 2026-09-25
+**Source:** the audit, R-20. `styles.css` sets `font-size` 91 times at 12 px
+and 75 at 11 px, with 10, 13 and 16 beside them and no declared scale; 40 uses
+of 6 px break the 4/8/12/16 spacing the rest of the sheet keeps.
+**Acceptance:** four text tokens and a spacing set in `:root`; a test in the
+`groundTokens.test.ts` style that fails on a literal size outside them; no
+visible change on the ground toggle, the contrast pair or print.
+
+### LT-443 — Every job shows the same progress — 2026-09-25
+**Source:** the audit, R-21. The crawl has a live table; backups, Meraki,
+imports and icon scans each say something different or nothing.
+**Acceptance:** one header per running job — phase · n of total · elapsed ·
+Cancel — in the status bar and in the job's panel, driven by LT-432's event.
+
+### LT-444 — Drawers for a device, a record and a finding — 2026-09-25
+**Source:** the audit, R-22. `Inspector.tsx` is 2,388 lines of rail; device
+relations, neighbours, ports, routes and history are accordions in it.
+**Acceptance:** a full-height drawer that opens beside the canvas and can be
+pinned, for a device, a register record and a crawl finding; the rail keeps
+the short form; keyboard reachable; nothing in `lib/` changes.
+
+### LT-445 — Filter as you type on every long list — 2026-09-25
+**Source:** the audit, R-23. The command palette (LT-230) and global search
+(LT-231) exist; the backups device list, the crawl live table, the port map
+and the events table have no filter of their own.
+**Acceptance:** a filter field on each list longer than a screen, matching the
+way LT-338 matches — literally.
+
+### LT-446 — A selection bar with bulk actions on backups and events — 2026-09-25
+**Source:** the audit, R-24. The register (LT-298) and the crawl review
+(LT-333) select in bulk; the backup device list and the events table do not.
+**Acceptance:** tick rows, a bar that says how many, actions that apply to
+all of them; plural forms through `Intl.PluralRules`.
+
+### LT-447 — One focus ring for the chrome, and tables the keyboard can walk — 2026-09-25
+**Source:** the audit, R-25. Seven `:focus-visible` rules for sixty-one
+components; the rest fall back to the engine's ring on a dark chrome.
+**Acceptance:** one `:focus-visible` rule on the chrome's interactive
+selectors with a two-pixel accent outline; roving tabindex on the live tables;
+checked by `e2e/workflow.mjs`.
+
+### LT-448 — The rest of the interface reads from the catalogue — 2026-09-25
+**Source:** the audit, R-26. Twenty of sixty-one components use `t()`
+(LT-272); forty-one carry literal strings.
+**Acceptance:** every user-visible string in a component goes through `t()`;
+`src/i18n/index.test.ts` stays the gate; no `count === 1` plurals.
+
+### LT-449 — An empty list says what was not found — 2026-09-25
+**Source:** the audit, R-27. Some panels say nothing when a list is empty.
+**Acceptance:** one `EmptyState` component, worded the D-050 way — what was
+looked for and why nothing came back — used by every list panel.
+
+### LT-450 — A promise nobody caught reaches the status bar — 2026-09-25
+**Source:** the audit, R-28. Twenty-nine `void ipc.…` calls against
+sixty-eight `.catch(`; a rejected one is logged to a console the bundle has
+no window for.
+**Acceptance:** a global `unhandledrejection` handler that puts the message in
+the status bar; a test that a rejected call shows there.
+
+### LT-451 — A vendor is one file: the `Dialect` trait — 2026-09-25
+**Source:** the audit, R-29. A platform is a set of `match` arms across
+`crawl.rs` (3,056 lines), `cli.rs`, `vrftables.rs`, `overlay.rs`,
+`stacking.rs`, `arubasw.rs`, `dell.rs` and `fortios.rs`. LT-391 is what that
+costs: Cisco syntax sent to an ArubaOS-Switch because one arm was missing.
+**Acceptance:** a `Dialect` trait in `coreview-discover` — the commands for
+each detail, the parsers, and `verified_against_hardware()` as a trait method —
+one file per vendor, registered once; `crawl.rs` becomes the walker; a test
+lists every unverified dialect by name (D-026, D-051 kept as data); every
+existing fixture passes unchanged.
+
+### LT-452 — Components read the slice they use — 2026-09-25
+**Source:** the audit, R-30. Fifteen components subscribe to the whole
+document with `useStore((s) => s.doc)`; `IpamPanel.tsx:146` and
+`IpamWorkbench.tsx:52` recompute `buildIpam` over every node on every
+keystroke while the register is open, and `ipam.ts:838-846` is O(containers²).
+**Acceptance:** slices with `useShallow`; `buildIpam` memoised on the register
+state and the page's addresses; the container parent search sorted by prefix;
+the canvas benchmark unchanged or better.
+
+### LT-453 — Level of detail, measured to LT-188's protocol — 2026-09-25
+**Source:** the audit, R-31. Culling was measured twice and rejected (D-010,
+D-031). What was not measured is drawing a device as one rect and one text
+below a zoom threshold — fewer elements per device, no per-frame visibility
+recompute.
+**Acceptance:** built behind the benchmark, measured at 5,000 and 10,000 on a
+production build; **accepted only** if idle, pan and zoom each improve by 20 %
+and drag is no more than 10 % worse; otherwise removed, and the numbers
+recorded beside D-031's.
+
+### LT-454 — A host key seen for the first time is written down as a finding — 2026-09-25
+**Source:** the audit, R-32. `ssh.rs:218-221` remembers a new key silently.
+Trust on first use is the norm for this kind of tool; a first contact that is
+never mentioned is how a day-one interception stays invisible.
+**Acceptance:** "first seen" per new key in the crawl's findings, with the
+fingerprint; a changed key stays a refusal.
+
+### LT-455 — A run, a capture and a probe's history belong to a project — 2026-09-25
+**Source:** the audit, R-33. `crawl_run_result(id)`, `read_capture` and
+`probe_history(probe_id)` take an id with no project check. One operator, one
+machine, so a label rather than a boundary — but LT-412–414 showed how a rule
+applied in one place reappears elsewhere.
+**Acceptance:** each takes the project and refuses an id from another; the
+isolation e2e written for LT-412 asserts it from outside.
+
+### LT-456 — A file is written only where a dialog pointed — 2026-09-25
+**Source:** the audit, R-34. `save_export(path, …)` and
+`save_project_folder(folder, …)` write wherever the page says. Today the page
+got the path from a native dialog and no injection sink was found; this is
+defence in depth.
+**Acceptance:** a dialog returns a token with the path; writers accept the
+token, not the path; a test that a bare path is refused.
+
+### LT-457 — The Visio and draw.io readers move to a crate of their own — 2026-09-25
+**Source:** the audit, R-35. `visio_import.rs` and `drawio_import.rs` are
+2,000 lines of pure parsing inside `src-tauri`, where property tests (LT-267)
+cannot reach them without Tauri.
+**Acceptance:** `crates/coreview-formats`, Tauri-free like `coreview-probe`;
+the same tests pass; property tests added; the licence manifest and the
+notices generator updated.
+
+### LT-458 — `--` before the files handed to LibreOffice — 2026-09-25
+**Source:** the audit, R-36. `shapeconv.rs:745-750` passes user file paths
+after `--outdir`; a file named `--something.emf` reads as an option.
+**Acceptance:** the separator; a test with such a name. Cosmetic, and
+conditional on Q-018 — if LibreOffice goes, so does this.
+
+### LT-372 — A device that speaks only `hmac-sha1-96` cannot be reached — open, blocked upstream
+**Source:** reported 2026-09-21 with the app's own message, which is worth
+keeping because it diagnosed itself exactly:
+
+    No common Mac algorithm - ours: ["hmac-sha2-512-etm@openssh.com",
+    "hmac-sha2-256-etm@openssh.com", "hmac-sha2-512", "hmac-sha2-256",
+    "hmac-sha1-etm@openssh.com", "hmac-sha1"], theirs: ["hmac-sha1-96"]
+
+**Not a gap in our list.** `network_device_algorithms` already extends russh's
+defaults with SHA-1 for exactly this reason (LT-054), and that trade is written
+down where it is made. The missing algorithm is not one we declined to offer:
+**russh 0.63.1 does not implement `hmac-sha1-96` at all.** Its `ALL_MAC_ALGORITHMS`
+holds six entries and that is not among them.
+**Nor can it be added from here, and this was checked rather than assumed.**
+`mac::MACS`, the map from a name to an implementation, is `pub(crate)`; and
+`pub struct Name(&'static str)` keeps its field private, so a name russh does
+not already know cannot even be constructed outside the crate. There is no
+registration hook. Adding it needs a change to russh — which is small, because
+`CryptoMacAlgorithm<Hmac<Sha1>, U20>` is already generic over the output length
+and `hmac-sha1-96` is the same construction at `U12`.
+**What the operator can do today**, in the order worth trying:
+1. **Offer a second MAC on the device.** Most kit locked to `hmac-sha1-96` can
+   be told to accept more — on IOS, `ip ssh server algorithm mac hmac-sha1
+   hmac-sha2-256`. This is the real fix where the device allows it, and it
+   improves the device rather than weakening the app.
+2. **SNMP.** A crawl already falls back to it, and it gives identity, LLDP
+   neighbours and the forwarding table without SSH at all.
+3. **Telnet**, which the crawler supports, where the device is on a management
+   network that justifies it.
+**What this item is for:** an upstream patch to russh adding the algorithm, or
+a vendored fork if one is ever warranted. Either is a deliberate decision about
+a dependency and neither should be taken quietly, so it waits here rather than
+being half-done.
+**Worth saying plainly:** `hmac-sha1-96` is a truncated SHA-1 MAC and weak. The
+same argument recorded at LT-054 applies — the honest options are to support it
+or to not manage the device — but it is a weaker algorithm than anything
+currently offered, and the operator should prefer option 1 where the device
+permits it.
+
+### LT-360 — One access point is drawn twice — it was not, and the reproduction found a real bug — 2026-09-21
+**Source:** the lab crawl on 2026-09-20. Two access points each appear twice in
+one crawl, under the same name, at two different addresses — and the address
+the switch advertises answers nothing at all.
+**The evidence, gathered rather than reasoned.**
+- The Catalyst's LLDP says the AP is at one address, with a chassis id ending
+  `…b7a2`, on Gi0/8.
+- The FortiGate that manages the same AP, by the same name, reports it at a
+  different address.
+- Only the FortiGate's address answers: ICMP replies and ARP resolves to a MAC
+  ending `…b7a0`. The LLDP-advertised address leaves ARP `FAILED` — nothing is
+  there. The AP moved, by DHCP, and is still advertising its old management
+  address over LLDP.
+- The two MACs differ in the last octet: the AP's wired port and the interface
+  it advertises are not the same interface, so **a join on MAC cannot work.**
+**Neither reading is wrong, which is why this needs a decision.** LLDP really
+does say that address; the FortiGate really does say the other; Coreview
+reports both faithfully. The fault is that nothing reconciles them, so an
+engineer sees two access points where the rack holds one, and one of the two
+can never be reached.
+**What joins them is the hostname**, which matches exactly, together with the
+device class and the vendor. That is weaker evidence than LT-126's existing
+joins (a MAC, or an address a sweep already drew), and merging two records on a
+name alone is the kind of guess D-050 exists to refuse. The alternative is to
+keep both and *say* that one address answered nothing — which is honest, and
+which the crawl already knows, but which still draws two glyphs.
+**Deliberately not fixed on the spot.** Merging devices changes what the
+diagram claims about somebody's network, so it is the operator's call, not a
+judgement to slip into a bug-fix commit. The two candidates are: join on
+hostname within one crawl when the classes agree; or keep them apart and mark
+the unreachable one on the diagram and in the review.
+**Reproduced first, and the reproduction disagreed with the report.** Built as
+a `buildTopology` test with the exact shape — a switch whose LLDP names an
+access point at an address it has moved off, and the controller reporting the
+same access point where it actually is — the diagram draws **one** node, at
+the address that answered. It was never drawing two.
+**`identity` already folds on the short name** (LT-126, LT-132), precisely so
+that CDP's `SW1.example.com`, LLDP's `SW1` and a prompt's `sw1` are one device,
+and `note()` prefers a reached sighting over a neighbour's report of it. What
+showed two was `examples/crawl_network`, which prints reached devices and each
+device's neighbours as **two separate lists** — by design, and I read a console
+layout as a defect.
+**Closed as not a defect, with the behaviour pinned** so a future change to
+`identity` cannot quietly bring a duplicate back.
+**The reproduction did find a real bug**, which is the argument for writing one
+even when the answer looks obvious: every access point was being drawn with the
+wireless-controller glyph. That is **LT-369**.
+**Still true, and worth saying:** the switch really is advertising an address
+the access point has moved off, and ARP for it fails. Coreview reports what
+LLDP said, which is correct; the stale advertisement is the network's to fix.
+
+### LT-029 — No known bugs
+**Source:** asked 2026-08-30 — "I don't want any bugs".
+**Acceptance:** a standing bar rather than a task that finishes.
+- Every bug you report gets its own roadmap item the moment it is reported,
+  with the symptom in your words. It is not folded into whatever else is being
+  worked on.
+- A bug is not fixed until it has been *reproduced* first — by a test that
+  fails without the fix — and then verified by running it. "It compiles" is
+  not "it works", and neither is "I changed the thing that looked wrong".
+- The known-bug list is the items below tagged **bug**. When that list is
+  empty, this item says so with a date. It goes back to Now the moment
+  anything lands on it.
+- Where a bug cannot be fixed, it says why in plain words rather than being
+  quietly closed.
+
+**Known bugs, open:** none, as of 2026-09-20 — but the count that day is worth
+recording. Seven were found and fixed: LT-355 and LT-356 from a report and from
+reading; LT-358, LT-359 and LT-364 from three different platforms silently
+dropping their uptime; and LT-361, LT-362 and LT-363 from pointing the VRF
+parsers at a real IOS router and a real Nexus for the first time. **Five of the
+seven were found by hardware, not by reading**, and none of them could have
+been: every fixture in the repository used the one shape that already worked.
+LT-360 remains open by choice — the merge-on-hostname ruling is the operator's —
+and is described where it sits.
+**LT-137 is now closed outright** rather than accepted: the credentials were
+gone from the working tree long ago, and on 2026-09-18 the published history was
+replaced by a single commit (LT-314), so they are gone from that too.
+**Confirmed by the operator, 2026-09-13:** LT-107 and LT-108 — "LT-107 and
+LT-108: confimed". Nothing is held pending his eyes.
+**Four reported together, 2026-09-25, and all four were leaks of the same
+kind.** LT-412, LT-413 and LT-414 are one complaint — "the projects need to be
+separate from each other" — arriving as three mechanisms: the credential
+pickers offered the whole machine vault, every project listed every project's
+backups, and fifteen settings including a discovery's seed and subnets
+followed whoever opened the app into the next project. **None of it was a
+design gap.** D-038 had already ruled on it in 2026-09-18, and LT-335 had
+already written the fix down in `credentialScope.ts` — and applied it to the
+Settings screen only, missing the two pickers where a login is actually chosen
+for a run against a customer's estate. A rule written once and applied in one
+place is how this reappears; the e2e harness now asserts it from outside.
+
+**LT-417 is the one to learn from.** It looked like a layout problem, was
+reported as a layout problem, and was neither: the seed was built into the
+topology correctly and then dropped by the review, because the ticked rows
+were keyed by hostname and matched against the drawn label. Those agree only
+while a device has a name.
+
+**LT-382 is closed, 2026-09-24**, having been parked the day before. It was
+not LibreOffice: `scan()` named its conversion directory by process id alone
+and deleted it when it finished, so two scans at once destroyed each other's
+output. A real product bug, found because the failure had been made to report
+itself in the failing thing's own words instead of as a count.
+
+**Known bugs, closed:** LT-137, LT-030, LT-031, LT-003, LT-044, LT-004, LT-005,
+LT-082, LT-083, LT-084, LT-085, LT-091, LT-101, LT-128, LT-129, LT-132,
+LT-133, LT-141, LT-144, LT-273.
+
+### LT-010 — Verify against Catalyst 9000 / IOS-XE 17
+**Source:** asked 2026-08-29.
+**Blocked on:** access to a Catalyst 9000. The CDP and LLDP parsers are written
+against a C2960CX, a FortiSwitch and a FortiGate only. Operator has a 9300 he
+will power on to test against (2026-08-30).
+
+### LT-012 — Legacy binary `.vss` stencils
+**Source:** raised 2026-08-30; deferred by the operator, then unblocked by him
+the same day: `libvisio-tools` is installed (vss2xhtml and friends on PATH),
+and LibreOffice itself reads Visio through the same libvisio. Folded into
+LT-045's converter work — the .vss route lands there.
+
+## Next
+
+*Phases 2–8 of the mission set 2026-09-16, one item per ask, not started. Each
+gets its full acceptance when it is picked up. Standing constraints: parsers are
+written against captured output from real hardware (D-026 is the only
+exception); fixtures and samples are invented (D-027); no network call the
+operator did not start.*
+
+**Phase 2 — discovery.** *Already built: SNMP v1/v2c/v3, LLDP and CDP, ARP and
+MAC tables, stacks, the default route, sweeps and crawls from a seed.*
+- **LT-201** — BGP peer and OSPF neighbour collection. Blocked on Q-011: no
+  router in the lab peers, so there is no output to write it against.
+- **LT-205** — NETCONF/RESTCONF, read-only, optional. RESTCONF is HTTP:
+  blocked on Q-008.
+
+**Phase 3 — validation and live operations.**
+- **LT-218** — HTTP/HTTPS HEAD probe, opt-in and clearly labelled. Blocked on
+  Q-008.
+- **LT-221** — BGP/OSPF neighbour-state probe. Blocked on Q-011, with LT-201: no
+  router in the lab to write it against.
+- **LT-223** — Scheduled validation sessions. Blocked on D-030 being accepted.
+- **LT-229** — Local OS notifications. Blocked on D-030 being accepted.
+
+**Phase 4 — UX and workflow.**
+- **LT-261** — Optional encrypted database (SQLCipher) keyed from the OS
+  keychain. Blocked on Q-012: SQLCipher needs OpenSSL built into every
+  installer, which is a build-time and CI-cost decision.
+- **LT-263** — Optional hardware-backed key derivation (TPM / Secure Enclave).
+  Blocked on Q-013: nothing here has a TPM or a Secure Enclave to build it
+  against.
+- **LT-281** — Upgrade vite and vitest past their advisories (GHSA-67mh-4wv8-2f99,
+  GHSA-82fw-gwwq-j7x9). Development-only — nothing ships in an installer — and
+  both fixes are major versions (vite 8, vitest 5), so it is its own change with
+  the whole gate re-run. Found by LT-265.
+
+**Phase 8 — quality and developer experience.** *LT-190's canvas benchmark was
+pulled into Phase 1.*
+- **LT-269** — CI matrix: Windows 10/11, macOS 12+, Ubuntu 22.04/24.04. Cost:
+  Q-010.
+
+## Done
+
+### LT-423 — Commands that touch the database, a file or a parser run off the UI thread — 2026-09-25
+**Source:** the audit, R-01. Seventy of the ninety-six Tauri commands are
+synchronous, and a synchronous command runs on the main thread in Tauri 2.
+Among them: `save_project` (`commands.rs:58`, the whole document on every
+autosave), `save_crawl_run` (`:360`, `result.to_string()` of up to 64 MB),
+`load_project`, `crawl_run_result`, `diagram_pdf`, `diagram_vsdx`,
+`import_visio`, `import_drawio`, `read_spreadsheet`, and `list_icon_library`,
+which runs LibreOffice conversions during its scan. Each also takes
+`state.db.lock()`, a `std::sync::Mutex`, so the UI thread blocks behind any
+background task holding the connection. Invisible at 200 devices; a freeze on
+every autosave at 2,000.
+**Acceptance:** every command that reaches the database, the file system or a
+parser is `async` (or `#[tauri::command(async)]`); a test reads `commands.rs`,
+`discovery.rs`, `vault_commands.rs` and `terminal.rs` the way
+`isolationRules.test.ts` reads its sources and fails on a synchronous command
+that calls `state.db.lock()` or `std::fs`; the app opens, saves and crawls as
+before.
+**Shipped 2026-09-25.** Fifty-three commands carry `#[tauri::command(async)]`
+— everything that takes `state.db.lock()`, reads or writes a file, runs a
+parser or spawns a process; the eighteen that only touch an in-memory slot
+(`cancel_*`, `ipc_refused`, `ssh_sessions`, `validate_target`, …) stay as
+they were. `src/lib/asyncCommands.test.ts` reads the four command files and
+fails on a blocking body without the attribute; it failed first with all
+fifty-three listed. **Run, not only compiled:** the debug binary under Xvfb
+opened to the project screen with its settings, folders and (empty) project
+list — all served by commands that are now off the main thread.
+
+### LT-424 — A crawl writes each device as it is reached, so an unclean exit keeps what it found — 2026-09-25
+**Source:** the audit, R-02. `discovery.rs:481-532` runs the crawl and emits
+one `coreview://crawl-result` event with every device; the page then sends the
+same payload back through `save_crawl_run` (`CrawlPanel.tsx:406`). Nothing is
+written to `crawl_runs` inside the task. A crash, a forced quit or a WebView
+reload during a two-hour crawl loses all of it, and a large estate's result
+crosses the isolation frame twice at up to 64 MB each way.
+**Acceptance:** the run row is created when the crawl starts and marked
+complete, cancelled or aborted when it ends; each `Reached` device is written
+to the run as it arrives; `crawl_run_result` assembles from what was written;
+the page no longer re-sends the result. Reproduced first: a Rust test that
+drops the task mid-crawl and reads the partial run back. D-002 is untouched —
+the document stays opaque; this is the run, which Rust already owns.
+**Shipped 2026-09-25, schema 3.** `open_crawl_run` when the crawl starts,
+`append_crawl_device` from the event pump as each `Reached` arrives,
+`close_crawl_run` with the summary and a status after the pump has drained,
+and `mark_abandoned_runs` at startup so a run the process died under reads as
+`aborted` with every device it had. `crawl_run_result` assembles from the
+device rows; a run written before schema 3 still reads whole. The page sends
+`projectId` with the crawl and no longer sends the result back —
+`save_crawl_run` is gone from the handler, the isolation rules and `ipc.ts`.
+**Reproduced at the database:** a run opened, three devices appended and never
+closed reads back with all three, before and after being marked aborted; the
+old-shape run still reads; pruning cascades. The Tauri task itself is not
+under a test — it needs an `AppHandle` — so what proves it is the crawling
+harness (40 checks) and the running app. Not yet seen against hardware.
+
+### LT-425 — The Meraki client follows a regional redirect — 2026-09-25
+**Source:** the audit, R-03. `coreview-meraki/src/lib.rs:148-165` treats every
+status below 400 as an answer and handles no 301, 302, 307 or 308; `http.rs`
+pins the host to `api.meraki.com` or loopback. Meraki redirects organisations
+to their regional shard, and the official SDKs follow it and re-send the key.
+An organisation that redirects gets an empty or HTML body that `check()`
+passes and the JSON parse then fails on. **Suspected, not seen:** there is
+still no key on this machine, so it is reproduced against a loopback server
+that answers 308 before it is fixed.
+**Conflicts with D-056**, whose fifth condition is "`api.meraki.com` and
+nothing else". Amended as **D-057**: the named host becomes the named family —
+a redirect is followed only to a host ending in `.meraki.com`, `.meraki.ca` or
+`.meraki.cn`, the key is re-sent only there, and anything else is refused with
+the host named.
+**Acceptance:** a loopback test answers 308 to a second loopback path and the
+client arrives with its key; a redirect to any other host is refused;
+`verified_against_hardware` stays false for the crate.
+**Shipped 2026-09-25, as D-057.** `fetch` follows 301/302/307/308 to a host
+that `may_follow` — Meraki's own family over TLS for the real client, loopback
+for a test one — at most five times, re-sending the key only there; a
+`Link: rel=next` is checked the same way, which closed a second hole nobody
+had noticed. Three loopback tests failed first: the followed 308, a 308 to a
+foreign host (refused, nothing sent), and a next page on a foreign host —
+that last one spent five minutes trying to reach it before the fix.
+`verified_against_api()` stays false.
+
+### LT-426 — The events table is pruned — 2026-09-25
+**Source:** the audit, R-04. `db.rs:846` inserts a row per probe transition
+and nothing ever deletes one except the orphan purge. The page keeps 5,000 in
+memory and reads are `LIMIT`ed, but the table grows for the life of the
+database. `probe_samples` is capped at 50,000 per probe; events need the same.
+**Acceptance:** a per-project cap, pruned after insert the way `prune_samples`
+is; a test that inserts past the cap and counts.
+**Shipped 2026-09-25.** `EVENTS_PER_PROJECT = 100_000`, pruned after every
+insert by `prune_events`, the same shape as `prune_samples`; a test inserts
+past the cap and counts, and checks the other project is untouched.
+
+### LT-427 — A command's output has a size ceiling — 2026-09-25
+**Source:** the audit, R-05. `ssh.rs:545-590` grows `buffer` by every chunk
+until a prompt is found or the 60-second `command_timeout` expires; the only
+cap is the 256 KB login transcript. A device left in `terminal monitor`, or a
+`show log` that never pages, produces a sixty-second string with `Screen`
+applied to every chunk.
+**Acceptance:** a 32 MB ceiling that fails the command with an error naming it
+and the size, rather than the timeout; a fake-device test that streams past it.
+**Shipped 2026-09-25.** `SshOptions::max_output_bytes`, default 32 MB, checked
+on every chunk; past it the command fails with `SshError::OutputTooLarge`,
+which names the command and the ceiling and keeps none of the output, and the
+crawl reports it as its own failure kind, *would not stop sending*. The fake
+device gained a `show log` that streams without a prompt; the test failed
+first — twenty seconds and a `CommandTimeout` — and passes in two.
+
+### LT-428 — A second crawl or backup is refused while one runs — 2026-09-25
+**Source:** the audit, R-06. `discovery.rs:428-434` and `:746-752` replace the
+running job's cancellation token and cancel it, so starting a second crawl
+silently ends the first. Until the job registry (LT-432) lands, the honest
+behaviour is a refusal.
+**Acceptance:** starting a crawl, backup or sweep while one of the same kind
+runs returns "already running" with what it is doing; nothing is cancelled; a
+test on each of the three.
+**Shipped 2026-09-25.** `src-tauri/src/jobs.rs`: one slot per kind, a
+`Ticket` the task holds and drops when it ends, and a refusal that says who
+has the slot and since when. Stop then Start is not refused while the old
+task winds down, because a cancelled token does not count as running. Four
+unit tests; the seed LT-432 grows into.
+
+### LT-429 — Attachments no longer open the formats that carry macros — 2026-09-25
+**Source:** the audit, R-07. `commands.rs:129-133` allows `.xls`, `.doc`,
+`.ppt`, `.rtf` and `.zip`. The legacy Office trio carries macros behind a
+prompt people click through, an archive can hold anything, and the path
+arrives inside an imported project file.
+**Acceptance:** those five are refused with the reason; the OOXML non-macro
+forms and the document, picture, text and capture kinds stay; the existing
+test is extended.
+**Shipped 2026-09-25.** `.doc`, `.xls`, `.ppt`, `.rtf` and `.zip` are out of
+the allow-list and `.xlsm`/`.docm` never were; the test names each and
+checks `.docx`, `.xlsx`, `.pptx` still open.
+
+### LT-430 — Migrations run as a numbered list inside one transaction — 2026-09-25
+**Source:** the audit, R-08. `db.rs:236-410` runs the base schema, the one
+migration and the version bump with no transaction around them. The one
+migration is idempotent so a crash today is recoverable; the pattern will not
+survive the first `ALTER TABLE ADD COLUMN`.
+**Acceptance:** migrations are `fn m_N(conn)` in a list, run in order inside a
+transaction with `schema_info` bumped last; a test that a failing migration
+leaves the version and the tables as they were.
+**Shipped 2026-09-25.** `MIGRATIONS` is a list of `(to_version, fn)`,
+applied by `apply_migrations` inside one transaction with the bump last. A
+test runs a step that succeeds and then one that fails, and checks the
+version and the first step's row are both as they were. Schema 3 (LT-424) is
+the first entry written under it.
+
+### LT-431 — The roadmap and the handover say where things are — 2026-09-25
+**Source:** the audit, R-09. Twenty of the thirty-seven headings under **Now**
+were shipped; `HANDOVER.md` said 21 decisions (56), 369/377 tests (1,393/993),
+and listed LT-124 and LT-125 as not started.
+**Acceptance:** shipped items under Done with their dates; the handover's
+counts and signposts current. Done with this commit.
+**Shipped 2026-09-25.** Thirty-two shipped items swept from Now to Done in
+the same commit; the handover's counts and signposts brought current.
 
 ### LT-346 — Trace Path: where a packet would actually go — 2026-09-20
 **Source:** asked 2026-09-20 — "Implement a new Path Intelligence feature …
@@ -221,45 +792,6 @@ distribution, an access switch, a WAN hop, a branch router and its access layer
 is readily a dozen; the default of four stays, because most people start small
 and a deep crawl is a deliberate choice.
 **Shipped:** `1, 2, 3, 4, 6, 8, 12, 16, 24, 32`.
-
-### LT-372 — A device that speaks only `hmac-sha1-96` cannot be reached — open, blocked upstream
-**Source:** reported 2026-09-21 with the app's own message, which is worth
-keeping because it diagnosed itself exactly:
-
-    No common Mac algorithm - ours: ["hmac-sha2-512-etm@openssh.com",
-    "hmac-sha2-256-etm@openssh.com", "hmac-sha2-512", "hmac-sha2-256",
-    "hmac-sha1-etm@openssh.com", "hmac-sha1"], theirs: ["hmac-sha1-96"]
-
-**Not a gap in our list.** `network_device_algorithms` already extends russh's
-defaults with SHA-1 for exactly this reason (LT-054), and that trade is written
-down where it is made. The missing algorithm is not one we declined to offer:
-**russh 0.63.1 does not implement `hmac-sha1-96` at all.** Its `ALL_MAC_ALGORITHMS`
-holds six entries and that is not among them.
-**Nor can it be added from here, and this was checked rather than assumed.**
-`mac::MACS`, the map from a name to an implementation, is `pub(crate)`; and
-`pub struct Name(&'static str)` keeps its field private, so a name russh does
-not already know cannot even be constructed outside the crate. There is no
-registration hook. Adding it needs a change to russh — which is small, because
-`CryptoMacAlgorithm<Hmac<Sha1>, U20>` is already generic over the output length
-and `hmac-sha1-96` is the same construction at `U12`.
-**What the operator can do today**, in the order worth trying:
-1. **Offer a second MAC on the device.** Most kit locked to `hmac-sha1-96` can
-   be told to accept more — on IOS, `ip ssh server algorithm mac hmac-sha1
-   hmac-sha2-256`. This is the real fix where the device allows it, and it
-   improves the device rather than weakening the app.
-2. **SNMP.** A crawl already falls back to it, and it gives identity, LLDP
-   neighbours and the forwarding table without SSH at all.
-3. **Telnet**, which the crawler supports, where the device is on a management
-   network that justifies it.
-**What this item is for:** an upstream patch to russh adding the algorithm, or
-a vendored fork if one is ever warranted. Either is a deliberate decision about
-a dependency and neither should be taken quietly, so it waits here rather than
-being half-done.
-**Worth saying plainly:** `hmac-sha1-96` is a truncated SHA-1 MAC and weak. The
-same argument recorded at LT-054 applies — the honest options are to support it
-or to not manage the device — but it is a weaker algorithm than anything
-currently offered, and the operator should prefer option 1 where the device
-permits it.
 
 ### LT-371 — A discovered diagram arrives arranged, without moving anything already drawn — 2026-09-21
 **Source:** the same screenshot as LT-370 — a grid of boxes with links crossing
@@ -573,57 +1105,6 @@ its prompts.
 **Acceptance:** a VRF row must look like one — a trailing `#` or `>` on a
 single token is a prompt, not a VRF name. Fixture from the real output,
 failing first.
-
-### LT-360 — One access point is drawn twice — it was not, and the reproduction found a real bug — 2026-09-21
-**Source:** the lab crawl on 2026-09-20. Two access points each appear twice in
-one crawl, under the same name, at two different addresses — and the address
-the switch advertises answers nothing at all.
-**The evidence, gathered rather than reasoned.**
-- The Catalyst's LLDP says the AP is at one address, with a chassis id ending
-  `…b7a2`, on Gi0/8.
-- The FortiGate that manages the same AP, by the same name, reports it at a
-  different address.
-- Only the FortiGate's address answers: ICMP replies and ARP resolves to a MAC
-  ending `…b7a0`. The LLDP-advertised address leaves ARP `FAILED` — nothing is
-  there. The AP moved, by DHCP, and is still advertising its old management
-  address over LLDP.
-- The two MACs differ in the last octet: the AP's wired port and the interface
-  it advertises are not the same interface, so **a join on MAC cannot work.**
-**Neither reading is wrong, which is why this needs a decision.** LLDP really
-does say that address; the FortiGate really does say the other; Coreview
-reports both faithfully. The fault is that nothing reconciles them, so an
-engineer sees two access points where the rack holds one, and one of the two
-can never be reached.
-**What joins them is the hostname**, which matches exactly, together with the
-device class and the vendor. That is weaker evidence than LT-126's existing
-joins (a MAC, or an address a sweep already drew), and merging two records on a
-name alone is the kind of guess D-050 exists to refuse. The alternative is to
-keep both and *say* that one address answered nothing — which is honest, and
-which the crawl already knows, but which still draws two glyphs.
-**Deliberately not fixed on the spot.** Merging devices changes what the
-diagram claims about somebody's network, so it is the operator's call, not a
-judgement to slip into a bug-fix commit. The two candidates are: join on
-hostname within one crawl when the classes agree; or keep them apart and mark
-the unreachable one on the diagram and in the review.
-**Reproduced first, and the reproduction disagreed with the report.** Built as
-a `buildTopology` test with the exact shape — a switch whose LLDP names an
-access point at an address it has moved off, and the controller reporting the
-same access point where it actually is — the diagram draws **one** node, at
-the address that answered. It was never drawing two.
-**`identity` already folds on the short name** (LT-126, LT-132), precisely so
-that CDP's `SW1.example.com`, LLDP's `SW1` and a prompt's `sw1` are one device,
-and `note()` prefers a reached sighting over a neighbour's report of it. What
-showed two was `examples/crawl_network`, which prints reached devices and each
-device's neighbours as **two separate lists** — by design, and I read a console
-layout as a defect.
-**Closed as not a defect, with the behaviour pinned** so a future change to
-`identity` cannot quietly bring a duplicate back.
-**The reproduction did find a real bug**, which is the argument for writing one
-even when the answer looks obvious: every access point was being drawn with the
-wireless-controller glyph. That is **LT-369**.
-**Still true, and worth saying:** the switch really is advertising an address
-the access point has moved off, and ARP for it fails. Coreview reports what
-LLDP said, which is correct; the stale advertisement is the network's to fix.
 
 ### LT-359 — A FortiOS device says how long it has been up — 2026-09-20
 **Source:** the lab crawl on 2026-09-20. Every FortiOS device reached over SSH
@@ -1132,116 +1613,6 @@ where each was seen, and only then offers **Add what was seen**.
 Gi0/7, VLAN 14`. Observed is not intended (D-052), and the note is what keeps
 the two apart when somebody reads the register a year later.
 **Checked:** 10 unit tests; `e2e/ipam` and `e2e/ipamlab` stay green.
-
-### LT-029 — No known bugs
-**Source:** asked 2026-08-30 — "I don't want any bugs".
-**Acceptance:** a standing bar rather than a task that finishes.
-- Every bug you report gets its own roadmap item the moment it is reported,
-  with the symptom in your words. It is not folded into whatever else is being
-  worked on.
-- A bug is not fixed until it has been *reproduced* first — by a test that
-  fails without the fix — and then verified by running it. "It compiles" is
-  not "it works", and neither is "I changed the thing that looked wrong".
-- The known-bug list is the items below tagged **bug**. When that list is
-  empty, this item says so with a date. It goes back to Now the moment
-  anything lands on it.
-- Where a bug cannot be fixed, it says why in plain words rather than being
-  quietly closed.
-
-**Known bugs, open:** none, as of 2026-09-20 — but the count that day is worth
-recording. Seven were found and fixed: LT-355 and LT-356 from a report and from
-reading; LT-358, LT-359 and LT-364 from three different platforms silently
-dropping their uptime; and LT-361, LT-362 and LT-363 from pointing the VRF
-parsers at a real IOS router and a real Nexus for the first time. **Five of the
-seven were found by hardware, not by reading**, and none of them could have
-been: every fixture in the repository used the one shape that already worked.
-LT-357 and LT-360 remain open by choice and are described where they sit.
-**LT-137 is now closed outright** rather than accepted: the credentials were
-gone from the working tree long ago, and on 2026-09-18 the published history was
-replaced by a single commit (LT-314), so they are gone from that too.
-**Confirmed by the operator, 2026-09-13:** LT-107 and LT-108 — "LT-107 and
-LT-108: confimed". Nothing is held pending his eyes.
-**Four reported together, 2026-09-25, and all four were leaks of the same
-kind.** LT-412, LT-413 and LT-414 are one complaint — "the projects need to be
-separate from each other" — arriving as three mechanisms: the credential
-pickers offered the whole machine vault, every project listed every project's
-backups, and fifteen settings including a discovery's seed and subnets
-followed whoever opened the app into the next project. **None of it was a
-design gap.** D-038 had already ruled on it in 2026-09-18, and LT-335 had
-already written the fix down in `credentialScope.ts` — and applied it to the
-Settings screen only, missing the two pickers where a login is actually chosen
-for a run against a customer's estate. A rule written once and applied in one
-place is how this reappears; the e2e harness now asserts it from outside.
-
-**LT-417 is the one to learn from.** It looked like a layout problem, was
-reported as a layout problem, and was neither: the seed was built into the
-topology correctly and then dropped by the review, because the ticked rows
-were keyed by hostname and matched against the drawn label. Those agree only
-while a device has a name.
-
-**LT-382 is closed, 2026-09-24**, having been parked the day before. It was
-not LibreOffice: `scan()` named its conversion directory by process id alone
-and deleted it when it finished, so two scans at once destroyed each other's
-output. A real product bug, found because the failure had been made to report
-itself in the failing thing's own words instead of as a count.
-
-**Known bugs, closed:** LT-137, LT-030, LT-031, LT-003, LT-044, LT-004, LT-005,
-LT-082, LT-083, LT-084, LT-085, LT-091, LT-101, LT-128, LT-129, LT-132,
-LT-133, LT-141, LT-144, LT-273.
-
-### LT-010 — Verify against Catalyst 9000 / IOS-XE 17
-**Source:** asked 2026-08-29.
-**Blocked on:** access to a Catalyst 9000. The CDP and LLDP parsers are written
-against a C2960CX, a FortiSwitch and a FortiGate only. Operator has a 9300 he
-will power on to test against (2026-08-30).
-
-### LT-012 — Legacy binary `.vss` stencils
-**Source:** raised 2026-08-30; deferred by the operator, then unblocked by him
-the same day: `libvisio-tools` is installed (vss2xhtml and friends on PATH),
-and LibreOffice itself reads Visio through the same libvisio. Folded into
-LT-045's converter work — the .vss route lands there.
-
-## Next
-
-*Phases 2–8 of the mission set 2026-09-16, one item per ask, not started. Each
-gets its full acceptance when it is picked up. Standing constraints: parsers are
-written against captured output from real hardware (D-026 is the only
-exception); fixtures and samples are invented (D-027); no network call the
-operator did not start.*
-
-**Phase 2 — discovery.** *Already built: SNMP v1/v2c/v3, LLDP and CDP, ARP and
-MAC tables, stacks, the default route, sweeps and crawls from a seed.*
-- **LT-201** — BGP peer and OSPF neighbour collection. Blocked on Q-011: no
-  router in the lab peers, so there is no output to write it against.
-- **LT-205** — NETCONF/RESTCONF, read-only, optional. RESTCONF is HTTP:
-  blocked on Q-008.
-
-**Phase 3 — validation and live operations.**
-- **LT-218** — HTTP/HTTPS HEAD probe, opt-in and clearly labelled. Blocked on
-  Q-008.
-- **LT-221** — BGP/OSPF neighbour-state probe. Blocked on Q-011, with LT-201: no
-  router in the lab to write it against.
-- **LT-223** — Scheduled validation sessions. Blocked on D-030 being accepted.
-- **LT-229** — Local OS notifications. Blocked on D-030 being accepted.
-
-**Phase 4 — UX and workflow.**
-- **LT-261** — Optional encrypted database (SQLCipher) keyed from the OS
-  keychain. Blocked on Q-012: SQLCipher needs OpenSSL built into every
-  installer, which is a build-time and CI-cost decision.
-- **LT-263** — Optional hardware-backed key derivation (TPM / Secure Enclave).
-  Blocked on Q-013: nothing here has a TPM or a Secure Enclave to build it
-  against.
-- **LT-281** — Upgrade vite and vitest past their advisories (GHSA-67mh-4wv8-2f99,
-  GHSA-82fw-gwwq-j7x9). Development-only — nothing ships in an installer — and
-  both fixes are major versions (vite 8, vitest 5), so it is its own change with
-  the whole gate re-run. Found by LT-265.
-
-**Phase 8 — quality and developer experience.** *LT-190's canvas benchmark was
-pulled into Phase 1.*
-- **LT-269** — CI matrix: Windows 10/11, macOS 12+, Ubuntu 22.04/24.04. Cost:
-  Q-010.
-
-## Done
 
 ### LT-422 — **bug** The type filter's menu opens off the side of the window — 2026-09-25
 

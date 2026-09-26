@@ -401,9 +401,8 @@ export function CrawlPanel({
 
     void ipc
       .onCrawlResult((r: CrawlResult) => {
-        // LT-227: every crawl is kept, so two can be compared later.
-        const pid = useStore.getState().meta?.id;
-        if (pid) void ipc.saveCrawlRun(pid, seedRef.current, r).catch(() => {});
+        // LT-227: every crawl is kept, so two can be compared later — written
+        // by the crawl itself as it goes since LT-424, so nothing is sent back.
         const next = resultRows(r, seenKeys.current);
         setRows((prev) => [...prev, ...next]);
         setFailures(r.failures);
@@ -494,6 +493,8 @@ export function CrawlPanel({
           retries,
           // LT-199, LT-209: vault ids only; Rust opens them.
           bindings: bindingsFor(useStore.getState().doc),
+          // LT-424: which project the run is kept under.
+          projectId: useStore.getState().meta?.id,
         },
         { username, password, enablePassword: enablePassword || undefined },
         backupUsername.trim()

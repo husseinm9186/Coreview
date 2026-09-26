@@ -32,7 +32,7 @@ watches them.
 | --- | --- |
 | `CLAUDE.md` | Standing rules. Non-negotiable. |
 | `docs/ROADMAP.md` | Every request, with stable IDs. The answer to "what's left". |
-| `docs/DECISIONS.md` | 21 decisions with what was rejected and why. Append-only. |
+| `docs/DECISIONS.md` | 56 decisions (and counting) with what was rejected and why. Append-only. |
 | `docs/OPEN-QUESTIONS.md` | What is not yours to decide. |
 | This file | The shape of the code and the traps in it. |
 
@@ -48,7 +48,7 @@ roadmap items — never one merged item.
 
 ```
 src/
-  lib/            28 modules of pure logic. This is where the thinking lives.
+  lib/            ~130 modules of pure logic. This is where the thinking lives.
                   Every one is unit-tested and none of them touch React.
                   routeLinks, alignment, lineJumps, collapse, zones, layers,
                   tinting, clipboard, paper, topology, topologyDiff, diagram,
@@ -81,8 +81,8 @@ you are about to put a decision inside a component, don't.
 ```bash
 npx tsc --noEmit
 npx eslint src --ext .ts,.tsx
-npx vitest run                                    # 369 tests
-cargo test --workspace                            # 377 tests
+npx vitest run                                    # ~1,400 tests
+cargo test --workspace                            # ~1,000 tests
 cargo clippy --workspace --all-targets -- -D warnings
 
 npm run dev                                       # then, in another terminal:
@@ -381,9 +381,9 @@ non-super_admin profile and the prompt finder only accepted `#` and `>`.
 **Now** section is again a list of open work rather than a history. Do not
 trust the summary below over that file; it is a signpost and it will rot.
 
-- **Not started:** LT-125 name a swept host from what the crawler already
-  knows · LT-124 the identity sources the sweep still does not use (HTTP/TLS
-  certificate names, DHCP fingerprinting, the gateway's ARP table).
+- **Not started:** the thirty-six audit items LT-423–LT-458 (2026-09-25),
+  approved as a set and worked in the roadmap's order. LT-124 and LT-125 are
+  done.
 - **Half done:** LT-139 the stacking parsers exist and have met no hardware ·
   LT-110 Visio import (the Lucidchart/geometric path has no `<Connect>` data
   at all).

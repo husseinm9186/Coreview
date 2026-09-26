@@ -449,6 +449,8 @@ export type CrawlInput = {
   retries?: number;
   /** LT-389: write a debug log of this run. Off unless asked for. */
   debugLog?: boolean;
+  /** LT-424: the project the run is kept under. Without one, nothing is kept. */
+  projectId?: string;
   /** LT-199, LT-209: saved credentials bound to devices, subnets or vendors,
    *  by vault id. */
   bindings?: { scope: 'device' | 'subnet' | 'vendor'; value: string; credentialId: string }[];
@@ -532,6 +534,7 @@ export type FailureKind =
   | 'no-prompt'
   | 'host-key-changed'
   | 'command-timed-out'
+  | 'output-too-large'
   | 'other';
 
 export type CrawlFailure = {
@@ -544,6 +547,9 @@ export type CrawlFailure = {
   transcriptPath?: string;
 };
 
+/** LT-424: how a kept crawl ended — or that it has not, or that the process did. */
+export type CrawlRunStatus = 'running' | 'complete' | 'cancelled' | 'aborted';
+
 export type CrawlResult = {
   devices: CrawledDevice[];
   notVisited: Neighbor[];
@@ -551,6 +557,9 @@ export type CrawlResult = {
   cancelled: boolean;
   /** LT-389: where the debug log went, when the run was asked to write one. */
   debugLogPath?: string | null;
+  /** LT-424: the kept run this result was written to, when the crawl had a project. */
+  runId?: string | null;
+  status?: CrawlRunStatus;
 };
 
 /** `commands` are this device's own show commands (LT-149), run after the
@@ -1006,12 +1015,10 @@ export const ipc = {
     if (!isDesktop) return [];
     return invoke('session_summary', { sessionId });
   },
-  /** LT-227: stored crawl results, to compare two. */
-  async saveCrawlRun(projectId: string, seed: string, result: CrawlResult): Promise<string | null> {
-    if (!isDesktop) return null;
-    return invoke('save_crawl_run', { projectId, seed, result });
-  },
-  async listCrawlRuns(projectId: string): Promise<{ id: string; takenAt: number; seed: string; devices: number }[]> {
+  /** LT-227: stored crawl results, to compare two. Written by the crawl
+   *  itself as it goes (LT-424); `status` is running, complete, cancelled or
+   *  aborted. */
+  async listCrawlRuns(projectId: string): Promise<{ id: string; takenAt: number; seed: string; devices: number; status: CrawlRunStatus }[]> {
     if (!isDesktop) return [];
     return invoke('list_crawl_runs', { projectId });
   },

@@ -574,7 +574,7 @@ pub fn argv_for(template: &str, user: &str, host: &str, port: u16) -> Result<Vec
 /// and the address go; the client asks for the rest. Coreview knows nothing
 /// about the session after this: no log, no colouring, no keepalive. Those are
 /// what the panel is for.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ssh_external(
     state: State<'_, AppState>,
     address: String,

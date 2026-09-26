@@ -39,9 +39,13 @@ async fn dashboard(answers: impl FnOnce(&str) -> Vec<String>) -> (String, Asked)
             let mut buf = vec![0u8; 4096];
             let read = socket.read(&mut buf).await.unwrap_or(0);
             let request = String::from_utf8_lossy(&buf[..read]).to_string();
+            let first = request.lines().next().unwrap_or("").to_string();
+            let keyed = request
+                .lines()
+                .any(|l| l.to_ascii_lowercase().starts_with("x-cisco-meraki-api-key:"));
             seen.lock()
                 .expect("asked")
-                .push(request.lines().next().unwrap_or("").to_string());
+                .push(if keyed { format!("{first} +key") } else { first });
             let body = answers.next().unwrap_or_else(|| {
                 "HTTP/1.1 500 Server Error\r\nContent-Length: 0\r\n\r\n".to_string()
             });
@@ -169,6 +173,68 @@ async fn an_endpoint_that_does_not_apply_ends_a_walk_rather_than_failing_it() {
     let client = Client::for_testing(&base, "a-key").expect("client");
     let networks = client.networks("111").await.expect("an empty walk, not an error");
     assert!(networks.is_empty());
+}
+
+fn redirect(to: &str) -> String {
+    format!("HTTP/1.1 308 Permanent Redirect\r\nLocation: {to}\r\nContent-Length: 0\r\n\r\n")
+}
+
+/// LT-425 / D-057: the Dashboard sends an organisation to its regional shard
+/// with a 308, and the official clients follow it with the key. Before this
+/// the redirect was taken as an answer, and an empty body was handed to the
+/// JSON decoder.
+#[tokio::test]
+async fn a_regional_redirect_is_followed_and_the_key_goes_with_it() {
+    let (base, asked) = dashboard(|base| {
+        vec![
+            redirect(&format!("{base}/organizations?shard=n1")),
+            ok(r#"[{"id":"111","name":"Contoso Ltd"}]"#),
+        ]
+    })
+    .await;
+    let client = Client::for_testing(&base, "a-key").expect("client");
+
+    let orgs = client.organizations().await.expect("followed to the shard");
+    assert_eq!(orgs.len(), 1);
+    let lines = asked.lock().expect("asked").clone();
+    assert_eq!(lines.len(), 2, "one request, then the redirect: {lines:?}");
+    assert!(lines[1].starts_with("GET /api/v1/organizations?shard=n1 "), "{lines:?}");
+    assert!(lines[1].ends_with("+key"), "the key was re-sent to the shard: {lines:?}");
+}
+
+/// The other half of D-057: a redirect is followed only to Meraki. For a test
+/// client that means loopback; anything else is refused with the host named,
+/// and the key is never sent there.
+#[tokio::test]
+async fn a_redirect_off_meraki_is_refused_and_nothing_is_sent_there() {
+    let (base, asked) = dashboard(|_| {
+        vec![
+            redirect("http://198.51.100.9/api/v1/organizations"),
+            ok("[]"),
+        ]
+    })
+    .await;
+    let client = Client::for_testing(&base, "a-key").expect("client");
+    match client.organizations().await {
+        Err(Error::Refused(why)) => assert!(why.contains("198.51.100.9"), "{why}"),
+        other => panic!("expected a refusal naming the host, got {other:?}"),
+    }
+    assert_eq!(asked.lock().expect("asked").len(), 1, "nothing was asked again");
+}
+
+/// A `Link: rel=next` is a URL the Dashboard chose, and it is checked the
+/// same way a redirect is.
+#[tokio::test]
+async fn a_next_page_off_meraki_is_refused() {
+    let (base, _) = dashboard(|_| {
+        vec![page(r#"[{"id":"N_1","name":"HQ"}]"#, Some("http://198.51.100.9/api/v1/x"))]
+    })
+    .await;
+    let client = Client::for_testing(&base, "a-key").expect("client");
+    match client.networks("111").await {
+        Err(Error::Refused(why)) => assert!(why.contains("198.51.100.9"), "{why}"),
+        other => panic!("expected a refusal naming the host, got {other:?}"),
+    }
 }
 
 #[tokio::test]

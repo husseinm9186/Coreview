@@ -22,7 +22,6 @@ use coreview_discover::types::{AddressPreference, DeviceClass};
 use coreview_probe::sweep::parse_cidr;
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter, State};
-use tokio_util::sync::CancellationToken;
 
 use crate::commands::AppState;
 use crate::db;
@@ -109,6 +108,10 @@ pub struct CrawlInput {
     pub concurrency: Option<usize>,
     pub per_host_timeout_secs: Option<u64>,
     pub retries: Option<u32>,
+    /// LT-424: the project the run is kept under, written device by device
+    /// as the crawl goes. Absent means the run is not kept at all.
+    #[serde(default)]
+    pub project_id: Option<String>,
     /// LT-389: write a debug log of this run. Off unless asked for — a log
     /// nobody asked for is a file nobody is guarding (D-055).
     #[serde(default)]
@@ -425,25 +428,47 @@ pub async fn start_crawl(
 
     let offered = OfferedCredentials::of(&state, &input_credential_id, &input_snmp_ids, &input_bindings);
     let store = load_host_keys(&state)?;
-    let token = CancellationToken::new();
-    {
-        let mut slot = state.crawl_cancel.lock().map_err(db_err)?;
-        if let Some(previous) = slot.replace(token.clone()) {
-            previous.cancel();
+    // LT-428: one crawl at a time, and a second is refused rather than
+    // silently replacing the first.
+    let ticket = state.jobs.start(crate::jobs::Kind::Crawl)?;
+    let token = ticket.token();
+
+    // LT-424: the run is opened now and written device by device, so a
+    // process that dies under a two-hour crawl leaves what it had found. A
+    // run that cannot be opened is reported now rather than discovered
+    // missing afterwards — the LT-389 lesson.
+    let run_id = match input.project_id.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        Some(project_id) => {
+            let id = format!("crawl-{}", crate::db::now_ms());
+            let conn = state.db.lock().map_err(db_err)?;
+            crate::db::open_crawl_run(&conn, &id, project_id, crate::db::now_ms(), &input.seed)
+                .map_err(|e| format!("could not keep this crawl: {e}"))?;
+            Some(id)
         }
-    }
+        None => None,
+    };
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(1024);
     let emitter = app.clone();
-    tauri::async_runtime::spawn(async move {
+    let pump_run_id = run_id.clone();
+    let pump = tauri::async_runtime::spawn(async move {
         while let Some(event) = rx.recv().await {
-            // LT-264: every device reached, against the saved credentials this
-            // crawl offered it — the chosen ones and the bindings that match it.
             if let CrawlEvent::Reached(device) = &event {
                 use tauri::Manager;
                 let state = emitter.state::<AppState>();
+                // LT-264: every device reached, against the saved credentials
+                // this crawl offered it — the chosen ones and the bindings
+                // that match it.
                 for id in offered.for_device(device) {
                     crate::vault_commands::note_use(&state, &id, "Crawl", &format!("{} ({})", device.hostname, device.address));
+                }
+                // LT-424: on disk before the interface even hears of it.
+                if let Some(run_id) = &pump_run_id {
+                    if let (Ok(conn), Ok(json)) = (state.db.lock(), serde_json::to_string(device)) {
+                        if let Err(e) = crate::db::append_crawl_device(&conn, run_id, &json) {
+                            eprintln!("could not write {} to crawl run {run_id}: {e}", device.address);
+                        }
+                    }
                 }
             }
             let _ = emitter.emit("coreview://crawl", &event);
@@ -518,6 +543,28 @@ pub async fn start_crawl(
         // Before the result, so a host key learned on the last device is
         // already durable by the time the interface reacts.
         persist_host_keys(&handle, &persist_store);
+        // LT-424: `tx` went into `crawl_from` and is gone, so the pump drains
+        // and ends; waiting for it means the last device is on disk before
+        // the run is closed.
+        let _ = pump.await;
+        let status = if result.cancelled { "cancelled" } else { "complete" };
+        if let Some(run_id) = &run_id {
+            use tauri::Manager;
+            let state = handle.state::<AppState>();
+            let summary = serde_json::json!({
+                "notVisited": result.not_visited,
+                "failures": result.failures,
+                "cancelled": result.cancelled,
+            });
+            let closed = state
+                .db
+                .lock()
+                .map_err(|e| e.to_string())
+                .and_then(|conn| crate::db::close_crawl_run(&conn, run_id, status, &summary.to_string()).map_err(|e| e.to_string()));
+            if let Err(e) = closed {
+                eprintln!("could not close crawl run {run_id}: {e}");
+            }
+        }
         let _ = handle.emit(
             "coreview://crawl-result",
             serde_json::json!({
@@ -525,8 +572,12 @@ pub async fn start_crawl(
                 "notVisited": result.not_visited,
                 "failures": result.failures,
                 "cancelled": result.cancelled,
+                "runId": run_id,
+                "status": status,
             }),
         );
+        // The slot empties when the crawl does, however it ended.
+        drop(ticket);
     });
 
     Ok(())
@@ -632,9 +683,7 @@ pub async fn ping_from_device(
 
 #[tauri::command]
 pub fn cancel_crawl(state: State<'_, AppState>) -> CmdResult<()> {
-    if let Some(token) = state.crawl_cancel.lock().map_err(db_err)?.take() {
-        token.cancel();
-    }
+    state.jobs.cancel(crate::jobs::Kind::Crawl);
     Ok(())
 }
 
@@ -743,13 +792,9 @@ pub async fn start_backup(
     };
 
     let store = load_host_keys(&state)?;
-    let token = CancellationToken::new();
-    {
-        let mut slot = state.backup_cancel.lock().map_err(db_err)?;
-        if let Some(previous) = slot.replace(token.clone()) {
-            previous.cancel();
-        }
-    }
+    // LT-428: one backup at a time; see `jobs.rs`.
+    let ticket = state.jobs.start(crate::jobs::Kind::Backup)?;
+    let token = ticket.token();
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(1024);
     let emitter = app.clone();
@@ -771,6 +816,7 @@ pub async fn start_backup(
     tauri::async_runtime::spawn(async move {
         run_backups(targets, credentials, options, store, stamp, tx, token).await;
         persist_host_keys(&handle, &persist_store);
+        drop(ticket);
     });
 
     Ok(())
@@ -778,9 +824,7 @@ pub async fn start_backup(
 
 #[tauri::command]
 pub fn cancel_backup(state: State<'_, AppState>) -> CmdResult<()> {
-    if let Some(token) = state.backup_cancel.lock().map_err(db_err)?.take() {
-        token.cancel();
-    }
+    state.jobs.cancel(crate::jobs::Kind::Backup);
     Ok(())
 }
 
@@ -816,7 +860,7 @@ fn backup_root(state: &State<'_, AppState>, project_id: &str) -> CmdResult<std::
 }
 
 /// Every device with backups, for the browser.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_backup_devices(state: State<'_, AppState>, project_id: String) -> CmdResult<Vec<BackupDevice>> {
     let root = backup_root(&state, &project_id)?;
     let Ok(entries) = std::fs::read_dir(&root) else {
@@ -859,7 +903,7 @@ pub fn list_device_captures(state: State<'_, AppState>, device: String, project_
 /// Takes a device and a filename rather than a path, so the interface cannot
 /// name a file outside the backup folder — the same reason the writer builds
 /// its own paths instead of accepting them.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_capture(
     state: State<'_, AppState>,
     device: String,
@@ -872,7 +916,7 @@ pub fn read_capture(
 }
 
 /// Compares two captures of one device.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn diff_captures(
     state: State<'_, AppState>,
     device: String,
@@ -1000,7 +1044,7 @@ pub struct HostKeyRow {
 }
 
 /// Every remembered host key, for the settings list.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_host_keys(state: State<'_, AppState>) -> CmdResult<Vec<HostKeyRow>> {
     let conn = state.db.lock().map_err(db_err)?;
     let mut rows: Vec<HostKeyRow> = db::all_host_keys(&conn)
@@ -1014,7 +1058,7 @@ pub fn list_host_keys(state: State<'_, AppState>) -> CmdResult<Vec<HostKeyRow>> 
 
 /// Forgets every remembered host key. Returns how many went, for the
 /// confirmation message.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clear_host_keys(state: State<'_, AppState>) -> CmdResult<usize> {
     let conn = state.db.lock().map_err(db_err)?;
     db::clear_host_keys(&conn).map_err(db_err)
@@ -1022,7 +1066,7 @@ pub fn clear_host_keys(state: State<'_, AppState>) -> CmdResult<usize> {
 
 /// Forgets one device's key, so the next connection is treated as first
 /// contact. The narrower answer when a single switch was replaced.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn forget_host_key(state: State<'_, AppState>, host: String, port: u16) -> CmdResult<bool> {
     let conn = state.db.lock().map_err(db_err)?;
     let id = host_id(&host, port);
@@ -1176,13 +1220,13 @@ mod tests {
 
 /// LT-246: a saved snmpwalk of one device, read into the record an SNMP crawl
 /// builds. Pure text in, so nothing is contacted and nothing is stored.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_snmp_walk(text: String, address: Option<String>) -> coreview_discover::walkfile::WalkReading {
     coreview_discover::walkfile::read_walk(&text, address.as_deref())
 }
 
 /// LT-248: an Nmap XML report, read as ping-sweep rows.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_nmap_xml(text: String) -> Result<crate::nmap_import::NmapReport, String> {
     crate::nmap_import::read_nmap_xml(&text)
 }

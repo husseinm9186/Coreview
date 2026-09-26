@@ -107,8 +107,9 @@ crates/
   coreview-probe     ICMP/TCP/DNS probing and the ping sweep's identification
                      (names over LLMNR/NetBIOS/mDNS, MAC, OUI, ports); no Tauri
   coreview-meraki    The Meraki Dashboard API, read-only and GET-only, to one
-                     named host (LT-404, D-056). Meraki has no CLI, so this is
-                     the only way to see such an estate from the inside.
+                     named host family (LT-404, D-056, D-057). Meraki has no
+                     CLI, so this is the only way to see such an estate from
+                     the inside.
 src-tauri/           Commands, SQLite, credential vault, icon library scan;
                      `terminal.rs` holds the live SSH sessions, which belong
                      to the window and are never written down (D-047), and

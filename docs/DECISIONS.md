@@ -1039,3 +1039,29 @@ of what he already gets from a script on his own laptop. Refusing would not
 keep the data local; it would just make the app less useful than the two files
 he already has.
 
+### D-057 — A redirect is followed to Meraki's own hosts, and nowhere else — 2026-09-25
+**Amends D-056**, whose fifth condition reads "`api.meraki.com` and nothing
+else". The audit of 2026-09-25 (LT-425) found that the client treated every
+status below 400 as an answer and pinned the host exactly — and the
+Dashboard sends an organisation to its regional shard with a 308. Followed
+literally, the first real call to an organisation that redirects would hand
+an empty body to the JSON decoder and fail with a message about nothing.
+
+**Decision:** the named host becomes the named *family*. A redirect, and a
+`Link: rel=next`, is followed only to a host that is `api.meraki.com` or
+ends in `.meraki.com`, `.meraki.ca` or `.meraki.cn`, over TLS, at most five
+times in a chain; the key is re-sent only there. Anything else is refused
+with the host named, and nothing is sent to it. A test client may be sent
+only to loopback, and that is fixed when the client is made so a redirect
+cannot widen it.
+
+**Rejected:** following any redirect, the way a general-purpose client does.
+That would let the Dashboard — or anything answering as it — send the
+operator's key to a host of its choosing, which is precisely the door D-056
+exists to keep shut.
+
+**What does not change:** every other line of D-056. GET only, started by
+the operator, his own key in the vault, nothing about him sent anywhere.
+`verified_against_api()` stays false: this is still a client that has never
+had an answer from the real thing, and a loopback 308 is a hypothesis about
+Meraki, not evidence of it.

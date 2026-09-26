@@ -50,6 +50,8 @@ export function failureAdvice(kind: FailureKind | undefined): string {
       return 'The host key has changed. Confirm why before logging in again.';
     case 'command-timed-out':
       return 'It answered, then stopped responding part way through.';
+    case 'output-too-large':
+      return 'It kept sending with no prompt in sight, so the command was abandoned. Check for `terminal monitor` or a debug left running on the device.';
     default:
       return '';
   }
@@ -74,6 +76,8 @@ export function failureHeading(kind: FailureKind | undefined): string {
       return 'Host key changed';
     case 'command-timed-out':
       return 'Stopped part way through';
+    case 'output-too-large':
+      return 'Would not stop sending';
     default:
       return 'Could not be reached';
   }

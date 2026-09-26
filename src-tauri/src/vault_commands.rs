@@ -63,7 +63,7 @@ fn kept_in_keychain(conn: &rusqlite::Connection) -> CmdResult<bool> {
 
 /// LT-262: keeps the unlocked vault's key in the system keychain, so the vault
 /// opens by itself on this machine from now on.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remember_vault_key(state: State<'_, AppState>) -> CmdResult<()> {
     let guard = state.vault_key.lock().map_err(db_err)?;
     let key = guard.as_ref().ok_or("Unlock the vault first; the key is kept only once it is open.")?;
@@ -73,7 +73,7 @@ pub fn remember_vault_key(state: State<'_, AppState>) -> CmdResult<()> {
 }
 
 /// LT-262: removes the key from the keychain; the passphrase is needed again.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn forget_vault_key(state: State<'_, AppState>) -> CmdResult<()> {
     crate::keychain::forget(&crate::keychain::entry()?)?;
     let conn = state.db.lock().map_err(db_err)?;
@@ -83,7 +83,7 @@ pub fn forget_vault_key(state: State<'_, AppState>) -> CmdResult<()> {
 /// LT-262: opens the vault with the kept key, when this machine keeps one.
 /// `opened`, `off` (nothing kept here), or `stale` (what was kept no longer
 /// opens this vault, and has been removed).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn unlock_vault_from_keychain(state: State<'_, AppState>) -> CmdResult<String> {
     let header = {
         let conn = state.db.lock().map_err(db_err)?;
@@ -127,7 +127,7 @@ pub struct CredentialSummary {
     pub has_second_secret: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_status(state: State<'_, AppState>) -> CmdResult<VaultStatus> {
     let conn = state.db.lock().map_err(db_err)?;
     let exists = db::vault_header(&conn).map_err(db_err)?.is_some();
@@ -143,7 +143,7 @@ pub fn vault_status(state: State<'_, AppState>) -> CmdResult<VaultStatus> {
 }
 
 /// Creates the vault and leaves it unlocked for this session.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_vault(state: State<'_, AppState>, passphrase: String) -> CmdResult<()> {
     let conn = state.db.lock().map_err(db_err)?;
     if db::vault_header(&conn).map_err(db_err)?.is_some() {
@@ -155,7 +155,7 @@ pub fn create_vault(state: State<'_, AppState>, passphrase: String) -> CmdResult
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn unlock_vault(state: State<'_, AppState>, passphrase: String) -> CmdResult<()> {
     let header = {
         let conn = state.db.lock().map_err(db_err)?;
@@ -189,7 +189,7 @@ pub fn lock_vault(state: State<'_, AppState>) -> CmdResult<()> {
 /// without the key the stored rows are unreadable, so keeping them would be
 /// keeping rubbish, and leaving them would make a new vault look like it had
 /// contents. Returns how many credentials went, for the confirmation.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn discard_vault(state: State<'_, AppState>) -> CmdResult<usize> {
     let conn = state.db.lock().map_err(db_err)?;
     let removed = db::destroy_vault(&conn).map_err(db_err)?;
@@ -220,7 +220,7 @@ pub struct SaveCredential {
     pub detail: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_credential(state: State<'_, AppState>, credential: SaveCredential) -> CmdResult<String> {
     let guard = state.vault_key.lock().map_err(db_err)?;
     let key = guard.as_ref().ok_or_else(|| vault::VaultError::Locked.to_string())?;
@@ -257,7 +257,7 @@ pub fn save_credential(state: State<'_, AppState>, credential: SaveCredential) -
 /// Works while locked, on purpose: knowing that a credential called "Core
 /// switches" exists is not the same as knowing its password, and a list that
 /// vanished when locked would make the vault unusable to reason about.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_credentials(state: State<'_, AppState>) -> CmdResult<Vec<CredentialSummary>> {
     let conn = state.db.lock().map_err(db_err)?;
     let rows = db::list_credentials(&conn).map_err(db_err)?;
@@ -298,7 +298,7 @@ pub struct RevealedCredential {
 /// Requires the vault to be unlocked, so revealing always costs the
 /// passphrase at least once per session rather than being available to anyone
 /// who reaches the running app.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reveal_credential(
     state: State<'_, AppState>,
     id: String,
@@ -321,7 +321,7 @@ pub fn reveal_credential(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_credential(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     let conn = state.db.lock().map_err(db_err)?;
     db::delete_credential(&conn, &id).map_err(db_err)?;
@@ -338,7 +338,7 @@ pub fn delete_credential(state: State<'_, AppState>, id: String) -> CmdResult<()
 /// It is still the most dangerous thing the app can write: it is every stored
 /// credential in one file, and its safety rests entirely on the passphrase. The
 /// interface defaults to leaving it out and says so plainly.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn export_vault(state: State<'_, AppState>) -> CmdResult<serde_json::Value> {
     let conn = state.db.lock().map_err(db_err)?;
     let (salt, verifier) = db::vault_header(&conn)
@@ -380,7 +380,7 @@ pub fn export_vault(state: State<'_, AppState>) -> CmdResult<serde_json::Value> 
 /// passphrase.
 ///
 /// Requires the local vault to be unlocked: this writes into it.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_vault(
     state: State<'_, AppState>,
     vault: serde_json::Value,
@@ -483,13 +483,13 @@ pub fn note_use(state: &AppState, credential_id: &str, purpose: &str, target: &s
 
 /// LT-264: where saved credentials were used, newest first. Read on this
 /// machine and never sent anywhere.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_credential_use(state: State<'_, AppState>, credential_id: Option<String>, limit: Option<i64>) -> CmdResult<Vec<db::CredentialUseRow>> {
     let conn = state.db.lock().map_err(db_err)?;
     db::list_credential_use(&conn, credential_id.as_deref(), limit.unwrap_or(500).clamp(1, 5_000)).map_err(db_err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clear_credential_use(state: State<'_, AppState>) -> CmdResult<usize> {
     let conn = state.db.lock().map_err(db_err)?;
     db::clear_credential_use(&conn).map_err(db_err)

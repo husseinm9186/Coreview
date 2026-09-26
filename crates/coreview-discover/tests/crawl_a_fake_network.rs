@@ -409,6 +409,7 @@ fn options(port: u16) -> CrawlOptions {
             auth_timeout: Duration::from_secs(10),
             command_timeout: Duration::from_secs(10),
             login_transcript: None,
+            max_output_bytes: coreview_discover::ssh::DEFAULT_MAX_OUTPUT_BYTES,
         },
         ..Default::default()
     }

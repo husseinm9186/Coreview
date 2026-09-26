@@ -170,6 +170,19 @@ impl server::Handler for FakeDevice {
                 c.push_str("banner motd #\r\nUnauthorized access prohibited\r\n#\r\n!\r\nend\r\n");
                 c
             }
+            // LT-427: a device that streams and never draws a prompt — a
+            // `terminal monitor` left on, a log that never pages. Sent in
+            // chunks the way a real channel delivers it, with no prompt at the
+            // end of any of them.
+            "show log" => {
+                session.data(channel, format!("{command}\r\n").into_bytes())?;
+                let line = "%SYS-5-CONFIG_I: Configured from console by admin on vty0 (192.0.2.10)\r\n";
+                let chunk = line.repeat(64).into_bytes();
+                for _ in 0..64 {
+                    session.data(channel, chunk.clone())?;
+                }
+                return Ok(());
+            }
             _ => "% Invalid input detected at '^' marker.\r\n".into(),
         };
 
@@ -230,6 +243,7 @@ fn options(port: u16) -> SshOptions {
         auth_timeout: Duration::from_secs(20),
         command_timeout: Duration::from_secs(10),
         login_transcript: None,
+        max_output_bytes: coreview_discover::ssh::DEFAULT_MAX_OUTPUT_BYTES,
     }
 }
 
@@ -254,6 +268,40 @@ async fn connects_authenticates_and_runs_a_command() {
     assert!(!out.contains("CORE-SW-01#"), "the prompt leaked: {out:?}");
 
     device.close().await;
+}
+
+/// LT-427: a command's output is bounded in bytes, not only in seconds.
+///
+/// Before the ceiling this waited out the whole `command_timeout` while the
+/// buffer grew and the screen was rendered on every chunk, and then reported
+/// a timeout — which says nothing about what the device was doing.
+#[tokio::test]
+async fn a_command_that_streams_without_a_prompt_is_abandoned_at_the_ceiling() {
+    let addr = start_device(AuthStyle::PasswordOnly, "LAB-SW2").await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let mut options = options(port_of(&addr));
+    // Far below the default, so the test says something about the rule and
+    // not about how fast loopback is. The device sends about 300 KB.
+    options.max_output_bytes = 64 * 1024;
+    // Long enough that only the ceiling can end the wait.
+    options.command_timeout = Duration::from_secs(20);
+
+    let mut device = Device::connect("127.0.0.1", &creds("correct-horse"), options, store, None)
+        .await
+        .expect("connect");
+    let started = std::time::Instant::now();
+    let error = match device.run("show log").await {
+        Ok(out) => panic!("it never prompts, so this cannot succeed; got {} bytes", out.len()),
+        Err(e) => e,
+    };
+    assert!(
+        matches!(error, SshError::OutputTooLarge { limit: 65_536, .. }),
+        "the ceiling, not the timeout: {error:?}"
+    );
+    assert!(started.elapsed() < Duration::from_secs(10), "it did not wait for the timeout");
+    let said = error.to_string();
+    assert!(said.contains("show log") && said.contains("abandoned"), "{said}");
+    assert!(!said.contains("CONFIG_I"), "no output in the error");
 }
 
 #[tokio::test]
@@ -377,6 +425,7 @@ async fn an_unreachable_device_fails_fast_rather_than_waiting_for_a_push() {
         auth_timeout: Duration::from_secs(60),
         command_timeout: Duration::from_secs(10),
         login_transcript: None,
+        max_output_bytes: coreview_discover::ssh::DEFAULT_MAX_OUTPUT_BYTES,
     };
 
     let started = std::time::Instant::now();

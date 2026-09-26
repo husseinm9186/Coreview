@@ -254,9 +254,11 @@ check("a pending push factor is announced — it never was (LT-278)",
 check("and a failure reaches the status line", /192\.0\.2\.12 could not be reached/.test(await panel.locator(".cv-discover-status").textContent()));
 await page.evaluate((r) => window.__cvEmit("coreview://crawl-result", r), crawlResult);
 await page.waitForTimeout(800);
-const savedRun = await page.evaluate(() => window.__calls.filter((c) => c.cmd === "save_crawl_run").at(-1)?.args);
-check("every crawl result is kept, to compare later (LT-227)", savedRun?.projectId === "crawling" && savedRun?.result?.devices?.length === 2 &&
-  savedRun?.seed === "192.0.2.10, 192.0.2.11, 198.51.100.0/30", JSON.stringify(savedRun)?.slice(0, 120));
+// LT-424: the run is written by Rust as it goes, so the page no longer sends
+// the result back; what it sends is which project the run belongs to.
+const noSaveCall = await page.evaluate(() => window.__calls.filter((c) => c.cmd === "save_crawl_run").length);
+check("every crawl is kept, by the crawl itself rather than by the page (LT-227, LT-424)",
+  started?.input?.projectId === "crawling" && noSaveCall === 0, JSON.stringify({ projectId: started?.input?.projectId, noSaveCall }));
 // -------------------------------------------------------- LT-213 findings
 const findings = await panel.locator(".cv-findings li").evaluateAll((lis) => lis.map((li) => [li.dataset.kind, li.textContent]));
 check("the result lists what is wrong", JSON.stringify(findings) === JSON.stringify([

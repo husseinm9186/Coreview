@@ -11,6 +11,7 @@ mod nmap_import;
 mod spreadsheet;
 mod drawio_import;
 mod ratelimit;
+mod jobs;
 mod keychain;
 #[cfg(test)]
 mod ipc_contract;
@@ -111,6 +112,13 @@ fn main() {
         // leaves the sweeping until next time.
         Err(e) => eprintln!("could not sweep up after deleted projects: {e}"),
     }
+    // LT-424: a crawl the last process died under is kept with what it had
+    // found, and says so.
+    match db::mark_abandoned_runs(&conn) {
+        Ok(0) => {}
+        Ok(n) => eprintln!("{n} crawl run(s) were still running when the app last closed; kept as aborted"),
+        Err(e) => eprintln!("could not mark abandoned crawl runs: {e}"),
+    }
     let (engine, rx) = Engine::new(DEFAULT_MAX_CONCURRENCY);
     let engine_for_exit = Arc::clone(&engine);
 
@@ -121,9 +129,7 @@ fn main() {
             db: Mutex::new(conn),
             session_id: Mutex::new(None),
             project_id: Mutex::new(None),
-            sweep_cancel: Mutex::new(None),
-            crawl_cancel: Mutex::new(None),
-            backup_cancel: Mutex::new(None),
+            jobs: Arc::new(jobs::Jobs::default()),
             vault_key: Mutex::new(None),
             limiter: ratelimit::RateLimiter::default(),
             sessions: std::sync::Arc::new(terminal::Sessions::default()),
@@ -161,7 +167,6 @@ fn main() {
             commands::probe_history,
             commands::list_sessions,
             commands::session_summary,
-            commands::save_crawl_run,
             commands::list_crawl_runs,
             commands::crawl_run_result,
             commands::list_events,

@@ -120,6 +120,7 @@ async fn main() {
         auth_timeout: Duration::from_secs(20),
         command_timeout: Duration::from_secs(60),
         login_transcript: None,
+        max_output_bytes: coreview_discover::ssh::DEFAULT_MAX_OUTPUT_BYTES,
     };
     let credentials = Credentials {
         username: user,

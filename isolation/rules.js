@@ -80,7 +80,6 @@
     remove_stencil_pack: ["name"],
     reveal_credential: ["id"],
     run_backup_checks: ["stamp", "checks", "projectId"],
-    save_crawl_run: ["projectId", "seed", "result"],
     save_credential: ["credential"],
     save_export: ["path", "contentsB64"],
     save_project: ["package"],

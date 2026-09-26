@@ -9,9 +9,13 @@
 //! could. That is what makes D-056's promise checkable rather than a claim:
 //! this cannot change a customer's configuration however it is called.
 //!
-//! **One named host.** `api.meraki.com`, or a loopback address for the tests.
-//! A client that could be pointed anywhere is a general-purpose HTTP client,
-//! which is the thing Q-008 rules out.
+//! **One named family of hosts.** `api.meraki.com`, and the regional shards it
+//! redirects an organisation to — `nNNN.meraki.com`, `api.meraki.ca`,
+//! `api.meraki.cn` — or a loopback address for the tests (D-056, amended by
+//! D-057 for LT-425). A redirect or a `Link: rel=next` pointing anywhere else
+//! is refused with the host named, and the key never goes there. A client
+//! that could be pointed anywhere is a general-purpose HTTP client, which is
+//! the thing Q-008 rules out.
 //!
 //! **Built from a working program, not from documentation.** The endpoints,
 //! the field names and the paging come from the operator's own scripts, which
@@ -44,6 +48,8 @@ const MIN_GAP: Duration = Duration::from_millis(220);
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 const RETRIES: u32 = 4;
+/// A redirect chain longer than this is a loop, not a shard.
+const MAX_REDIRECTS: u32 = 5;
 /// Enough for any organisation this is pointed at, and a stop either way: a
 /// paging loop that cannot end is worse than an incomplete answer.
 const MAX_PAGES: usize = 50;
@@ -67,6 +73,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Client {
     key: String,
     base: String,
+    /// LT-425: a test client may be sent only to loopback; the real one only
+    /// to Meraki's own hosts. Which rule applies is fixed when the client is
+    /// made, so a redirect cannot widen it.
+    loopback_only: bool,
     min_gap: Duration,
     /// When the last request went out, so the next one can wait its turn.
     last: Mutex<Option<Instant>>,
@@ -78,6 +88,7 @@ impl Client {
         Client {
             key: key.into(),
             base: BASE.to_string(),
+            loopback_only: false,
             min_gap: MIN_GAP,
             last: Mutex::new(None),
         }
@@ -98,6 +109,7 @@ impl Client {
         Ok(Client {
             key: key.into(),
             base: base.trim_end_matches('/').to_string(),
+            loopback_only: true,
             min_gap: Duration::from_millis(1),
             last: Mutex::new(None),
         })
@@ -127,16 +139,41 @@ impl Client {
         }
     }
 
+    /// Whether a URL the Dashboard handed back — a redirect, a next page — may
+    /// be followed with the key (D-057). The real client follows only to
+    /// Meraki's own hosts over TLS; a test client only to loopback.
+    fn may_follow(&self, url: &Url) -> bool {
+        if self.loopback_only {
+            url.is_loopback()
+        } else {
+            url.tls && is_meraki_host(&url.host)
+        }
+    }
+
+    /// Checks a URL the Dashboard chose, and says which host was refused.
+    fn follow(&self, url: Url, what: &str) -> Result<Url> {
+        if self.may_follow(&url) {
+            Ok(url)
+        } else {
+            Err(Error::Refused(format!(
+                "the Meraki API {what} {}, which is not Meraki; nothing was sent there",
+                url.host
+            )))
+        }
+    }
+
     async fn fetch(&self, url: &Url) -> Result<Response> {
         let headers = [
             ("X-Cisco-Meraki-API-Key", self.key.as_str()),
             ("Accept", "application/json"),
             ("User-Agent", concat!("Coreview/", env!("CARGO_PKG_VERSION"))),
         ];
+        let mut url = url.clone();
         let mut attempt = 0;
+        let mut redirects = 0;
         loop {
             self.gate().await;
-            let answer = http::get(url, &headers, TIMEOUT).await;
+            let answer = http::get(&url, &headers, TIMEOUT).await;
             let response = match answer {
                 Ok(r) => r,
                 Err(e) if attempt < RETRIES => {
@@ -147,6 +184,23 @@ impl Client {
                 }
                 Err(e) => return Err(Error::Network(e.to_string())),
             };
+            // LT-425: an organisation lives on a regional shard, and the
+            // Dashboard says so with a redirect. Followed with the key, to
+            // Meraki and nowhere else (D-057).
+            if matches!(response.status, 301 | 302 | 307 | 308) {
+                let Some(location) = response.header("location") else {
+                    return Err(Error::Decode(format!("HTTP {} with nowhere to go", response.status)));
+                };
+                redirects += 1;
+                if redirects > MAX_REDIRECTS {
+                    return Err(Error::Network("redirected too many times".into()));
+                }
+                let next = resolve(&url, location)
+                    .ok_or_else(|| Error::Decode(format!("bad redirect: {location}")))?;
+                url = self.follow(next, "redirected to")?;
+                attempt = 0;
+                continue;
+            }
             // 429 is the rate limit and says how long to wait; a 5xx is worth
             // one more try. Everything else is an answer, including a refusal.
             if (response.status == 429 || response.status >= 500) && attempt < RETRIES {
@@ -233,7 +287,8 @@ impl Client {
             out.extend(batch);
             match next_page(response.header("link")) {
                 Some(next) => {
-                    url = Url::parse(&next).ok_or_else(|| Error::Decode(format!("bad next page: {next}")))?
+                    let parsed = Url::parse(&next).ok_or_else(|| Error::Decode(format!("bad next page: {next}")))?;
+                    url = self.follow(parsed, "pointed the next page at")?;
                 }
                 None => break,
             }
@@ -281,6 +336,26 @@ pub fn now_iso8601() -> String {
     format!("{year:04}-{mth:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
 }
 
+/// Whether a host is one of Meraki's own (D-057): the API host, or a regional
+/// shard under one of its domains. Suffix-matched on a dot, so
+/// `meraki.com.example` is not.
+pub fn is_meraki_host(host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    ["meraki.com", "meraki.ca", "meraki.cn"]
+        .iter()
+        .any(|domain| host == format!("api.{domain}") || host.ends_with(&format!(".{domain}")))
+}
+
+/// A `Location` against the URL that was asked: absolute as it is, or a path
+/// on the same host.
+fn resolve(from: &Url, location: &str) -> Option<Url> {
+    if location.contains("://") {
+        return Url::parse(location);
+    }
+    let path = location.strip_prefix('/')?;
+    Some(Url { tls: from.tls, host: from.host.clone(), port: from.port, target: format!("/{path}") })
+}
+
 /// The `next` URL out of a `Link` header, if there is one.
 fn next_page(link: Option<&str>) -> Option<String> {
     for part in link?.split(',') {
@@ -323,6 +398,33 @@ mod tests {
             Err(other) => panic!("refused for the wrong reason: {other}"),
             Ok(_) => panic!("a client was built for a host that is not Meraki"),
         }
+    }
+
+    /// D-057: the family the real client may be sent to, and nothing beside.
+    #[test]
+    fn only_merakis_own_hosts_may_be_followed() {
+        for fine in ["api.meraki.com", "n392.meraki.com", "api.meraki.ca", "api.meraki.cn", "N1.MERAKI.COM"] {
+            assert!(is_meraki_host(fine), "{fine}");
+        }
+        for wrong in ["meraki.com.example", "api.meraki.com.evil.example", "evil.example", "meraki.co", "localhost", "127.0.0.1"] {
+            assert!(!is_meraki_host(wrong), "{wrong}");
+        }
+        let real = Client::new("k");
+        assert!(real.may_follow(&Url::parse("https://n392.meraki.com/api/v1/x").unwrap()));
+        assert!(!real.may_follow(&Url::parse("http://n392.meraki.com/api/v1/x").unwrap()), "never in the clear");
+        assert!(!real.may_follow(&Url::parse("https://127.0.0.1/api/v1/x").unwrap()), "loopback is for tests");
+        let test = Client::for_testing("http://127.0.0.1:9/api", "k").unwrap();
+        assert!(!test.may_follow(&Url::parse("https://api.meraki.com/api/v1/x").unwrap()), "a test never reaches Meraki");
+    }
+
+    #[test]
+    fn a_relative_location_stays_on_the_same_host() {
+        let from = Url::parse("https://api.meraki.com/api/v1/organizations").unwrap();
+        let same = resolve(&from, "/api/v1/organizations?shard=1").unwrap();
+        assert_eq!((same.tls, same.host.as_str(), same.port, same.target.as_str()), (true, "api.meraki.com", 443, "/api/v1/organizations?shard=1"));
+        let other = resolve(&from, "https://n1.meraki.com/api/v1/organizations").unwrap();
+        assert_eq!(other.host, "n1.meraki.com");
+        assert!(resolve(&from, "organizations").is_none(), "a bare relative path is not a shape this follows");
     }
 
     #[test]
