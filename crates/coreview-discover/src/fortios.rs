@@ -244,6 +244,7 @@ pub fn parse_lldp_detail(out: &str) -> Vec<Neighbor> {
             .filter(|l| !l.is_empty() && !l.contains(':'))
             .map(str::to_string);
 
+        let described = crate::classify::classify(None, &[], version.as_deref());
         found.push(Neighbor {
             serial: None,
             device_id: name.clone(),
@@ -257,7 +258,14 @@ pub fn parse_lldp_detail(out: &str) -> Vec<Neighbor> {
             platform: None,
             capabilities: capabilities.clone(),
             version,
-            class: class_from_codes(&capabilities),
+            // LT-463: the codes decide when there are any; when there are
+            // none, the description does — the way `lldp::parse_lldp_detail`
+            // has always done it. Codes alone left a switch that advertised
+            // none as Unknown, and a crawl does not log into Unknown.
+            class: match class_from_codes(&capabilities) {
+                DeviceClass::Unknown => described,
+                known => known,
+            },
             discovered_by: Protocol::Lldp,
             chassis_id: chassis,
             vendor: None,
@@ -314,6 +322,24 @@ Port ID: Gi0/9 (ifname)
 Port description: GigabitEthernet0/9
 IEEE802.1, Port VLAN ID: 1
 "#;
+
+    /// LT-463: a neighbour whose capability lines carry no codes was Unknown
+    /// through a FortiSwitch — and an Unknown neighbour is not logged into —
+    /// where the same neighbour through a Cisco is classified from its system
+    /// description. Built from the captured block above with the capability
+    /// lines emptied; the operator's own output is what will say whether this
+    /// is the case he hit.
+    #[test]
+    fn a_neighbour_with_no_capability_codes_is_classified_from_its_description() {
+        let blank = DETAIL.replace("System Capabilities: BR", "System Capabilities:").replace("Enabled Capabilities: BR", "Enabled Capabilities:");
+        let n = super::parse_lldp_detail(&blank);
+        assert_eq!(n.len(), 1, "{n:?}");
+        assert_eq!(n[0].class, crate::types::DeviceClass::Switch, "C2960CX in the description is a switch");
+        // Codes that are there still decide, as before.
+        assert_eq!(super::parse_lldp_detail(DETAIL)[0].class, crate::types::DeviceClass::Switch);
+        let router = DETAIL.replace("BR", "R").replace("C2960CX Software (C2960CX-UNIVERSALK9-M)", "Software");
+        assert_eq!(super::parse_lldp_detail(&router)[0].class, crate::types::DeviceClass::Router);
+    }
 
     #[test]
     fn the_detail_form_gives_what_the_summary_cannot() {

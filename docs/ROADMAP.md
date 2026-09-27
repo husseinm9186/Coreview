@@ -91,6 +91,24 @@ assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
 
+### LT-486 — A UniFi switch's own LLDP tables, over SSH — 2026-09-27
+**Source:** the operator, 2026-09-27: "also ssh to unifi and running these
+commands can help as well — show lldp neighbor, show lldp med
+remote-device all, show lldp med interface all".
+**What is known:** UniFi switches are reached over SNMP today (LT-134);
+nothing reads their command line. SSH on a UniFi switch lands in a
+BusyBox shell, and the switching CLI those commands belong to is entered
+from there — its prompt, `(UBNT) >` / `(UBNT) #` in UniFi's documentation,
+is one `cli::prompt_from_line` rejects today, because the hostname is the
+bracketed part it strips.
+**Acceptance:** built against the operator's output, not documentation:
+the login lands, the CLI is entered, paging is off, and the three tables
+are read into neighbours with local port, remote port, name, address and
+chassis id; the UniFi prompt is recognised; a fake-network test; the
+dialect says verified once his capture is the fixture.
+**Waiting on:** the operator's output of the three commands, and of what
+the session shows between the login and the first prompt.
+
 ### LT-463 — Cannot log in to a FortiSwitch — reported 2026-09-26, not yet reproduced
 **Source:** the operator, 2026-09-26: "can't login to fortiswitch", after
 the audit's pushes. The screenshot did not come through. Not yet known:
@@ -101,6 +119,29 @@ regression from the audit's changes to the login path or a device-side
 change (D-020: reproduced before it is fixed).
 **Acceptance:** the failure reproduced with its message; a test that fails
 without the fix; the fix; the device logged in again.
+**Narrowed 2026-09-27 by the operator's screenshot:** the login works — the
+FortiSwitch-224E is "Logged in" — and the crawl **stops there**. Its one
+neighbour, `HOME-MAIN-SW` at an address the crawl holds, is listed as
+**Unknown**, "Seen by a neighbour", never visited. "can't crawl from the
+fortiswitch to the cisco switch or other switches." An Unknown neighbour
+is not a kind a default crawl logs into, so the question is why it is
+Unknown. **Found, not yet shown to be the cause:** `fortios::parse_lldp_detail`
+classified a neighbour from its capability letters alone and never from
+its system description, where `lldp::parse_lldp_detail` falls back to
+`classify` on both — so a neighbour whose capability codes are missing or
+unreadable comes out Unknown through a FortiSwitch and a switch through a
+Cisco. That gap is fixed with a test (below); whether it is *this* device's
+cause needs the FortiSwitch's `get switch lldp neighbors-detail` for that
+port, which the support capture (LT-481) and the debug log (LT-392, which
+names the reason a neighbour was not followed) will show.
+**Workaround meanwhile:** tick **Unclassified** under the kinds to log into.
+**The gap, fixed 2026-09-27 (D-020: test first).** `fortios::parse_lldp_detail`
+now classifies from the system description when the capability codes give
+nothing, as the ordinary LLDP reader does; codes that are there still
+decide. `a_neighbour_with_no_capability_codes_is_classified_from_its_description`
+failed with Unknown before the change and passes after. The summary form
+has no description and is unchanged. **LT-463 stays open** until the
+operator's capture shows this was his device's cause, or shows what was.
 
 ### LT-453 — Level of detail, measured to LT-188's protocol — 2026-09-25
 **Source:** the audit, R-31. Culling was measured twice and rejected (D-010,
