@@ -91,24 +91,6 @@ assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
 
-### LT-486 — A UniFi switch's own LLDP tables, over SSH — 2026-09-27
-**Source:** the operator, 2026-09-27: "also ssh to unifi and running these
-commands can help as well — show lldp neighbor, show lldp med
-remote-device all, show lldp med interface all".
-**What is known:** UniFi switches are reached over SNMP today (LT-134);
-nothing reads their command line. SSH on a UniFi switch lands in a
-BusyBox shell, and the switching CLI those commands belong to is entered
-from there — its prompt, `(UBNT) >` / `(UBNT) #` in UniFi's documentation,
-is one `cli::prompt_from_line` rejects today, because the hostname is the
-bracketed part it strips.
-**Acceptance:** built against the operator's output, not documentation:
-the login lands, the CLI is entered, paging is off, and the three tables
-are read into neighbours with local port, remote port, name, address and
-chassis id; the UniFi prompt is recognised; a fake-network test; the
-dialect says verified once his capture is the fixture.
-**Waiting on:** the operator's output of the three commands, and of what
-the session shows between the login and the first prompt.
-
 ### LT-463 — Cannot log in to a FortiSwitch — reported 2026-09-26, not yet reproduced
 **Source:** the operator, 2026-09-26: "can't login to fortiswitch", after
 the audit's pushes. The screenshot did not come through. Not yet known:
@@ -11554,6 +11536,32 @@ internal COREVIEW-FGT-Root-CA cannot and never will.
 ## Icebox
 
 ### LT-416 — After a discovery the devices sit in one endless row — 2026-09-25
+
+### LT-486 — A UniFi switch's own LLDP tables, over SSH — Icebox 2026-09-27
+**Source:** the operator, 2026-09-27: "also ssh to unifi and running these
+commands can help as well — show lldp neighbor, show lldp med
+remote-device all, show lldp med interface all".
+**What is known:** UniFi switches are reached over SNMP today (LT-134);
+nothing reads their command line. SSH on a UniFi switch lands in a
+BusyBox shell, and the switching CLI those commands belong to is entered
+from there — its prompt, `(UBNT) >` / `(UBNT) #` in UniFi's documentation,
+is one `cli::prompt_from_line` rejects today, because the hostname is the
+bracketed part it strips.
+**Acceptance:** built against the operator's output, not documentation:
+the login lands, the CLI is entered, paging is off, and the three tables
+are read into neighbours with local port, remote port, name, address and
+chassis id; the UniFi prompt is recognised; a fake-network test; the
+dialect says verified once his capture is the fixture.
+**Waiting on:** the operator's output of the three commands, and of what
+the session shows between the login and the first prompt.
+**Iceboxed the same day, on the operator's word:** "The Unifi doesn't
+support lldp or cdp it builds all clients based on mac address and vendor
+lookups." So there are no LLDP tables to read, and the three commands would
+answer nothing useful. What a UniFi switch knows — which MAC is on which
+port, and the maker behind each — the crawl already reads over SNMP
+(LT-134: the bridge table through `snmp_topology`, the maker from the OUI).
+Worth reopening only if reading that same MAC table over SSH is wanted,
+for a switch whose SNMP is off.
 
 ### LT-482 — The next tier of dialects — Icebox 2026-09-26
 Named while shaping D-058 and not asked for: Extreme EXOS, SonicOS, Ruckus
