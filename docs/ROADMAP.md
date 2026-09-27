@@ -327,6 +327,46 @@ pulled into Phase 1.*
 
 ## Done
 
+### LT-485 — Folders and sub-folders on the project screen — 2026-09-27
+**Source:** the operator, 2026-09-27: "can you make me folders for the
+projects, and sub folders. this way i can have multiple projects in one
+folder and subfolders this way the main page is not overwhelmed".
+**Acceptance:** folders nest to any depth; the project screen shows one
+folder at a time — its sub-folders, then its projects — with a breadcrumb
+back up; a folder can be created, renamed, moved and deleted; a project can
+be moved into any folder, by a menu and by dragging it onto a folder; a
+project created, duplicated or opened from a sample while inside a folder
+lands in that folder. **Deleting a folder never deletes a project**: what
+was in it moves up to its parent. A folder cannot be moved into itself or
+its own descendants. Folders are this machine's arrangement of its
+launcher: stored in the local database, never in the project document, so
+an exported `.coreview` package is unchanged and carries no folder names.
+Archived projects stay a flat list, each with its folder path. Schema
+version 4; a Rust test per rule; a harness.
+**Shipped 2026-09-27.** Schema 4: a `project_folders` table (id, name,
+parent) and a `folder_id` on projects, added to an older database by a
+migration that leaves an existing column alone. Six commands — list,
+create, rename, move, delete a folder; move a project — all off the UI
+thread, in the isolation table. `upsert_project` never names the column,
+so an autosave cannot take a project out of its folder, and nothing about
+folders is in `ProjectMeta` or a package. Rules in Rust, each with a test:
+nesting to any depth, no folder inside itself or its descendants, no two
+sibling folders of the same name (case-insensitive), names trimmed and at
+most 80 characters, and **deleting a folder moves its projects and
+sub-folders up a level in one transaction** — a sub-folder whose name is
+taken there becomes "Name (2)" rather than failing. The screen shows one
+folder at a time: its sub-folders with their project counts, then its
+projects; a breadcrumb back up; **New folder**, **Rename**, **Move to…**
+and **Delete folder** on each folder; **Move to…** on each project; and
+dragging a project or a folder onto a folder or a breadcrumb moves it. A
+project created, duplicated or made from a sample inside a folder lands
+there (a duplicate beside its original); the open folder is remembered
+while the app runs and falls back to the top if it is deleted. A project
+whose folder is gone is shown at the top rather than lost. Archived stays
+one flat list, each with "in <path>". The browser build has no folders
+and offers none. `src/lib/projectFolders.ts` (tested), `e2e/folders.mjs`
+(23 checks, against a stub that enforces the same rules).
+
 ### LT-464 — The devices seen on switch ports are listed, not only counted — 2026-09-26
 **Source:** the operator, 2026-09-26: "can't see what was discovered on the
 networks those 44 devices?", with a screenshot of the crawl panel. Seen from

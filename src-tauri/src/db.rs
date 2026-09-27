@@ -12,7 +12,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 /// Bumped whenever the diagram document shape changes; the frontend migrates.
 pub const DOCUMENT_VERSION: i64 = 1;
 
@@ -321,7 +321,18 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             updated_at INTEGER NOT NULL,
             archived INTEGER NOT NULL DEFAULT 0,
             document_version INTEGER NOT NULL DEFAULT 1,
-            document TEXT NOT NULL DEFAULT '{}'
+            document TEXT NOT NULL DEFAULT '{}',
+            -- LT-485: which folder of the project screen it sits in. This
+            -- machine's arrangement, never part of the document or a package.
+            folder_id TEXT
+        );
+
+        -- LT-485: folders on the project screen, nested by parent.
+        CREATE TABLE IF NOT EXISTS project_folders (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            parent_id TEXT,
+            created_at INTEGER NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS validation_sessions (
@@ -419,7 +430,7 @@ type Migration = (i64, fn(&Connection) -> rusqlite::Result<()>);
 /// Every migration ever written, oldest first. Adding a column is a new entry
 /// here and a bump of `SCHEMA_VERSION`, never an edit to an old one — a
 /// database in the field may be at any version in this list.
-const MIGRATIONS: &[Migration] = &[(2, split_settings_per_project), (3, crawl_runs_written_as_they_go)];
+const MIGRATIONS: &[Migration] = &[(2, split_settings_per_project), (3, crawl_runs_written_as_they_go), (4, projects_in_folders)];
 
 /// LT-430: the steps that take a database from its version to
 /// `SCHEMA_VERSION`, in one transaction with the version bump last.
@@ -508,6 +519,21 @@ fn crawl_runs_written_as_they_go(conn: &Connection) -> rusqlite::Result<()> {
         .any(|name| name == "status");
     if !has_status {
         conn.execute("ALTER TABLE crawl_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'complete'", [])?;
+    }
+    Ok(())
+}
+
+/// Schema 4 (LT-485): a project can sit in a folder. The folders table is in
+/// the base schema already; what an older database lacks is the column. A
+/// column that is already there is left alone, as in schema 3.
+fn projects_in_folders(conn: &Connection) -> rusqlite::Result<()> {
+    let has = conn
+        .prepare("PRAGMA table_info(projects)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "folder_id");
+    if !has {
+        conn.execute("ALTER TABLE projects ADD COLUMN folder_id TEXT", [])?;
     }
     Ok(())
 }
@@ -633,6 +659,186 @@ pub fn purge_orphans(conn: &Connection) -> rusqlite::Result<usize> {
     removed += tx.execute("DELETE FROM crawl_runs WHERE project_id NOT IN (SELECT id FROM projects)", [])?;
     tx.commit()?;
     Ok(removed)
+}
+
+// ------------------------------------------------------------------ folders
+
+/// LT-485: one folder on the project screen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectFolder {
+    pub id: String,
+    pub name: String,
+    pub parent_id: Option<String>,
+}
+
+/// Every folder, and which folder each project is in. A project in no folder
+/// is at the top and is not listed in `placement`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderTree {
+    pub folders: Vec<ProjectFolder>,
+    pub placement: std::collections::BTreeMap<String, String>,
+}
+
+/// A folder name as it is kept: trimmed, not empty, not absurd.
+fn folder_name(raw: &str) -> Result<String, String> {
+    let name = raw.trim();
+    if name.is_empty() {
+        return Err("A folder needs a name.".into());
+    }
+    if name.chars().count() > 80 {
+        return Err("A folder name can be at most 80 characters.".into());
+    }
+    Ok(name.to_string())
+}
+
+fn folder_exists(conn: &Connection, id: &str) -> rusqlite::Result<bool> {
+    conn.query_row("SELECT 1 FROM project_folders WHERE id = ?1", params![id], |_| Ok(()))
+        .optional()
+        .map(|r| r.is_some())
+}
+
+/// Refuses a second folder of the same name beside another, case-insensitively,
+/// because two "Customer A" folders side by side are one mistake waiting.
+fn check_sibling_name(conn: &Connection, parent: Option<&str>, name: &str, except: Option<&str>) -> Result<(), String> {
+    let taken: bool = conn
+        .query_row(
+            "SELECT 1 FROM project_folders
+             WHERE parent_id IS ?1 AND lower(name) = lower(?2) AND id IS NOT ?3",
+            params![parent, name, except],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .is_some();
+    if taken {
+        return Err(format!("There is already a folder called “{name}” here."));
+    }
+    Ok(())
+}
+
+pub fn list_folders(conn: &Connection) -> rusqlite::Result<FolderTree> {
+    let mut stmt = conn.prepare("SELECT id, name, parent_id FROM project_folders ORDER BY lower(name)")?;
+    let folders = stmt
+        .query_map([], |r| Ok(ProjectFolder { id: r.get(0)?, name: r.get(1)?, parent_id: r.get(2)? }))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut stmt = conn.prepare("SELECT id, folder_id FROM projects WHERE folder_id IS NOT NULL")?;
+    let placement = stmt
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(FolderTree { folders, placement })
+}
+
+pub fn create_folder(conn: &Connection, name: &str, parent: Option<&str>) -> Result<ProjectFolder, String> {
+    let name = folder_name(name)?;
+    if let Some(p) = parent {
+        if !folder_exists(conn, p).map_err(|e| e.to_string())? {
+            return Err("That folder no longer exists.".into());
+        }
+    }
+    check_sibling_name(conn, parent, &name, None)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO project_folders (id, name, parent_id, created_at) VALUES (?1, ?2, ?3, ?4)",
+        params![id, name, parent, now_ms()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(ProjectFolder { id, name, parent_id: parent.map(str::to_string) })
+}
+
+pub fn rename_folder(conn: &Connection, id: &str, name: &str) -> Result<(), String> {
+    let name = folder_name(name)?;
+    let parent: Option<String> = conn
+        .query_row("SELECT parent_id FROM project_folders WHERE id = ?1", params![id], |r| r.get(0))
+        .optional()
+        .map_err(|e| e.to_string())?
+        .ok_or("That folder no longer exists.")?;
+    check_sibling_name(conn, parent.as_deref(), &name, Some(id))?;
+    conn.execute("UPDATE project_folders SET name = ?2 WHERE id = ?1", params![id, name]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// The folder and every folder under it, at any depth.
+fn subtree(conn: &Connection, id: &str) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "WITH RECURSIVE under(id) AS (
+             SELECT ?1
+             UNION ALL
+             SELECT f.id FROM project_folders f JOIN under u ON f.parent_id = u.id
+         )
+         SELECT id FROM under",
+    )?;
+    let ids = stmt.query_map(params![id], |r| r.get(0))?.collect();
+    ids
+}
+
+/// Moves a folder under another, or to the top with `None`. A folder cannot
+/// go inside itself or anything under it — that would cut it off from the top.
+pub fn move_folder(conn: &Connection, id: &str, parent: Option<&str>) -> Result<(), String> {
+    let name: String = conn
+        .query_row("SELECT name FROM project_folders WHERE id = ?1", params![id], |r| r.get(0))
+        .optional()
+        .map_err(|e| e.to_string())?
+        .ok_or("That folder no longer exists.")?;
+    if let Some(p) = parent {
+        if !folder_exists(conn, p).map_err(|e| e.to_string())? {
+            return Err("That folder no longer exists.".into());
+        }
+        if subtree(conn, id).map_err(|e| e.to_string())?.iter().any(|f| f == p) {
+            return Err("A folder cannot be moved into itself or into a folder inside it.".into());
+        }
+    }
+    check_sibling_name(conn, parent, &name, Some(id))?;
+    conn.execute("UPDATE project_folders SET parent_id = ?2 WHERE id = ?1", params![id, parent]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Deletes a folder. **Never a project:** its projects and sub-folders move
+/// up to its parent, in one transaction. A sub-folder whose name is already
+/// taken there keeps its place under a suffixed name rather than failing.
+pub fn delete_folder(conn: &Connection, id: &str) -> Result<(), String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let parent: Option<String> = tx
+        .query_row("SELECT parent_id FROM project_folders WHERE id = ?1", params![id], |r| r.get(0))
+        .optional()
+        .map_err(|e| e.to_string())?
+        .ok_or("That folder no longer exists.")?;
+    tx.execute("UPDATE projects SET folder_id = ?2 WHERE folder_id = ?1", params![id, parent]).map_err(|e| e.to_string())?;
+    let children: Vec<(String, String)> = {
+        let mut stmt = tx.prepare("SELECT id, name FROM project_folders WHERE parent_id = ?1").map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(params![id], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?;
+        rows.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())?
+    };
+    for (child, name) in children {
+        let mut candidate = name.clone();
+        let mut n = 2;
+        while check_sibling_name(&tx, parent.as_deref(), &candidate, Some(&child)).is_err() {
+            candidate = format!("{name} ({n})");
+            n += 1;
+        }
+        tx.execute("UPDATE project_folders SET parent_id = ?2, name = ?3 WHERE id = ?1", params![child, parent, candidate])
+            .map_err(|e| e.to_string())?;
+    }
+    tx.execute("DELETE FROM project_folders WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+/// Puts a project in a folder, or at the top with `None`. Does not touch
+/// `updated_at`: filing a project is not editing it.
+pub fn move_project(conn: &Connection, project: &str, folder: Option<&str>) -> Result<(), String> {
+    if let Some(f) = folder {
+        if !folder_exists(conn, f).map_err(|e| e.to_string())? {
+            return Err("That folder no longer exists.".into());
+        }
+    }
+    let changed = conn
+        .execute("UPDATE projects SET folder_id = ?2 WHERE id = ?1", params![project, folder])
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err("That project no longer exists.".into());
+    }
+    Ok(())
 }
 
 pub fn set_archived(conn: &Connection, id: &str, archived: bool) -> rusqlite::Result<()> {
@@ -1800,6 +2006,101 @@ mod tests {
         let c = Connection::open_in_memory().unwrap();
         migrate(&c).unwrap();
         c
+    }
+
+    /// LT-485: folders nest; a project moves in and out; a save never
+    /// moves it; a package never carries its folder.
+    #[test]
+    fn projects_file_into_nested_folders_and_a_save_keeps_them_there() {
+        let c = mem();
+        upsert_project(&c, &pkg("p1", "Branch")).unwrap();
+        upsert_project(&c, &pkg("p2", "Core")).unwrap();
+        let customer = create_folder(&c, "  Customer A ", None).unwrap();
+        assert_eq!(customer.name, "Customer A");
+        let site = create_folder(&c, "Site 1", Some(&customer.id)).unwrap();
+        move_project(&c, "p1", Some(&site.id)).unwrap();
+        let tree = list_folders(&c).unwrap();
+        assert_eq!(tree.folders.len(), 2);
+        assert_eq!(tree.placement.get("p1"), Some(&site.id));
+        assert_eq!(tree.placement.get("p2"), None, "a project in no folder is at the top");
+
+        // Every autosave is an upsert; it must not take the project out.
+        upsert_project(&c, &pkg("p1", "Branch renamed")).unwrap();
+        assert_eq!(list_folders(&c).unwrap().placement.get("p1"), Some(&site.id));
+        // And what is exported knows nothing about it.
+        let loaded = load_project(&c, "p1").unwrap().unwrap();
+        assert!(!serde_json::to_string(&loaded).unwrap().contains(&site.id));
+
+        move_project(&c, "p1", None).unwrap();
+        assert!(list_folders(&c).unwrap().placement.is_empty());
+        assert!(move_project(&c, "missing", None).is_err());
+        assert!(move_project(&c, "p1", Some("no-such-folder")).is_err());
+    }
+
+    #[test]
+    fn a_folder_cannot_go_inside_itself_and_names_do_not_repeat_side_by_side() {
+        let c = mem();
+        let a = create_folder(&c, "A", None).unwrap();
+        let b = create_folder(&c, "B", Some(&a.id)).unwrap();
+        let deep = create_folder(&c, "C", Some(&b.id)).unwrap();
+        assert!(move_folder(&c, &a.id, Some(&a.id)).unwrap_err().contains("into itself"));
+        assert!(move_folder(&c, &a.id, Some(&deep.id)).unwrap_err().contains("into itself"));
+        move_folder(&c, &deep.id, None).unwrap();
+        assert_eq!(list_folders(&c).unwrap().folders.iter().find(|f| f.id == deep.id).unwrap().parent_id, None);
+
+        assert!(create_folder(&c, "a", None).unwrap_err().contains("already a folder"));
+        assert!(create_folder(&c, "   ", None).is_err());
+        assert!(create_folder(&c, &"x".repeat(81), None).is_err());
+        create_folder(&c, "B", None).unwrap(); // the same name elsewhere is fine
+        assert!(rename_folder(&c, &deep.id, "b").unwrap_err().contains("already a folder"));
+        rename_folder(&c, &deep.id, "Renamed").unwrap();
+    }
+
+    #[test]
+    fn deleting_a_folder_moves_what_was_in_it_up_and_deletes_no_project() {
+        let c = mem();
+        upsert_project(&c, &pkg("p1", "One")).unwrap();
+        upsert_project(&c, &pkg("p2", "Two")).unwrap();
+        let top = create_folder(&c, "Customer", None).unwrap();
+        let mid = create_folder(&c, "Region", Some(&top.id)).unwrap();
+        let leaf = create_folder(&c, "Site", Some(&mid.id)).unwrap();
+        // A sibling already called "Site" where the leaf is about to land.
+        let clash = create_folder(&c, "Site", Some(&top.id)).unwrap();
+        move_project(&c, "p1", Some(&mid.id)).unwrap();
+        move_project(&c, "p2", Some(&leaf.id)).unwrap();
+
+        delete_folder(&c, &mid.id).unwrap();
+        let tree = list_folders(&c).unwrap();
+        assert_eq!(list_projects(&c).unwrap().len(), 2, "no project is ever deleted with a folder");
+        assert_eq!(tree.placement.get("p1"), Some(&top.id), "its projects move up");
+        assert_eq!(tree.placement.get("p2"), Some(&leaf.id), "a sub-folder's projects stay in it");
+        let moved = tree.folders.iter().find(|f| f.id == leaf.id).unwrap();
+        assert_eq!((moved.parent_id.as_deref(), moved.name.as_str()), (Some(top.id.as_str()), "Site (2)"));
+        assert!(tree.folders.iter().any(|f| f.id == clash.id && f.name == "Site"));
+        assert!(!tree.folders.iter().any(|f| f.id == mid.id));
+
+        delete_folder(&c, &top.id).unwrap();
+        let tree = list_folders(&c).unwrap();
+        assert_eq!(tree.placement.get("p1"), None, "and from the top folder, to the top");
+        assert!(delete_folder(&c, "gone").is_err());
+    }
+
+    /// Schema 4 on a database made before it: the column is added once, and
+    /// running the step again leaves it alone.
+    #[test]
+    fn a_database_from_before_folders_gains_the_column() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch("CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT NOT NULL);").unwrap();
+        projects_in_folders(&c).unwrap();
+        projects_in_folders(&c).unwrap();
+        let columns: Vec<String> = c
+            .prepare("PRAGMA table_info(projects)")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert_eq!(columns.iter().filter(|n| *n == "folder_id").count(), 1);
     }
 
     fn pkg(id: &str, name: &str) -> ProjectPackage {

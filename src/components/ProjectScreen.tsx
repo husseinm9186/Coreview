@@ -9,6 +9,16 @@ import { HostKeySettings } from './HostKeySettings';
 import { VaultSettings } from './VaultSettings';
 import type { ProjectMeta } from '../types/domain';
 import { t } from '../i18n';
+import {
+  childFolders,
+  destinations,
+  pathLabel,
+  pathTo,
+  projectCountWithin,
+  projectsIn,
+  subtreeIds,
+  type ProjectFolder,
+} from '../lib/projectFolders';
 
 export function ProjectScreen() {
   const projects = useStore((s) => s.projects);
@@ -35,7 +45,62 @@ export function ProjectScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const visible = projects.filter((p) => p.archived === showArchived);
+  // LT-485: one folder at a time. Archived projects stay one flat list, each
+  // with the folder it is filed in.
+  const tree = useStore((s) => s.folderTree);
+  const here = useStore((s) => s.projectFolderId);
+  const setHere = useStore((s) => s.setProjectFolder);
+  const [newFolder, setNewFolder] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [confirmFolder, setConfirmFolder] = useState<ProjectFolder | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [folderProblem, setFolderProblem] = useState<string | null>(null);
+  const live = projects.filter((p) => !p.archived);
+  const visible = showArchived ? projects.filter((p) => p.archived) : projectsIn(tree, live, here);
+  const folders = showArchived ? [] : childFolders(tree, here);
+  const crumbs = pathTo(tree, here);
+
+  /** Runs one folder change, then reads the tree back; a refusal is shown. */
+  const folderAction = (run: () => Promise<void>) => {
+    setFolderProblem(null);
+    void run()
+      .then(() => useStore.getState().refreshProjects())
+      .catch((e: unknown) => setFolderProblem(e instanceof Error ? e.message : String(e)));
+  };
+  const createFolder = () => {
+    const name = (newFolder ?? '').trim();
+    if (!name) return;
+    folderAction(async () => {
+      await ipc.createProjectFolder(name, here);
+      setNewFolder(null);
+    });
+  };
+  const renameFolder = () => {
+    if (!renaming) return;
+    const { id, name } = renaming;
+    folderAction(async () => {
+      await ipc.renameProjectFolder(id, name);
+      setRenaming(null);
+    });
+  };
+  /** A project or a folder dropped on a folder (or on a breadcrumb). */
+  const dropOn = (target: string | null, e: React.DragEvent) => {
+    e.preventDefault();
+    setDropTarget(null);
+    const projectId = e.dataTransfer.getData('application/x-coreview-project');
+    const folderId = e.dataTransfer.getData('application/x-coreview-folder');
+    if (projectId) folderAction(() => ipc.moveProjectToFolder(projectId, target));
+    else if (folderId && folderId !== target) folderAction(() => ipc.moveProjectFolder(folderId, target));
+  };
+  const dropProps = (target: string | null) => ({
+    onDragOver: (e: React.DragEvent) => {
+      e.preventDefault();
+      setDropTarget(target ?? '');
+    },
+    onDragLeave: () => setDropTarget(null),
+    onDrop: (e: React.DragEvent) => dropOn(target, e),
+  });
+  const isDropTarget = (target: string | null) => dropTarget === (target ?? '');
 
   type Package = { meta: ProjectMeta; document: ProjectDocument; vault?: unknown };
 
@@ -203,18 +268,125 @@ export function ProjectScreen() {
 
         {vaultNote && <p className="cv-help cv-hostkey-message">{vaultNote}</p>}
 
-        <section className="cv-welcome-section">
-          <h2>{showArchived ? 'Archived projects' : 'Recent projects'}</h2>
-          {visible.length === 0 ? (
+        <section className="cv-welcome-section" data-region="projects">
+          <div className="cv-folder-head">
+            <h2>{showArchived ? 'Archived projects' : crumbs.length ? crumbs[crumbs.length - 1]!.name : 'Recent projects'}</h2>
+            {!showArchived && isDesktop && newFolder === null && (
+              <button type="button" className="cv-btn cv-btn-small" onClick={() => setNewFolder('')}>
+                {t('folders.new')}
+              </button>
+            )}
+          </div>
+
+          {/* LT-485: where this is, and the way back up. Each crumb is also a
+              place to drop a project or a folder. */}
+          {!showArchived && crumbs.length > 0 && (
+            <nav className="cv-folder-crumbs" aria-label={t('folders.path')}>
+              <button type="button" className={`cv-folder-crumb${isDropTarget(null) ? ' is-drop' : ''}`}
+                onClick={() => setHere(null)} {...dropProps(null)}>
+                {t('folders.top')}
+              </button>
+              {crumbs.map((f, i) => (
+                <span key={f.id} className="cv-folder-crumb-step">
+                  <span aria-hidden="true"> › </span>
+                  {i === crumbs.length - 1 ? (
+                    <span className="cv-folder-crumb is-here" aria-current="page">{f.name}</span>
+                  ) : (
+                    <button type="button" className={`cv-folder-crumb${isDropTarget(f.id) ? ' is-drop' : ''}`}
+                      onClick={() => setHere(f.id)} {...dropProps(f.id)}>
+                      {f.name}
+                    </button>
+                  )}
+                </span>
+              ))}
+            </nav>
+          )}
+
+          {newFolder !== null && (
+            <div className="cv-folder-new">
+              <input className="cv-input" autoFocus value={newFolder} maxLength={80}
+                aria-label={t('folders.name')} placeholder={t('folders.name')}
+                onChange={(e) => setNewFolder(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') createFolder();
+                  if (e.key === 'Escape') setNewFolder(null);
+                }} />
+              <button type="button" className="cv-btn cv-btn-small cv-btn-start" disabled={!newFolder.trim()} onClick={createFolder}>
+                {t('folders.create')}
+              </button>
+              <button type="button" className="cv-btn cv-btn-small" onClick={() => setNewFolder(null)}>{t('folders.cancel')}</button>
+            </div>
+          )}
+          {folderProblem && <p className="cv-error cv-folder-problem">{folderProblem}</p>}
+
+          {visible.length === 0 && folders.length === 0 ? (
             <p className="cv-help">
               {showArchived
                 ? 'Nothing archived.'
-                : 'No projects yet. Create one, or open a sample below to see how validation works.'}
+                : here
+                  ? t('folders.empty')
+                  : 'No projects yet. Create one, or open a sample below to see how validation works.'}
             </p>
           ) : (
             <ul className="cv-project-list">
+              {folders.map((f) => (
+                <li key={f.id} className={`cv-folder-row${isDropTarget(f.id) ? ' is-drop' : ''}`} data-folder={f.id}
+                  draggable={renaming?.id !== f.id}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-coreview-folder', f.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                  }}
+                  {...dropProps(f.id)}>
+                  {renaming?.id === f.id ? (
+                    <div className="cv-folder-new">
+                      <input className="cv-input" autoFocus value={renaming.name} maxLength={80} aria-label={t('folders.name')}
+                        onChange={(e) => setRenaming({ id: f.id, name: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') renameFolder();
+                          if (e.key === 'Escape') setRenaming(null);
+                        }} />
+                      <button type="button" className="cv-btn cv-btn-small cv-btn-start" disabled={!renaming.name.trim()} onClick={renameFolder}>
+                        {t('folders.rename')}
+                      </button>
+                      <button type="button" className="cv-btn cv-btn-small" onClick={() => setRenaming(null)}>{t('folders.cancel')}</button>
+                    </div>
+                  ) : (
+                    <button type="button" className="cv-project-open cv-folder-open" onClick={() => setHere(f.id)}>
+                      <span className="cv-project-title"><span className="cv-folder-glyph" aria-hidden="true">▸</span> {f.name}</span>
+                      <span className="cv-project-meta">
+                        {t('folders.contents', { count: projectCountWithin(tree, live, f.id) })}
+                        {childFolders(tree, f.id).length > 0 && ` · ${t('folders.subfolders', { count: childFolders(tree, f.id).length })}`}
+                      </span>
+                    </button>
+                  )}
+                  <div className="cv-project-tools">
+                    <select className="cv-input cv-folder-move" value="" aria-label={t('folders.moveFolder', { name: f.name })}
+                      onChange={(e) => {
+                        const to = e.target.value;
+                        if (to) folderAction(() => ipc.moveProjectFolder(f.id, to === '\u0000top' ? null : to));
+                      }}>
+                      <option value="">{t('folders.moveTo')}</option>
+                      {here !== null && <option value={'\u0000top'}>{t('folders.top')}</option>}
+                      {destinations(tree, f.id)
+                        .filter((d) => d.id !== here)
+                        .map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+                    </select>
+                    <button type="button" className="cv-btn cv-btn-small" onClick={() => setRenaming({ id: f.id, name: f.name })}>
+                      {t('folders.rename')}
+                    </button>
+                    <button type="button" className="cv-btn cv-btn-small is-danger" onClick={() => setConfirmFolder(f)}>
+                      {t('folders.delete')}
+                    </button>
+                  </div>
+                </li>
+              ))}
               {visible.map((p) => (
-                <li key={p.id}>
+                <li key={p.id} data-project={p.id}
+                  draggable={!showArchived && tree.folders.length > 0}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-coreview-project', p.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                  }}>
                   <button
                     type="button"
                     className="cv-project-open"
@@ -223,12 +395,26 @@ export function ProjectScreen() {
                     <span className="cv-project-title">{p.name}</span>
                     <span className="cv-project-meta">
                       {[p.customer, p.site, p.ticket].filter(Boolean).join(' · ') || 'No metadata'}
+                      {showArchived && tree.placement[p.id] && ` · ${t('folders.in', { path: pathLabel(tree, tree.placement[p.id]!) })}`}
                     </span>
                     <span className="cv-project-date">
                       Modified {new Date(p.updatedAt).toLocaleString()}
                     </span>
                   </button>
                   <div className="cv-project-tools">
+                    {!showArchived && tree.folders.length > 0 && (
+                      <select className="cv-input cv-folder-move" value="" aria-label={t('folders.moveProject', { name: p.name })}
+                        onChange={(e) => {
+                          const to = e.target.value;
+                          if (to) folderAction(() => ipc.moveProjectToFolder(p.id, to === '\u0000top' ? null : to));
+                        }}>
+                        <option value="">{t('folders.moveTo')}</option>
+                        {here !== null && <option value={'\u0000top'}>{t('folders.top')}</option>}
+                        {destinations(tree)
+                          .filter((d) => d.id !== here)
+                          .map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+                      </select>
+                    )}
                     <button
                       type="button"
                       className="cv-btn cv-btn-small"
@@ -298,6 +484,31 @@ export function ProjectScreen() {
       </div>
 
       {creating && <CreateDialog onClose={() => setCreating(false)} />}
+      {/* LT-485: a folder is deleted; nothing in it is. */}
+      {confirmFolder && (() => {
+        const inside = subtreeIds(tree, confirmFolder.id);
+        const sub = inside.size - 1;
+        const count = projectCountWithin(tree, projects, confirmFolder.id);
+        const parent = pathLabel(tree, confirmFolder.parentId) || t('folders.top');
+        return (
+          <div className="cv-modal-backdrop" role="presentation">
+            <div className="cv-modal" role="dialog" aria-label={t('folders.confirmDelete')}>
+              <h2>{t('folders.deleteTitle', { name: confirmFolder.name })}</h2>
+              <p>{t('folders.deleteBody', { projects: t('folders.projectCount', { count }), folders: t('folders.folderCount', { count: sub }), parent })}</p>
+              <div className="cv-modal-actions">
+                <button type="button" className="cv-btn" onClick={() => setConfirmFolder(null)}>{t('folders.keep')}</button>
+                <button type="button" className="cv-btn is-danger" onClick={() => {
+                  const id = confirmFolder.id;
+                  setConfirmFolder(null);
+                  folderAction(() => ipc.deleteProjectFolder(id));
+                }}>
+                  {t('folders.deleteConfirm')}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {confirmDelete && (
         <div className="cv-modal-backdrop" role="presentation">
           <div className="cv-modal" role="dialog" aria-label={t('projectScreen.confirmDelete')}>

@@ -1,3 +1,4 @@
+import { EMPTY_TREE, type FolderTree } from '../lib/projectFolders';
 import { create } from 'zustand';
 import type { Edge, Node } from '@xyflow/react';
 import { applyEdgeChanges, applyNodeChanges, type EdgeChange, type NodeChange } from '@xyflow/react';
@@ -301,6 +302,10 @@ export interface HistoryEntry {
 interface Store {
   // --- project
   projects: ProjectMeta[];
+  /** LT-485: the folders on the project screen, and which folder is open. */
+  folderTree: FolderTree;
+  projectFolderId: string | null;
+  setProjectFolder: (id: string | null) => void;
   meta: ProjectMeta | null;
   doc: ProjectDocument;
   dirty: boolean;
@@ -1032,6 +1037,9 @@ function hangsOffLinks(
 
 export const useStore = create<Store>((set, get) => ({
   projects: [],
+  folderTree: EMPTY_TREE,
+  projectFolderId: null,
+  setProjectFolder: (id) => set({ projectFolderId: id }),
   meta: null,
   vaultRevision: 0,
   registerOpen: false,
@@ -1105,7 +1113,16 @@ export const useStore = create<Store>((set, get) => ({
   future: [],
 
   async refreshProjects() {
-    set({ projects: await ipc.listProjects() });
+    const [projects, folderTree] = await Promise.all([
+      ipc.listProjects(),
+      // A tree that cannot be read leaves every project at the top rather
+      // than hiding the list.
+      ipc.listProjectFolders().catch(() => EMPTY_TREE),
+    ]);
+    // An open folder that is gone falls back to the top.
+    const open = get().projectFolderId;
+    const still = open === null || folderTree.folders.some((f) => f.id === open);
+    set({ projects, folderTree, ...(still ? {} : { projectFolderId: null }) });
   },
 
   async createProject(partial, doc) {
@@ -1126,6 +1143,9 @@ export const useStore = create<Store>((set, get) => ({
     // Re-key probes so a seeded sample never shares ids with another project.
     document.probes = document.probes.map((p) => ({ ...p, projectId: meta.id }));
     await ipc.saveProject({ meta, documentVersion: 1, document });
+    // LT-485: made inside a folder, it lives in that folder.
+    const folder = get().projectFolderId;
+    if (folder) await ipc.moveProjectToFolder(meta.id, folder).catch(() => undefined);
     set({ meta, doc: document, dirty: false, lastSavedAt: now, savedAck: null, past: [], future: [] });
     await get().refreshProjects();
   },
@@ -1291,6 +1311,9 @@ export const useStore = create<Store>((set, get) => ({
     const copy: ProjectDocument = JSON.parse(JSON.stringify(doc));
     copy.probes = copy.probes.map((p) => ({ ...p, projectId: meta.id }));
     await ipc.saveProject({ meta, documentVersion: 1, document: copy });
+    // LT-485: a copy sits beside its original.
+    const folder = get().folderTree.placement[id];
+    if (folder) await ipc.moveProjectToFolder(meta.id, folder).catch(() => undefined);
     await get().refreshProjects();
   },
 

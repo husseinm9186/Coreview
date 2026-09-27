@@ -768,6 +768,17 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-project-title { font-weight: 600; }
 .cv-project-meta, .cv-project-date { color: var(--text-faint); font-size: var(--text-sm); }
 .cv-project-tools { display: flex; gap: 5px; }
+/* LT-485: folders on the project screen. */
+.cv-folder-head { display: flex; align-items: center; gap: var(--space-2); justify-content: space-between; }
+.cv-folder-crumbs { display: flex; flex-wrap: wrap; align-items: center; margin: 0 0 var(--space-2); font-size: var(--text-sm); color: var(--text-dim); }
+.cv-folder-crumb { background: none; border: 1px dashed transparent; color: var(--accent); padding: 2px 4px; border-radius: var(--radius); cursor: pointer; font: inherit; }
+.cv-folder-crumb.is-here { color: var(--text); cursor: default; }
+.cv-folder-crumb.is-drop, .cv-project-list li.is-drop { border-color: var(--accent); border-style: dashed; }
+.cv-folder-new { flex: 1; display: flex; gap: 6px; align-items: center; margin-bottom: var(--space-2); padding: 6px; }
+.cv-folder-row { background: var(--panel-2); }
+.cv-folder-glyph { color: var(--accent); }
+.cv-folder-move { width: auto; max-width: 14rem; font-size: var(--text-sm); padding: 2px 4px; }
+.cv-folder-problem { margin: 0 0 var(--space-2); }
 
 .cv-sample-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-top: 10px; }
 .cv-sample {

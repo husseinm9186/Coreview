@@ -6,6 +6,7 @@
  * probe call fails loudly. Nothing is simulated: a browser session cannot
  * produce probe results, and the UI says so.
  */
+import { EMPTY_TREE, readTree, type FolderTree } from './projectFolders';
 import type { PagingMode } from './showCommands';
 import type { BackupCheck, CheckResult } from './checks';
 import { backupCheck, backupInput, crawlInput, credentialInput, eventRow, probeConfig, projectPackage, saveCredential, sweepOptions, visioDrawing } from './ipcPayloads';
@@ -1061,6 +1062,29 @@ export const ipc = {
       return;
     }
     await invoke('set_project_archived', { id, archived });
+  },
+
+  // LT-485: folders on the project screen. The desktop app keeps them in its
+  // database; the browser build has none, and says so where it matters.
+  async listProjectFolders(): Promise<FolderTree> {
+    if (!isDesktop) return EMPTY_TREE;
+    return readTree(await invoke('list_project_folders'));
+  },
+  async createProjectFolder(name: string, parentId: string | null): Promise<void> {
+    await invoke('create_project_folder', { name, parentId });
+  },
+  async renameProjectFolder(id: string, name: string): Promise<void> {
+    await invoke('rename_project_folder', { id, name });
+  },
+  async moveProjectFolder(id: string, parentId: string | null): Promise<void> {
+    await invoke('move_project_folder', { id, parentId });
+  },
+  async deleteProjectFolder(id: string): Promise<void> {
+    await invoke('delete_project_folder', { id });
+  },
+  async moveProjectToFolder(id: string, folderId: string | null): Promise<void> {
+    if (!isDesktop) return;
+    await invoke('move_project_to_folder', { id, folderId });
   },
 
   /** LT-234: opens a device attachment (documents only), or its folder. */

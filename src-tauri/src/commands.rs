@@ -164,6 +164,46 @@ pub fn set_project_archived(
     db::set_archived(&conn, &id, archived).map_err(db_err)
 }
 
+// -------------------------------------------------------- project folders
+// LT-485: this machine's arrangement of the project screen. Stored beside the
+// projects, never inside a document or a package.
+
+#[tauri::command(async)]
+pub fn list_project_folders(state: State<'_, AppState>) -> CmdResult<db::FolderTree> {
+    let conn = state.db.lock().map_err(db_err)?;
+    db::list_folders(&conn).map_err(db_err)
+}
+
+#[tauri::command(async)]
+pub fn create_project_folder(state: State<'_, AppState>, name: String, parent_id: Option<String>) -> CmdResult<db::ProjectFolder> {
+    let conn = state.db.lock().map_err(db_err)?;
+    db::create_folder(&conn, &name, parent_id.as_deref())
+}
+
+#[tauri::command(async)]
+pub fn rename_project_folder(state: State<'_, AppState>, id: String, name: String) -> CmdResult<()> {
+    let conn = state.db.lock().map_err(db_err)?;
+    db::rename_folder(&conn, &id, &name)
+}
+
+#[tauri::command(async)]
+pub fn move_project_folder(state: State<'_, AppState>, id: String, parent_id: Option<String>) -> CmdResult<()> {
+    let conn = state.db.lock().map_err(db_err)?;
+    db::move_folder(&conn, &id, parent_id.as_deref())
+}
+
+#[tauri::command(async)]
+pub fn delete_project_folder(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    let conn = state.db.lock().map_err(db_err)?;
+    db::delete_folder(&conn, &id)
+}
+
+#[tauri::command(async)]
+pub fn move_project_to_folder(state: State<'_, AppState>, id: String, folder_id: Option<String>) -> CmdResult<()> {
+    let conn = state.db.lock().map_err(db_err)?;
+    db::move_project(&conn, &id, folder_id.as_deref())
+}
+
 // ------------------------------------------------------------------ probes
 
 /// One-off test. Runs exactly once and registers no schedule, so `Test Now`
