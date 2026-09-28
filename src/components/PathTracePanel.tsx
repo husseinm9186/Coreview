@@ -209,6 +209,19 @@ export function PathTracePanel() {
     setLegs({});
   };
 
+  /** LT-492: every address the crawl holds for a device, the one it was
+   *  reached on marked as management, for the generated page. */
+  const addressesOf = (hostname: string) => {
+    const want = hostname.trim().toLowerCase();
+    const d = (result?.devices ?? []).find((x) => x.hostname.trim().toLowerCase() === want);
+    if (!d) return [];
+    const reached = d.probeTarget || d.address;
+    return [
+      ...(reached ? [{ ip: reached, interface: null, isManagement: true }] : []),
+      ...(d.addresses ?? []).map((a) => ({ ip: a.ip, interface: a.interface, isManagement: a.isManagement || a.ip === reached })),
+    ];
+  };
+
   /** The address the crawl reached a device on, by its hostname. */
   const addressOf = (hostname: string): string | null => {
     const want = hostname.trim().toLowerCase();
@@ -281,7 +294,7 @@ export function PathTracePanel() {
   const createPage = () => {
     if (!traced) return;
     const app = application();
-    const built = buildApplicationPage(traced, app);
+    const built = buildApplicationPage(traced, app, addressesOf);
     if (built.nodes.length === 0) {
       setProblem(t('trace.nothingToDraw'));
       return;
@@ -301,7 +314,7 @@ export function PathTracePanel() {
   const exportReport = () => {
     if (!traced || !meta) return;
     const app = application();
-    const body = applicationReport(traced, app, buildApplicationPage(traced, app));
+    const body = applicationReport(traced, app, buildApplicationPage(traced, app, addressesOf));
     void saveExport(
       `${slug(applicationPageName(app))}.md`,
       body,

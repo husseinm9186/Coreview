@@ -1,3 +1,4 @@
+import { FolderSettings } from './FolderSettings';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   REST_NAME,
@@ -507,12 +508,14 @@ export function BackupPanel({
     );
   }
 
+  // LT-487: asked for here, where the project is open and the choice can be
+  // kept — the start screen has no project to keep it in.
   if (!settings.backupFolder) {
     return (
-      <p className="cv-help cv-discover-empty">
-        Choose a backup folder first, on the Coreview start screen. Configurations are written
-        there and nowhere else.
-      </p>
+      <div className="cv-discover-empty">
+        <p className="cv-help">{t('backup.needFolder')}</p>
+        <FolderSettings />
+      </div>
     );
   }
 

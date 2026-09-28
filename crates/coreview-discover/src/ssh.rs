@@ -302,6 +302,9 @@ pub fn network_device_algorithms() -> Preferred {
         kex::ECDH_SHA2_NISTP256,
     ]);
     kex.extend([kex::DH_G14_SHA1, kex::DH_GEX_SHA1]);
+    // LT-488: an old switch that offers nothing else. A 1024-bit group, so
+    // it is the very last resort — anything better that both sides speak wins.
+    kex.push(kex::DH_G1_SHA1);
 
     let mut cipher: Vec<cipher::Name> = Preferred::DEFAULT.cipher.to_vec();
     cipher.extend([
@@ -1213,6 +1216,20 @@ mod tests {
         let modern = ciphers.iter().position(|c| *c == "aes256-ctr").unwrap();
         let legacy = ciphers.iter().position(|c| *c == "aes256-cbc").unwrap();
         assert!(modern < legacy, "CBC must sit below CTR and GCM");
+    }
+
+    /// LT-488: an old switch answered `theirs: ["diffie-hellman-group1-sha1"]`
+    /// and nothing else. russh implements it; it has to be offered — last,
+    /// because it is a 1024-bit group, so anything better still wins. The
+    /// same generation sometimes wants `3des-cbc` next; that one is behind
+    /// russh's optional `des` feature and is added when a device asks for it.
+    #[test]
+    fn a_switch_that_only_speaks_group1_finds_a_match_and_nothing_better_moves() {
+        let p = network_device_algorithms();
+        let kex: Vec<&str> = p.kex.iter().map(|k| k.as_ref()).collect();
+        assert!(kex.contains(&"diffie-hellman-group1-sha1"), "{kex:?}");
+        assert_eq!(kex.iter().rfind(|k| !k.starts_with("ext-info") && !k.starts_with("kex-strict")), Some(&"diffie-hellman-group1-sha1"), "group1 must be the very last kex: {kex:?}");
+        assert_eq!(kex.first(), Some(&Preferred::DEFAULT.kex[0].as_ref()), "the first choice is still russh's");
     }
 
     /// LT-060: the lab 9300 tears the session down on a refused password

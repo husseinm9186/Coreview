@@ -62,6 +62,35 @@ describe('naming an application page (LT-348)', () => {
   });
 });
 
+describe('a generated device carries the addresses its crawled device had (LT-492)', () => {
+  // What the crawl knew about each device, by hostname: the address it was
+  // reached on first, then the rest. Invented addresses (D-027).
+  const crawled: Record<string, { ip: string; interface?: string | null; isManagement?: boolean }[]> = {
+    'FW-01': [{ ip: '192.0.2.1', interface: 'mgmt', isManagement: true }, { ip: '203.0.113.1', interface: 'port1' }],
+    'LB-01': [{ ip: '192.0.2.2', isManagement: true }, { ip: '10.20.0.2', interface: 'Vlan20' }],
+  };
+  const addressesOf = (hostname: string) => crawled[hostname] ?? [];
+
+  it('the source and every step get their addresses, management first and primary', () => {
+    const p = buildApplicationPage(traced(), portal, addressesOf);
+    const byHost = (h: string) => p.nodes.map((n) => n.data as DeviceNodeData).filter((d) => d.hostname === h || d.label === h);
+    const source = p.nodes[0]!.data as DeviceNodeData;
+    expect(source.addresses?.map((a) => [a.address, a.isPrimary, a.label])).toEqual([
+      ['192.0.2.1', true, 'Management'],
+      ['203.0.113.1', false, 'port1'],
+    ]);
+    const lbSteps = byHost('LB-01');
+    expect(lbSteps.length).toBeGreaterThan(0);
+    for (const d of lbSteps) expect(d.addresses?.find((a) => a.isPrimary)?.address).toBe('192.0.2.2');
+  });
+
+  it('a device the crawl never reached gets none, rather than a guess', () => {
+    const p = buildApplicationPage(traced(), portal, addressesOf);
+    const web = p.nodes.map((n) => n.data as DeviceNodeData).filter((d) => d.hostname === 'WEB-01');
+    for (const d of web) expect(d.addresses ?? []).toEqual([]);
+  });
+});
+
 describe('the generated diagram is drawn, not listed', () => {
   const page = () => buildApplicationPage(traced(), portal);
 

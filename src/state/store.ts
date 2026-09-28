@@ -1242,6 +1242,20 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   async closeProject() {
+    // Closing always stops probing first (test cases 14, 15). Since LT-491
+    // this cannot throw: a stop that met an error is still a stop.
+    if (get().session.state !== 'stopped') await get().stopValidation();
+    // LT-491: unsaved work is saved before anything is let go. A save that
+    // fails keeps the project open and says why — closing would lose it —
+    // where before it threw half-way and the screen simply stayed put.
+    if (get().meta && get().dirty) {
+      try {
+        await get().saveProject();
+      } catch (err) {
+        set({ statusMessage: `Not closed: this project's changes could not be saved (${err instanceof Error ? err.message : String(err)}). Fix that, or export the project, then close it again.` });
+        return;
+      }
+    }
     // Nothing that follows may read another project's settings or backups —
     // and what this one chose is dropped rather than left in the form for the
     // next project to inherit, which is the whole of LT-414.
@@ -1253,9 +1267,6 @@ export const useStore = create<Store>((set, get) => ({
     }
     recoveryUnload?.();
     recoveryUnload = null;
-    // Closing always stops probing first (test cases 14, 15).
-    if (get().session.state !== 'stopped') await get().stopValidation();
-    if (get().meta && get().dirty) await get().saveProject();
     // LT-320: and every shell. Leaving a project must not leave a login open
     // on somebody's core switch.
     if (get().sshSessions.length) await ipc.sshCloseAll().catch(() => 0);
@@ -3180,6 +3191,11 @@ export const useStore = create<Store>((set, get) => ({
     set({ session: { ...get().session, state: 'stopping' } });
     try {
       await ipc.stopValidation();
+    } catch (err) {
+      // LT-491: the engine stops its probes before anything here can fail —
+      // what fails is closing the session's row. Stopped is the truth either
+      // way, so it is said, not thrown at whoever pressed Stop or Close.
+      set({ statusMessage: `Validation stopped, but: ${err instanceof Error ? err.message : String(err)}` });
     } finally {
       set({
         session: { id: null, state: 'stopped', startedAt: null },
@@ -3211,6 +3227,18 @@ export const useStore = create<Store>((set, get) => ({
       };
       state?: SessionState;
     };
+
+    // LT-491: an event belongs to the run that sent it. Samples the engine
+    // had already sent when Stop was pressed arrive after the page has reset,
+    // and applying them relit the diagram as if nothing had stopped. Only the
+    // run in progress is listened to; once stopped, nothing moves it back.
+    const raw = payload as { session_id?: string; sessionId?: string };
+    const from = raw.session_id ?? raw.sessionId ?? null;
+    const current = get().session;
+    const live = current.state === 'running' || current.state === 'starting';
+    const ours = from === null || current.id === null || from === current.id;
+    if ((p.kind === 'sample' || p.kind === 'transition') && (!live || !ours)) return;
+    if (p.kind === 'sessionState' && (current.state === 'stopped' || current.id === null || from !== current.id)) return;
 
     if (p.kind === 'sample' && p.result) {
       const r = p.result;

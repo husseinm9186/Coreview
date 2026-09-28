@@ -98,7 +98,7 @@ const newFolder = async (name) => {
 // ------------------------------------------------------------- at the top
 check("with no folders, every project is listed at the top as before",
   JSON.stringify(await names()) === JSON.stringify(["Branch refresh", "Core swap", "Wireless survey"]), JSON.stringify(await names()));
-check("and no move menu is offered while there is nowhere to move to", (await region.locator(".cv-folder-move").count()) === 0);
+check("and no move menu is offered while there is nowhere to move to", (await region.locator(".cv-pfolder-move").count()) === 0);
 
 await newFolder("Customer A");
 await newFolder("Customer B");
@@ -109,24 +109,24 @@ await region.locator('input[aria-label="Folder name"]').fill("customer a");
 await region.locator("button", { hasText: "Create folder" }).click();
 await page.waitForTimeout(250);
 check("a second folder of the same name beside the first is refused, and says why",
-  /already a folder called “customer a”/.test(await region.locator(".cv-folder-problem").innerText()));
+  /already a folder called “customer a”/.test(await region.locator(".cv-pfolder-problem").innerText()));
 await region.locator("button", { hasText: /^Cancel$/ }).click();
 
 // ------------------------------------------------------- moving by menu
 // Matched on a row's own title: a move menu in another row names this one too.
 const exact = (name) => new RegExp(`^(▸\\s*)?${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
 const projectRow = (name) => region.locator(".cv-project-list > li[data-project]", { has: page.locator(".cv-project-title", { hasText: exact(name) }) });
-const folderRow = (name) => region.locator(".cv-project-list > li.cv-folder-row", { has: page.locator(".cv-project-title", { hasText: exact(name) }) });
-await projectRow("Branch refresh").locator("select.cv-folder-move").selectOption({ label: "Customer A" });
+const folderRow = (name) => region.locator(".cv-project-list > li.cv-pfolder-row", { has: page.locator(".cv-project-title", { hasText: exact(name) }) });
+await projectRow("Branch refresh").locator("select.cv-pfolder-move").selectOption({ label: "Customer A" });
 await page.waitForTimeout(300);
 check("a project moved into a folder leaves the top", !(await names()).includes("Branch refresh"), JSON.stringify(await names()));
 check("and the folder counts it", /1 project/.test(await folderRow("Customer A").innerText()));
 
 // ------------------------------------------------------- into a folder
-await folderRow("Customer A").locator(".cv-folder-open").click();
+await folderRow("Customer A").locator(".cv-pfolder-open").click();
 await page.waitForTimeout(250);
 check("opening a folder shows its name and a way back up",
-  (await heading()) === "Customer A" && (await region.locator(".cv-folder-crumbs").innerText()).includes("All projects"), await heading());
+  (await heading()) === "Customer A" && (await region.locator(".cv-pfolder-crumbs").innerText()).includes("All projects"), await heading());
 check("and only what is in it", JSON.stringify(await names()) === JSON.stringify(["Branch refresh"]), JSON.stringify(await names()));
 await newFolder("Site 1");
 check("a folder made here is a sub-folder", (await names()).some((n) => n.includes("Site 1")));
@@ -145,29 +145,29 @@ check("and the screen comes back to the folder it was made in", (await heading()
 await projectRow("Site 1 cutover").dragTo(folderRow("Site 1"));
 await page.waitForTimeout(300);
 check("dragging a project onto a sub-folder moves it there", !(await names()).includes("Site 1 cutover"), JSON.stringify(await names()));
-await folderRow("Site 1").locator(".cv-folder-open").click();
+await folderRow("Site 1").locator(".cv-pfolder-open").click();
 await page.waitForTimeout(250);
-const crumbs = await region.locator(".cv-folder-crumbs").innerText();
+const crumbs = await region.locator(".cv-pfolder-crumbs").innerText();
 check("two levels down, the path says so", /All projects\s*›\s*Customer A\s*›\s*Site 1/.test(crumbs), crumbs);
 check("and the dragged project is there", JSON.stringify(await names()) === JSON.stringify(["Site 1 cutover"]), JSON.stringify(await names()));
-await projectRow("Site 1 cutover").dragTo(region.locator(".cv-folder-crumb", { hasText: "All projects" }));
+await projectRow("Site 1 cutover").dragTo(region.locator(".cv-pfolder-crumb", { hasText: "All projects" }));
 await page.waitForTimeout(300);
 check("dragging onto a crumb moves it up to that level", (await names()).length === 0);
 check("an empty folder says what to do", /This folder is empty/.test(await region.innerText()));
 
 // ------------------------------------------------ a folder cannot go inside itself
-await region.locator(".cv-folder-crumb", { hasText: "All projects" }).click();
+await region.locator(".cv-pfolder-crumb", { hasText: "All projects" }).click();
 await page.waitForTimeout(250);
-const aMoves = await folderRow("Customer A").locator("select.cv-folder-move option").allInnerTexts();
+const aMoves = await folderRow("Customer A").locator("select.cv-pfolder-move option").allInnerTexts();
 check("a folder's move menu leaves out itself and everything under it",
   !aMoves.some((o) => o.startsWith("Customer A")) && aMoves.includes("Customer B"), JSON.stringify(aMoves));
-await folderRow("Customer B").locator("select.cv-folder-move").selectOption({ label: "Customer A / Site 1" });
+await folderRow("Customer B").locator("select.cv-pfolder-move").selectOption({ label: "Customer A / Site 1" });
 await page.waitForTimeout(300);
 check("a folder moves under another", !(await names()).some((n) => n.includes("Customer B")), JSON.stringify(await names()));
 
 // ------------------------------------------------------------- renaming
 await folderRow("Customer A").locator("button", { hasText: "Rename" }).click();
-await region.locator('.cv-folder-row input[aria-label="Folder name"]').fill("Customer Alpha");
+await region.locator('.cv-pfolder-row input[aria-label="Folder name"]').fill("Customer Alpha");
 await page.keyboard.press("Enter");
 await page.waitForTimeout(300);
 check("a folder is renamed in place", (await names()).some((n) => n.includes("Customer Alpha")), JSON.stringify(await names()));
@@ -186,14 +186,14 @@ check("its project comes up to the top, and its sub-folder with it",
 check("no project was deleted", (await page.evaluate(() => window.__db.projects.length)) === 4);
 
 // ------------------------------------------------------------- archived
-await projectRow("Core swap").locator("select.cv-folder-move").selectOption({ label: "Site 1" });
+await projectRow("Core swap").locator("select.cv-pfolder-move").selectOption({ label: "Site 1" });
 await page.waitForTimeout(250);
 await page.evaluate(() => { window.__db.projects.find((p) => p.name === "Core swap").archived = true; });
 await page.evaluate(() => window.__cvStore.getState().refreshProjects());
 await page.locator("label", { hasText: "Show archived" }).locator("input").check();
 await page.waitForTimeout(250);
 check("archived projects are one flat list, each saying which folder it is in",
-  /Core swap/.test(await region.innerText()) && /in Site 1/.test(await region.innerText()) && (await region.locator(".cv-folder-row").count()) === 0,
+  /Core swap/.test(await region.innerText()) && /in Site 1/.test(await region.innerText()) && (await region.locator(".cv-pfolder-row").count()) === 0,
   (await region.innerText()).slice(0, 300));
 
 // Nothing about a folder was written into a project.

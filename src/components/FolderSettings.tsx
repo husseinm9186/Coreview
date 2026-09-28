@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import { useStore } from '../state/store';
 import { isDesktop } from '../lib/ipc';
 import { t } from '../i18n';
@@ -13,6 +15,14 @@ import { t } from '../i18n';
 export function FolderSettings() {
   const settings = useStore((s) => s.settings);
   const { backupFolder, exportFolder } = settings;
+  // LT-487: both folders are a project's (LT-414); with none open there is
+  // nothing to keep them in, and the backend refuses the save.
+  const project = useStore((s) => s.meta);
+  const [problem, setProblem] = useState<{ which: 'backupFolder' | 'exportFolder'; text: string } | null>(null);
+  const act = (which: 'backupFolder' | 'exportFolder', run: () => Promise<unknown>) => {
+    setProblem(null);
+    void run().catch((e: unknown) => setProblem({ which, text: e instanceof Error ? e.message : String(e) }));
+  };
 
   if (!isDesktop) {
     return (
@@ -21,6 +31,15 @@ export function FolderSettings() {
         <p className="cv-help">
           {t('folderSettings.choosingFoldersNeedsThe')}
         </p>
+      </section>
+    );
+  }
+
+  if (!project) {
+    return (
+      <section className="cv-folders">
+        <h2>{t('folderSettings.folders')}</h2>
+        <p className="cv-help">{t('folderSettings.perProject')}</p>
       </section>
     );
   }
@@ -36,11 +55,11 @@ export function FolderSettings() {
       <div className="cv-folder-head">
         <span className="cv-folder-title">{title}</span>
         <span className="cv-folder-actions">
-          <button type="button" className="cv-btn cv-btn-small" onClick={() => void useStore.getState().chooseFolder(which)}>
+          <button type="button" className="cv-btn cv-btn-small" onClick={() => act(which, () => useStore.getState().chooseFolder(which))}>
             {value ? 'Change' : 'Choose folder'}
           </button>
           {value && (
-            <button type="button" className="cv-btn cv-btn-small" onClick={() => void useStore.getState().clearFolder(which)}>
+            <button type="button" className="cv-btn cv-btn-small" onClick={() => act(which, () => useStore.getState().clearFolder(which))}>
               Clear
             </button>
           )}
@@ -50,6 +69,7 @@ export function FolderSettings() {
         {value ?? unsetHint}
       </code>
       <p className="cv-help">{note}</p>
+      {problem?.which === which && <p className="cv-error cv-folder-problem">{t('folderSettings.notKept', { reason: problem.text })}</p>}
     </div>
   );
 

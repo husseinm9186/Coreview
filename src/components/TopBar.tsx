@@ -1041,7 +1041,11 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           type="button"
           className="cv-btn"
           onClick={() => {
-            void useStore.getState().closeProject().then(onExit);
+            // LT-491: leave only when it closed — a failed save keeps it open
+            // and the status line says why.
+            void useStore.getState().closeProject().then(() => {
+              if (!useStore.getState().meta) onExit();
+            });
           }}
         >
           Close project

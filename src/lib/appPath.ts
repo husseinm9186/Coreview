@@ -342,7 +342,26 @@ export interface GeneratedPage {
  * traffic does. Every node and edge here is new; nothing is read from or
  * written to the page the trace was calculated against.
  */
-export function buildApplicationPage(result: TraceResult, app: Application): GeneratedPage {
+/** LT-492: what the crawl knew about a device's addresses, by hostname. */
+export type AddressesOf = (hostname: string) => readonly { ip: string; interface?: string | null; isManagement?: boolean }[];
+
+/** A crawled device's addresses as a drawn device keeps them: management
+ *  first and primary, so the generated box can be probed and logged into
+ *  like the one it stands for; each address once. */
+function addressesFor(addressesOf: AddressesOf | undefined, hostname: string): DeviceNodeData['addresses'] {
+  const seen = new Set<string>();
+  const found = [...(addressesOf?.(hostname) ?? [])]
+    .filter((a) => a.ip?.trim() && !seen.has(a.ip.trim()) && seen.add(a.ip.trim()))
+    .sort((a, b) => Number(!!b.isManagement) - Number(!!a.isManagement));
+  return found.map((a, i) => ({
+    id: uid(),
+    label: a.isManagement ? 'Management' : a.interface?.trim() || 'Address',
+    address: a.ip.trim(),
+    isPrimary: i === 0,
+  }));
+}
+
+export function buildApplicationPage(result: TraceResult, app: Application, addressesOf?: AddressesOf): GeneratedPage {
   const nodes: TopoNode[] = [];
   const edges: TopoEdge[] = [];
   const flow = flowLabel(app);
@@ -352,6 +371,9 @@ export function buildApplicationPage(result: TraceResult, app: Application): Gen
   const source = deviceNode(app.source.trim() || 'Source', 'generic', { x: 0, y: 0 }, {
     notes: `Source of ${flow}${app.vrf?.trim() ? ` in VRF ${app.vrf.trim()}` : ''}.`,
     discoveredVia: 'Application path',
+    // LT-492: a drawn device with no address can be neither probed nor
+    // logged into; the crawl's own addresses come with it.
+    addresses: addressesFor(addressesOf, app.source.trim()),
   });
   nodes.push(source);
 
@@ -371,6 +393,7 @@ export function buildApplicationPage(result: TraceResult, app: Application): Gen
         { x, y: (row + 1) * ROW },
         {
           hostname: hop.device,
+          addresses: addressesFor(addressesOf, hop.device),
           notes: hop.why,
           vrf: hop.vrf ?? (app.vrf?.trim() || undefined),
           switchPort: hop.outInterface ?? undefined,

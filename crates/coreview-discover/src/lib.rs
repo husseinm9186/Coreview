@@ -58,6 +58,7 @@ pub mod ptr;
 pub mod routeros;
 pub mod routes;
 pub mod seeds;
+pub mod arubacx;
 pub mod arubasw;
 pub mod debuglog;
 pub mod dell;

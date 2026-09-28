@@ -99,7 +99,7 @@ fn from_platform(s: &str) -> Option<DeviceClass> {
     }
 
     // Switches. Catalyst, Nexus, and the WS- Catalyst prefix.
-    const SWITCH: [&str; 26] = [
+    const SWITCH: [&str; 27] = [
         "WS-C", "C9200", "C9300", "C9400", "C9500", "N9K", "N5K", "N7K",
         // Seen on a real network: Fortinet and Ubiquiti switches, which
         // advertise a bare Bridge capability and would otherwise be Unknown.
@@ -112,6 +112,9 @@ fn from_platform(s: &str) -> Option<DeviceClass> {
         "EX2300", "EX3400", "EX4", "EX9", "QFX",
         // LT-467: Arista's, and its virtual one.
         "DCS-", "CCS-", "VEOS",
+        // LT-490: an Aruba CX product name ends in HPE's abbreviation —
+        // "JL727A 6200F 48G CL4 4SFP+370W Swch", from the operator's 6200F.
+        " SWCH",
     ];
     if SWITCH.iter().any(|p| s.contains(p)) {
         return Some(DeviceClass::Switch);

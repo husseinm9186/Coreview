@@ -398,6 +398,9 @@ impl Dialect for Chosen {
         use Family::*;
         match self.known.family {
             Junos => &["show chassis hardware"],
+            // LT-490: captured from a CX 6200F — the model and serial are
+            // here and not in `show version`.
+            ArubaOsCx => &["show system"],
             Gaia => &["show asset all"],
             Comware => &["display device manuinfo"],
             HuaweiVrp => &["display esn"],
@@ -411,6 +414,7 @@ impl Dialect for Chosen {
         let first = extra.first().map(String::as_str).unwrap_or("");
         match self.known.family {
             Junos => Identity { model: crate::junos::model_of(version), serials: crate::junos::serials_of(first) },
+            ArubaOsCx => Identity { model: crate::arubacx::model_of(first), serials: crate::arubacx::serials_of(first) },
             AristaEos => Identity { model: crate::arista::model_of(version), serials: Vec::new() },
             PanOs => Identity { model: crate::panos::model_of(version), serials: crate::panos::serials_of(version) },
             CiscoAsa => Identity { model: crate::asa::model_of(version), serials: Vec::new() },

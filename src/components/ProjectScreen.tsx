@@ -269,7 +269,7 @@ export function ProjectScreen() {
         {vaultNote && <p className="cv-help cv-hostkey-message">{vaultNote}</p>}
 
         <section className="cv-welcome-section" data-region="projects">
-          <div className="cv-folder-head">
+          <div className="cv-pfolder-head">
             <h2>{showArchived ? 'Archived projects' : crumbs.length ? crumbs[crumbs.length - 1]!.name : 'Recent projects'}</h2>
             {!showArchived && isDesktop && newFolder === null && (
               <button type="button" className="cv-btn cv-btn-small" onClick={() => setNewFolder('')}>
@@ -281,18 +281,18 @@ export function ProjectScreen() {
           {/* LT-485: where this is, and the way back up. Each crumb is also a
               place to drop a project or a folder. */}
           {!showArchived && crumbs.length > 0 && (
-            <nav className="cv-folder-crumbs" aria-label={t('folders.path')}>
-              <button type="button" className={`cv-folder-crumb${isDropTarget(null) ? ' is-drop' : ''}`}
+            <nav className="cv-pfolder-crumbs" aria-label={t('folders.path')}>
+              <button type="button" className={`cv-pfolder-crumb${isDropTarget(null) ? ' is-drop' : ''}`}
                 onClick={() => setHere(null)} {...dropProps(null)}>
                 {t('folders.top')}
               </button>
               {crumbs.map((f, i) => (
-                <span key={f.id} className="cv-folder-crumb-step">
+                <span key={f.id} className="cv-pfolder-crumb-step">
                   <span aria-hidden="true"> › </span>
                   {i === crumbs.length - 1 ? (
-                    <span className="cv-folder-crumb is-here" aria-current="page">{f.name}</span>
+                    <span className="cv-pfolder-crumb is-here" aria-current="page">{f.name}</span>
                   ) : (
-                    <button type="button" className={`cv-folder-crumb${isDropTarget(f.id) ? ' is-drop' : ''}`}
+                    <button type="button" className={`cv-pfolder-crumb${isDropTarget(f.id) ? ' is-drop' : ''}`}
                       onClick={() => setHere(f.id)} {...dropProps(f.id)}>
                       {f.name}
                     </button>
@@ -303,7 +303,7 @@ export function ProjectScreen() {
           )}
 
           {newFolder !== null && (
-            <div className="cv-folder-new">
+            <div className="cv-pfolder-new">
               <input className="cv-input" autoFocus value={newFolder} maxLength={80}
                 aria-label={t('folders.name')} placeholder={t('folders.name')}
                 onChange={(e) => setNewFolder(e.target.value)}
@@ -317,7 +317,7 @@ export function ProjectScreen() {
               <button type="button" className="cv-btn cv-btn-small" onClick={() => setNewFolder(null)}>{t('folders.cancel')}</button>
             </div>
           )}
-          {folderProblem && <p className="cv-error cv-folder-problem">{folderProblem}</p>}
+          {folderProblem && <p className="cv-error cv-pfolder-problem">{folderProblem}</p>}
 
           {visible.length === 0 && folders.length === 0 ? (
             <p className="cv-help">
@@ -330,7 +330,7 @@ export function ProjectScreen() {
           ) : (
             <ul className="cv-project-list">
               {folders.map((f) => (
-                <li key={f.id} className={`cv-folder-row${isDropTarget(f.id) ? ' is-drop' : ''}`} data-folder={f.id}
+                <li key={f.id} className={`cv-pfolder-row${isDropTarget(f.id) ? ' is-drop' : ''}`} data-folder={f.id}
                   draggable={renaming?.id !== f.id}
                   onDragStart={(e) => {
                     e.dataTransfer.setData('application/x-coreview-folder', f.id);
@@ -338,7 +338,7 @@ export function ProjectScreen() {
                   }}
                   {...dropProps(f.id)}>
                   {renaming?.id === f.id ? (
-                    <div className="cv-folder-new">
+                    <div className="cv-pfolder-new">
                       <input className="cv-input" autoFocus value={renaming.name} maxLength={80} aria-label={t('folders.name')}
                         onChange={(e) => setRenaming({ id: f.id, name: e.target.value })}
                         onKeyDown={(e) => {
@@ -351,8 +351,8 @@ export function ProjectScreen() {
                       <button type="button" className="cv-btn cv-btn-small" onClick={() => setRenaming(null)}>{t('folders.cancel')}</button>
                     </div>
                   ) : (
-                    <button type="button" className="cv-project-open cv-folder-open" onClick={() => setHere(f.id)}>
-                      <span className="cv-project-title"><span className="cv-folder-glyph" aria-hidden="true">▸</span> {f.name}</span>
+                    <button type="button" className="cv-project-open cv-pfolder-open" onClick={() => setHere(f.id)}>
+                      <span className="cv-project-title"><span className="cv-pfolder-glyph" aria-hidden="true">▸</span> {f.name}</span>
                       <span className="cv-project-meta">
                         {t('folders.contents', { count: projectCountWithin(tree, live, f.id) })}
                         {childFolders(tree, f.id).length > 0 && ` · ${t('folders.subfolders', { count: childFolders(tree, f.id).length })}`}
@@ -360,7 +360,7 @@ export function ProjectScreen() {
                     </button>
                   )}
                   <div className="cv-project-tools">
-                    <select className="cv-input cv-folder-move" value="" aria-label={t('folders.moveFolder', { name: f.name })}
+                    <select className="cv-input cv-pfolder-move" value="" aria-label={t('folders.moveFolder', { name: f.name })}
                       onChange={(e) => {
                         const to = e.target.value;
                         if (to) folderAction(() => ipc.moveProjectFolder(f.id, to === '\u0000top' ? null : to));
@@ -403,7 +403,7 @@ export function ProjectScreen() {
                   </button>
                   <div className="cv-project-tools">
                     {!showArchived && tree.folders.length > 0 && (
-                      <select className="cv-input cv-folder-move" value="" aria-label={t('folders.moveProject', { name: p.name })}
+                      <select className="cv-input cv-pfolder-move" value="" aria-label={t('folders.moveProject', { name: p.name })}
                         onChange={(e) => {
                           const to = e.target.value;
                           if (to) folderAction(() => ipc.moveProjectToFolder(p.id, to === '\u0000top' ? null : to));

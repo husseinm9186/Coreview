@@ -591,6 +591,10 @@ export const en = {
   'crawl.attached.switch': 'Switch',
   'crawl.attached.port': 'Port',
   'crawl.attached.vlan': 'VLAN',
+  // LT-487: where a project's folders are chosen.
+  'folderSettings.perProject': 'Backup and export folders are chosen for each project, so one customer\'s configurations never land in another\'s folder. Open a project, then choose them under Tools → Settings — or in Backups, which asks when it needs one.',
+  'folderSettings.notKept': 'Not kept: {reason}',
+  'backup.needFolder': 'Choose where this project\'s configurations are written first. They are written there and nowhere else.',
   // LT-485: folders on the project screen.
   'folders.new': 'New folder',
   'folders.name': 'Folder name',

@@ -191,11 +191,15 @@ await st(() => {
 await page.waitForTimeout(300);
 const bProbe = (await probes()).find((p) => p.objectId === "b");
 await page.evaluate((id) => {
+  // LT-491: samples are the run's, so a run is going when they arrive —
+  // before that fix they were applied with nothing running at all.
+  window.__cvStore.setState({ session: { id: "s1", state: "running", startedAt: 1 } });
   const emit = (e) => window.__cvEmit("coreview://engine", e);
   [4, 6, 5, null, 7].forEach((rtt, i) => emit({
     kind: "sample", session_id: "s1", status: rtt === null ? "down" : "healthy",
     result: { probe_id: id, timestamp_ms: 2000 + i, outcome: rtt === null ? "timeout" : "success", rtt_ms: rtt, resolved: [], summary: "", error_message: null },
   }));
+  window.__cvStore.setState({ session: { id: null, state: "stopped", startedAt: null } });
 }, bProbe.id);
 await page.waitForTimeout(300);
 const history = inspector.locator(".cv-probe-history").first();

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { t } from '../i18n';
 import { CredentialOverride } from './CredentialOverride';
+import { FolderSettings } from './FolderSettings';
 import { MerakiSettings } from './MerakiSettings';
 import { credentialsUsedBy } from '../lib/credentialScope';
 import { ipc, isDesktop, type CredentialSummary } from '../lib/ipc';
@@ -107,6 +108,11 @@ export function SettingsView() {
             : t('settings.noneYet')}
         </p>
         {pruned > 0 && <p className="cv-help cv-settings-pruned">{t('settings.pruned', { count: pruned })}</p>}
+      </section>
+
+      {/* LT-487: this project's folders, chosen where the project is open. */}
+      <section className="cv-settings-block" data-region="project-folders">
+        <FolderSettings />
       </section>
 
       <section className="cv-settings-block">

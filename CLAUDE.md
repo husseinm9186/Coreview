@@ -167,6 +167,7 @@ node e2e/groups.mjs       # ordered collection groups, pauses and stops (LT-154)
 node e2e/meraki.mjs       # the Meraki tab: customers, networks, backup, health check (LT-404–406)
 node e2e/drawer.mjs       # the details drawer: device and finding, pinned, keyboard (LT-444)
 node e2e/folders.mjs      # folders and sub-folders on the project screen (LT-485)
+node e2e/foldersettings.mjs # a project's backup and export folders, chosen where they can be kept (LT-487)
 ```
 
 Canvas performance is measured, not asserted (LT-190), against a **production**

@@ -91,6 +91,37 @@ assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
 
+### LT-493 — SONiC — 2026-09-28
+**Source:** the operator, 2026-09-28: "also can we support this", linking a
+SONiC command cheat sheet (route2open.com). Named in LT-482's next tier;
+asked for now, so it is its own item.
+**What a crawl would read:** SONiC's `show` CLI over SSH — `show version`
+(platform, HwSKU, serial), `show lldp table` / `show lldp neighbors`,
+`show ip interfaces`, `show arp`, `show mac`, `show interfaces
+portchannel`, and `show ip route` (FRR's layout, which the route reader
+already knows from EdgeOS and VyOS).
+**Acceptance, under D-058:** a `Dialect` built from SONiC's documentation
+and the cheat sheet; classified as a switch; a fake-network test;
+`verified_against_hardware() == false` until a support capture replaces the
+fixtures.
+
+### LT-489 — NVIDIA / Mellanox SN2010 on Cumulus Linux — 2026-09-28
+**Source:** the operator, 2026-09-28: "can we support this switch Mellanox
+SN2010 Ethernet Switch for Hyperconverged Infrastructures", with two
+references — NVIDIA's Cumulus Linux 4.4 Quick Start Guide and a community
+wiki page on Cumulus. So the switch runs **Cumulus Linux**, not Onyx.
+**What that means for a crawl:** Cumulus is Debian underneath; an SSH login
+lands in bash (`cumulus@switch:mgmt:~$`), and the tables are the Linux
+ones — `lldpctl` (lldpd) for neighbours, `ip -4 addr` for addresses,
+`ip neigh` for ARP, `bridge fdb` for the MAC table, `ip route` for
+routes, `net show system` / `/etc/lsb-release` for identity — or NCLU's
+`net show …` equivalents.
+**Acceptance, under D-058:** a `Dialect` for Cumulus built from NVIDIA's
+documentation and the references given, reading identity, neighbours,
+addresses, ARP, MAC table, bonds and routes; classified as a switch; the
+prompt recognised; a fake-network test; `verified_against_hardware() ==
+false` until the operator's support capture replaces the fixtures.
+
 ### LT-463 — Cannot log in to a FortiSwitch — reported 2026-09-26, not yet reproduced
 **Source:** the operator, 2026-09-26: "can't login to fortiswitch", after
 the audit's pushes. The screenshot did not come through. Not yet known:
@@ -103,7 +134,7 @@ change (D-020: reproduced before it is fixed).
 without the fix; the fix; the device logged in again.
 **Narrowed 2026-09-27 by the operator's screenshot:** the login works — the
 FortiSwitch-224E is "Logged in" — and the crawl **stops there**. Its one
-neighbour, `HOME-MAIN-SW` at an address the crawl holds, is listed as
+neighbour, a switch at an address the crawl holds, is listed as
 **Unknown**, "Seen by a neighbour", never visited. "can't crawl from the
 fortiswitch to the cisco switch or other switches." An Unknown neighbour
 is not a kind a default crawl logs into, so the question is why it is
@@ -349,6 +380,79 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-492 — **bug** The application path page drawn from a trace carries no management addresses — 2026-09-28
+**Source:** the operator, 2026-09-28, with a screenshot of a page made by
+**Create application path page** (LT-348): "when I create a trace path it
+doesn't copy the mgmt IPs". The devices on the generated page have names
+and nothing to probe or log into.
+**Acceptance (D-020):** a test that fails without the fix; each device on a
+generated page carries the addresses its crawled device had — management
+first — so it can be probed and logged into like the one it came from.
+**Fixed 2026-09-28 (test first).** `buildApplicationPage` takes a hostname-to-addresses lookup; the Trace path panel supplies one from the crawl run, so the source and every step on a generated page carry the device's addresses — the one it was reached on first, labelled Management and primary. A device the crawl never reached gets none rather than a guess. Two tests in `appPath.test.ts`; the first failed before the change.
+
+### LT-491 — **bug** Stop validation does not stop, and the project cannot be closed — 2026-09-28
+**Source:** the operator, 2026-09-28: "stop validation is buggy, its not
+really stopping and I can't close the project".
+**Acceptance (D-020):** reproduced by a check that fails without the fix;
+Stop ends every probe the run started and the header says so; closing the
+project works while a run is going and stops it on the way out.
+**Fixed 2026-09-28 (D-020: `src/state/validationStop.test.ts`, 5 of 6 failed first).** The engine's stop was sound — it cancels every probe and waits at most three seconds. The page was not: every engine event updated the live state with no check of which run sent it, so samples already on their way when Stop was pressed relit the diagram, and a late "stopping" could overwrite "stopped". Events are now applied only for the run in progress, and nothing moves a stopped run back. `stopValidation` ends stopped and says so when the stop call errors, instead of throwing. `closeProject` stops, then saves, and only then lets go; a failed save keeps the project open and says why instead of dying half-way with the screen stuck, and the top bar leaves only when it actually closed. `validation.mjs` had been staging live samples with no run going — the very thing this fixes — and now stages a run around them.
+
+### LT-490 — An Aruba CX switch names its model and serial from `show system` — 2026-09-28
+**Source:** the operator, 2026-09-28, pasting `show version` and `show
+system` from an Aruba CX 6200F running AOS-CX ML.10.18 — the first output
+from real ArubaOS-CX hardware this project has had.
+**What it showed:** AOS-CX's `show version` carries the software version
+and no model or serial; `show system` carries `Product Name`, `Chassis
+Serial Nbr`, `Hostname` and `Up Time`. The ArubaOS-CX dialect read neither,
+so a CX switch came out with no model — and, with nothing to classify, as
+**Unknown** rather than a switch.
+**Acceptance:** the dialect asks `show system` after the version and reads
+the model and serial from it; a CX product name classifies as a switch;
+the fixtures are his output with the serial and MAC replaced (D-027); the
+dialect stays unverified as a whole, because its neighbour, ARP, MAC and
+bundle commands are still the Cisco spellings and have not been seen —
+the identity half is what this capture earns, and the doc says exactly that.
+**Fixed 2026-09-28 (test first, against his capture).** The ArubaOS-CX dialect asks `show system` after the version and reads `Product Name` and `Chassis Serial Nbr` from it (`arubacx.rs`); the classifier knows HPE's " Swch" abbreviation, so a CX product name is a switch. The fixtures are his output with the serial and base MAC replaced. The dialect still reports unverified as a whole — its neighbour, ARP, MAC and bundle commands have not been seen from a CX device.
+
+### LT-488 — **bug** An old switch offering only `diffie-hellman-group1-sha1` cannot be reached — 2026-09-28
+**Source:** the operator, 2026-09-28, testing a saved login against "a very
+old switch": `No common Kex algorithm - ours: [...], theirs:
+["diffie-hellman-group1-sha1"]`.
+**Unlike LT-372, this one is ours to fix:** russh 0.63.1 implements
+`diffie-hellman-group1-sha1` (`kex::DH_G1_SHA1`, registered in `KEXES`);
+`network_device_algorithms` simply never offered it. Group 1 is a 1024-bit
+group with SHA-1 and is weak, which is why it goes **last**: a device that
+offers anything better negotiates that, exactly as the SHA-1 trade already
+made for LT-054 does.
+**Acceptance:** a test that fails without the change; group1 offered, last;
+the modern order unchanged. **Not in it:** `3des-cbc`, which the same
+generation sometimes wants next — russh has it only behind its optional
+`des` feature, a new dependency, so it is added if this switch asks for it
+rather than on a guess.
+**Fixed 2026-09-28 (test first).** `network_device_algorithms` offers `diffie-hellman-group1-sha1` as the very last key exchange; a test asserts it is offered, last, and that russh's first choice is unchanged. It failed before the change. Met a unit test, not the switch — the operator's retry is what confirms it.
+
+### LT-487 — **bug** A backup or export folder chosen on the start screen is never kept — 2026-09-28
+**Source:** the operator, 2026-09-28, with a screenshot of the start
+screen's Folders section: "when i select a folder for backup and export and
+save it doesn't really show the folder is selected".
+**Cause, read from the code:** LT-414 made `backupFolder` and
+`exportFolder` project settings (`db::PROJECT_KEYS`), and `set_setting`
+refuses a project key with no project — correctly, that is the rule. But
+the only place to choose them is still the start screen, where no project
+is open: the save is refused, `chooseFolder` stops before it shows the
+path, and nothing is said. The Backups panel then tells a project with no
+folder to "choose a backup folder first, on the Coreview start screen" — so
+since LT-414 a new project has had no way to get one at all.
+**Does not change LT-414:** folders stay per project, and a new project
+still starts with none.
+**Acceptance:** a check that fails without the fix; the folders chosen
+where a project is open — the project's Settings, and inline in the
+Backups panel where it asks — and the path shown once kept; the start
+screen says where to choose them instead of offering buttons that cannot
+save; a refused save is said, not swallowed.
+**Fixed 2026-09-28 (D-020: `e2e/foldersettings.mjs` failed first).** Both folders are chosen where a project is open: a Folders block in the project's **Tools → Settings**, and inline in **Backups** when it has no backup folder — replacing the sentence that sent people to a screen that could not keep the choice. The start screen now says where they are chosen and offers no button whose save would be refused. A refused save is shown beside the folder ("Not kept: …") instead of vanishing. LT-414 unchanged: folders stay per project, a new project starts with none. Also found and fixed on the way: the project-folder list (LT-485) had reused this panel's `cv-folder-row` / `cv-folder-head` class names and was restyling it; those are now `cv-pfolder-*`. 9 harness checks.
 
 ### LT-485 — Folders and sub-folders on the project screen — 2026-09-27
 **Source:** the operator, 2026-09-27: "can you make me folders for the
