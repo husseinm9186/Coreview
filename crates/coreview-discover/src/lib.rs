@@ -30,6 +30,7 @@ pub mod cli;
 pub mod compare;
 pub mod comware;
 pub mod crawl;
+pub mod cumulus;
 pub mod defaultroute;
 pub mod classify;
 pub mod counters;
@@ -45,6 +46,7 @@ pub mod junos;
 /// (LT-121) and this crate is the one that depends on that one.
 pub use coreview_probe::oui;
 pub mod snmp;
+pub mod sonic;
 pub mod snmp_topology;
 pub mod stacking;
 pub mod showcmd;

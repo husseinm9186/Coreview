@@ -87,6 +87,8 @@ enum Flavour {
     DellOs10,
     /// LT-466: answers only Junos's spellings, with Junos's refusal for the rest.
     Junos,
+    /// LT-489: a bash shell — every Cisco spelling is `command not found`.
+    Cumulus,
 }
 
 #[derive(Clone)]
@@ -160,6 +162,14 @@ impl server::Handler for FakeSwitch {
 
         if self.flavour == Flavour::DellOs10 {
             let body = dell_answer(command, self.hostname_address());
+            session.data(
+                channel,
+                format!("{command}\r\n{body}{}#", self.hostname).into_bytes(),
+            )?;
+            return Ok(());
+        }
+        if self.flavour == Flavour::Cumulus {
+            let body = cumulus_answer(command, self.hostname_address());
             session.data(
                 channel,
                 format!("{command}\r\n{body}{}#", self.hostname).into_bytes(),
@@ -361,6 +371,53 @@ fn sw1_lldp() -> String {
 /// green test and a blank diagram.
 ///
 /// Dell's shapes, invented values (D-027).
+/// LT-489: Cumulus Linux 4.4 on an SN2010, from NVIDIA's documented layouts
+/// (D-058). A bash shell: anything it lacks is `command not found`.
+fn cumulus_answer(command: &str, address: &str) -> String {
+    let word = command.split_whitespace().next().unwrap_or("");
+    match command {
+        "terminal length 0" | "no page" => format!("-bash: {word}: command not found\r\n"),
+        "export PAGER=cat VTYSH_PAGER=cat" => String::new(),
+        "net show system" => concat!(
+            "Hostname......... LAB-CUMULUS-1\r\n",
+            "Build............ Cumulus Linux 4.4.0\r\n",
+            "Model............ Mlnx X86 MSN2010\r\n",
+            "Serial Number.... MT0000EXAMPLE\r\n",
+            "Product Name..... MSN2010\r\n",
+        )
+        .into(),
+        "lldpctl" => concat!(
+            "-------------------------------------------------------------------------------\r\n",
+            "LLDP neighbors:\r\n",
+            "-------------------------------------------------------------------------------\r\n",
+            "Interface:    swp51, via: LLDP, RID: 1, Time: 0 day, 00:01:23\r\n",
+            "  Chassis:\r\n",
+            "    ChassisID:    mac 00:1c:73:aa:bb:cc\r\n",
+            "    SysName:      spine01\r\n",
+            "    MgmtIP:       10.9.9.1\r\n",
+            "    Capability:   Bridge, on\r\n",
+            "  Port:\r\n",
+            "    PortID:       ifname swp1\r\n",
+        )
+        .into(),
+        "ip -4 -o addr show" => format!(
+            "1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever\r\n\
+             2: eth0    inet {address}/8 scope global eth0\\       valid_lft forever\r\n\
+             1: lo    inet 10.255.0.21/32 scope global lo\\       valid_lft forever\r\n"
+        ),
+        "ip neigh show" => "10.9.9.9 dev swp1 lladdr 00:50:56:aa:bb:cc REACHABLE\r\n".into(),
+        "bridge fdb show" => "00:50:56:aa:bb:cc dev swp1 vlan 10 master bridge\r\n44:38:39:00:00:11 dev swp1 vlan 10 master bridge permanent\r\n".into(),
+        "net show interface bonds" => concat!(
+            "    Name     Speed   MTU   Mode     Summary\r\n",
+            "--  -------  ------  ----  -------  ----------------------------------\r\n",
+            "UP  bond01   2G      9216  802.3ad  Bond Members: swp1(UP), swp2(UP)\r\n",
+        )
+        .into(),
+        _ if word.starts_with('/') => format!("-bash: {word}: No such file or directory\r\n"),
+        _ => format!("-bash: {word}: command not found\r\n"),
+    }
+}
+
 /// LT-466: a Junos EX, from Juniper's documented layouts (D-058). Every
 /// Cisco spelling is refused the way Junos refuses it.
 fn junos_answer(command: &str, address: &str) -> String {
@@ -1026,6 +1083,47 @@ async fn a_junos_answering_in_its_own_dialect_is_read() {
     let seen: Vec<&str> = result.not_visited.iter().map(|n| n.short_name.as_str()).collect();
     assert!(seen.contains(&"leaf1"), "the LLDP table was read: {seen:?}");
     assert!(j.attached.iter().any(|a| a.mac == "005056aabbcc" && a.address.as_deref() == Some("10.9.9.9")), "the switching table and the ARP table met: {:?}", j.attached);
+}
+
+/// LT-489 (D-058): a Cumulus switch answers every Cisco spelling with bash's
+/// `command not found`; the crawl must not take that for an identity, must
+/// find the platform at `net show system`, and must then read it the
+/// platform's own way.
+#[tokio::test]
+async fn a_cumulus_switch_in_a_bash_shell_is_identified_and_read() {
+    let port = free_port().await;
+    start(
+        "127.0.0.2",
+        port,
+        FakeSwitch {
+            flavour: Flavour::Cumulus,
+            // `cumulus@LAB-CUMULUS-1:mgmt:~$` in life; the fake ends every
+            // prompt in `#`, and what matters is the part after the `@`.
+            hostname: "cumulus@LAB-CUMULUS-1:mgmt:~".into(),
+            cdp: String::new(),
+            lldp: String::new(),
+            loopback: "10.255.0.21".into(),
+            arp: String::new(),
+            macs: String::new(),
+        },
+    )
+    .await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let (tx, _rx) = mpsc::channel(256);
+    let result = crawl("127.0.0.2", creds(), options(port), store, tx, CancellationToken::new()).await;
+    assert_eq!(result.failures.len(), 0, "{:?}", result.failures);
+    assert_eq!(result.devices.len(), 1, "{:?}", result.devices);
+    let c = &result.devices[0];
+    assert_eq!(c.hostname, "LAB-CUMULUS-1", "the host after the @, before the :");
+    assert_eq!(c.platform.as_deref(), Some("MSN2010"));
+    assert_eq!(c.class, DeviceClass::Switch);
+    assert_eq!(c.serial.as_deref(), Some("MT0000EXAMPLE"));
+    assert!(c.addresses.iter().any(|a| a.ip == "10.255.0.21"), "from ip addr: {:?}", c.addresses);
+    assert!(!c.addresses.iter().any(|a| a.ip == "127.0.0.1"), "the loopback's own address is not one");
+    assert_eq!(c.port_channels.iter().map(|p| (p.name.as_str(), p.members.len())).collect::<Vec<_>>(), [("bond01", 2)]);
+    let spine = result.not_visited.iter().find(|n| n.short_name == "spine01").expect("lldpctl was read");
+    assert_eq!(spine.addresses.first().map(|a| a.ip.as_str()), Some("10.9.9.1"), "with the address a crawl goes on by");
+    assert!(c.attached.iter().any(|a| a.mac == "005056aabbcc" && a.address.as_deref() == Some("10.9.9.9")), "fdb and neighbours met: {:?}", c.attached);
 }
 
 #[tokio::test]

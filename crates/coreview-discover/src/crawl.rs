@@ -1847,7 +1847,12 @@ async fn visit(
         Some(s) if s.version.is_some() => s.version.as_deref(),
         _ => first_line(&version),
     };
-    let class = crate::classify::classify(platform.as_deref(), &[], version_line);
+    let class = match crate::classify::classify(platform.as_deref(), &[], version_line) {
+        // LT-489/490/493: a family that is only ever a switch says so when its
+        // model is one the classifier has no word for.
+        DeviceClass::Unknown => dialect.default_class().unwrap_or(DeviceClass::Unknown),
+        known => known,
+    };
 
     // A port with a discovery neighbour is a link to something that already
     // introduced itself; anything else learned there is behind that device,

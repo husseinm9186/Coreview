@@ -62,6 +62,9 @@ pub fn commands_for(platform_hint: &str) -> &'static [&'static str] {
     if p.contains("pan-os") {
         // LT-468: every virtual router's table, read by shape.
         &["show routing route"]
+    } else if p.contains("cumulus") {
+        // LT-489: FRR's table through NCLU, readable without sudo.
+        &["net show route"]
     } else if p.contains("comware") || p.contains("huawei") {
         &["display ip routing-table"]
     } else if p.contains("routeros") {
@@ -231,9 +234,11 @@ pub fn parse_routes(output: &str) -> Vec<Route> {
         // A continuation: another path for the route above ("[110/2] via …")
         // or IPv6's second line ("via Vlan1, directly connected").
         let indented = line.starts_with(' ');
-        if indented && (words[0].starts_with('[') || words[0] == "via") {
+        // LT-493: FRR writes an equal-cost route's next leg as `  *   via …`.
+        let frr_leg = words[0] == "*" && words.get(1) == Some(&"via");
+        if indented && (words[0].starts_with('[') || words[0] == "via" || frr_leg) {
             if let Some(last) = routes.last_mut() {
-                let start = if words[0].starts_with('[') { 1 } else { 0 };
+                let start = if words[0].starts_with('[') || frr_leg { 1 } else { 0 };
                 if start == 1 && last.distance.is_none() {
                     let (d, m) = distance_metric(words[0]);
                     last.distance = d;

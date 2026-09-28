@@ -444,6 +444,10 @@ pub fn command_was_rejected(output: &str) -> Option<String> {
             || lower.contains("bad command name")
             || lower.contains("incorrect usage")
             || lower.starts_with("syntax error")
+            // LT-489, LT-493: a Linux shell — Cumulus, SONiC — asked a
+            // command it does not have.
+            || lower.contains("command not found")
+            || lower.contains("no such file or directory")
         {
             return Some(t.to_string());
         }

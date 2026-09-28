@@ -44,6 +44,8 @@ pub fn traceroute_command(family: Family, target: Ipv4Addr) -> Option<String> {
         FortiOs => format!("execute traceroute {target}"),
         PanOs => format!("traceroute host {target}"),
         Comware | HuaweiVrp => format!("tracert {target}"),
+        // LT-489, LT-493: Linux's own, numeric, in the layout read below.
+        Cumulus | Sonic => format!("traceroute -n {target}"),
         Gaia | RouterOs | AireOs => return None,
         CiscoIos | CiscoNxOs | AristaEos | ArubaOsSwitch | ArubaOsCx | Dell | CiscoAsa | Vyatta | ArubaController | Generic => format!("traceroute {target}"),
     })

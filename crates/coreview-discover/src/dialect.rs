@@ -84,6 +84,10 @@ pub enum Family {
     AireOs,
     /// LT-476: an Aruba Mobility controller or Instant cluster.
     ArubaController,
+    /// LT-489: NVIDIA Cumulus Linux.
+    Cumulus,
+    /// LT-493: SONiC, community or Enterprise.
+    Sonic,
     /// Nothing recognised: the Cisco commands are tried, because they are the
     /// ones most other vendors imitate, and a refusal is reported as one.
     Generic,
@@ -98,6 +102,9 @@ pub const VERSION_COMMANDS: &[&str] = &[
     "show system info",
     "show sysinfo",
     "/system resource print",
+    // LT-489: Cumulus has no `show version`; bash says so, and this is where
+    // it names itself.
+    "net show system",
 ];
 
 /// What a platform says about itself, read the platform's way (LT-466).
@@ -166,6 +173,11 @@ pub trait Dialect: Send + Sync {
     /// Whether every part of this dialect has met a device of its family.
     /// A dialect built from documentation says so until it has (D-026).
     fn verified_against_hardware(&self) -> bool;
+    /// LT-489/490/493: what a device of this family is when its model says
+    /// nothing the classifier knows. `None` leaves it to the classifier.
+    fn default_class(&self) -> Option<crate::types::DeviceClass> {
+        None
+    }
 }
 
 // The sequences, as the crawler asked them before LT-461, one static per
@@ -264,6 +276,24 @@ static APS_ARUBA: &[Reading<Neighbor>] = &[
 static POLICY_IOS: &[Reading<crate::policyroutes::PolicyRoute>] = &[Reading { command: "show ip policy", parse: crate::policyroutes::parse_ip_policy }];
 static POLICY_FORTIOS: &[Reading<crate::policyroutes::PolicyRoute>] = &[Reading { command: "show router policy", parse: crate::policyroutes::parse_fortios_policy }];
 static NO_POLICY: &[Reading<crate::policyroutes::PolicyRoute>] = &[];
+// LT-489: Cumulus. LT-493: SONiC. Both read lldpd's detail first, for the
+// management address, and their own summary table when that is refused.
+static LLDP_CUMULUS: &[Reading<Neighbor>] = &[
+    Reading { command: "lldpctl", parse: crate::vyatta::parse_lldp_detail },
+    Reading { command: "net show lldp", parse: crate::cumulus::parse_net_show_lldp },
+];
+static ARP_LINUX: &[&str] = &["ip neigh show"];
+static MAC_CUMULUS: &[Reading<MacEntry>] = &[Reading { command: "bridge fdb show", parse: crate::cumulus::parse_bridge_fdb }];
+static PORT_CHANNELS_CUMULUS: &[Reading<PortChannel>] = &[Reading { command: "net show interface bonds", parse: crate::cumulus::parse_bonds }];
+static INTERFACES_CUMULUS: &[Reading<Interface>] = &[Reading { command: "ip -4 -o addr show", parse: crate::cumulus::parse_ip_addr }];
+static LLDP_SONIC: &[Reading<Neighbor>] = &[
+    Reading { command: "show lldp neighbors", parse: crate::vyatta::parse_lldp_detail },
+    Reading { command: "show lldp table", parse: crate::sonic::parse_lldp_table },
+];
+static ARP_SONIC: &[&str] = &["show arp"];
+static MAC_SONIC: &[Reading<MacEntry>] = &[Reading { command: "show mac", parse: crate::sonic::parse_mac }];
+static PORT_CHANNELS_SONIC: &[Reading<PortChannel>] = &[Reading { command: "show interfaces portchannel", parse: crate::sonic::parse_portchannels }];
+static INTERFACES_SONIC: &[Reading<Interface>] = &[Reading { command: "show ip interfaces", parse: crate::sonic::parse_ip_interfaces }];
 static NO_MACS: &[Reading<MacEntry>] = &[];
 static NO_PORT_CHANNELS: &[Reading<PortChannel>] = &[];
 static INTERFACES_BRIEF: &[Reading<Interface>] =
@@ -322,7 +352,7 @@ impl Dialect for Chosen {
     fn cdp_readings(&self) -> &'static [Reading<Neighbor>] {
         use Family::*;
         match self.known.family {
-            Junos | AristaEos | PanOs | CiscoAsa | Gaia | Comware | HuaweiVrp | RouterOs | Vyatta | AireOs | ArubaController => NO_NEIGHBOURS,
+            Junos | AristaEos | PanOs | CiscoAsa | Gaia | Comware | HuaweiVrp | RouterOs | Vyatta | AireOs | ArubaController | Cumulus | Sonic => NO_NEIGHBOURS,
             _ => CDP,
         }
     }
@@ -336,6 +366,8 @@ impl Dialect for Chosen {
             HuaweiVrp => LLDP_HUAWEI,
             RouterOs => LLDP_ROUTEROS,
             Vyatta => LLDP_VYATTA,
+            Cumulus => LLDP_CUMULUS,
+            Sonic => LLDP_SONIC,
             CiscoAsa | Gaia | AireOs | ArubaController => NO_NEIGHBOURS,
             _ if self.dell.is_some() => LLDP_DELL,
             _ => LLDP,
@@ -350,6 +382,8 @@ impl Dialect for Chosen {
             Gaia => ARP_GAIA,
             Comware | HuaweiVrp => ARP_DISPLAY,
             RouterOs => ARP_ROUTEROS,
+            Cumulus => ARP_LINUX,
+            Sonic => ARP_SONIC,
             AireOs | ArubaController => &[],
             _ => ARP,
         }
@@ -360,6 +394,8 @@ impl Dialect for Chosen {
             (Junos, _) => MAC_JUNOS,
             (Comware | HuaweiVrp, _) => MAC_COMWARE,
             (RouterOs, _) => MAC_ROUTEROS,
+            (Cumulus, _) => MAC_CUMULUS,
+            (Sonic, _) => MAC_SONIC,
             (PanOs | CiscoAsa | Gaia | Vyatta | AireOs | ArubaController, _) => NO_MACS,
             (_, Some(DellOs::Os9)) => MAC_DELL_OS9,
             (_, Some(_)) => MAC_DELL,
@@ -373,6 +409,8 @@ impl Dialect for Chosen {
             AristaEos => PORT_CHANNELS_ARISTA,
             Comware => PORT_CHANNELS_COMWARE,
             HuaweiVrp => PORT_CHANNELS_HUAWEI,
+            Cumulus => PORT_CHANNELS_CUMULUS,
+            Sonic => PORT_CHANNELS_SONIC,
             PanOs | CiscoAsa | Gaia | RouterOs | Vyatta | AireOs | ArubaController => NO_PORT_CHANNELS,
             _ if self.aruba_switch => PORT_CHANNELS_ARUBA,
             _ if self.dell.is_some() => PORT_CHANNELS_DELL,
@@ -428,6 +466,9 @@ impl Dialect for Chosen {
                 Identity { model, serials }
             }
             ArubaController => Identity { model: crate::wlc::aruba_model_of(version), serials: crate::wlc::aruba_serials_of(first) },
+            // LT-489: the version *is* `net show system`.
+            Cumulus => Identity { model: crate::cumulus::model_of(version), serials: crate::cumulus::serials_of(version) },
+            Sonic => Identity { model: crate::sonic::model_of(version), serials: crate::sonic::serials_of(version) },
             _ => Identity::default(),
         }
     }
@@ -439,6 +480,13 @@ impl Dialect for Chosen {
     }
     fn verified_against_hardware(&self) -> bool {
         self.known.verified
+    }
+    fn default_class(&self) -> Option<crate::types::DeviceClass> {
+        match self.known.family {
+            // Every one of these is a switch whatever its SKU says.
+            Family::Cumulus | Family::Sonic | Family::ArubaOsCx => Some(crate::types::DeviceClass::Switch),
+            _ => None,
+        }
     }
 }
 
@@ -466,6 +514,9 @@ static DIALECTS: &[Known] = &[
     Known { family: Family::Vyatta, name: "Vyatta (EdgeOS, VyOS)", hint: "vyatta", verified: false, paging_off: Some("terminal length 0"), interfaces: INTERFACES_VYATTA },
     Known { family: Family::AireOs, name: "Cisco AireOS", hint: "aireos", verified: false, paging_off: Some("config paging disable"), interfaces: NO_INTERFACES },
     Known { family: Family::ArubaController, name: "Aruba Mobility / Instant", hint: "aruba controller", verified: false, paging_off: Some("no paging"), interfaces: INTERFACES_BRIEF },
+    // D-058, LT-489/493: Linux-shell switches; utilities told not to page.
+    Known { family: Family::Cumulus, name: "NVIDIA Cumulus Linux", hint: "cumulus", verified: false, paging_off: Some("export PAGER=cat VTYSH_PAGER=cat"), interfaces: INTERFACES_CUMULUS },
+    Known { family: Family::Sonic, name: "SONiC", hint: "sonic", verified: false, paging_off: Some("export PAGER=cat VTYSH_PAGER=cat"), interfaces: INTERFACES_SONIC },
     Known { family: Family::Generic, name: "unrecognised (Cisco commands tried)", hint: "", verified: true, paging_off: Some("terminal length 0"), interfaces: INTERFACES_BRIEF },
 ];
 
@@ -473,7 +524,13 @@ static DIALECTS: &[Known] = &[
 /// between them, in one place.
 pub fn family_of(version: &str) -> Family {
     let v = version.to_ascii_lowercase();
-    if v.contains("nx-os") || v.contains("nexus") {
+    // LT-489, LT-493 first: a SONiC on Dell or Mellanox hardware names the
+    // hardware maker in its SKU, and must not be taken for that maker's OS.
+    if v.contains("sonic software version") || v.contains("sonic.") && v.contains("hwsku") {
+        Family::Sonic
+    } else if v.contains("cumulus linux") {
+        Family::Cumulus
+    } else if v.contains("nx-os") || v.contains("nexus") {
         Family::CiscoNxOs
     } else if v.contains("arista") || v.contains("veos") {
         Family::AristaEos
@@ -737,6 +794,9 @@ mod tests {
                 "Vyatta (EdgeOS, VyOS)",
                 "Cisco AireOS",
                 "Aruba Mobility / Instant",
+                // LT-489, LT-493.
+                "NVIDIA Cumulus Linux",
+                "SONiC",
             ]
         );
     }

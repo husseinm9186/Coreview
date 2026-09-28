@@ -29,6 +29,8 @@ pub fn commands_for(platform_hint: &str) -> &'static [&'static str] {
         &["get router info routing-table details 0.0.0.0", "get router info routing-table all"]
     } else if p.contains("pan-os") {
         &["show routing route"]
+    } else if p.contains("cumulus") {
+        &["net show route 0.0.0.0/0"]
     } else if p.contains("comware") || p.contains("huawei") {
         &["display ip routing-table"]
     } else if p.contains("routeros") {

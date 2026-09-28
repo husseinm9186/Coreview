@@ -91,37 +91,6 @@ assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
 
-### LT-493 — SONiC — 2026-09-28
-**Source:** the operator, 2026-09-28: "also can we support this", linking a
-SONiC command cheat sheet (route2open.com). Named in LT-482's next tier;
-asked for now, so it is its own item.
-**What a crawl would read:** SONiC's `show` CLI over SSH — `show version`
-(platform, HwSKU, serial), `show lldp table` / `show lldp neighbors`,
-`show ip interfaces`, `show arp`, `show mac`, `show interfaces
-portchannel`, and `show ip route` (FRR's layout, which the route reader
-already knows from EdgeOS and VyOS).
-**Acceptance, under D-058:** a `Dialect` built from SONiC's documentation
-and the cheat sheet; classified as a switch; a fake-network test;
-`verified_against_hardware() == false` until a support capture replaces the
-fixtures.
-
-### LT-489 — NVIDIA / Mellanox SN2010 on Cumulus Linux — 2026-09-28
-**Source:** the operator, 2026-09-28: "can we support this switch Mellanox
-SN2010 Ethernet Switch for Hyperconverged Infrastructures", with two
-references — NVIDIA's Cumulus Linux 4.4 Quick Start Guide and a community
-wiki page on Cumulus. So the switch runs **Cumulus Linux**, not Onyx.
-**What that means for a crawl:** Cumulus is Debian underneath; an SSH login
-lands in bash (`cumulus@switch:mgmt:~$`), and the tables are the Linux
-ones — `lldpctl` (lldpd) for neighbours, `ip -4 addr` for addresses,
-`ip neigh` for ARP, `bridge fdb` for the MAC table, `ip route` for
-routes, `net show system` / `/etc/lsb-release` for identity — or NCLU's
-`net show …` equivalents.
-**Acceptance, under D-058:** a `Dialect` for Cumulus built from NVIDIA's
-documentation and the references given, reading identity, neighbours,
-addresses, ARP, MAC table, bonds and routes; classified as a switch; the
-prompt recognised; a fake-network test; `verified_against_hardware() ==
-false` until the operator's support capture replaces the fixtures.
-
 ### LT-463 — Cannot log in to a FortiSwitch — reported 2026-09-26, not yet reproduced
 **Source:** the operator, 2026-09-26: "can't login to fortiswitch", after
 the audit's pushes. The screenshot did not come through. Not yet known:
@@ -380,6 +349,39 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-493 — SONiC — 2026-09-28
+**Source:** the operator, 2026-09-28: "also can we support this", linking a
+SONiC command cheat sheet (route2open.com). Named in LT-482's next tier;
+asked for now, so it is its own item.
+**What a crawl would read:** SONiC's `show` CLI over SSH — `show version`
+(platform, HwSKU, serial), `show lldp table` / `show lldp neighbors`,
+`show ip interfaces`, `show arp`, `show mac`, `show interfaces
+portchannel`, and `show ip route` (FRR's layout, which the route reader
+already knows from EdgeOS and VyOS).
+**Acceptance, under D-058:** a `Dialect` built from SONiC's documentation
+and the cheat sheet; classified as a switch; a fake-network test;
+`verified_against_hardware() == false` until a support capture replaces the
+fixtures.
+**Shipped 2026-09-28, under D-058.** `sonic.rs` and a SONiC `Dialect`. The cheat sheet the operator linked is for **Enterprise SONiC by Broadcom** and names commands without output, so the fixtures are reconstructed from the SONiC command reference. The crawl stays in bash rather than entering `sonic-cli`, because SONiC's `show` commands answer from bash on community and Enterprise editions alike. Read: `show version` (`HwSKU`, `Platform`, `Serial Number`) — recognised before the Dell dialect, since a SONiC on Dell hardware says `DellEMC` in its SKU; `show lldp neighbors` (lldpd's layout, with management addresses) and `show lldp table` as the fallback; `show ip interfaces` (address found by shape, since the Master column is often blank); `show arp`; `show mac`; `show interfaces portchannel`; `show ip route`. **Found on the way:** FRR writes an equal-cost route's second leg on its own line as `  *   via …`, and the route reader dropped it — so an ECMP route read as one path. Fixed, with a test; it affects EdgeOS and VyOS too. Unit-tested; no fake-network test yet.
+
+### LT-489 — NVIDIA / Mellanox SN2010 on Cumulus Linux — 2026-09-28
+**Source:** the operator, 2026-09-28: "can we support this switch Mellanox
+SN2010 Ethernet Switch for Hyperconverged Infrastructures", with two
+references — NVIDIA's Cumulus Linux 4.4 Quick Start Guide and a community
+wiki page on Cumulus. So the switch runs **Cumulus Linux**, not Onyx.
+**What that means for a crawl:** Cumulus is Debian underneath; an SSH login
+lands in bash (`cumulus@switch:mgmt:~$`), and the tables are the Linux
+ones — `lldpctl` (lldpd) for neighbours, `ip -4 addr` for addresses,
+`ip neigh` for ARP, `bridge fdb` for the MAC table, `ip route` for
+routes, `net show system` / `/etc/lsb-release` for identity — or NCLU's
+`net show …` equivalents.
+**Acceptance, under D-058:** a `Dialect` for Cumulus built from NVIDIA's
+documentation and the references given, reading identity, neighbours,
+addresses, ARP, MAC table, bonds and routes; classified as a switch; the
+prompt recognised; a fake-network test; `verified_against_hardware() ==
+false` until the operator's support capture replaces the fixtures.
+**Shipped 2026-09-28, under D-058.** `cumulus.rs` and a Cumulus `Dialect`. Neither reference the operator gave carried sample output, so the fixtures are reconstructed from NVIDIA's documented layouts and the dialect reports unverified. The crawl stays in bash: `show version` and the other spellings come back `command not found`, which `cli::command_was_rejected` now counts as a refusal (it would otherwise have been taken for the device's identity), and the platform names itself at `net show system`, now the last of `VERSION_COMMANDS`. Read: model and serial from `net show system`; neighbours from `lldpctl` (lldpd's layout, which carries the management address the crawl goes on by), with NCLU's `net show lldp` table as the fallback; `ip -4 -o addr show` (the loopback's 127.0.0.1 dropped); `ip neigh show`; `bridge fdb show` (the switch's own `permanent`/`self` entries dropped); `net show interface bonds`; `net show route` (FRR). Paging: `export PAGER=cat VTYSH_PAGER=cat`. A family that is only ever a switch — Cumulus, SONiC, ArubaOS-CX — is a switch when its model is one the classifier has no word for (`Dialect::default_class`). **Met a fake device:** `a_cumulus_switch_in_a_bash_shell_is_identified_and_read` crawls a fake SN2010 that refuses every Cisco spelling the way bash does. Traceroute for LT-477 is Linux's `traceroute -n`. **Not in it:** the management VRF — a switch whose routes live in `mgmt` shows only the default table.
 
 ### LT-492 — **bug** The application path page drawn from a trace carries no management addresses — 2026-09-28
 **Source:** the operator, 2026-09-28, with a screenshot of a page made by
