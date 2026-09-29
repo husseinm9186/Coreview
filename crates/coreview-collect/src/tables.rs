@@ -112,8 +112,8 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("proto", &["protocol", "type", "source_proto", "route_source", "source", "clientname"]),
             ("ad", &["distance", "admin_distance", "ad", "preference", "pref"]),
             ("metric", &["metric", "cost"]),
-            ("next_hop", &["nexthop_ip", "next_hop", "nexthop", "gateway", "via", "next_hop_ip", "nh", "ipnexthop", "gw"]),
-            ("interface", &["nexthop_if", "interface", "outgoing_interface", "nexthop_interface", "out_interface", "exit_interface", "next_hop_interface", "ifname", "intf", "dev"]),
+            ("next_hop", &["nexthop_ip", "next_hop", "nexthop", "gateway", "via", "next_hop_ip", "nh", "ipnexthop", "gw", "nexthopip"]),
+            ("interface", &["nexthop_if", "interface", "outgoing_interface", "nexthop_interface", "out_interface", "exit_interface", "next_hop_interface", "ifname", "intf", "dev", "nexthopif"]),
             ("age", &["uptime", "age", "time"]),
         ],
         "routing_neighbor" => &[
@@ -497,6 +497,14 @@ mod tests {
         assert_eq!(n.columns.get("out_zone_if").map(String::as_str), Some("outside"));
         assert_eq!(n.columns.get("type").map(String::as_str), Some("dynamic"));
         assert_eq!(n.columns.get("seq").map(String::as_str), Some("2"));
+    }
+
+    /// LT-553: `cisco_asa_show_route`'s own fixture row.
+    #[test]
+    fn an_asa_route_keeps_its_next_hop_and_interface() {
+        let n = normalise("route", &json!({"protocol": "S", "type": "", "network": "10.54.6.0", "netmask": "255.255.255.0", "distance": "1", "metric": "0", "nexthopip": "10.0.5.12", "nexthopif": "outside", "uptime": ""}));
+        assert_eq!(n.columns.get("next_hop").map(String::as_str), Some("10.0.5.12"));
+        assert_eq!(n.columns.get("interface").map(String::as_str), Some("outside"));
     }
 
     /// LT-537: PAN-OS says `disabled: yes` of a rule that is off. Stored as

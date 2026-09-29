@@ -601,6 +601,16 @@ needs rows the lab collection will show; none is guessed meanwhile.
 
 ## Done
 
+### LT-553 — **bug** ASA routes lost their next hop and interface — 2026-09-29, fixed the same day
+**Found by a sweep of every template the catalogs name** (LT-540), after
+LT-552. `cisco_asa_show_route` writes `NEXTHOPIP` and `NEXTHOPIF`; the route
+normaliser read neither, so an ASA's static and learned routes had no next
+hop and the path builder could not leave one. Reproduced on the fixture's
+own row first.
+**Fixed:** `nexthopip`/`nexthopif` mapped; the fixture-row test failed
+before.
+
+
 ### LT-552 — **bug** Every ASA NAT rule arrived empty: the `show nat` template's fields were not mapped — 2026-09-29, fixed the same day
 **Found building LT-540.** ntc's `cisco_asa_show_nat` writes `source_real`,
 `source_mapped`, `destination_real`, `destination_mapped`,
