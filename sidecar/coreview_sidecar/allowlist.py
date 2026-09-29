@@ -35,6 +35,11 @@ FILTERS = frozenset(
 )
 
 
+# LT-556: shell operators — a second command, a background one, a
+# substitution or a redirection. `|` is a pipe and is checked apart.
+SHELL = ("&&", "||", "&", "`", "$(", ">", "<")
+
+
 def verdict(command) -> str:
     """'ok', or the reason the command is refused."""
     if not isinstance(command, str):
@@ -44,17 +49,24 @@ def verdict(command) -> str:
     trimmed = command.strip()
     if not trimmed:
         return "empty"
+    # LT-556: what a shell would run as a second command, or write to a file.
+    if any(op in trimmed for op in SHELL):
+        return "carries a shell operator"
     literal = any(trimmed.startswith(l) for l in LITERALS)
     if not literal and not VERB.match(trimmed):
         return "first word is not a read verb"
-    for segment in trimmed.split(";"):
+    for i, segment in enumerate(trimmed.split(";")):
         seg = segment.strip()
         words = seg.split()
         first = words[0].lower() if words else ""
         if first.startswith("/"):
             first = first[1:]
-        if first in FORBIDDEN and not any(seg.startswith(l) for l in LITERALS):
+        seg_literal = any(seg.startswith(l) for l in LITERALS)
+        if first in FORBIDDEN and not seg_literal:
             return f'forbidden verb "{first}"'
+        # LT-556: every chained command is a read command in its own right.
+        if i > 0 and seg and not seg_literal and not VERB.match(seg):
+            return "a chained command's first word is not a read verb"
     for pipe in trimmed.split("|")[1:]:
         words = pipe.strip().split()
         target = words[0] if words else ""

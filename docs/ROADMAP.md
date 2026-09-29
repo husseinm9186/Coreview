@@ -589,6 +589,23 @@ service) apply.
 
 ## Done
 
+### LT-556 — **bug** The read-only guard checked only the first of several chained commands — 2026-09-29, fixed the same day
+**Found starting LT-550** (host catalogs, where a shell chains commands).
+Only the first `;`-separated command had to be a read verb; a later one was
+refused only when its first word was on the forbidden list, so `show
+version; ip link set eth0 down` and `get system status; execute
+factoryreset` passed, and `&&`, `||`, `&`, `$( )`, backticks and `>`/`<`
+were not looked at (`a || b` even slipped past the pipe check as an empty
+pipe target). No catalog command uses any of them, and filled placeholders
+refuse them, so nothing unsafe was sent; the guard exists for the day
+something does. **Reproduced** in `allowlist-cases.json`, which the Rust,
+JavaScript and Python implementations all read, before the fix.
+**Fixed** in all three implementations alike: a command carrying `&&`, `||`,
+`&`, a backtick, `$(`, `>` or `<` is refused ("carries a shell operator"),
+and every `;`-separated command must be a read command in its own right
+("a chained command's first word is not a read verb"). Ten fixture cases;
+all three suites failed on them before.
+
 ### LT-549 — P4.4 SNMP fallback when SSH fails — 2026-09-29, done the same day
 LLDP-MIB, CDP-MIB, Q-BRIDGE, IP-FORWARD and ENTITY into the same tables,
 used only for a device whose SSH session could not be opened.

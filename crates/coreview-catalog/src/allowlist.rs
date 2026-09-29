@@ -57,6 +57,10 @@ const FORBIDDEN: &[&str] = &[
     "system-view", "edit", "load", "rollback", "restore", "upgrade",
 ];
 
+/// LT-556: shell operators — a second command, a background one, a
+/// substitution or a redirection. `|` is a pipe and is checked apart.
+const SHELL: &[&str] = &["&&", "||", "&", "`", "$(", ">", "<"];
+
 /// Pipe targets that only filter what comes back.
 const FILTERS: &[&str] = &[
     "include", "inc", "i", "exclude", "exc", "e", "begin", "b", "section", "sec", "count", "c", "json", "json-pretty", "xml", "display",
@@ -97,16 +101,25 @@ pub fn verdict(command: &str) -> Verdict {
     if trimmed.is_empty() {
         return Verdict::Refused("empty".into());
     }
+    // LT-556: what a shell would run as a second command, or write to a file.
+    if SHELL.iter().any(|op| trimmed.contains(op)) {
+        return Verdict::Refused("carries a shell operator".into());
+    }
     let literal = LITERALS.iter().any(|l| trimmed.starts_with(l));
     if !literal && !verb().is_match(trimmed) {
         return Verdict::Refused("first word is not a read verb".into());
     }
-    for segment in trimmed.split(';') {
+    for (i, segment) in trimmed.split(';').enumerate() {
         let seg = segment.trim();
         let first = seg.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
         let first = first.strip_prefix('/').unwrap_or(&first);
-        if FORBIDDEN.contains(&first) && !LITERALS.iter().any(|l| seg.starts_with(l)) {
+        let seg_literal = LITERALS.iter().any(|l| seg.starts_with(l));
+        if FORBIDDEN.contains(&first) && !seg_literal {
             return Verdict::Refused(format!("forbidden verb \"{first}\""));
+        }
+        // LT-556: every chained command is a read command in its own right.
+        if i > 0 && !seg.is_empty() && !seg_literal && !verb().is_match(seg) {
+            return Verdict::Refused("a chained command's first word is not a read verb".into());
         }
     }
     for pipe in trimmed.split('|').skip(1) {

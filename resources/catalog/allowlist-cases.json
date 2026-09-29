@@ -39,5 +39,15 @@
   { "command": "show version | append flash:x", "verdict": "pipe target \"append\" is not a filter" },
   { "command": "show version\nreload", "verdict": "carries a newline" },
   { "command": "", "verdict": "empty" },
-  { "command": "   ", "verdict": "empty" }
+  { "command": "   ", "verdict": "empty" },
+  { "command": "show clock; show version", "verdict": "ok" },
+  { "command": "show version; esxcli system shutdown poweroff", "verdict": "a chained command's first word is not a read verb" },
+  { "command": "get system status; execute factoryreset", "verdict": "a chained command's first word is not a read verb" },
+  { "command": "ip -j addr && ip link set eth0 down", "verdict": "carries a shell operator" },
+  { "command": "ip -j addr || true", "verdict": "carries a shell operator" },
+  { "command": "ip -j addr & reboot", "verdict": "carries a shell operator" },
+  { "command": "ip -j addr $(reboot)", "verdict": "carries a shell operator" },
+  { "command": "ip -j addr `reboot`", "verdict": "carries a shell operator" },
+  { "command": "ip -j route > /etc/motd", "verdict": "carries a shell operator" },
+  { "command": "Get-NetRoute < x", "verdict": "carries a shell operator" }
 ]

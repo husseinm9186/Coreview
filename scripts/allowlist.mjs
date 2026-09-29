@@ -57,16 +57,27 @@ const FILTERS = new Set([
  * 'ok', or the reason the command is refused. Every implementation returns
  * these exact strings so the shared fixture can pin them.
  */
+/** LT-556: shell operators — a second command, a background one, a
+ *  substitution or a redirection. `|` is a pipe and is checked apart. */
+const SHELL = ['&&', '||', '&', '`', '$(', '>', '<'];
+
 export function allowlistVerdict(command) {
   if (typeof command !== 'string') return 'not a string';
   if (/[\r\n]/.test(command)) return 'carries a newline';
   const trimmed = command.trim();
   if (!trimmed) return 'empty';
+  // LT-556: what a shell would run as a second command, or write to a file.
+  if (SHELL.some((op) => trimmed.includes(op))) return 'carries a shell operator';
   const literal = LITERALS.some((l) => trimmed.startsWith(l));
   if (!literal && !VERB.test(trimmed)) return 'first word is not a read verb';
-  for (const segment of trimmed.split(';')) {
-    const first = segment.trim().split(/\s+/)[0]?.toLowerCase().replace(/^\//, '') ?? '';
-    if (FORBIDDEN.has(first) && !LITERALS.some((l) => segment.trim().startsWith(l))) return `forbidden verb "${first}"`;
+  const segments = trimmed.split(';');
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i].trim();
+    const first = seg.split(/\s+/)[0]?.toLowerCase().replace(/^\//, '') ?? '';
+    const segLiteral = LITERALS.some((l) => seg.startsWith(l));
+    if (FORBIDDEN.has(first) && !segLiteral) return `forbidden verb "${first}"`;
+    // LT-556: every chained command is a read command in its own right.
+    if (i > 0 && seg && !segLiteral && !VERB.test(seg)) return "a chained command's first word is not a read verb";
   }
   const pipes = trimmed.split('|').slice(1);
   for (const pipe of pipes) {
