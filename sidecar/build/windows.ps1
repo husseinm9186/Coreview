@@ -20,6 +20,8 @@ param(
   [string]$Pip = "python"   # a CPython 3.12 with pip, used only to fetch and unpack wheels
 )
 $ErrorActionPreference = "Stop"
+# Every failure is an annotation, readable without the job log (which needs admin rights).
+trap { Write-Host "::error title=Sidecar layout::$($_.Exception.Message)"; exit 1 }
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $out = Join-Path $root "src-tauri\sidecar"
 $tag = $PythonVersion.Split(".")[0] + $PythonVersion.Split(".")[1]   # "312"
@@ -59,4 +61,4 @@ $version = & (Join-Path $out "python.exe") -m coreview_sidecar --version
 if ($LASTEXITCODE -ne 0) { throw "the laid sidecar does not start" }
 Write-Host "sidecar laid under $out — $version"
 $pes = Get-ChildItem -Recurse $out -Include *.exe, *.dll, *.pyd
-Write-Host "$($pes.Count) PE files to sign"
+Write-Host "::notice title=Sidecar layout::$version laid under src-tauri\sidecar, $($pes.Count) PE files."
