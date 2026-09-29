@@ -19,9 +19,7 @@ pub async fn login(client: &ApiClient, username: &str, password: &str) -> Result
             .client
             .post(client.url(&format!("/rest/{v}/login")))
             .query(&[("username", username), ("password", password)])
-            .send()
-            .await
-            .map_err(|e| ApiError::Transport(e.to_string()))?;
+            .send().await.map_err(|e| super::transport(e, &client.pin))?;
         let status = resp.status().as_u16();
         if status == 200 {
             return Ok((*v).to_string());
@@ -46,7 +44,7 @@ pub async fn get(client: &ApiClient, version: &str, path: &str) -> Result<ApiOut
         url.push_str(if url.contains('?') { "&" } else { "?" });
         url.push_str("depth=2");
     }
-    let resp = client.client.get(&url).header("Accept", "application/json").send().await.map_err(|e| ApiError::Transport(e.to_string()))?;
+    let resp = client.client.get(&url).header("Accept", "application/json").send().await.map_err(|e| super::transport(e, &client.pin))?;
     let status = resp.status().as_u16();
     let text = resp.text().await.map_err(|e| ApiError::Body(e.to_string()))?;
     let ms = started.elapsed().as_millis() as u64;

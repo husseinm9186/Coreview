@@ -445,6 +445,10 @@ export type CollectionInput = {
   keepDiagnostic: boolean;
   connectTimeoutSecs?: number;
   authTimeoutSecs?: number;
+  /** LT-518: a saved API login for FortiOS/AOS-CX REST, and for an FMC. */
+  apiCredentialId?: string;
+  /** LT-541: the FMC that manages the FTDs in this collection. */
+  fmcHost?: string;
 };
 
 export type CollectionRunSummary = {

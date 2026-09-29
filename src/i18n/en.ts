@@ -270,6 +270,9 @@ export const en = {
   'vaultGate.vaultPassphrase': 'Vault passphrase',
   'vaultGate.again': 'Again',
   'vaultGate.openTheVaultBy': 'Open the vault by itself on this computer',
+  'vaultSettings.apiLogin': 'Device or FMC API login',
+  'vaultSettings.apiUser': 'Username (blank for a token)',
+  'vaultSettings.apiSecret': 'Password or token',
   'vaultSettings.theKeyThatOpens': 'The key that opens the vault — never the passphrase — is kept by Windows Credential Manager, the macOS Keychain or the Secret Service, and the vault opens by itself when Coreview starts. Anyone who can use this computer\'s account can then use the saved credentials.',
   'vaultSettings.coreSwitches': 'Core switches',
   'vaultSettings.savedCredentials': 'Saved credentials',
@@ -758,6 +761,8 @@ export const en = {
   // LT-477: the measured path. LT-478: the leg the device hashes onto. LT-479: what was not evaluated.
   'trace.chooseSource': 'Choose a device…',
   // LT-514, LT-516, LT-517: the catalog-driven collection.
+  'collect.apiCredential': 'API login',
+  'collect.fmcHost': 'FMC for FTDs',
   'collect.help': 'Collect from named devices the way the catalog says: recognise each one, ask what it can do, plan only the commands that apply, send them light first, and read every answer into the discovery tables. Every command is read-only and optional.',
   'collect.targets': 'Devices',
   'collect.targetsHint': 'Addresses or names, one per line.',

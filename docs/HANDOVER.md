@@ -486,6 +486,17 @@ trust the summary below over that file; it is a signpost and it will rot.
   `#[serde(skip)]` on purpose, so the page can never tell the builder a
   firewall already passed a flow; enum fields need `rename_all_fields` for
   camelCase, which `rename_all` alone does not do.
+- **ASA, FTD and the API side, 29 September 2026 (LT-518, LT-540, LT-541,
+  LT-552–LT-555).** `parser: reader:<name>` is Coreview's own reader in Rust
+  (`coreview-collect/src/readers`); the sidecar is sent `none`. **Mines:**
+  REST certificate pins live in the SSH host-key store as `tls:<host>` —
+  "forget this key" in Settings is how a replaced FMC is trusted again; an
+  FTD's rules come from its FMC and the path builder then ignores its
+  `CSM_FW_ACL_` list — match on the `fmc_` command prefix, don't rename it;
+  ntc's ASA `show nat` names the twice-NAT destination pair by position,
+  which is backwards from Cisco's meaning (LT-552). A sweep of every
+  template's fields against the normaliser found LT-552–LT-555 — rerun it
+  when a catalog gains a template.
 
 - **Shipped 2026-09-18, after the mission:** LT-285 the address register (the
   **Addresses** tab; `src/lib/ipam.ts` is the arithmetic, `e2e/ipam.mjs` drives

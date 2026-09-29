@@ -217,3 +217,39 @@ fn an_asa_from_its_own_output_translates_binds_and_decides() {
     let h = coreview_path::trace_run(&devices, &tcp("10.9.9.20", "203.0.113.99", 443)).forward.paths[0].hops[0].clone();
     assert_eq!(h.nat.iter().find(|n| n.field == "source").map(|n| n.now.as_str()), Some("203.0.113.20"), "{h:#?}");
 }
+
+/// LT-541: an FTD whose FMC gave its rules. Its CLI also shows the same
+/// policy compiled into `CSM_FW_ACL_`, bound globally; the FMC's rules are
+/// the ones read, by zone, in rule order, ending in the default action.
+/// FMC shapes from Cisco's API documentation, not captured (D-058).
+#[test]
+fn an_ftd_is_decided_by_its_fmc_rules_not_its_compiled_list() {
+    use coreview_collect::api::fmc;
+    use coreview_path::firewall::Verdict;
+    use serde_json::json;
+    let mut devices = asa();
+    let t = &mut devices[0].tables;
+    // What the FTD's own CLI says: the compiled list, bound globally.
+    t.insert("fw_policy".into(), asa_rows("show_running_config_access_list", "reader:asa_access_list", "fw_policy", "access-list CSM_FW_ACL_ advanced permit ip any any rule-id 268434432\naccess-list CSM_FW_ACL_ extended permit ip any any\n"));
+    t.insert("fw_binding".into(), asa_rows("show_running_config_access_group", "reader:asa_access_group", "fw_binding", "access-group CSM_FW_ACL_ global\n"));
+    // What its FMC says.
+    let rule = |name: &str, index: u64, action: &str, port: &str| json!({"name": name, "action": action, "enabled": true, "metadata": {"ruleIndex": index},
+        "sourceZones": {"objects": [{"name": "OUTSIDE"}]}, "destinationZones": {"objects": [{"name": "INSIDE"}]},
+        "destinationNetworks": {"objects": [{"name": "WEB-01"}]}, "destinationPorts": {"literals": [{"type": "PortLiteral", "port": port, "protocol": "6"}]}});
+    let fmc_rows = |id: &str, table: &str, rows: Vec<serde_json::Value>| -> Vec<Row> {
+        normalise_all(&[table.to_string()], &rows).into_iter().map(|n| Row { command: id.into(), columns: n.columns, extra: n.extra }).collect()
+    };
+    let mut policy = t.remove("fw_policy").unwrap();
+    policy.extend(fmc_rows("fmc_access_rules", "fw_policy", fmc::policy_rows(&[rule("web-in", 1, "ALLOW", "443")], Some("BLOCK"))));
+    t.insert("fw_policy".into(), policy);
+    t.get_mut("fw_zone").unwrap().extend(fmc_rows("fmc_interfaces", "fw_zone", fmc::zone_rows(&[
+        json!({"name": "GigabitEthernet0/0", "ifname": "outside", "securityZone": {"name": "OUTSIDE"}}),
+        json!({"name": "GigabitEthernet0/1", "ifname": "inside", "securityZone": {"name": "INSIDE"}}),
+    ])));
+    let f = coreview_path::trace_run(&devices, &tcp("203.0.113.99", "203.0.113.20", 443)).forward;
+    let fw = f.paths[0].hops[0].firewall.clone().unwrap();
+    assert_eq!((fw.verdict, fw.policy.as_deref()), (Verdict::Allow, Some("web-in (1)")), "{}", fw.reason);
+    // The compiled list would have allowed anything; the FMC's default action blocks port 22.
+    let f = coreview_path::trace_run(&devices, &tcp("203.0.113.99", "203.0.113.20", 22)).forward;
+    assert!(matches!(&f.paths[0].ending, Ending::Denied { policy: Some(p), .. } if p == "default action (2)"), "{:?}", f.paths[0].ending);
+}

@@ -124,8 +124,9 @@ crates/
                      run through the sidecar (`sidecar.rs` is the JSON-lines
                      client), secret scrubbing, rows into the discovery
                      tables, and the API collectors (FortiOS REST, PAN-OS
-                     XML API, AOS-CX REST) with the certificate pinned per
-                     device. `examples/fake_sidecar.rs` is what its tests
+                     XML API, AOS-CX REST, and an FTD's FMC — LT-518,
+                     LT-541) with the certificate pinned per host in the SSH
+                     host-key store under `tls:<host>`. `examples/fake_sidecar.rs` is what its tests
                      drive, so `cargo test` needs no Python. `readers/` holds
                      Coreview's own readers for output no template reads
                      (`parser: reader:<name>`, LT-540) — built from vendor

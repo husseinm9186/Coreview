@@ -50,7 +50,7 @@ const payloads: Record<string, unknown> = {
     runId: 'col-1', credentialId: 'cred-ssh', port: 22, path: 0, ...extra,
     request: { from: '192.0.2.50', to: '203.0.113.50', vrf: 'default', protocol: 'tcp', port: 443, sourcePort: 50000, downDevices: [], downLinks: [{ device: 'ACC1', interface: 'Gi1/0/50', ...extra }], traceroute: null, noReverse: true, ...extra },
   }),
-  collection_input: collectionInput({ projectId: 'project-1', targets: '192.0.2.10\n192.0.2.11', port: 22, osHint: 'cisco_ios', roleOverride: 'switch', planOnly: false, lightOnly: true, credentialId: 'cred-ssh', keepDiagnostic: true, connectTimeoutSecs: 8, authTimeoutSecs: 20, ...extra }),
+  collection_input: collectionInput({ projectId: 'project-1', targets: '192.0.2.10\n192.0.2.11', port: 22, osHint: 'cisco_ios', roleOverride: 'switch', planOnly: false, lightOnly: true, credentialId: 'cred-ssh', keepDiagnostic: true, connectTimeoutSecs: 8, authTimeoutSecs: 20, apiCredentialId: 'cred-api', fmcHost: '192.0.2.5', ...extra }),
   save_credential: saveCredential({ id: 'cred-ssh', label: 'Read-only', kind: 'ssh', username: 'reader', secret: 'not-a-real-password', secondSecret: 'not-a-real-enable', detail: '', ...extra }),
   check: backupCheck({ id: 'check-1', name: 'NTP synchronised', command: 'show ntp status', expect: 'contains', pattern: 'synchronized', ignoreCase: true, block: 'line vty', severity: 'critical', roles: ['router'], ...extra }),
   visio_drawing: visioDrawing({

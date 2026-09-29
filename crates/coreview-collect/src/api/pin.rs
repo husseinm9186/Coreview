@@ -30,6 +30,9 @@ impl CertPin {
     pub fn new(policy: PinPolicy) -> CertPin {
         CertPin { policy, seen: Mutex::new(None) }
     }
+    pub fn policy_ref(&self) -> &PinPolicy {
+        &self.policy
+    }
     pub fn seen(&self) -> Option<String> {
         self.seen.lock().unwrap().clone()
     }

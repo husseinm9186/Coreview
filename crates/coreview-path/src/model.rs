@@ -212,6 +212,8 @@ pub struct FwPolicy {
     pub services: Vec<String>,
     pub action: String,
     pub enabled: bool,
+    /// LT-541: read from an FMC rather than the device.
+    pub from_fmc: bool,
 }
 
 impl FwPolicy {
@@ -263,6 +265,9 @@ pub struct Box_ {
     pub bindings: Vec<Binding>,
     /// LT-540: a zone's security level (ASA `nameif`), 0–100.
     pub security: BTreeMap<String, u8>,
+    /// LT-541: where the firewall policy came from, when not the device's
+    /// own CLI — `fmc` for an FTD whose rules its FMC gave.
+    pub policy_from: Option<String>,
     /// LT-540: object and group names → what they stand for, each item a
     /// literal (`192.0.2.0/24`, `tcp/443`) or another object's name.
     pub objects: BTreeMap<String, Vec<String>>,
@@ -611,7 +616,21 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
             services: items(r, "services"),
             action: opt(r, "action").unwrap_or_default(),
             enabled: enabled(r.get("enabled")),
+            from_fmc: r.command.starts_with("fmc_"),
         });
+    }
+    // LT-541: an FTD's rules from its FMC are the policy; the access list
+    // its CLI shows (`CSM_FW_ACL_`) is the same policy compiled, and its
+    // `access-group` binding says nothing the zones do not.
+    if d.rows("fw_policy").iter().any(|r| r.command.starts_with("fmc_")) {
+        b.policy_from = Some("fmc".into());
+    }
+    if b.policy_from.as_deref() == Some("fmc") {
+        let fmc_rows: Vec<&Row> = d.rows("fw_policy").iter().filter(|r| r.command.starts_with("fmc_")).collect();
+        if !fmc_rows.is_empty() {
+            b.fw.retain(|p| p.from_fmc);
+        }
+        b.bindings.clear();
     }
     expand_policies(b);
     for r in d.rows("tunnel") {

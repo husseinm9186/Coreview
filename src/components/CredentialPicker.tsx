@@ -380,7 +380,7 @@ export function SavedCredentialSelect({
   label,
   disabled = false,
 }: {
-  kind?: 'ssh' | 'snmp';
+  kind?: 'ssh' | 'snmp' | 'api';
   value: string | undefined;
   onChange: (id: string | undefined) => void;
   label: string;

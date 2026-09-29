@@ -1219,7 +1219,9 @@ choice below is said in the result where it applies, not only here.
   implicit deny; with no list at all, its security levels (higher to lower
   allowed, lower to higher denied, equal undetermined — whether
   `same-security-traffic permit` is set is not collected); then a list bound
-  outbound. Object names are expanded from the object tables first; an
+  outbound. An FTD whose FMC gave its rules (LT-541) is decided by those,
+  by zone in rule order ending in the policy's default action; the access
+  list its CLI shows is the same policy compiled and is set aside. Object names are expanded from the object tables first; an
   object not collected stays unknown. Services a vendor
   predefines (`HTTPS`, `service-https`, `www`, …) are read by the vendor's
   own definitions; custom objects are not guessed.

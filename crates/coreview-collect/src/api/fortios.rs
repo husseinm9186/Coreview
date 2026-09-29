@@ -16,7 +16,7 @@ pub async fn get(client: &ApiClient, token: &str, path: &str, vdom: Option<&str>
         url.push_str("vdom=");
         url.push_str(v);
     }
-    let resp = client.client.get(&url).bearer_auth(token).header("Accept", "application/json").send().await.map_err(|e| ApiError::Transport(e.to_string()))?;
+    let resp = client.client.get(&url).bearer_auth(token).header("Accept", "application/json").send().await.map_err(|e| super::transport(e, &client.pin))?;
     let status = resp.status().as_u16();
     let text = resp.text().await.map_err(|e| ApiError::Body(e.to_string()))?;
     let ms = started.elapsed().as_millis() as u64;

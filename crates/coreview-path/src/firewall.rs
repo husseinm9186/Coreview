@@ -30,6 +30,8 @@ pub fn kind(b: &Box_) -> Option<Kind> {
     match b.os.as_deref() {
         Some("fortios") => Some(Kind::Forti),
         Some("panos") => Some(Kind::Pan),
+        // LT-541: an FTD whose rules came from its FMC is zone-based.
+        Some("cisco_asa") | Some("cisco_ftd") if b.policy_from.as_deref() == Some("fmc") => Some(Kind::Other),
         Some("cisco_asa") | Some("cisco_ftd") => Some(Kind::Asa),
         _ if !b.fw.is_empty() || b.role.as_deref() == Some("firewall") => Some(Kind::Other),
         _ => None,

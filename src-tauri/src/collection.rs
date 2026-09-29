@@ -46,6 +46,11 @@ pub struct CollectionInput {
     pub keep_diagnostic: bool,
     pub connect_timeout_secs: Option<u64>,
     pub auth_timeout_secs: Option<u64>,
+    /// LT-518: a saved API login for a device's own REST API (FortiOS,
+    /// AOS-CX) and for an FMC.
+    pub api_credential_id: Option<String>,
+    /// LT-541: the FMC managing the FTDs this collection reaches.
+    pub fmc_host: Option<String>,
 }
 
 /// One event on `coreview://collection`.
@@ -345,8 +350,24 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
         }
         None => credentials.filter(|c| !c.username.trim().is_empty()).map(Into::into).ok_or("A login is needed: pick a saved one or type one.")?,
     };
-    let secrets = creds.secrets();
+    let mut secrets = creds.secrets();
     let auth = Auth { username: creds.username.clone(), password: secrets.first().cloned().unwrap_or_default(), enable: secrets.get(1).cloned(), private_key: None };
+    // LT-518: the REST side, when a saved API login was chosen.
+    let fmc_host = input.fmc_host.as_deref().map(str::trim).filter(|h| !h.is_empty()).map(str::to_string);
+    if let Some(h) = &fmc_host {
+        if h.len() > 255 || !h.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']')) {
+            return Err("The FMC address is not an address or a host name.".into());
+        }
+    }
+    let api_login = match input.api_credential_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(id) => {
+            let l = crate::vault_commands::api_credentials(&state, id)?;
+            crate::vault_commands::note_use(&state, id, "Collection (API)", &format!("{}{}", input.targets, fmc_host.as_deref().map(|h| format!(" via FMC {h}")).unwrap_or_default()));
+            secrets.push(l.secret.clone());
+            Some(l)
+        }
+        None => None,
+    };
     let catalogs = load_catalogs(&app)?;
     let location = sidecar_location(&app)?;
     // LT-529: the same host-key store the crawl and the terminal use.
@@ -408,6 +429,16 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
             let known_host_key = host_keys.lock().ok().and_then(|k| k.known(host, port));
             let target = Target { host: host.clone(), port, os_hint: os_hint.clone(), role_override: role_override.clone(), known_host_key };
             let mut run = collect_device(&mut sidecar, &catalogs, &target, &auth, &options, &sink).await;
+            if let Some(login) = &api_login {
+                // LT-518: the REST side, its certificate pinned in the same store as SSH host keys.
+                let known = |h: &str, p: u16| host_keys.lock().ok().and_then(|k| k.known(h, p));
+                if let Some(first) = coreview_collect::api::collect_for(&mut run, &catalogs, login, fmc_host.as_deref(), known, &sink).await {
+                    if let Ok(mut k) = host_keys.lock() {
+                        k.remember(&first.host, first.port, &first.fingerprint);
+                    }
+                    crate::discovery::persist_host_keys(&app2, &host_keys);
+                }
+            }
             if let (true, Some(key)) = (run.host_key_first_seen, run.host_key.clone()) {
                 if let Ok(mut k) = host_keys.lock() {
                     k.remember(host, port, &key);

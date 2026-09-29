@@ -31,3 +31,8 @@ tokio = { version = "1", features = ["full"] }
 # A fake switch for the real sidecar to log into (tests/real_sidecar_against_a_fake_switch.rs).
 russh = "0.63"
 rand = "0.10"
+# LT-518: a local TLS server with throwaway certificates made at test time,
+# so no private key is ever committed.
+rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["aws-lc-rs", "tls12"] }
+base64 = "0.22"

@@ -510,6 +510,23 @@ pub fn ssh_credentials(state: &AppState, id: &str) -> CmdResult<Credentials> {
     })
 }
 
+/// LT-518: a saved API login (kind `api`), for the REST collectors. Not a
+/// command, for the same reason as `ssh_credentials`.
+pub fn api_credentials(state: &AppState, id: &str) -> CmdResult<coreview_collect::api::ApiLogin> {
+    let guard = state.vault_key.lock().map_err(db_err)?;
+    let key = guard.as_ref().ok_or_else(|| vault::VaultError::Locked.to_string())?;
+    let stored = {
+        let conn = state.db.lock().map_err(db_err)?;
+        // D-059, as for every kind of secret.
+        db::may_use_credential(&conn, crate::commands::open_project(state).as_deref(), id)?;
+        db::credential(&conn, id).map_err(db_err)?.ok_or("That saved credential no longer exists.")?
+    };
+    if stored.kind != "api" {
+        return Err("That saved credential is not an API login.".into());
+    }
+    Ok(coreview_collect::api::ApiLogin { username: stored.username, secret: open_secret(key, &stored.secret)? })
+}
+
 /// LT-264: notes that a saved credential was offered to `target`, in the local
 /// log only. Best effort: a log that could not be written never stops the job
 /// the credential was opened for.

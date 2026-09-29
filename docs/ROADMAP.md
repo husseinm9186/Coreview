@@ -91,19 +91,6 @@ assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
 
-### LT-518 — P1 the API collectors reachable: a token from the vault, a certificate pinned per device — 2026-09-29
-**Source:** LT-514 built FortiOS REST, PAN-OS XML API and AOS-CX REST
-in Rust (D-060: "API-based collectors are Rust/reqwest from day one") with
-the certificate pinned the way an SSH host key is, but nothing calls them
-yet: a token has to come from the vault (a new credential kind, or the
-existing API-key kind), and the fingerprint seen on first use has to be
-kept per device so a change is refused before the token is sent again.
-**Acceptance:** a saved API credential chosen on the Collect tab runs
-every `parser: api` command of the device's catalog through the Rust
-collector, rows into the same tables, the certificate fingerprint kept
-with the device and shown; a changed certificate stops the run and says
-so; tests against a local TLS server with two certificates.
-
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
 confirmed by the operator on accepting P1 (2026-09-29): "embeddable
@@ -149,19 +136,6 @@ malicious or suspicious verdict, SHA-256 into `SHA256SUMS.txt` beside the
 installer) — skipped with a notice until a `VIRUSTOTAL_API_KEY` secret is
 set. A fresh Windows install collecting with no Python on the machine was
 proven on CI by LT-530 (657e963). **Not yet:** the VirusTotal key. The SBOM is LT-528.
-
-### LT-541 — FTD access policy through the FMC API — 2026-09-29
-**Source:** the same message: "FTD equivalents via FMC API". An FTD's rules
-live in its FMC, not on the box: the access policy assigned to the device,
-its rules with zones, networks and ports, and the zones each interface is
-in. **Depends on LT-518** — no API collector is reachable from the app yet
-(a token from the vault, a certificate pinned per host); this needs the same
-for the FMC's host. **Acceptance:** a read-only FMC client in
-`coreview-collect/src/api/fmc.rs` (token by the documented login call, GETs
-after), rows into `fw_policy` and `fw_zone` for each FTD the collection
-reached, tested against a local TLS server; reachable from the Collect tab
-with a saved API credential; built from Cisco's API documentation under
-D-058, unverified until a capture.
 
 ### LT-531 — P3: the modeled path, in Rust, over a collection's own tables — 2026-09-29
 **Source:** the spec's P3 ("Path builder (modeled/live/verify) + fw/NAT/PBR
@@ -658,6 +632,68 @@ by hand, window always visible, only while the app is open, never a
 service) apply.
 
 ## Done
+
+### LT-541 — FTD access policy through the FMC API — 2026-09-29, done the same day
+**Source:** the same message: "FTD equivalents via FMC API". An FTD's rules
+live in its FMC, not on the box: the access policy assigned to the device,
+its rules with zones, networks and ports, and the zones each interface is
+in. **Depends on LT-518** — no API collector is reachable from the app yet
+(a token from the vault, a certificate pinned per host); this needs the same
+for the FMC's host. **Acceptance:** a read-only FMC client in
+`coreview-collect/src/api/fmc.rs` (token by the documented login call, GETs
+after), rows into `fw_policy` and `fw_zone` for each FTD the collection
+reached, tested against a local TLS server; reachable from the Collect tab
+with a saved API credential; built from Cisco's API documentation under
+D-058, unverified until a capture.
+**Shipped:** `coreview-collect/src/api/fmc.rs`: the documented token call,
+then GETs only — device records (matched by the address the collection
+reached the FTD on, or its prompt name), policy assignments, the assigned
+access policy and its rules (paging followed), the device's interfaces with
+their zones, and the network and port objects and groups. Rules become
+`fw_policy` rows in rule order (MONITOR decides nothing and is left out;
+ALLOW/TRUST allow, BLOCK… deny), the default action last; interfaces become
+`fw_zone` rows naming both the interface and its `nameif`; objects
+`fw_object` rows. Where an FTD's FMC rules exist the path builder uses them
+and drops the compiled `CSM_FW_ACL_` list and its global binding, deciding
+the FTD by zones in rule order (D-061). The ASA catalog's bootstrapped FMC
+entries, which fed the wrong table, now describe what is read; NAT and routes
+still come from the FTD's CLI. Scenario test: an FTD with both, decided by
+its FMC rule and its default action. **Not yet:** a real FMC (built from
+Cisco's API documentation, D-058); an FTD's own `advanced` access-list lines
+are not read by the ASA reader, so without an FMC an FTD's policy is not
+collected.
+
+### LT-518 — P1 the API collectors reachable: a token from the vault, a certificate pinned per device — 2026-09-29, done 2026-09-29
+**Source:** LT-514 built FortiOS REST, PAN-OS XML API and AOS-CX REST
+in Rust (D-060: "API-based collectors are Rust/reqwest from day one") with
+the certificate pinned the way an SSH host key is, but nothing calls them
+yet: a token has to come from the vault (a new credential kind, or the
+existing API-key kind), and the fingerprint seen on first use has to be
+kept per device so a change is refused before the token is sent again.
+**Acceptance:** a saved API credential chosen on the Collect tab runs
+every `parser: api` command of the device's catalog through the Rust
+collector, rows into the same tables, the certificate fingerprint kept
+with the device and shown; a changed certificate stops the run and says
+so; tests against a local TLS server with two certificates.
+**Pulled forward 2026-09-29** as LT-541's prerequisite: an FTD's policy
+can only be read from its FMC over REST, and no API collector was reachable.
+**Shipped:** a saved credential kind `api` (username and password, or a
+token with the username blank; opened by `api_credentials`, D-059 checked,
+the use logged); the Collect tab takes an API login and an FMC address; after
+each device's SSH collection `coreview-collect::api::collect_for` runs its
+REST side — FortiOS and AOS-CX on the device itself (every `parser: api`
+command with a complete path), an FTD through its FMC (LT-541) — and appends
+the answers as steps, stored and normalised like any other. The certificate
+is pinned in the SSH host-key store under `tls:<host>`: remembered on first
+sight and said in the device's log, and a different one stops the call
+before the login is sent, also said. **Run:** against a local TLS server
+with two throwaway certificates made at test time — FMC and FortiOS answers,
+paging, first sight, the same certificate again, another certificate refused
+with no credential reaching it, a wrong password, a device the FMC does not
+manage, and the collection-shaped call that appends steps; the Collect
+harness checks the login and the FMC address travel and that only API logins
+are offered. **Not yet:** a real device or FMC. PAN-OS's catalog names no
+`parser: api` command, so it has no REST side yet.
 
 ### LT-555 — **bug** AOS-S addresses and routes had no interface, trunks no members — 2026-09-29, fixed the same day
 **Same sweep.** `hp_procurve_show_ip` and `hp_procurve_show_ip_route` name
@@ -12813,6 +12849,13 @@ internal COREVIEW-FGT-Root-CA cannot and never will.
 ---
 
 ## Icebox
+
+### The notices' heading counts test-only crates as "in the executable" — 2026-09-29
+Seen regenerating THIRD-PARTY-NOTICES for LT-518's test-only `rcgen`:
+`scripts/third-party-notices.mjs` reads `cargo metadata` whole, so
+dev-dependencies (russh, rcgen, …) are listed under "crates in the
+executable". Harmless for the licence — more notices, not fewer — but the
+heading overstates. Filtering by dependency kind would fix it.
 
 ### Normaliser sweep leftovers — 2026-09-29
 Found by the LT-540 sweep of every template the catalogs name, and not

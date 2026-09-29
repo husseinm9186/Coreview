@@ -50,7 +50,7 @@ export function VaultSettings() {
   // Adding a credential.
   const [adding, setAdding] = useState(false);
   const [label, setLabel] = useState('');
-  const [kind, setKind] = useState<'ssh' | 'snmp' | 'meraki'>('ssh');
+  const [kind, setKind] = useState<'ssh' | 'snmp' | 'meraki' | 'api'>('ssh');
   const [username, setUsername] = useState('');
   const [secret, setSecret] = useState('');
   const [secondSecret, setSecondSecret] = useState('');
@@ -204,28 +204,31 @@ export function VaultSettings() {
               <label className="cv-field cv-field-narrow">
                 <span>{t('vaultSettings.for')}</span>
                 <select className="cv-input" value={kind}
-                  onChange={(e) => setKind(e.target.value as 'ssh' | 'snmp' | 'meraki')}>
+                  onChange={(e) => setKind(e.target.value as 'ssh' | 'snmp' | 'meraki' | 'api')}>
                   <option value="ssh">{t('vaultSettings.ssh')}</option>
                   <option value="snmp">{t('vaultSettings.snmp')}</option>
                   {/* LT-404: a Dashboard API key is a secret like any other,
                       so it is sealed by the same vault rather than getting a
                       store of its own. */}
                   <option value="meraki">{t('vaultSettings.merakiApiKey')}</option>
+                  {/* LT-518: a device's or an FMC's REST login — a username and
+                      password, or a token alone with the username blank. */}
+                  <option value="api">{t('vaultSettings.apiLogin')}</option>
                 </select>
               </label>
               {kind !== 'meraki' && (
                 <label className="cv-field cv-field-narrow">
-                  <span>{kind === 'snmp' ? 'v3 user (blank for v2c)' : 'Username'}</span>
+                  <span>{kind === 'snmp' ? 'v3 user (blank for v2c)' : kind === 'api' ? t('vaultSettings.apiUser') : 'Username'}</span>
                   <input className="cv-input" value={username} autoComplete="off"
                     onChange={(e) => setUsername(e.target.value)} />
                 </label>
               )}
               <label className="cv-field cv-field-narrow">
-                <span>{kind === 'snmp' ? 'Community or auth password' : kind === 'meraki' ? 'API key' : 'Password'}</span>
+                <span>{kind === 'snmp' ? 'Community or auth password' : kind === 'meraki' ? 'API key' : kind === 'api' ? t('vaultSettings.apiSecret') : 'Password'}</span>
                 <input className="cv-input" type="password" value={secret} autoComplete="off"
                   onChange={(e) => setSecret(e.target.value)} />
               </label>
-              {kind !== 'meraki' && (
+              {kind !== 'meraki' && kind !== 'api' && (
                 <label className="cv-field cv-field-narrow">
                   <span>{kind === 'snmp' ? 'Privacy password' : 'Enable password'}</span>
                   <input className="cv-input" type="password" value={secondSecret} autoComplete="off"

@@ -52,9 +52,7 @@ pub async fn keygen(client: &ApiClient, user: &str, password: &str) -> Result<St
         .client
         .get(client.url("/api/"))
         .query(&[("type", "keygen"), ("user", user), ("password", password)])
-        .send()
-        .await
-        .map_err(|e| ApiError::Transport(e.to_string()))?;
+        .send().await.map_err(|e| super::transport(e, &client.pin))?;
     let status = resp.status().as_u16();
     let text = resp.text().await.map_err(|e| ApiError::Body(e.to_string()))?;
     if status >= 400 {
@@ -75,7 +73,7 @@ pub async fn op(client: &ApiClient, key: &str, command: &str, vsys: Option<&str>
     if let Some(v) = vsys {
         query.push(("vsys", v.to_string()));
     }
-    let resp = client.client.get(client.url("/api/")).query(&query).send().await.map_err(|e| ApiError::Transport(e.to_string()))?;
+    let resp = client.client.get(client.url("/api/")).query(&query).send().await.map_err(|e| super::transport(e, &client.pin))?;
     let status = resp.status().as_u16();
     let text = resp.text().await.map_err(|e| ApiError::Body(e.to_string()))?;
     let ms = started.elapsed().as_millis() as u64;

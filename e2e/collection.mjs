@@ -95,7 +95,11 @@ await page.addInitScript(({ p, r, d, a, sh, tp }) => {
       if (cmd === "shadow_report") return Promise.resolve(sh);
       if (cmd === "collection_topology") return Promise.resolve(tp);
       if (cmd === "vault_status") return Promise.resolve({ exists: true, unlocked: true, credentials: 1, minimumPassphrase: 12, keptInKeychain: false });
-      if (cmd === "list_credentials") return Promise.resolve([{ id: "cred-ssh", label: "reader", kind: "ssh", username: "reader", detail: "", hasSecondSecret: false }]);
+      if (cmd === "list_credentials") return Promise.resolve([
+        { id: "cred-ssh", label: "reader", kind: "ssh", username: "reader", detail: "", hasSecondSecret: false },
+        // LT-518: an API login, offered only where an API login is asked for.
+        { id: "cred-api", label: "fmc reader", kind: "api", username: "reader", detail: "", hasSecondSecret: false },
+      ]);
       if (cmd === "list_collection_runs") return Promise.resolve(r);
       if (cmd === "collection_run") return Promise.resolve(d);
       if (cmd === "collection_table") return Promise.resolve(args.table === "arp" ? a : []);
@@ -182,10 +186,17 @@ await page.waitForSelector('[data-region="collect-log"]');
 // Starting a preview sends exactly the declared input, with the saved login and no typed one.
 await region.locator("textarea").fill("192.0.2.10\n192.0.2.11");
 await region.locator("select", { has: page.locator('option[value="cred-ssh"]') }).first().selectOption("cred-ssh");
+// LT-518, LT-541: an API login and the FMC that manages the FTDs.
+const apiSelect = region.locator('select[aria-label="API login"]');
+check("the API login offers only API logins", (await apiSelect.locator('option[value="cred-api"]').count()) === 1 && (await apiSelect.locator('option[value="cred-ssh"]').count()) === 0);
+check("and the SSH login does not offer an API one", (await region.locator('select', { has: page.locator('option[value="cred-ssh"]') }).first().locator('option[value="cred-api"]').count()) === 0);
+await apiSelect.selectOption("cred-api");
+await region.locator(".cv-field", { has: page.locator('span:text-is("FMC for FTDs")') }).locator("input").fill("192.0.2.5");
 await region.getByRole("button", { name: "Preview plan" }).click();
 await page.waitForTimeout(200);
 const started = await page.evaluate(() => window.__calls.find((c) => c.cmd === "start_collection"));
 check("Preview plan sends the input with planOnly and the saved login", !!started && started.args.input.planOnly === true && started.args.input.credentialId === "cred-ssh" && started.args.input.targets.includes("192.0.2.11") && started.args.credentials === undefined);
+check("the API login and the FMC travel with the input", !!started && started.args.input.apiCredentialId === "cred-api" && started.args.input.fmcHost === "192.0.2.5");
 check("nothing typed travels when a saved login is chosen", !!started && !("password" in (started.args.credentials ?? {})));
 
 await browser.close();

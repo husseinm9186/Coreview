@@ -52,6 +52,9 @@ export function CollectionPanel() {
   const [enable, setEnable] = useState('');
   const [lightOnly, setLightOnly] = useState(false);
   const [keepDiagnostic, setKeepDiagnostic] = useState(false);
+  // LT-518, LT-541: the REST side — a device's own API, or the FMC that manages an FTD.
+  const [apiCredentialId, setApiCredentialId] = useState<string | undefined>();
+  const [fmcHost, setFmcHost] = useState('');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [live, setLive] = useState<string[]>([]);
@@ -134,7 +137,7 @@ export function CollectionPanel() {
     setLive([]);
     setBusy(true);
     void ipc.startCollection(
-      { projectId: meta.id, targets, port, osHint: osHint || undefined, roleOverride: role || undefined, planOnly, lightOnly, credentialId: credentialId || undefined, keepDiagnostic },
+      { projectId: meta.id, targets, port, osHint: osHint || undefined, roleOverride: role || undefined, planOnly, lightOnly, credentialId: credentialId || undefined, keepDiagnostic, apiCredentialId: apiCredentialId || undefined, fmcHost: fmcHost.trim() || undefined },
       credentialId ? undefined : { username, password, enablePassword: enable || undefined },
     ).catch((e: unknown) => { setBusy(false); setProblem(e instanceof Error ? e.message : String(e)); });
   };
@@ -228,6 +231,11 @@ export function CollectionPanel() {
             </label>
           </>
         )}
+        <SavedCredentialSelect kind="api" label={t('collect.apiCredential')} value={apiCredentialId} onChange={setApiCredentialId} />
+        <label className="cv-field cv-field-narrow">
+          <span>{t('collect.fmcHost')}</span>
+          <input className="cv-input cv-mono" value={fmcHost} spellCheck={false} placeholder="192.0.2.5" onChange={(e) => setFmcHost(e.target.value)} />
+        </label>
         <label className="cv-check"><input type="checkbox" checked={lightOnly} onChange={(e) => setLightOnly(e.target.checked)} /> {t('collect.lightOnly')}</label>
         <label className="cv-check"><input type="checkbox" checked={keepDiagnostic} onChange={(e) => setKeepDiagnostic(e.target.checked)} /> {t('collect.keepDiagnostic')}</label>
         <label className="cv-check"><input type="checkbox" checked={shadow} onChange={(e) => toggleShadow(e.target.checked)} /> {t('collect.shadow')}</label>

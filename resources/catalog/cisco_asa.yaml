@@ -299,39 +299,44 @@ commands:
     timeout: 30
     verified: unverified
     evidence: no template, no structured output, no capture yet (LT-511)
-  - id: devices_devicerecords_id_physicalinterfaces
-    cmd: /devices/devicerecords/{id}/physicalinterfaces
-    gate: always
+  # LT-541: an FTD's policy lives in its FMC. These three are what
+  # coreview-collect/src/api/fmc.rs reads for the FTD a collection reached
+  # (matched by address or name), after the documented token call; NAT and
+  # routes come from the FTD's own CLI above. From Cisco's FMC REST API
+  # documentation (D-058), unverified until the operator's FMC answers.
+  - id: fmc_access_rules
+    cmd: /policy/accesspolicies/{policy}/accessrules
+    gate: role.ftd
     parser: api
-    api: /devices/devicerecords/{id}/physicalinterfaces
+    api: /policy/accesspolicies/{policy}/accessrules
     feeds:
-      - device
+      - fw_policy
     weight: light
-    timeout: 30
+    timeout: 60
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
-  - id: policy_accesspolicies
-    cmd: /policy/accesspolicies
-    gate: always
+    evidence: FMC REST, read by the FMC collector (LT-541); field mapping from documentation
+  - id: fmc_interfaces
+    cmd: /devices/devicerecords/{device}/physicalinterfaces
+    gate: role.ftd
     parser: api
-    api: /policy/accesspolicies
+    api: /devices/devicerecords/{device}/physicalinterfaces
     feeds:
-      - device
+      - fw_zone
     weight: light
-    timeout: 30
+    timeout: 60
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
-  - id: policy_ftdnatpolicies
-    cmd: /policy/ftdnatpolicies
-    gate: always
+    evidence: FMC REST, read by the FMC collector (LT-541); field mapping from documentation
+  - id: fmc_objects
+    cmd: /object/networkaddresses
+    gate: role.ftd
     parser: api
-    api: /policy/ftdnatpolicies
+    api: /object/networkaddresses
     feeds:
-      - device
+      - fw_object
     weight: light
-    timeout: 30
+    timeout: 60
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: FMC REST (network and port objects and groups), read by the FMC collector (LT-541); field mapping from documentation
   - id: show_interface
     cmd: show interface
     gate: always
@@ -396,17 +401,6 @@ commands:
     timeout: 120
     verified: lab
     evidence: ntc-templates tests (3 captures)
-  - id: routing_ipv4staticroutes
-    cmd: /routing/ipv4staticroutes
-    gate: always
-    parser: api
-    api: /routing/ipv4staticroutes
-    feeds:
-      - device
-    weight: heavy
-    timeout: 120
-    verified: docs
-    evidence: structured output (REST); field mapping from documentation
 live_path:
   - id: show_route_dst
     cmd: show route {dst}
