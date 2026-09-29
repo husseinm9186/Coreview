@@ -28,3 +28,6 @@ roxmltree = "0.20"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
+# A fake switch for the real sidecar to log into (tests/real_sidecar_against_a_fake_switch.rs).
+russh = "0.63"
+rand = "0.10"

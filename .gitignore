@@ -13,3 +13,8 @@ src-tauri/gen/
 # D-028: the shipped stencils folder carries no artwork, only its README.
 stencils/*
 !stencils/README.md
+
+# The development sidecar interpreter (sidecar/README.md); the installer carries its own.
+sidecar/.venv/
+__pycache__/
+*.pyc

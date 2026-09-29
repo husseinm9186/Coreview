@@ -513,10 +513,18 @@ tests. Rust spawns it by absolute path from the install directory
 dev venv, else `COREVIEW_SIDECAR_PYTHON`) and `coreview-collect`'s client
 speaks the contract with correlation by id, events drained separately,
 secrets on stdin only; `examples/fake_sidecar.rs` and five integration
-tests drive the client and the collector without Python. **Not yet:** the
-CI step that lays the sidecar under `src-tauri/sidecar/` before the
-installer is built, and a session against a real device — both wait on
-the operator's next build.
+tests drive the client and the collector without Python. **The real
+sidecar has met a device:** `tests/real_sidecar_against_a_fake_switch.rs`
+logs the venv's scrapli + paramiko into a russh fake IOS switch
+(`examples/fake_switch.rs`, a lab harness — kept) and the collector
+recognises it, probes it, runs the plan and parses `show version`, `show
+ip arp` and `show cdp neighbors detail` with the vendored templates; it
+found two real bugs on the way (GenericDriver takes no `auth_secondary`;
+a console echoes as it is typed and runs on return, which the fake now
+does). Skips itself where no sidecar is installed. **Not yet:** the CI
+step that lays the sidecar under `src-tauri/sidecar/` before the
+installer is built (LT-519), and a session against the operator's own
+hardware.
 
 ### LT-512 — P1 the catalog: `resources/catalog/<os>.yaml` and the `coreview-catalog` crate — 2026-09-29, done the same day
 **Acceptance:** one YAML per P1 platform plus the Phase-2 stubs, in the

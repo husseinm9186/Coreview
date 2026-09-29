@@ -91,10 +91,13 @@ class Session:
             "timeout_ops": 30,
         }
         platform = PLATFORMS.get(os_name)
+        self.enable_secret = common["auth_secondary"]
         if platform is None:
             # "generic" (the fingerprint pass, before the OS is known) and any OS
             # without a scrapli platform run on the GenericDriver with the
             # catalog's prompt pattern, or a loose one that matches every CLI.
+            # GenericDriver knows no privilege levels, so no auth_secondary.
+            del common["auth_secondary"]
             prompt = self.spec.get("prompt_pattern") or r"^.*[>#$%\]]\s*$"
             self.conn = GenericDriver(comms_prompt_pattern=prompt, **common)
             self.generic = True
@@ -157,7 +160,7 @@ class Session:
             prompt = self._prompt()
             if not re.search(lvl["pattern"], prompt):
                 self.conn.send_interactive(
-                    [(lvl["escalate"], lvl.get("escalate_prompt") or "assword", False), (self.conn.auth_secondary, "", True)] if lvl.get("escalate_auth") else [(lvl["escalate"], "", False)],
+                    [(lvl["escalate"], lvl.get("escalate_prompt") or "assword", False), (self.enable_secret, "", True)] if lvl.get("escalate_auth") else [(lvl["escalate"], "", False)],
                     timeout_ops=15,
                 )
         for step in (self.spec.get("paging") or {}).get("off") or self.spec.get("on_open") or []:
