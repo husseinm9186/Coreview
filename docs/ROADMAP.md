@@ -138,20 +138,19 @@ used unmodified and replaceable in place, with its source address.
 **Not yet:** a green Windows run, the VirusTotal step (none exists in
 the workflow yet), and Azure Trusted Signing in place of the PFX.
 
-### LT-520 — Phase 2: a TextFSM interpreter in Rust, passing every vendored fixture — 2026-09-29
-**Source:** the operator, 2026-09-29, on accepting P1: "Rust TextFSM
-interpreter in coreview-catalog. Acceptance = 100% of the same 568
-vendored ntc fixtures the sidecar passes, in cargo test." D-060 Phase 2.
-Second in his order.
-**Acceptance:** `coreview-catalog::textfsm` reads a `.textfsm` template
-(Value options Required, Filldown, Fillup, Key, List; states, rules,
-`Continue`, `Next`, `Record`, `NoRecord`, `Clear`, `Clearall`, `Error`,
-`${Name}` substitution, `EOF`), runs it over text, and gives the rows
-clitable gives — including the multi-template join and lists' missing
-captures as `None`; one `cargo test` iterates every `.raw`/`.yml` pair
-under `resources/templates/tests` and passes 568 of 568; the two
-crates.io candidates (`textfsm-rs` 0.3.6, `textfsm-core` 0.3.1) are run
-against the same harness first and the choice recorded.
+### LT-525 — The six upstream ntc fixtures the Rust engine does not yet match — 2026-09-29
+**Source:** LT-520's run over ntc-templates' whole suite: 1889 of 1895.
+The six: `hp_procurve_show_interfaces_status` (4 fixtures — its `Value
+NAME` regex ends in a look-ahead after the group, which textfsm-rs's
+template grammar refuses), `mikrotik_routeros_interface_print_detail` (1
+— a `${ID}+` rule loses to the catch-all description rule), and
+`linux_iwlist_wlan0_scanning` (1 — records land one row late around a
+`Continue.Record`). No catalog names any of the three today.
+**Acceptance:** each reproduced in a test against textfsm-rs, fixed
+upstream (a pull request to textfsm-rs) or in a patch kept here with its
+reason, and the whole-suite run at 1895 of 1895 — needed before the
+ProCurve `show interfaces status` or a RouterOS detail command enters a
+catalog, and before Phase 4 deletes the sidecar.
 
 ### LT-521 — Phase 3: shadow mode — both collectors on every run, rows diffed per (os, command), each OS flipped at zero mismatch — 2026-09-29
 **Source:** the operator, 2026-09-29: "shadow mode behind a feature flag
@@ -460,6 +459,44 @@ pulled into Phase 1.*
 
 ## Done
 
+### LT-520 — Phase 2: a TextFSM interpreter in Rust, passing every vendored fixture — 2026-09-29, done the same day
+**Source:** the operator, 2026-09-29, on accepting P1: "Rust TextFSM
+interpreter in coreview-catalog. Acceptance = 100% of the same 568
+vendored ntc fixtures the sidecar passes, in cargo test." D-060 Phase 2.
+Second in his order.
+**Acceptance:** `coreview-catalog::textfsm` reads a `.textfsm` template
+(Value options Required, Filldown, Fillup, Key, List; states, rules,
+`Continue`, `Next`, `Record`, `NoRecord`, `Clear`, `Clearall`, `Error`,
+`${Name}` substitution, `EOF`), runs it over text, and gives the rows
+clitable gives — including the multi-template join and lists' missing
+captures as `None`; one `cargo test` iterates every `.raw`/`.yml` pair
+under `resources/templates/tests` and passes 568 of 568; the two
+crates.io candidates (`textfsm-rs` 0.3.6, `textfsm-core` 0.3.1) are run
+against the same harness first and the choice recorded.
+**Done 2026-09-29.** `coreview-catalog::textfsm`: an `Engine` over the
+vendored templates with a compiled-template cache, clitable's
+multi-template join (`TextTable.extend`, on `Key` columns or by
+position), keys lower-cased, lists' unmatched captures as `"None"`; and
+`Index`, ntc's `index` matched the way clitable matches it (Platform a
+regex, Command with `[[…]]` expanded, both from the start, look-aheads
+through fancy-regex, first row wins). **The state machine is textfsm-rs
+0.3.6** (Apache-2.0, no default features), chosen against the fixtures
+first: it gave ntc's exact rows for all 502 single-template pairs;
+textfsm-core 0.3.1 gave 493, and its nine misses are unrecoverable (it
+drops a List value's unmatched captures, so per-interface lists lose
+their alignment). **Acceptance met:** `tests/ntc_conformance.rs` runs
+every vendored pair, resolving each fixture folder through the index as
+ntc's own test does — **519 of 519** (the set is 519, not 568: 568 was
+the sidecar's whole pytest run; corrected in LT-509). The sidecar's
+fixture test now walks the same 519, so both engines are measured on
+identical pairs. **Beyond the acceptance:** D-060 set the bar at
+ntc-templates' whole suite; with `COREVIEW_NTC_CHECKOUT` pointing at a
+clone the same test runs all of it — **1889 of 1895**; the six are three
+templates no catalog names, logged as LT-525. textfsm-rs prints a
+`WARNING:` line to stdout when it compiles a few templates; harmless in
+the app (once per template per run, no device data) and noisy in test
+output. Nothing calls the engine from a collection yet — that is LT-521.
+
 ### LT-524 — **bug** Two IOS commands and one IOS-XR command were sent with `{vrf}` still in them — 2026-09-29, fixed the same day
 **Found** while testing LT-522: the collector's Catalyst test showed
 `show ip arp vrf {vrf}` and `show ip protocols vrf {vrf}` in the list of
@@ -719,8 +756,11 @@ the index (980 files, ntc-templates 9.3.0 at d86d09fa) with the Apache-2.0
 LICENSE and a NOTICE naming the commit, and the tests for the 23 platforms
 the catalogs name; `scripts/prune-ntc-tests.mjs` keeps only the fixture
 directories of the 192 templates a catalog names — 519 `.raw`/`.yml`
-pairs, 6 MB. `sidecar/tests/test_parse_fixtures.py` runs all of them and
-passes 568/568, including the multi-template index rows (`show module`,
+pairs, 6 MB. (Corrected 2026-09-29: 519 pairs; "568" was the whole pytest
+run, the fixtures plus 49 allowlist and protocol tests, and was repeated
+as a fixture count in the operator's LT-520 wording.)
+`sidecar/tests/test_parse_fixtures.py` runs all of them and
+passes all of them, including the multi-template index rows (`show module`,
 `show switch`) joined the way clitable joins them. The notices generator
 ships the licence text. Run.
 

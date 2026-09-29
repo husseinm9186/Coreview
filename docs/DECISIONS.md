@@ -1193,4 +1193,11 @@ rule (a running configuration is kept only where the operator pointed).
   since it is a plain folder of `.py` files in the install directory. It
   is named in THIRD-PARTY-NOTICES.md with its source address. It leaves
   with the sidecar in Phase 4.
+- *Phase 2's engine (LT-520):* D-060 said "check crates.io first; if
+  immature, write one". Checked: **textfsm-rs** matches ntc's rows on every
+  vendored fixture and 1889 of 1895 upstream, so Coreview builds on it
+  rather than writing a state machine, and adds only clitable's index
+  matching and multi-template join. textfsm-core was measured and not
+  taken: it drops a List value's unmatched captures, which loses
+  information no wrapper can put back.
 

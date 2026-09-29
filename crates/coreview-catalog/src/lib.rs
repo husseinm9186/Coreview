@@ -17,6 +17,7 @@ pub mod gate;
 pub mod load;
 pub mod plan;
 pub mod schema;
+pub mod textfsm;
 
 pub use allowlist::{verdict, Verdict};
 pub use gate::{Facts, Gate};

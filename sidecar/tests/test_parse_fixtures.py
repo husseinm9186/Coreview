@@ -15,40 +15,37 @@ from coreview_sidecar.parse import parse, set_templates_dir
 ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 NTC = os.path.join(ROOT, "resources", "templates", "ntc")
 TESTS = os.path.join(ROOT, "resources", "templates", "tests")
-CATALOGS = os.path.join(ROOT, "resources", "catalog")
 
 set_templates_dir(NTC)
 
 
-def templates_named_by_catalogs():
-    """[first template, *also] per catalog command; the fixture dir is named after the first."""
-    named = {}
-    for path in glob.glob(os.path.join(CATALOGS, "*.yaml")):
-        with open(path, encoding="utf-8") as f:
-            cat = yaml.safe_load(f)
-        for cmd in cat.get("commands", []) + cat.get("live_path", []):
-            first = next((p for p in [cmd.get("parser", ""), cmd.get("shadow") or ""] if p.startswith("textfsm:")), None)
-            if first:
-                named.setdefault(first[len("textfsm:"):], [a[len("textfsm:"):] for a in cmd.get("also", [])])
-        for probe in cat.get("caps_probe", []):
-            p = probe.get("parser") or ""
-            if p.startswith("textfsm:"):
-                named.setdefault(p[len("textfsm:"):], [])
-    return sorted(named.items())
+def also_from_index():
+    """first template -> the templates the same index row joins after it."""
+    out = {}
+    with open(os.path.join(NTC, "index"), encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("Template,"):
+                continue
+            names = [t.strip().removesuffix(".textfsm") for t in line.split(",")[0].split(":")]
+            out.setdefault(names[0], names[1:])
+    return out
 
 
 def fixture_pairs():
-    platforms = sorted(os.listdir(TESTS), key=len, reverse=True)
+    """Every vendored pair — the same set crates/coreview-catalog/tests/ntc_conformance.rs runs."""
+    also = also_from_index()
     pairs = []
-    for name, also in templates_named_by_catalogs():
-        platform = next((p for p in platforms if name.startswith(p + "_")), None)
-        if platform is None:
+    for platform in sorted(os.listdir(TESTS)):
+        pdir = os.path.join(TESTS, platform)
+        if not os.path.isdir(pdir):
             continue
-        d = os.path.join(TESTS, platform, name[len(platform) + 1:])
-        for raw in sorted(glob.glob(os.path.join(d, "*.raw"))):
-            yml = raw[:-4] + ".yml"
-            if os.path.exists(yml):
-                pairs.append((name, also, raw, yml))
+        for command in sorted(os.listdir(pdir)):
+            name = f"{platform}_{command}"
+            for raw in sorted(glob.glob(os.path.join(pdir, command, "*.raw"))):
+                yml = raw[:-4] + ".yml"
+                if os.path.exists(yml):
+                    pairs.append((name, also.get(name, []), raw, yml))
     return pairs
 
 
@@ -56,7 +53,7 @@ PAIRS = fixture_pairs()
 
 
 def test_the_catalogs_name_templates_with_fixtures():
-    assert len(PAIRS) >= 200, len(PAIRS)
+    assert len(PAIRS) >= 519, len(PAIRS)
 
 
 @pytest.mark.parametrize("name,also,raw,yml", PAIRS, ids=[os.path.relpath(r, TESTS) for _, _, r, _ in PAIRS])

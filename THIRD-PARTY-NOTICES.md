@@ -71,9 +71,9 @@ MIT (23), ISC (9), MIT OR Apache-2.0 (3), Apache-2.0 OR MIT (1), BSD-3-Clause (1
 | yaml | 2.9.1 | ISC |
 | zustand | 4.5.7 | MIT |
 
-## Rust — 756 crates in the executable
+## Rust — 763 crates in the executable
 
-MIT OR Apache-2.0 (357), MIT (141), Apache-2.0 OR MIT (102), MIT/Apache-2.0 (38), Zlib OR Apache-2.0 OR MIT (18), Unicode-3.0 (18), Unlicense OR MIT (10), BSD-3-Clause (7), MIT OR Apache-2.0 OR Zlib (7), Apache-2.0 (7), MPL-2.0 (5), Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (5), ISC (4), Apache-2.0/MIT (3), Zlib (3), Apache-2.0 OR ISC OR MIT (3), MIT OR Zlib OR Apache-2.0 (2), BSD-3-Clause OR Apache-2.0 (2), BSD-3-Clause OR MIT OR Apache-2.0 (2), MIT OR Apache-2.0 OR LGPL-2.1-or-later (2), Unlicense/MIT (2), CDLA-Permissive-2.0 (2), BSD-2-Clause OR Apache-2.0 OR MIT (2), 0BSD OR MIT OR Apache-2.0 (1), BSD-2-Clause (1), ISC AND (Apache-2.0 OR ISC) (1), ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0) (1), BSD-3-Clause AND MIT (1), BSD-3-Clause/MIT (1), Apache-2.0 AND MIT (1), CC0-1.0 OR MIT-0 OR Apache-2.0 (1), MIT OR Apache-2.0 OR BSD-1-Clause (1), Apache-2.0 / MIT (1), Apache-2.0 AND ISC (1), Apache-2.0 OR BSL-1.0 (1), Apache-2.0 WITH LLVM-exception (1), (MIT OR Apache-2.0) AND Unicode-3.0 (1)
+MIT OR Apache-2.0 (362), MIT (142), Apache-2.0 OR MIT (102), MIT/Apache-2.0 (38), Zlib OR Apache-2.0 OR MIT (18), Unicode-3.0 (18), Unlicense OR MIT (10), Apache-2.0 (8), BSD-3-Clause (7), MIT OR Apache-2.0 OR Zlib (7), MPL-2.0 (5), Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (5), ISC (4), Apache-2.0/MIT (3), Zlib (3), Apache-2.0 OR ISC OR MIT (3), MIT OR Zlib OR Apache-2.0 (2), BSD-3-Clause OR Apache-2.0 (2), BSD-3-Clause OR MIT OR Apache-2.0 (2), MIT OR Apache-2.0 OR LGPL-2.1-or-later (2), Unlicense/MIT (2), CDLA-Permissive-2.0 (2), BSD-2-Clause OR Apache-2.0 OR MIT (2), 0BSD OR MIT OR Apache-2.0 (1), BSD-2-Clause (1), ISC AND (Apache-2.0 OR ISC) (1), ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0) (1), BSD-3-Clause AND MIT (1), BSD-3-Clause/MIT (1), Apache-2.0 AND MIT (1), CC0-1.0 OR MIT-0 OR Apache-2.0 (1), MIT OR Apache-2.0 OR BSD-1-Clause (1), Apache-2.0 / MIT (1), Apache-2.0 AND ISC (1), Apache-2.0 OR BSL-1.0 (1), Apache-2.0 WITH LLVM-exception (1), (MIT OR Apache-2.0) AND Unicode-3.0 (1)
 
 | Component | Version | Licence |
 | --- | --- | --- |
@@ -248,6 +248,7 @@ MIT OR Apache-2.0 (357), MIT (141), Apache-2.0 OR MIT (102), MIT/Apache-2.0 (38)
 | event-listener-strategy | 0.5.4 | Apache-2.0 OR MIT |
 | fallible-iterator | 0.3.0 | MIT/Apache-2.0 |
 | fallible-streaming-iterator | 0.1.9 | MIT/Apache-2.0 |
+| fancy-regex | 0.17.0 | MIT |
 | fancy-regex | 0.19.2 | MIT |
 | fastrand | 2.5.0 | Apache-2.0 OR MIT |
 | fdeflate | 0.3.7 | MIT OR Apache-2.0 |
@@ -459,6 +460,10 @@ MIT OR Apache-2.0 (357), MIT (141), Apache-2.0 OR MIT (102), MIT/Apache-2.0 (38)
 | pdf-writer | 0.12.1 | MIT OR Apache-2.0 |
 | pem-rfc7468 | 1.0.0 | Apache-2.0 OR MIT |
 | percent-encoding | 2.3.2 | MIT OR Apache-2.0 |
+| pest | 2.9.2 | MIT OR Apache-2.0 |
+| pest_derive | 2.9.2 | MIT OR Apache-2.0 |
+| pest_generator | 2.9.2 | MIT OR Apache-2.0 |
+| pest_meta | 2.9.2 | MIT OR Apache-2.0 |
 | phc | 0.6.1 | Apache-2.0 OR MIT |
 | phf | 0.13.1 | MIT |
 | phf_codegen | 0.13.1 | MIT |
@@ -647,6 +652,7 @@ MIT OR Apache-2.0 (357), MIT (141), Apache-2.0 OR MIT (102), MIT/Apache-2.0 (38)
 | tauri-winres | 0.3.6 | MIT |
 | tempfile | 3.27.0 | MIT OR Apache-2.0 |
 | tendril | 0.5.1 | MIT OR Apache-2.0 |
+| textfsm-rs | 0.3.6 | Apache-2.0 |
 | thiserror | 1.0.69 | MIT OR Apache-2.0 |
 | thiserror | 2.0.20 | MIT OR Apache-2.0 |
 | thiserror-impl | 1.0.69 | MIT OR Apache-2.0 |
@@ -686,6 +692,7 @@ MIT OR Apache-2.0 (357), MIT (141), Apache-2.0 OR MIT (102), MIT/Apache-2.0 (38)
 | ttf-parser | 0.25.1 | MIT OR Apache-2.0 |
 | typeid | 1.0.3 | MIT OR Apache-2.0 |
 | typenum | 1.20.1 | MIT OR Apache-2.0 |
+| ucd-trie | 0.1.7 | MIT OR Apache-2.0 |
 | uds_windows | 1.2.1 | MIT |
 | unarray | 0.1.4 | MIT OR Apache-2.0 |
 | unic-char-property | 0.9.0 | MIT/Apache-2.0 |
@@ -836,8 +843,6 @@ MIT OR Apache-2.0 (357), MIT (141), Apache-2.0 OR MIT (102), MIT/Apache-2.0 (38)
 
 ## LGPL components
 
-- **r-efi 5.3.0** — MIT OR Apache-2.0 OR LGPL-2.1-or-later, https://github.com/r-efi/r-efi
-- **r-efi 6.0.0** — MIT OR Apache-2.0 OR LGPL-2.1-or-later, https://github.com/r-efi/r-efi
 - **paramiko (collector sidecar) 3.5.1** — LGPL-2.1-or-later, https://github.com/paramiko/paramiko
 
 These are used unmodified, as published, and installed as ordinary files
@@ -1387,7 +1392,7 @@ SOFTWARE.
 
 ## Rust
 
-### 285 components
+### 291 components
 
 - aead 0.5.2
 - aead 0.6.1
@@ -1561,6 +1566,10 @@ SOFTWARE.
 - pbkdf2 0.13.0
 - pem-rfc7468 1.0.0
 - percent-encoding 2.3.2
+- pest 2.9.2
+- pest_derive 2.9.2
+- pest_generator 2.9.2
+- pest_meta 2.9.2
 - phc 0.6.1
 - piper 0.2.5
 - pkcs1 0.8.0-rc.4
@@ -1637,10 +1646,12 @@ SOFTWARE.
 - tao-macros 0.1.4
 - tempfile 3.27.0
 - tendril 0.5.1
+- textfsm-rs 0.3.6
 - tinyvec 1.12.0
 - toml_datetime 0.6.3
 - tray-icon 0.24.2
 - ttf-parser 0.25.1
+- ucd-trie 0.1.7
 - unarray 0.1.4
 - unicode-bidi 0.3.18
 - unicode-bidi-mirroring 0.4.0
@@ -1879,7 +1890,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### 113 components
+### 117 components
 
 - adler2 2.0.1
 - anyhow 1.0.104
@@ -1943,6 +1954,10 @@ limitations under the License.
 - pango 0.18.3
 - pango-sys 0.18.0
 - parking 2.2.1
+- pest 2.9.2
+- pest_derive 2.9.2
+- pest_generator 2.9.2
+- pest_meta 2.9.2
 - pin-project-lite 0.2.17
 - piper 0.2.5
 - polling 3.11.0
@@ -3099,7 +3114,7 @@ This project is dual-licensed under the Unlicense and MIT licenses.
 You may use this code under the terms of either license.
 ```
 
-### 10 components
+### 11 components
 
 - aho-corasick 1.1.5
 - byteorder 1.5.0
@@ -3110,6 +3125,7 @@ You may use this code under the terms of either license.
 - jiff-tzdb 0.1.8
 - jiff-tzdb-platform 0.1.3
 - memchr 2.8.3
+- ucd-trie 0.1.7
 - walkdir 2.5.0
 
 ```
@@ -7414,6 +7430,35 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+### 2 components
+
+- fancy-regex 0.17.0
+- fancy-regex 0.19.2
+
+```
+The MIT License
+
+Copyright 2015 The Fancy Regex Authors.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 ```
 
 ### 2 components
@@ -13647,32 +13692,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
-
-### fancy-regex 0.19.2
-
-```
-The MIT License
-
-Copyright 2015 The Fancy Regex Authors.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
 ```
 
 ### ff 0.14.0

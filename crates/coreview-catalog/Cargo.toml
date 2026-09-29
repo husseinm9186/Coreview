@@ -18,3 +18,6 @@ regex = "1"
 # refuses on purpose; they are compiled here only to prove they compile.
 fancy-regex = "0.19"
 thiserror = "1"
+# LT-520: the TextFSM state machine. Chosen against the vendored fixtures
+# (see src/textfsm.rs); no default features — no CLI, no CSV, no YAML export.
+textfsm-rs = { version = "0.3.6", default-features = false }
