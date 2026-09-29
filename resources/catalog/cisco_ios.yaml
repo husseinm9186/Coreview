@@ -377,6 +377,7 @@ commands:
   - id: show_ip_protocols_vrf_vrf
     cmd: show ip protocols vrf {vrf}
     gate: cap.vrf
+    foreach: vrf
     parser: none
     feeds:
       - vrf
@@ -724,6 +725,7 @@ commands:
   - id: show_ip_arp_vrf_vrf
     cmd: show ip arp vrf {vrf}
     gate: cap.vrf
+    foreach: vrf
     parser: textfsm:cisco_ios_show_ip_arp
     feeds:
       - arp

@@ -105,14 +105,67 @@ with the device and shown; a changed certificate stops the run and says
 so; tests against a local TLS server with two certificates.
 
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
-**Source:** D-060's packaging rules and `sidecar/build/windows.ps1`.
+**Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
+confirmed by the operator on accepting P1 (2026-09-29): "embeddable
+CPython resource folder, no UPX, every PE signed. Azure Trusted Signing
+details to follow." First in his order: LT-519 → LT-520 → P2 topology.
 **Acceptance:** the release workflow runs the build script before `tauri
 build`, `tauri.conf.json` ships `src-tauri/sidecar/` as a resource,
 `signCommand` signs `python.exe` and every `.dll`/`.pyd` inside, the
 VirusTotal step covers them, and a fresh Windows install runs a
-collection with no Python on the machine. Waits on the operator's
-signing setup (Azure Trusted Signing) for the signing half; the layout
-half can be done first, unsigned, for his own testing.
+collection with no Python on the machine. The signing half waits on his
+Azure Trusted Signing details; the layout half is done first, unsigned,
+for his own testing.
+**Status 2026-09-29 — layout built, signing wired, waiting on CI and the
+Azure details.** `sidecar/build/windows.ps1` downloads the embeddable
+CPython 3.12.10 and checks its SHA-256 (pinned; the file's MD5 and size
+match python.org's published values), adds `Lib\site-packages` to its
+`._pth`, installs the hashed wheels there with the runner's pip
+(`--only-binary=:all: --platform win_amd64 --python-version 3.12
+--require-hashes`, checked here: all ten resolve, four native `.pyd`),
+copies the package, and smoke-tests `python.exe -m coreview_sidecar
+--version` from the folder. `sign.ps1` signs every `.exe`/`.dll`/`.pyd`
+under it with the certificate the existing signing action imports
+(counter-signing python.org's own signatures with `/as`), verifies each,
+and fails on any it could not sign; unsigned with a notice when no
+certificate is configured. `tauri.sidecar.conf.json` adds the folder as a
+resource for the Windows bundle only, so every other build stays as it
+was. The sidecar is spawned with a cleared environment plus only what
+Python needs on Windows (`SYSTEMROOT` above all — without it sockets
+fail with 10106). The notices now carry CPython's and every wheel's
+licence text (`sidecar/licenses/`), and name **paramiko as LGPL-2.1**,
+used unmodified and replaceable in place, with its source address.
+**Not yet:** a green Windows run, the VirusTotal step (none exists in
+the workflow yet), and Azure Trusted Signing in place of the PFX.
+
+### LT-520 — Phase 2: a TextFSM interpreter in Rust, passing every vendored fixture — 2026-09-29
+**Source:** the operator, 2026-09-29, on accepting P1: "Rust TextFSM
+interpreter in coreview-catalog. Acceptance = 100% of the same 568
+vendored ntc fixtures the sidecar passes, in cargo test." D-060 Phase 2.
+Second in his order.
+**Acceptance:** `coreview-catalog::textfsm` reads a `.textfsm` template
+(Value options Required, Filldown, Fillup, Key, List; states, rules,
+`Continue`, `Next`, `Record`, `NoRecord`, `Clear`, `Clearall`, `Error`,
+`${Name}` substitution, `EOF`), runs it over text, and gives the rows
+clitable gives — including the multi-template join and lists' missing
+captures as `None`; one `cargo test` iterates every `.raw`/`.yml` pair
+under `resources/templates/tests` and passes 568 of 568; the two
+crates.io candidates (`textfsm-rs` 0.3.6, `textfsm-core` 0.3.1) are run
+against the same harness first and the choice recorded.
+
+### LT-521 — Phase 3: shadow mode — both collectors on every run, rows diffed per (os, command), each OS flipped at zero mismatch — 2026-09-29
+**Source:** the operator, 2026-09-29: "shadow mode behind a feature flag
+— sidecar and Rust both run every collection, rows diffed per (os,
+command), mismatches to command_log. Flip each OS to Rust at zero
+mismatches. Sidecar retired when all 20 catalogs are flipped." D-060
+Phase 3. Runs alongside P2 topology.
+**Acceptance:** a project setting `collector.shadow`; with it on, every
+`textfsm:` step's raw is parsed by both the sidecar and LT-520's engine,
+the rows compared, a mismatch written to `command_log` with the field
+that differed; a per-OS table of mismatch counts in the run view; a
+catalog gains `parser_engine: rust` when its count is zero across the
+vendored fixtures and the operator's own runs; when all twenty carry it
+the sidecar is not spawned and Phase 4 begins.
 
 ### LT-507 — Discovery / topology / path engine: the catalog-driven collector, in four phases — approved 2026-09-29, P1 in progress
 **Source:** the operator's specification of 2026-09-29 ("CoreView
@@ -153,6 +206,10 @@ stubbed page, none yet against the operator's lab. What is left of P1 is
 LT-518 (the API collectors reachable from a command) and the packaging
 step that lays the sidecar into the installer; P2 begins when the
 operator has run a collection.
+**P1 accepted 2026-09-29** ("The sidecar bridge matches the approved
+architecture — no change"). His order from here: LT-519 → LT-520 → P2
+topology, with LT-521 alongside P2; LT-522 and LT-523 answer two asks
+made with the acceptance.
 **Decisions it touches:** D-050 (paths from evidence only; the what-if
 approximates reconvergence and must say so), D-055 (device output never
 in the debug log — raw captures go to files, redacted, not into the log),
@@ -402,6 +459,67 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-524 — **bug** Two IOS commands and one IOS-XR command were sent with `{vrf}` still in them — 2026-09-29, fixed the same day
+**Found** while testing LT-522: the collector's Catalyst test showed
+`show ip arp vrf {vrf}` and `show ip protocols vrf {vrf}` in the list of
+commands sent. The spec writes `cap.vrf: show vrf → foreach vrf: A · B ·
+C`, and the catalog bootstrap gave the `foreach` to A only; IOS-XR's
+`show arp vrf {vrf}` the same. **Reproduced first** (D-020):
+`load::problems()` now refuses a command with a placeholder and no
+`foreach`, and failed on exactly those three; then the three entries got
+`foreach: vrf`, the bootstrap script infers `foreach` from the
+placeholder so a rebuild cannot bring it back, and `plan` skips any
+command with an unfilled placeholder as a last line. Run.
+
+### LT-523 — A capture CLI: the lab list into `captures/<host>/<command>.txt` — 2026-09-29, done the same day
+**Source:** the operator, 2026-09-29: "Give me the exact CLI to capture
+the lab list into captures/<host>/<command>.txt."
+**Acceptance:** `cargo run -p coreview-collect --example capture -- --host
+<addr> --user <name> --out captures [--os <catalog>] [--unverified |
+<command>…]` logs in through the sidecar, sends the catalog's unverified
+commands (or the ones given), and writes each reply raw, unparsed, as
+`captures/<host>/<command>.txt` — the layout `import_captures` reads;
+password from `COREVIEW_CAPTURE_PASSWORD`, never an argument; the same
+layout the Collect tab's "keep every reply" tick writes, which is the
+no-toolchain way to the same files.
+**Done 2026-09-29.** `crates/coreview-collect/examples/capture.rs`:
+fingerprints the device (or takes `--os`), sends the version probe, the
+capability probes, the catalog's `verified: unverified` commands with
+`--unverified` (the `{vrf}` ones with `--vrf`), and any commands named,
+through the sidecar; writes `captures/<host>/<command-slug>.txt`, the
+slugs `import_captures` reads. Password from `COREVIEW_CAPTURE_PASSWORD`
+only. **Every reply is scrubbed** of configuration secrets and the
+login's password before it is written, because the probe `show run |
+include … ^crypto` can carry a pre-shared key and these files are meant
+to be sent; the Collect tab's kept replies had the same gap and now get
+the same scrub. Run against `examples/fake_switch.rs`: 20 IOS files, the
+refusals written as refusals.
+
+### LT-522 — The read-only guard at the one place every command leaves Rust — 2026-09-29, done the same day
+**Source:** the operator, 2026-09-29: "Confirm the read-only guard runs
+in Rust on every command the sidecar executes, not only at catalog
+load." Checked: the plan applied it to every catalog command, but the
+fingerprint probes and the capability probes went to the sidecar from
+`run.rs` without it, and the catalogs were loaded in the app without
+`problems()` — the sidecar's own copy of the allowlist was the only guard
+on those.
+**Acceptance:** `Sidecar::run` itself refuses a command the allowlist
+refuses, answering `refused` without writing to the process — so
+nothing reaches the sidecar unchecked, whatever calls it; the app refuses
+to load a catalog `problems()` objects to; a test sends a write verb
+through the client against the fake sidecar and proves the fake never saw
+it.
+**Done 2026-09-29.** `Sidecar::run` in `coreview-collect` now refuses a
+command the allowlist refuses and answers `refused` without writing to
+the process — the one method every device command passes through,
+fingerprint probes, capability probes and plan steps alike, and the
+capture CLI. The app runs `problems()` over every catalog before a
+collection or an import and refuses to start on any. Test: a write verb,
+a `;` second command, a `| redirect`, `copy` and `configure terminal`
+sent through the client against the fake sidecar, which reports on
+`close` everything it was ever sent — only `show version`. The sidecar
+keeps its own copy as the second line. Run.
 
 ### LT-517 — P1 the collection plan preview and the run view — 2026-09-29, done the same day
 **Acceptance:** before a run, each device's vendor, os, role and caps and

@@ -90,7 +90,8 @@ async fn a_catalyst_is_recognised_probed_planned_and_run_light_first() {
     // The configuration came back scrubbed.
     let cfg = run.results.iter().find(|r| r.step.cmd == "show running-config").unwrap();
     assert!(!cfg.outcome.raw.contains("FAKE-COMMUNITY") && !cfg.outcome.raw.contains("$1$FAKE"), "{}", cfg.outcome.raw);
-    assert!(cfg.outcome.raw.contains("enable secret <removed-by-coreview>"));
+    // The type digit stays (it says what kind of hash was there); the hash does not.
+    assert!(cfg.outcome.raw.contains("enable secret 5 <removed-by-coreview>"), "{}", cfg.outcome.raw);
     // A command the fake does not know is unsupported, not fatal.
     let unsupported = run.results.iter().filter(|r| r.outcome.status == "unsupported").count();
     assert!(unsupported > 0);
@@ -168,3 +169,26 @@ async fn parse_answers_without_a_device_and_a_dead_sidecar_is_an_error_not_a_han
     let missing = SidecarLocation { python: PathBuf::from("/no/such/python"), cwd: std::env::temp_dir(), templates_dir: std::env::temp_dir() };
     assert!(matches!(Sidecar::spawn(&missing).await, Err(coreview_collect::SidecarError::Spawn(_))));
 }
+
+/// LT-522: the guard is in the client, so a write verb never reaches the
+/// process however it was built — the fake reports on `close` everything
+/// it was ever sent.
+#[tokio::test]
+async fn a_refused_command_never_reaches_the_sidecar_process() {
+    let loc = fake_location(&json!({"show version": {"status": "ok", "raw": "Cisco IOS Software", "rows": []}}), "[]");
+    let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
+    let opened = sidecar.open("s", "192.0.2.10", 22, "cisco_ios", &auth(), &json!({}), 5000, 5000).await.unwrap();
+    assert_eq!(opened.status, "ok");
+    let ok = sidecar.run("s", "show version", "none", &[], 5000).await.unwrap();
+    assert_eq!(ok.status, "ok");
+    for bad in ["reload", "configure terminal", "show version ; write memory", "show run | redirect flash:x", "copy running-config startup-config"] {
+        let r = sidecar.run("s", bad, "none", &[], 5000).await.unwrap();
+        assert_eq!(r.status, "refused", "{bad}");
+        assert!(r.error.as_deref().unwrap_or("").contains("read-only allowlist"), "{bad}: {:?}", r.error);
+    }
+    let closed = sidecar.close("s").await.unwrap();
+    let sent: Vec<String> = closed.extra.get("sent").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+    assert_eq!(sent, vec!["show version"], "the process saw {sent:?}");
+    sidecar.quit().await;
+}
+

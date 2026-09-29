@@ -88,6 +88,20 @@ pub struct Auth {
     pub private_key: Option<String>,
 }
 
+/// The few variables the interpreter needs from the parent. The rest of
+/// the environment is not passed: nothing of the operator's reaches the
+/// sidecar but what it needs to run. On Windows, Python cannot open a
+/// socket or seed its random source without `SYSTEMROOT` (WSAStartup fails
+/// with 10106), and paramiko reads `USERPROFILE` for `~`.
+fn inherited_env() -> Vec<(String, String)> {
+    let keep: &[&str] = if cfg!(windows) {
+        &["PATH", "SYSTEMROOT", "SystemRoot", "WINDIR", "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "COMSPEC", "PATHEXT", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE"]
+    } else {
+        &["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"]
+    };
+    keep.iter().filter_map(|k| std::env::var(k).ok().map(|v| ((*k).to_string(), v))).collect()
+}
+
 pub struct Sidecar {
     child: Child,
     stdin: ChildStdin,
@@ -108,9 +122,11 @@ impl Sidecar {
             .arg("coreview_sidecar")
             .current_dir(&location.cwd)
             .env_clear()
-            .env("PATH", std::env::var("PATH").unwrap_or_default())
+            .envs(inherited_env())
             .env("PYTHONIOENCODING", "utf-8")
             .env("PYTHONDONTWRITEBYTECODE", "1")
+            // Only the interpreter's own folder and its ._pth decide what is imported.
+            .env("PYTHONNOUSERSITE", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -188,7 +204,21 @@ impl Sidecar {
         self.request(body, Duration::from_millis(connect_ms + auth_ms + 30_000)).await
     }
 
+    /// Send one command. **The read-only guard lives here** (LT-522): every
+    /// command that leaves Rust for a device passes through this method,
+    /// and one the allowlist refuses is answered `refused` without a byte
+    /// written to the process — whatever built it, catalog or not.
     pub async fn run(&mut self, session: &str, cmd: &str, parser: &str, also: &[String], timeout_ms: u64) -> Result<Reply, SidecarError> {
+        if let coreview_catalog::Verdict::Refused(reason) = coreview_catalog::verdict(cmd) {
+            return Ok(Reply {
+                id: Value::Null,
+                status: "refused".into(),
+                session: Some(session.to_string()),
+                cmd: Some(cmd.to_string()),
+                error: Some(format!("refused by the read-only allowlist: {reason}")),
+                ..Default::default()
+            });
+        }
         let body = json!({"op": "run", "session": session, "cmd": cmd, "parser": parser, "also": also, "timeout_ms": timeout_ms});
         self.request(body, Duration::from_millis(timeout_ms + 15_000)).await
     }

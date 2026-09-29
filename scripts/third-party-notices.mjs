@@ -143,9 +143,25 @@ const vendored = [
     url: "https://github.com/ktbyers/netmiko", texts: [readFileSync("resources/catalog/LICENSE-netmiko", "utf8").trim()] },
 ];
 
+// LT-519: the collector sidecar the Windows installer carries — CPython and
+// the pinned wheels. Their licence texts are kept in sidecar/licenses/,
+// collected from the wheels themselves; index.json says which is which.
+const sidecarIndex = JSON.parse(readFileSync("sidecar/licenses/index.json", "utf8"));
+const sidecar = sidecarIndex.map((e) => ({
+  name: `${e.name} (collector sidecar)`,
+  version: e.version,
+  licence: e.licence,
+  url: e.url,
+  texts: e.files.map((f) => readFileSync(`sidecar/licenses/${f}`, "utf8").trim()),
+}));
+/** LGPL: a library a proprietary program may use, provided the user can
+ *  replace it with a modified version and its source is offered. */
+const LESSER = /\bLGPL/i;
+const lgplOnly = (c) => LESSER.test(c.licence) && !/ OR /i.test(c.licence);
+
 // -------------------------------------------------------------------- checks
 
-const all = [...npm, ...crates, ...vendored];
+const all = [...npm, ...crates, ...vendored, ...sidecar];
 const blocking = all.filter((c) => COPYLEFT.test(c.licence) && !/ OR /i.test(c.licence));
 if (blocking.length) {
   console.error("Copyleft licences that a proprietary build cannot ship:");
@@ -227,6 +243,23 @@ ${tally(crates)}
 
 ${table(crates)}
 
+${all.some(lgplOnly) ? `## LGPL components
+
+${all.filter(lgplOnly).map((c) => `- **${c.name} ${c.version}** — ${c.licence}, ${c.url}`).join("\n")}
+
+These are used unmodified, as published, and installed as ordinary files
+in the \`sidecar\` folder of the installation directory (\`Lib\\site-packages\`),
+where they can be replaced with a modified version without touching
+anything else — which is what the LGPL asks of a program that uses a
+library under it. Their source is at the addresses above, and on request
+from the author of Coreview.
+
+` : ""}## Collector sidecar — ${sidecar.length} components in the Windows installer
+
+${tally(sidecar)}
+
+${table(sidecar)}
+
 ## Vendored data — ${vendored.length} sources under resources/
 
 ${tally(vendored)}
@@ -259,6 +292,10 @@ ${texts(crates)}
 ## Vendored data
 
 ${texts(vendored)}
+
+## Collector sidecar
+
+${texts(sidecar)}
 `);
 
 console.log(

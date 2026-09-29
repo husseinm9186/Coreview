@@ -370,6 +370,14 @@ function gateOf(raw) {
   return { gate: g, foreach, context };
 }
 
+/** LT-524: the spec writes `A → foreach vrf: B · C · D`; C and D are under the same foreach. */
+function foreachFromPlaceholder(cmd, foreach) {
+  if (foreach) return foreach;
+  const m = /\{(vrf|vr|ri|instance|vdom|vsys|ctx)\}/.exec(cmd);
+  if (!m) return null;
+  return { vr: 'vrf', ri: 'vrf', instance: 'vrf', ctx: 'context' }[m[1]] ?? m[1];
+}
+
 const slug = (s) => s.replace(/\{(\w+)\}/g, '$1').replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '').toLowerCase();
 
 // ----------------------------------------------------------------- build
@@ -459,7 +467,8 @@ function build(os) {
   const ids = new Set();
   for (const r of mine) {
     if (r.kind === 'session' || r.kind === 'refused') continue;
-    const { gate, foreach, context } = gateOf(r.gate);
+    const { gate, foreach: fe0, context } = gateOf(r.gate);
+    const foreach = r.gate.startsWith('live-path') || r.kind === 'native' && /^\//.test(r.command) ? fe0 : foreachFromPlaceholder(r.command, fe0);
     const parser = parserOf(os, r);
     if (r.gate === 'caps_probe' || r.gate === 'caps_probe && SRX' || r.gate === 'fp') {
       if (r.gate === 'fp') continue; // the fingerprint probe is its own block

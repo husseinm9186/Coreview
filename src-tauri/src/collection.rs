@@ -131,6 +131,9 @@ pub fn sidecar_location(app: &AppHandle) -> CmdResult<SidecarLocation> {
         let cwd = std::env::var("COREVIEW_SIDECAR_DIR").map(PathBuf::from).unwrap_or_else(|_| repo_root().join("sidecar"));
         return Ok(SidecarLocation { python: PathBuf::from(python), cwd, templates_dir: templates });
     }
+    // The installed sidecar (LT-519): an embeddable CPython whose ._pth puts
+    // Lib\site-packages — where the package is — on its path; spawned by
+    // absolute path from the install directory, never from a temp folder.
     if let Some(dir) = resource(app, "sidecar") {
         let python = if cfg!(windows) { dir.join("python.exe") } else { dir.join("bin/python") };
         if python.exists() {
@@ -146,8 +149,23 @@ pub fn sidecar_location(app: &AppHandle) -> CmdResult<SidecarLocation> {
     Err("The collector sidecar is not installed. In development: `cd sidecar && python3 -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.txt`, or set COREVIEW_SIDECAR_PYTHON.".into())
 }
 
+/// The catalogs, and none of them unless every one is sound: a catalog
+/// `problems()` objects to — a command outside the allowlist, a gate that
+/// does not parse, a template that is not there — stops the collection
+/// before it starts (LT-522). Data the app ships is still checked at the
+/// door, because a resource folder is a folder.
 fn load_catalogs(app: &AppHandle) -> CmdResult<Vec<Catalog>> {
-    coreview_catalog::load_dir(&catalog_dir(app)?).map_err(|e| format!("The discovery catalogs could not be read: {e}"))
+    let dir = catalog_dir(app)?;
+    let catalogs = coreview_catalog::load_dir(&dir).map_err(|e| format!("The discovery catalogs could not be read: {e}"))?;
+    let templates = templates_dir(app).ok();
+    let mut problems = Vec::new();
+    for c in &catalogs {
+        problems.extend(coreview_catalog::load::problems(c, templates.as_deref()));
+    }
+    if !problems.is_empty() {
+        return Err(format!("The discovery catalogs are not sound and nothing was sent: {}", problems.join("; ")));
+    }
+    Ok(catalogs)
 }
 
 // --------------------------------------------------------------- persist
@@ -199,7 +217,9 @@ fn persist_device(state: &AppState, run_id: &str, run: &DeviceRun, diagnostic: O
         let _ = std::fs::create_dir_all(&host_dir);
         let name = format!("{seq:03}-{}.txt", cmd.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' }).collect::<String>().trim_matches('-'));
         let path = host_dir.join(&name);
-        std::fs::write(&path, coreview_discover::support::redact(raw, secrets)).ok()?;
+        // Configuration secrets as well as the login's own: a capability probe
+        // such as `show run | include ^crypto` carries a pre-shared key line.
+        std::fs::write(&path, coreview_discover::support::redact(&coreview_collect::scrub::scrub(raw), secrets)).ok()?;
         Some(format!("{}/{}", host_dir.file_name()?.to_string_lossy(), name))
     };
     for p in &run.probes {

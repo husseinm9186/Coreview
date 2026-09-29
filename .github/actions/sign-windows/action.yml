@@ -44,3 +44,5 @@ runs:
         Write-Host "::notice title=Code signing::Signing as $($cert.Subject) - thumbprint $($cert.Thumbprint)"
 
         node .github/actions/sign-windows/configure.mjs "$($cert.Thumbprint)"
+        # LT-519: the sidecar's PEs are signed by sidecar/build/sign.ps1 with the same certificate.
+        "COREVIEW_SIGN_THUMBPRINT=$($cert.Thumbprint)" >> $env:GITHUB_ENV

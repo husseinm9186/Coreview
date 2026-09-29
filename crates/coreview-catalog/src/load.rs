@@ -164,6 +164,12 @@ pub fn problems(catalog: &Catalog, templates: Option<&Path>) -> Vec<String> {
                     out.push(format!("{os}: {kind} {}: {t:?} is not a table", c.id));
                 }
             }
+            // A placeholder over SSH must be filled by a foreach, or the device is
+            // sent the braces (LT-524). Live-path lookups are filled by the path
+            // builder, API paths by the API collector.
+            if kind == "command" && c.parser != "api" && c.foreach.is_none() && c.cmd.contains('{') {
+                out.push(format!("{os}: {kind} {}: {:?} has a placeholder but no foreach, so it would be sent with the braces in", c.id, c.cmd));
+            }
             if let Some(f) = &c.foreach {
                 if !["vrf", "vdom", "vsys", "context", "instance"].contains(&f.as_str()) {
                     out.push(format!("{os}: {kind} {}: foreach {f:?} is not vrf|vdom|vsys|context|instance", c.id));

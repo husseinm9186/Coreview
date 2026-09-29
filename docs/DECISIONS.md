@@ -1186,4 +1186,11 @@ rule (a running configuration is kept only where the operator pointed).
   would add hundreds of megabytes and a Cisco licence for parsers nothing
   calls, so it is left out until a named gap needs it; the catalog grammar
   keeps `genie:<name>` so nothing changes if that day comes.
+- *Licences, found while packaging (LT-519):* scrapli's SSH transport is
+  paramiko, **LGPL-2.1**. The generator's copyleft refusal covers GPL,
+  AGPL and SSPL, not the LGPL, which a proprietary program may use when
+  the library is used unmodified and the user can replace it — true here,
+  since it is a plain folder of `.py` files in the install directory. It
+  is named in THIRD-PARTY-NOTICES.md with its source address. It leaves
+  with the sidecar in Phase 4.
 

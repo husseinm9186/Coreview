@@ -356,6 +356,7 @@ commands:
   - id: show_arp_vrf_vrf
     cmd: show arp vrf {vrf}
     gate: cap.vrf
+    foreach: vrf
     parser: textfsm:cisco_xr_show_arp
     feeds:
       - arp

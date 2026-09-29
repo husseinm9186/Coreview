@@ -71,6 +71,10 @@ pub fn plan(catalog: &Catalog, facts: &Facts) -> Plan {
             out.skipped.push(Skipped { id: command.id.clone(), cmd: command.cmd.clone(), reason: format!("refused by the read-only allowlist: {reason}") });
             continue;
         }
+        if command.foreach.is_none() && command.cmd.contains('{') {
+            out.skipped.push(Skipped { id: command.id.clone(), cmd: command.cmd.clone(), reason: "has a placeholder nothing fills".into() });
+            continue;
+        }
         let because = gate.names();
         let mut push = |cmd: String, context: Option<(String, String)>| {
             out.steps.push(Step {
