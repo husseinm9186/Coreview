@@ -739,6 +739,8 @@ pub enum Walked {
     Int(i64),
     /// Raw, because an ARP table's MAC is six bytes, not text.
     Octets(Vec<u8>),
+    /// LT-549: an `IpAddress` value — IP-MIB's netmask column is one.
+    Ip([u8; 4]),
     Other,
 }
 
@@ -746,6 +748,8 @@ fn owned(value: Value<'_>) -> Walked {
     match value {
         Value::Integer(n) => Walked::Int(n),
         Value::OctetString(b) => Walked::Octets(b.to_vec()),
+        Value::IpAddress(a) => Walked::Ip(a),
+        Value::Unsigned32(n) | Value::Counter32(n) => Walked::Int(i64::from(n)),
         _ => Walked::Other,
     }
 }

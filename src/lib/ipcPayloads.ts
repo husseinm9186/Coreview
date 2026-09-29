@@ -97,7 +97,7 @@ export const backupInput = (input: object) => {
 
 /** `CollectionInput` in `src-tauri/src/collection.rs` (LT-514). */
 export const collectionInput = (o: object) =>
-  pickAll(o, ['projectId', 'targets', 'port', 'osHint', 'roleOverride', 'planOnly', 'lightOnly', 'credentialId', 'keepDiagnostic', 'connectTimeoutSecs', 'authTimeoutSecs', 'apiCredentialId', 'fmcHost']);
+  pickAll(o, ['projectId', 'targets', 'port', 'osHint', 'roleOverride', 'planOnly', 'lightOnly', 'credentialId', 'keepDiagnostic', 'connectTimeoutSecs', 'authTimeoutSecs', 'apiCredentialId', 'fmcHost', 'snmpCredentialId']);
 
 /** `ViewOptions` in `coreview-topology/src/crawl_view.rs` (LT-527). */
 export const topologyViewOptions = (o: object) => pickAll(o, ['collapseBundles', 'collapseStacks', 'placeholders', 'minConfidence', 'vlan', 'vrf']);

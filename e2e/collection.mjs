@@ -117,6 +117,8 @@ await page.addInitScript(({ p, r, d, a, sh, tp, rd }) => {
         { id: "cred-ssh", label: "reader", kind: "ssh", username: "reader", detail: "", hasSecondSecret: false },
         // LT-518: an API login, offered only where an API login is asked for.
         { id: "cred-api", label: "fmc reader", kind: "api", username: "reader", detail: "", hasSecondSecret: false },
+        // LT-549: an SNMP login, for the fallback.
+        { id: "cred-snmp", label: "snmp reader", kind: "snmp", username: "", detail: "", hasSecondSecret: false },
       ]);
       if (cmd === "list_collection_runs") return Promise.resolve(r);
       if (cmd === "collection_run") return Promise.resolve(d);
@@ -242,10 +244,12 @@ check("the API login offers only API logins", (await apiSelect.locator('option[v
 check("and the SSH login does not offer an API one", (await region.locator('select', { has: page.locator('option[value="cred-ssh"]') }).first().locator('option[value="cred-api"]').count()) === 0);
 await apiSelect.selectOption("cred-api");
 await region.locator(".cv-field", { has: page.locator('span:text-is("FMC for FTDs")') }).locator("input").fill("192.0.2.5");
+await region.locator('select[aria-label="SNMP if SSH fails"]').selectOption("cred-snmp");
 await region.getByRole("button", { name: "Preview plan" }).click();
 await page.waitForTimeout(200);
 const started = await page.evaluate(() => window.__calls.find((c) => c.cmd === "start_collection"));
 check("Preview plan sends the input with planOnly and the saved login", !!started && started.args.input.planOnly === true && started.args.input.credentialId === "cred-ssh" && started.args.input.targets.includes("192.0.2.11") && started.args.credentials === undefined);
+check("the SNMP fallback login travels with the input", !!started && started.args.input.snmpCredentialId === "cred-snmp");
 check("the API login and the FMC travel with the input", !!started && started.args.input.apiCredentialId === "cred-api" && started.args.input.fmcHost === "192.0.2.5");
 check("nothing typed travels when a saved login is chosen", !!started && !("password" in (started.args.credentials ?? {})));
 

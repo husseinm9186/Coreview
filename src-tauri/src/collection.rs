@@ -51,6 +51,9 @@ pub struct CollectionInput {
     pub api_credential_id: Option<String>,
     /// LT-541: the FMC managing the FTDs this collection reaches.
     pub fmc_host: Option<String>,
+    /// LT-549: a saved SNMP login, used only for a device whose SSH session
+    /// could not be opened.
+    pub snmp_credential_id: Option<String>,
 }
 
 /// One event on `coreview://collection`.
@@ -202,6 +205,90 @@ fn device_id_of(host: &str) -> String {
 
 /// Write one device's run: the device, its command log and its rows; raw
 /// replies to the diagnostic folder when there is one, redacted.
+/// LT-549: SNMP stands in only when SSH could not open a session — a wrong
+/// login, a timeout, a refused connection. A changed host key is not one:
+/// that is a refusal to talk to the box, not a reason to talk to it another
+/// way.
+fn snmp_eligible(run: &DeviceRun) -> bool {
+    matches!(run.failure.as_deref(), Some("auth" | "timeout" | "error")) && run.os.is_none()
+}
+
+/// The SNMP tables appended to the device's run as steps, stored and
+/// normalised like any other; the SSH failure stays recorded beside them.
+fn apply_snmp_fallback(run: &mut DeviceRun, read: Result<Vec<coreview_discover::snmp_collect::SnmpTable>, coreview_discover::snmp::SnmpError>, sink: &dyn RunSink) {
+    let ssh = run.failure.clone().unwrap_or_default();
+    match read {
+        Ok(tables) => {
+            run.os = Some("snmp".into());
+            run.log.push(format!("SSH could not open a session ({ssh}); the device was read over SNMP instead"));
+            if let Some(v) = tables.iter().find(|t| t.id == "snmp_system").and_then(|t| t.rows.first()).and_then(|r| r.get("version")).and_then(|v| v.as_str()) {
+                run.version_text = v.to_string();
+            }
+            for t in tables {
+                let step = coreview_catalog::Step {
+                    id: t.id.into(),
+                    cmd: t.mib.into(),
+                    gate: "snmp fallback".into(),
+                    because: vec![format!("ssh: {ssh}")],
+                    parser: "snmp".into(),
+                    feeds: t.feeds.iter().map(|f| f.to_string()).collect(),
+                    weight: coreview_catalog::Weight::Light,
+                    timeout: 5,
+                    verified: coreview_catalog::Verified::Docs,
+                    context: None,
+                    scope: None,
+                };
+                let status = if t.rows.is_empty() { "unsupported" } else { "ok" };
+                let outcome = coreview_collect::run::CommandOutcome { status: status.into(), rows: t.rows, raw: String::new(), duration_ms: 0, error: None, shadow: None, engine: Some("snmp".into()) };
+                let sr = coreview_collect::run::StepResult { step, outcome };
+                sink.event(RunEvent::Step(&sr));
+                run.results.push(sr);
+            }
+        }
+        Err(e) => run.log.push(format!("SSH could not open a session ({ssh}), and SNMP did not answer either: {e}")),
+    }
+}
+
+#[cfg(test)]
+mod snmp_fallback_tests {
+    use super::*;
+    use coreview_collect::run::Quiet;
+    use coreview_discover::snmp_collect::SnmpTable;
+    use serde_json::json;
+
+    #[test]
+    fn only_a_session_that_could_not_open_falls_back() {
+        let r = |f: Option<&str>, os: Option<&str>| DeviceRun { failure: f.map(str::to_string), os: os.map(str::to_string), ..Default::default() };
+        assert!(snmp_eligible(&r(Some("auth"), None)));
+        assert!(snmp_eligible(&r(Some("timeout"), None)));
+        assert!(snmp_eligible(&r(Some("error"), None)));
+        assert!(!snmp_eligible(&r(Some("host_key"), None)), "a changed host key is a refusal");
+        assert!(!snmp_eligible(&r(None, Some("cisco_ios"))));
+        assert!(!snmp_eligible(&r(Some("unrecognised"), None)), "SSH worked");
+    }
+
+    #[test]
+    fn the_tables_become_steps_the_collection_stores() {
+        let mut run = DeviceRun { host: "192.0.2.9".into(), failure: Some("auth".into()), ..Default::default() };
+        let tables = vec![
+            SnmpTable { id: "snmp_system", mib: "SNMPv2-MIB system, ENTITY-MIB", feeds: &["device"], rows: vec![json!({"hostname": "SNMP-SW", "version": "Cisco IOS Software"})] },
+            SnmpTable { id: "snmp_cdp", mib: "CISCO-CDP-MIB", feeds: &["neighbor"], rows: vec![] },
+        ];
+        apply_snmp_fallback(&mut run, Ok(tables), &Quiet);
+        assert_eq!(run.os.as_deref(), Some("snmp"), "so the topology builder takes the device");
+        assert_eq!(run.failure.as_deref(), Some("auth"), "the SSH failure is still said");
+        assert_eq!(run.version_text, "Cisco IOS Software");
+        assert_eq!(run.results.len(), 2);
+        assert_eq!((run.results[0].step.feeds[0].as_str(), run.results[0].outcome.status.as_str()), ("device", "ok"));
+        assert_eq!(run.results[1].outcome.status, "unsupported", "a MIB with nothing in it is said as such");
+        assert!(run.log.iter().any(|l| l.contains("read over SNMP instead")));
+        let mut none = DeviceRun { host: "192.0.2.9".into(), failure: Some("timeout".into()), ..Default::default() };
+        apply_snmp_fallback(&mut none, Err(coreview_discover::snmp::SnmpError::NothingReturned { host: "192.0.2.9".into() }), &Quiet);
+        assert_eq!(none.os, None);
+        assert!(none.log.iter().any(|l| l.contains("SNMP did not answer either")));
+    }
+}
+
 /// A row read inside a context. A VRF's routes carry its name. LT-547: a
 /// FortiGate VDOM or an ASA security context is a routing domain of its own,
 /// so its routing rows are kept apart as a VRF of that name too, and every
@@ -410,6 +497,15 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
         }
         None => None,
     };
+    // LT-549: the SNMP fallback's login, when one was chosen.
+    let snmp_auth = match input.snmp_credential_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(id) => {
+            let a = crate::vault_commands::snmp_credentials(&state, id)?;
+            crate::vault_commands::note_use(&state, id, "Collection (SNMP fallback)", &input.targets);
+            Some(a)
+        }
+        None => None,
+    };
     let catalogs = load_catalogs(&app)?;
     let location = sidecar_location(&app)?;
     // LT-529: the same host-key store the crawl and the terminal use.
@@ -471,6 +567,10 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
             let known_host_key = host_keys.lock().ok().and_then(|k| k.known(host, port));
             let target = Target { host: host.clone(), port, os_hint: os_hint.clone(), role_override: role_override.clone(), known_host_key };
             let mut run = collect_device(&mut sidecar, &catalogs, &target, &auth, &options, &sink).await;
+            if let (Some(snmp), true) = (&snmp_auth, snmp_eligible(&run)) {
+                let read = coreview_discover::snmp_collect::read_for_collection(host, 161, snmp, std::time::Duration::from_secs(5)).await;
+                apply_snmp_fallback(&mut run, read, &sink);
+            }
             if let Some(login) = &api_login {
                 // LT-518: the REST side, its certificate pinned in the same store as SSH host keys.
                 let known = |h: &str, p: u16| host_keys.lock().ok().and_then(|k| k.known(h, p));

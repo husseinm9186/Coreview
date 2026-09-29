@@ -763,6 +763,7 @@ export const en = {
   // LT-514, LT-516, LT-517: the catalog-driven collection.
   'collect.apiCredential': 'API login',
   'collect.fmcHost': 'FMC for FTDs',
+  'collect.snmpCredential': 'SNMP if SSH fails',
   // LT-542: two collection runs compared.
   'collect.diff.heading': 'Compared with an earlier run',
   'collect.diff.title': 'Collection runs compared',

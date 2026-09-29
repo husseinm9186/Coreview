@@ -10,6 +10,8 @@ rust-version = "1.77"
 description = "Device discovery and configuration backup. No Tauri dependency, so the credential handling and command construction are unit-testable on their own."
 
 [dependencies]
+# LT-549: the SNMP fallback hands the collection rows in its own JSON shape.
+serde_json = "1"
 coreview-probe = { path = "../coreview-probe" }
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
@@ -32,7 +34,6 @@ regex = "1"
 
 [dev-dependencies]
 rand = "0.10"
-serde_json = "1"
 # LT-267: properties every parser keeps, on any input.
 proptest = "1"
 # LT-389: somewhere harmless to write a debug log while testing it. Already a

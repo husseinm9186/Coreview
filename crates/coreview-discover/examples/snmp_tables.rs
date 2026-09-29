@@ -66,6 +66,7 @@ async fn main() {
                     let kind = match value {
                         Walked::Int(_) => "integer".to_string(),
                         Walked::Octets(b) => format!("{} bytes", b.len()),
+                        Walked::Ip(_) => "ip address".to_string(),
                         Walked::Other => "other".to_string(),
                     };
                     *kinds.entry(kind).or_default() += 1;

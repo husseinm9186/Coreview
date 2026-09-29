@@ -104,7 +104,13 @@ pub struct SnmpTopology {
 /// already known to work. Best effort per table: a table a device does not
 /// implement comes back empty and costs nothing else.
 pub async fn read_topology(host: &str, auth: &SnmpAuth, timeout: Duration) -> Result<SnmpTopology, SnmpError> {
-    let mut session = Box::pin(crate::snmp::open_session(host, 161, auth, timeout)).await?;
+    read_topology_on(host, 161, auth, timeout).await
+}
+
+/// The same, on a port of the caller's choosing (LT-549's tests run an agent
+/// on a free port).
+pub async fn read_topology_on(host: &str, port: u16, auth: &SnmpAuth, timeout: Duration) -> Result<SnmpTopology, SnmpError> {
+    let mut session = Box::pin(crate::snmp::open_session(host, port, auth, timeout)).await?;
     let rem = |n: u64| {
         let mut oid = LLDP_REM_ENTRY.to_vec();
         oid.push(n);

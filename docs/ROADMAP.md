@@ -577,10 +577,6 @@ pulled into Phase 1.*
 "start P4 without a separate plan round; write the plan into the spec and
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
-### LT-549 — P4.4 SNMP fallback when SSH fails — 2026-09-29
-LLDP-MIB, CDP-MIB, Q-BRIDGE, IP-FORWARD and ENTITY into the same tables,
-used only for a device whose SSH session could not be opened.
-
 ### LT-550 — P4.5 Hosts and hypervisors: Linux/Proxmox, ESXi, Windows catalogs — 2026-09-29
 
 ### LT-551 — P4.6 Scheduled re-discovery — 2026-09-29 — **blocked on the operator's ruling**
@@ -592,6 +588,26 @@ by hand, window always visible, only while the app is open, never a
 service) apply.
 
 ## Done
+
+### LT-549 — P4.4 SNMP fallback when SSH fails — 2026-09-29, done the same day
+LLDP-MIB, CDP-MIB, Q-BRIDGE, IP-FORWARD and ENTITY into the same tables,
+used only for a device whose SSH session could not be opened.
+**Shipped:** `coreview-discover/src/snmp_collect.rs` reads, over one
+credential, the system group and ENTITY-MIB (device), LLDP-MIB and CDP-MIB
+(neighbours), BRIDGE-MIB and Q-BRIDGE-MIB (MAC table), IP-FORWARD-MIB
+`ipCidrRouteTable` (routes: connected, static, OSPF, BGP, EIGRP, RIP, IS-IS;
+a reject route as `Null0`), and IP-MIB (interface addresses with their
+masks, ARP). The Collect tab takes an SNMP login; a device whose SSH session
+could not be opened (`auth`, `timeout`, `error` — never a changed host key)
+is read over SNMP, its tables appended as steps and stored like any other,
+the SSH failure kept beside them. The identity, LLDP, bridge and ARP readers
+are LT-134's and LT-124's, measured on hardware; **CDP-MIB, IP-FORWARD-MIB
+and the address table are read from their MIB definitions** and say so
+(D-058). **Run:** table tests, an end-to-end read over UDP from an SNMPv2c
+agent written in the test (Get and GetNext answered in BER), the fallback
+rule and the steps it makes, and a check in `e2e/collection.mjs`. **Not
+yet:** a real device over SNMP for the three new tables; `inetCidrRouteTable`
+(IPv6 routes over SNMP) is not read.
 
 ### LT-548 — P4.3 Exports: topology and path results as JSON, CSV and markdown — 2026-09-29, done the same day
 The path already exports from Path-Trace (LT-536); the P2 topology does not.

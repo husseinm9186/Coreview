@@ -451,6 +451,8 @@ export type CollectionInput = {
   apiCredentialId?: string;
   /** LT-541: the FMC that manages the FTDs in this collection. */
   fmcHost?: string;
+  /** LT-549: a saved SNMP login, used only where SSH could not open a session. */
+  snmpCredentialId?: string;
 };
 
 export type CollectionRunSummary = {

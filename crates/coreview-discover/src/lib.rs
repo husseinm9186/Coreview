@@ -48,6 +48,7 @@ pub use coreview_probe::oui;
 pub mod snmp;
 pub mod sonic;
 pub mod snmp_topology;
+pub mod snmp_collect;
 pub mod stacking;
 pub mod showcmd;
 pub mod ssh;
