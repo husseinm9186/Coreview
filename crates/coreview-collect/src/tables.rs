@@ -239,6 +239,15 @@ fn canon(key: &str) -> String {
     out
 }
 
+/// A `disabled` flag said the other way round, for the `enabled` column.
+fn flipped(v: &str) -> String {
+    match v.trim().to_ascii_lowercase().as_str() {
+        "yes" | "true" | "1" | "on" => "no".into(),
+        "no" | "false" | "0" | "off" => "yes".into(),
+        other => format!("disabled: {other}"),
+    }
+}
+
 /// One parsed row into one table. Columns take the first synonym present
 /// and non-empty; every other key is kept in `extra`.
 pub fn normalise(table: &str, row: &Value) -> Normalised {
@@ -254,6 +263,8 @@ pub fn normalise(table: &str, row: &Value) -> Normalised {
             if let Some(v) = canonical.get(*name) {
                 let s = scalar(v);
                 if !s.is_empty() {
+                    // LT-537: `disabled: yes` is a rule that is off.
+                    let s = if *column == "enabled" && *name == "disabled" { flipped(&s) } else { s };
                     out.columns.insert((*column).to_string(), s);
                     used.insert((*name).to_string());
                     break;
@@ -466,6 +477,18 @@ fn flatten_xml(node: roxmltree::Node, prefix: &str, out: &mut Map<String, Value>
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// LT-537: PAN-OS says `disabled: yes` of a rule that is off. Stored as
+    /// `enabled: yes`, the path builder would count a disabled rule.
+    #[test]
+    fn a_rule_that_says_disabled_is_stored_as_not_enabled() {
+        let off = normalise("fw_policy", &json!({"name": "rule-a", "disabled": "yes", "action": "allow"}));
+        assert_eq!(off.columns["enabled"], "no");
+        let on = normalise("fw_policy", &json!({"name": "rule-b", "disabled": "no", "action": "allow"}));
+        assert_eq!(on.columns["enabled"], "yes");
+        let fortios = normalise("fw_policy", &json!({"policyid": "3", "status": "enable"}));
+        assert_eq!(fortios.columns["enabled"], "enable");
+    }
 
     #[test]
     fn an_ios_arp_row_lands_in_the_arp_table_with_its_extras_kept() {

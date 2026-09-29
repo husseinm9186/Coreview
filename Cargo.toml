@@ -22,6 +22,7 @@ members = [
     "crates/coreview-catalog",
     "crates/coreview-collect",
     "crates/coreview-topology",
+    "crates/coreview-path",
     "src-tauri",
 ]
 

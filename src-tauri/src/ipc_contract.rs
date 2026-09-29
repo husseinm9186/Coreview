@@ -13,7 +13,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
 use crate::db::{EventRow, ProjectPackage};
-use crate::collection::CollectionInput;
+use crate::collection::{CollectionInput, PathLiveInput};
 use crate::discovery::{BackupInput, CrawlInput, CredentialInput};
 use crate::vault_commands::SaveCredential;
 use crate::visio::VisioDrawing;
@@ -98,6 +98,8 @@ fn every_input_reads_the_frontends_payload_and_nothing_more() {
     contract::<SweepOptions>("sweep_options");
     contract::<CollectionInput>("collection_input");
     contract::<coreview_topology::crawl_view::ViewOptions>("topology_view_options");
+    contract::<coreview_path::Request>("path_request");
+    contract::<PathLiveInput>("path_live_input");
     contract::<SaveCredential>("save_credential");
     contract::<Check>("check");
     contract::<VisioDrawing>("visio_drawing");
@@ -138,6 +140,8 @@ proptest! {
         survives::<SweepOptions>(&v);
         survives::<CollectionInput>(&v);
         survives::<coreview_topology::crawl_view::ViewOptions>(&v);
+        survives::<coreview_path::Request>(&v);
+        survives::<PathLiveInput>(&v);
         survives::<SaveCredential>(&v);
         survives::<Check>(&v);
         survives::<VisioDrawing>(&v);
@@ -146,8 +150,8 @@ proptest! {
     /// Each fixture with one of its values replaced by something arbitrary:
     /// closer to a real mistake than random JSON, and still never a panic.
     #[test]
-    fn a_payload_with_any_one_value_replaced_is_handled(which in 0usize..12, key in 0usize..32, v in any_json()) {
-        let names = ["probe_config", "project_package", "event_row", "credential_input", "crawl_input", "backup_input", "sweep_options", "save_credential", "check", "visio_drawing", "collection_input", "topology_view_options"];
+    fn a_payload_with_any_one_value_replaced_is_handled(which in 0usize..14, key in 0usize..32, v in any_json()) {
+        let names = ["probe_config", "project_package", "event_row", "credential_input", "crawl_input", "backup_input", "sweep_options", "save_credential", "check", "visio_drawing", "collection_input", "topology_view_options", "path_request", "path_live_input"];
         let mut payload = fixture(names[which]);
         if let Value::Object(m) = &mut payload {
             let keys: Vec<String> = m.keys().cloned().collect();
@@ -163,5 +167,7 @@ proptest! {
         survives::<SaveCredential>(&payload);
         survives::<Check>(&payload);
         survives::<VisioDrawing>(&payload);
+        survives::<coreview_path::Request>(&payload);
+        survives::<PathLiveInput>(&payload);
     }
 }

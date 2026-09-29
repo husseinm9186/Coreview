@@ -30,6 +30,8 @@ pub enum Job {
     DeviceTraceroute,
     /// LT-478: asking a device which equal-cost leg it hashes a flow onto.
     DeviceHash,
+    /// LT-535: asking the devices on a modeled path about one flow.
+    LivePath,
 }
 
 impl Job {
@@ -50,6 +52,8 @@ impl Job {
             Job::CredentialTest => (40, "A credential test"),
             Job::DeviceTraceroute => (20, "A traceroute from a device"),
             Job::DeviceHash => (30, "An ECMP hash from a device"),
+            // Each check logs into every device on the path.
+            Job::LivePath => (10, "A live path check"),
         }
     }
 }

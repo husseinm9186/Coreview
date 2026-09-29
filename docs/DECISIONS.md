@@ -1201,3 +1201,39 @@ rule (a running configuration is kept only where the operator pointed).
   taken: it drops a List value's unmatched captures, which loses
   information no wrapper can put back.
 
+
+### D-061 — The path builder's assumptions, stated once — 2026-09-29
+**Asked for:** P3 of the discovery spec (roadmap LT-531–LT-536), approved
+by the operator's "Ok next phase please start and finish it". Building it
+meant choosing what the model assumes where the tables are silent. Each
+choice below is said in the result where it applies, not only here.
+**Decision:**
+- **What is not collected is not assumed** (D-050, applied): a device with
+  no routing table stops the walk with that reason; a firewall rule naming
+  an address or service object the tables do not define makes the verdict
+  *undetermined*, naming the object; a next hop no collection reached is an
+  unmanaged hop, with its MAC where ARP gave one. Services a vendor
+  predefines (`HTTPS`, `service-https`, `www`, …) are read by the vendor's
+  own definitions; custom objects are not guessed.
+- **The way back is the return of the flow.** It is traced from the
+  destination as the last device saw it (after destination NAT) to the
+  original source. A firewall that allowed the way there passes the return
+  by its session, so its policy is not asked again and NAT is not applied a
+  second time. A firewall on only one direction is named: a stateful
+  firewall drops the return of a flow it did not see.
+- **What-if approximates reconvergence.** Only the routes each device
+  already held are known, so a route through what is marked down falls to
+  the next-longest match the device had, and the result says so.
+- **A local /32 is an owned address.** IOS `L` and NX-OS `local` routes say
+  which addresses a device owns even where the address table was not read.
+  NX-OS `am` (hosts learned by ARP) is not one.
+- **Live mode asks only the catalog's `live_path` commands**, filled from
+  the modeled hop, through the same guard as every collection command
+  (LT-522), with one login per device per check, never cycled. A command
+  whose placeholders the hop cannot fill, or whose values are not safe on
+  a command line, is skipped with the reason. Traceroutes stay with
+  verify, which already takes one from the source device (LT-477).
+**Rejected:** evaluating the return through each firewall as a new
+connection (it reported the reply to an allowed flow as denied, which is
+what the first fixture showed); reading a policy verdict as "allow" when
+an object is unresolved; a live mode that sends free-form commands.

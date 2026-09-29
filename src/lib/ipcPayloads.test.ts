@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 
-import { backupCheck, backupInput, collectionInput, topologyViewOptions, crawlInput, credentialInput, eventRow, probeConfig, projectPackage, saveCredential, sweepOptions, visioDrawing } from './ipcPayloads';
+import { backupCheck, backupInput, collectionInput, pathLiveInput, pathRequest, topologyViewOptions, crawlInput, credentialInput, eventRow, probeConfig, projectPackage, saveCredential, sweepOptions, visioDrawing } from './ipcPayloads';
 import type { EventRow, Probe } from '../types/domain';
 
 // Every field set, and one field the backend does not declare on each object,
@@ -42,6 +42,14 @@ const payloads: Record<string, unknown> = {
   }),
   sweep_options: sweepOptions({ timeoutMs: 800, concurrency: 64, identify: true, scanPorts: true, ports: [22, 161], ...extra }),
   topology_view_options: topologyViewOptions({ collapseBundles: true, collapseStacks: false, placeholders: true, minConfidence: 0.7, vlan: '10', vrf: 'default', ...extra }),
+  path_request: pathRequest({
+    from: '192.0.2.50', to: '203.0.113.50', vrf: 'default', protocol: 'tcp', port: 443, sourcePort: 50000, downDevices: ['CORE1'],
+    downLinks: [{ device: 'ACC1', interface: 'Gi1/0/50', ...extra }], traceroute: ['198.51.100.2', null, '203.0.113.50'], noReverse: false, ...extra,
+  }),
+  path_live_input: pathLiveInput({
+    runId: 'col-1', credentialId: 'cred-ssh', port: 22, path: 0, ...extra,
+    request: { from: '192.0.2.50', to: '203.0.113.50', vrf: 'default', protocol: 'tcp', port: 443, sourcePort: 50000, downDevices: [], downLinks: [{ device: 'ACC1', interface: 'Gi1/0/50', ...extra }], traceroute: null, noReverse: true, ...extra },
+  }),
   collection_input: collectionInput({ projectId: 'project-1', targets: '192.0.2.10\n192.0.2.11', port: 22, osHint: 'cisco_ios', roleOverride: 'switch', planOnly: false, lightOnly: true, credentialId: 'cred-ssh', keepDiagnostic: true, connectTimeoutSecs: 8, authTimeoutSecs: 20, ...extra }),
   save_credential: saveCredential({ id: 'cred-ssh', label: 'Read-only', kind: 'ssh', username: 'reader', secret: 'not-a-real-password', secondSecret: 'not-a-real-enable', detail: '', ...extra }),
   check: backupCheck({ id: 'check-1', name: 'NTP synchronised', command: 'show ntp status', expect: 'contains', pattern: 'synchronized', ignoreCase: true, block: 'line vty', severity: 'critical', roles: ['router'], ...extra }),

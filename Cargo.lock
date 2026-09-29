@@ -982,6 +982,7 @@ dependencies = [
  "coreview-discover",
  "coreview-formats",
  "coreview-meraki",
+ "coreview-path",
  "coreview-probe",
  "coreview-topology",
  "flate2",
@@ -1086,6 +1087,17 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "webpki-roots",
+]
+
+[[package]]
+name = "coreview-path"
+version = "2.4.9"
+dependencies = [
+ "coreview-catalog",
+ "coreview-collect",
+ "coreview-topology",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

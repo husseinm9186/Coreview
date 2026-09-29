@@ -150,6 +150,69 @@ installer) — skipped with a notice until a `VIRUSTOTAL_API_KEY` secret is
 set. A fresh Windows install collecting with no Python on the machine was
 proven on CI by LT-530 (657e963). **Not yet:** the VirusTotal key. The SBOM is LT-528.
 
+### LT-531 — P3: the modeled path, in Rust, over a collection's own tables — 2026-09-29
+**Source:** the spec's P3 ("Path builder (modeled/live/verify) + fw/NAT/PBR
+awareness + reverse path + ECMP. Accept: modeled path matches traceroute on
+lab; verdicts correct"), the operator's "Ok next phase please start and
+finish it" on 2026-09-29, taken as approval to build; the plan is written
+into `docs/DISCOVERY-SPEC.md` under "P3 plan". A new pure crate,
+`crates/coreview-path`, on the same graph P2 built (the reason P2 was built
+in Rust). Steps 1, 2, 4, 5, 6 and 8 of the spec's path builder: locate the
+source (a collected device, or an address placed through ARP and the MAC
+tables, with the gateway taken from FHRP — the active router — or the SVI
+that owns the subnet, and an anycast gateway resolved by where the source's
+MAC is learned, else branched); per hop, longest-prefix match in the VRF,
+equal-cost next hops as branches, a recursive next hop re-looked-up to depth
+three, a default route flagged; next hop to device by exact address, FHRP
+address to its active owner, the device's own ARP and a MAC, else an
+unmanaged hop said as such; the switches and ports between two routers
+from the MAC tables and links, with an STP-blocked port a warning; a tunnel
+with its ends known as an overlay hop with its underlay; loop guard on
+(device, VRF) plus a TTL of 64. **Acceptance:** scenario tests with the
+expected path written by hand; "matches traceroute on lab" is the operator's
+run (LT-534 does the comparison).
+**Status 2026-09-29 — built and tested; "matches traceroute on lab" waits on
+the operator's run.** `crates/coreview-path` (pure): `model` (each box's
+forwarding state from its rows, every collection of one box merged; route
+rows merged per VRF and prefix with every next hop, IOS's `NEXTHOP_VRF`
+and NX-OS's `%vrf` read; a local /32 counts as an owned address), `walk`
+(all of the above, plus policy routes first — LT-532 — and what-if), and
+`compare`. Also shipped: a next hop's VRF where the route names one, and
+the underlay of a tunnel whose far end the `tunnel` table names. Tested: 25
+scenario tests with the expected path written by hand (ECMP core, HSRP
+source and next hop, recursive BGP, FortiGate, PAN-OS, PBR, asymmetric
+return, switches with an STP-blocked port, unmanaged next hop, loop,
+tunnel, what-if, missing table), one test from raw IOS `show ip route` and
+`show ip arp` through the real templates and normaliser, and one from rows
+stored in the database. **Not in it:** VRF leaking by route-target and
+MPLS L3VPN (the spec's steps 6–7 in part), IPv6 — LT-538.
+
+### LT-532 — P3: policy routes, NAT and firewall policy on the path — 2026-09-29
+**Source:** the spec's P3 steps 2 and 3. A policy route (PBR, PBF, FortiOS
+proute, Junos FBF rows in `policy_route`) is consulted before the routing
+table and wins where its match holds. Firewalls in their vendor's order:
+FortiOS VIP/DNAT → route → policy → SNAT; PAN-OS route on the pre-NAT
+destination → policy → NAT → route again on the translated one; ASA NAT
+before the route, where it can name the egress. Each firewall hop records
+zone in and out, the first matching enabled `fw_policy` row, its verdict
+and every NAT rewrite. **An address or service object the tables do not
+resolve makes the verdict undetermined, naming the object** — never a
+guessed allow (D-050).
+**Status 2026-09-29 — built and tested; "verdicts correct" on the lab
+waits on the operator's run.** `crates/coreview-path/src/firewall.rs`:
+the four orders above, zones from `fw_zone` (and the interface itself,
+which is how FortiOS writes them), first enabled rule wins, the vendor's
+default when none matches (FortiOS implicit deny, PAN-OS intrazone allow
+and interzone deny, deny elsewhere), destination NAT to one address (a
+pool is said, not picked), source NAT to an address or the egress
+interface's own, a static rule read both ways. Three-valued matching:
+addresses in every written form, predefined services by the vendor's
+definitions, a rule's unknown object or a flow's missing port leaves the
+verdict undetermined with the reason. Policy routes: in-interface, VRF,
+source, destination, protocol and port; a match that depends on something
+not given is noted and the table used. The way back is the return of the
+flow (D-061). LT-537 was found building it.
+
 ### LT-527 — P2: the topology builder — approved 2026-09-29
 **Source:** the spec's P2 ("Topology builder + reconciliation + UI.
 Accept: lab topology reproduced; LAG/stack collapse; inferred links
@@ -523,7 +586,106 @@ pulled into Phase 1.*
 - **LT-269** — CI matrix: Windows 10/11, macOS 12+, Ubuntu 22.04/24.04. Cost:
   Q-010.
 
+### LT-538 — P3's remainder: route-target leaking, MPLS L3VPN, IPv6, contexts in live mode — 2026-09-29
+**Source:** the spec's path-builder steps 6 and 7, which P3 (LT-531) built
+only in part, and what LT-535 does not do yet. Following an imported route
+back to the VRF it was exported from by its route-targets; an MPLS L3VPN
+hop whose BGP next hop is a remote PE reached over the IGP/LSP; IPv6
+(the model reads IPv4 only, and a trace to an IPv6 address is refused
+with that reason); a live
+check on a FortiGate VDOM, an ASA context or a PAN-OS vsys, which today
+runs in the session's default scope. Each needs rows the lab collection
+will show; none is guessed meanwhile.
+
 ## Done
+
+### LT-537 — **bug** A firewall rule reported as `disabled: yes` was stored as enabled — 2026-09-29, fixed the same day
+**Found building LT-532.** The `fw_policy` table's `enabled` column took
+the first of `enabled`, `status`, `disabled`, `state` present, and copied
+its value: PAN-OS's `disabled: yes` became `enabled: yes`, so the path
+builder would have counted a rule that is off. **Reproduced** by
+`a_rule_that_says_disabled_is_stored_as_not_enabled` in the normaliser's
+tests, failing before the fix.
+**Fixed:** a `disabled` value is stored the other way round (`yes` →
+`no`), anything else it says is kept as `disabled: …`, which the path
+builder reads as off.
+
+### LT-536 — P3: the path panel fed by the Rust builder — 2026-09-29, done the same day
+**Source:** the spec's UI line ("Path panel: hop table + canvas highlight,
+ECMP branches, fw verdicts, reverse-path diff, warnings; export
+JSON/CSV/markdown"). Path-Trace, when the run it reads was built from a
+collection (LT-527 stores it as a crawl run), traces with the Rust builder
+and shows its hop table with the decision, interfaces, the switches between
+routers, firewall verdicts and NAT, the ECMP branches, the reverse path and
+its differences, and the warnings; its existing highlight, what-if,
+application page and report keep working; and the result exports as JSON,
+CSV and markdown.
+**Shipped:** Path-Trace recognises a run built from a collection by the
+seed LT-527 writes, takes an address as well as a device as the source,
+and traces with `collection_path`; `src/lib/collectedPath.ts` maps the
+result onto the page's own `TraceResult`, so the hop table, highlight,
+what-if, application page and report are unchanged, and
+`CollectedPathDetail` adds the decisions, switches, verdicts, NAT,
+endings, the way back, the traceroute comparison, the live check and the
+JSON/CSV/markdown exports. The page's types are held to the builder's
+output by fixtures the Rust tests write (`crates/coreview-path/fixtures`)
+and the page tests read. `e2e/collectedpath.mjs`: 25 checks, 4 runs
+stable; `pathtrace`, `collection`, `tracert` and `whereis` still pass.
+
+### LT-535 — P3: live — the path's devices asked about this destination — 2026-09-29, done the same day
+**Source:** the spec's P3 modes ("live = targeted per-hop commands") and
+its "Live mode uses the per-vendor live-path helpers": each catalog's
+`live_path` commands (IOS `show ip route {dst}` and `show ip cef
+exact-route {src} {dst}`, FortiOS `get router info routing-table details
+{dst}`, PAN-OS `test routing fib-lookup`, and the rest), sent through the
+sidecar to each device on the modeled path with the collection's login,
+under the same read-only guard as every other command (LT-522). A command
+whose placeholders cannot be filled from the trace is skipped with the
+reason. Each hop says whether the device's own answer agrees with the
+model, where Coreview reads that answer, and shows the redacted reply where
+it does not.
+**Shipped:** `coreview-collect/src/live.rs` (`fill`, `ask`) and the
+`collection_live` command: the collection run's model is rebuilt in Rust,
+never taken from the page; one login per device, the credential use
+logged; host keys checked and remembered as for a collection; replies
+scrubbed and the login masked. The comparison reads rows first, then the
+next hop a route or CEF answer names, then a firewall answer's rule name;
+otherwise it says it did not read the reply and shows it. **Run:** through
+the real sidecar against the fake switch (`show ip route {dst}` and
+`show ip cef exact-route {src} {dst}` answered, the MAC lookup and the
+traceroute skipped with reasons, a refused command recorded), and in the
+harness. **Not yet:** a real device — most `live_path` commands are
+`verified: unverified`, and the lab run is what changes that; contexts
+(VDOM, vsys) are LT-538.
+
+### LT-534 — P3: verify — the modeled path against a traceroute — 2026-09-29, done the same day
+**Source:** the spec's P3 modes ("verify = compare to traceroute") and its
+output's `verify{traceroute_hops, match%}`. The traceroute is the one
+Path-Trace already takes from the source device (LT-477); each answering
+hop is placed on a device by its address, and the modeled routers are
+compared in order, hop by hop, with a match percentage. An unmanaged hop
+the model could not name is matched by the traceroute's address where it
+gives one.
+**Shipped:** as written, in `compare::verify`. The page sends the
+traceroute's answering addresses back with the request after **Measure
+from**; the best-matching equal-cost path is the one compared. Tested with
+a traceroute along one leg (100%) and one through a silent hop (66%), and
+in the harness.
+
+### LT-533 — P3: the reverse path, asymmetry, and what-if — 2026-09-29, done the same day
+**Source:** the spec's P3 steps 9 and 10. Every trace also traces back from
+the destination to the source and compares the two: a different set of
+routers is an asymmetry warning, and a stateful firewall on one direction
+only is said by name. What-if: devices and links marked down are left out
+and the path recomputed from the same snapshot, which approximates
+reconvergence and says so.
+**Shipped:** as written. Every trace is also traced back (the page can
+turn it off with `noReverse`); the routers each way are compared, and a
+firewall on one direction only is named. The way back is the return of the
+flow, not a new connection (D-061) — the first fixture showed a reply to
+an allowed flow reported as denied before that. What-if takes devices and
+links (a device's interface) marked down and says it approximates
+reconvergence. Tested in the scenarios and in `e2e/collectedpath.mjs`.
 
 ### LT-530 — Prove the installed Windows build collects with no Python on the machine — 2026-09-29, done the same day
 **Source:** the operator, 2026-09-29: "Does the Windows build at 7584ecd

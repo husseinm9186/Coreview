@@ -721,6 +721,224 @@ mod tests {
     }
 }
 
+// ------------------------------------------------------------------- path
+
+/// LT-531: what a trace request may carry. The builder is pure and bounded;
+/// these limits keep one request from asking it for a runaway walk.
+fn check_path_request(r: &coreview_path::Request) -> CmdResult<()> {
+    let short = |s: &str, n: usize, what: &str| if s.len() > n { Err(format!("{what} is longer than {n} characters.")) } else { Ok(()) };
+    if r.from.trim().is_empty() || r.to.trim().is_empty() {
+        return Err("A trace needs where it starts and where it goes.".into());
+    }
+    short(&r.from, 255, "The source")?;
+    short(&r.to, 255, "The destination")?;
+    short(r.vrf.as_deref().unwrap_or(""), 64, "The VRF")?;
+    short(r.protocol.as_deref().unwrap_or(""), 16, "The protocol")?;
+    if r.down_devices.len() > 256 || r.down_links.len() > 256 {
+        return Err("At most 256 devices and 256 links can be marked down.".into());
+    }
+    for d in &r.down_devices {
+        short(d, 255, "A device marked down")?;
+    }
+    for l in &r.down_links {
+        short(&l.device, 255, "A device marked down")?;
+        short(&l.interface, 64, "An interface marked down")?;
+    }
+    if let Some(t) = &r.traceroute {
+        if t.len() > 64 {
+            return Err("A traceroute of more than 64 hops is not compared.".into());
+        }
+        for h in t.iter().flatten() {
+            short(h, 64, "A traceroute hop")?;
+        }
+    }
+    Ok(())
+}
+
+/// The model of one run: its devices, and the graph P2 builds from them.
+fn path_model(state: &AppState, run_id: &str) -> CmdResult<coreview_path::Net> {
+    let input = {
+        let conn = state.db.lock().map_err(db_err)?;
+        cdb::topology_input(&conn, run_id).map_err(db_err)?
+    };
+    if input.is_empty() {
+        return Err("That collection run reached no device, so there is nothing to trace over.".into());
+    }
+    let graph = coreview_topology::build(&input);
+    Ok(coreview_path::Net::build(&input, &graph))
+}
+
+/// LT-531–LT-534: the modeled path over a collection run — the way there,
+/// the way back and how they differ, and the comparison with a traceroute
+/// when the request carries one.
+#[tauri::command(async)]
+pub fn collection_path(state: State<'_, AppState>, run_id: String, request: coreview_path::Request) -> CmdResult<coreview_path::Outcome> {
+    check_path_request(&request)?;
+    let net = path_model(&state, run_id.trim())?;
+    Ok(coreview_path::run(&net, &request))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PathLiveInput {
+    pub run_id: String,
+    pub request: coreview_path::Request,
+    /// A saved login (D-059: must belong to the open project), else `credentials`.
+    pub credential_id: Option<String>,
+    pub port: u16,
+    /// Which of the equal-cost paths to ask along; the first when absent.
+    pub path: Option<usize>,
+}
+
+/// One device on the path, asked.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveHop {
+    pub device: String,
+    pub host: Option<String>,
+    pub os: Option<String>,
+    pub run: Option<coreview_collect::live::LiveRun>,
+    pub check: coreview_path::compare::LiveCheck,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveReport {
+    pub path: usize,
+    pub hops: Vec<LiveHop>,
+}
+
+/// A MAC in the form the device's own commands take.
+fn mac_for(os: &str, hex12: &str) -> String {
+    let h = hex12.to_ascii_lowercase();
+    if h.len() != 12 {
+        return h;
+    }
+    if os.starts_with("cisco_") {
+        format!("{}.{}.{}", &h[0..4], &h[4..8], &h[8..12])
+    } else {
+        (0..6).map(|i| &h[i * 2..i * 2 + 2]).collect::<Vec<_>>().join(":")
+    }
+}
+
+/// The values a live command's placeholders are filled from, for one hop.
+fn live_vars(hop: &coreview_path::walk::Hop, os: &str, request: &coreview_path::Request) -> std::collections::BTreeMap<String, String> {
+    let mut v = std::collections::BTreeMap::new();
+    let mut put = |k: &str, val: Option<String>| {
+        if let Some(val) = val.filter(|x| !x.is_empty()) {
+            v.insert(k.to_string(), val);
+        }
+    };
+    put("dst", Some(hop.dst.clone()));
+    put("src", Some(hop.src.clone()));
+    put("vrf", Some(hop.vrf.clone()));
+    put("vr", Some(hop.vrf.clone()));
+    put("nh", hop.next_hop.clone());
+    put("mac", hop.next_hop_mac.as_deref().map(|m| mac_for(os, m)));
+    put("in_if", hop.in_interface.clone());
+    put("zone", hop.firewall.as_ref().and_then(|f| f.zone_in.clone()));
+    put("z1", hop.firewall.as_ref().and_then(|f| f.zone_in.clone()));
+    put("z2", hop.firewall.as_ref().and_then(|f| f.zone_out.clone()));
+    let proto = request.protocol.as_deref().map(|p| p.trim().to_ascii_lowercase());
+    put("proto", proto.clone());
+    put("p", proto.as_deref().and_then(coreview_path::firewall::proto_number).map(|n| n.to_string()));
+    put("dport", request.port.map(|p| p.to_string()));
+    put("dp", request.port.map(|p| p.to_string()));
+    put("sport", request.source_port.map(|p| p.to_string()));
+    put("sp", request.source_port.map(|p| p.to_string()));
+    v
+}
+
+/// What the comparison reads from one answer: its rows as route rows.
+fn evidence(a: &coreview_collect::live::LiveAnswer) -> coreview_path::compare::LiveEvidence {
+    let rows = normalise_all(&["route".to_string()], &a.rows);
+    let mut next_hops = Vec::new();
+    let mut interfaces = Vec::new();
+    for r in rows {
+        if let Some(h) = r.columns.get("next_hop") {
+            next_hops.extend(h.split([',', ' ']).map(str::trim).filter(|x| !x.is_empty()).map(str::to_string));
+        }
+        if let Some(i) = r.columns.get("interface") {
+            interfaces.push(i.clone());
+        }
+    }
+    coreview_path::compare::LiveEvidence { command: a.command.clone(), status: a.status.clone(), next_hops, interfaces, raw: a.raw.clone() }
+}
+
+/// LT-535: each collected device on a modeled path asked, with its
+/// catalog's `live_path` commands, what it would do with this flow now.
+/// One login per device, never cycled; the read-only guard in
+/// `Sidecar::run` is the one every collection command passes.
+#[tauri::command]
+pub async fn collection_live(app: AppHandle, state: State<'_, AppState>, input: PathLiveInput, credentials: Option<CredentialInput>) -> CmdResult<LiveReport> {
+    state.limiter.allow(crate::ratelimit::Job::LivePath)?;
+    check_path_request(&input.request)?;
+    let net = path_model(&state, input.run_id.trim())?;
+    let outcome = coreview_path::run(&net, &coreview_path::Request { traceroute: None, no_reverse: true, ..input.request.clone() });
+    let which = input.path.unwrap_or(0);
+    let path = outcome.forward.paths.get(which).ok_or("That path is not in the trace.")?.clone();
+    let creds = match input.credential_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(id) => {
+            let c = crate::vault_commands::ssh_credentials(&state, id)?;
+            crate::vault_commands::note_use(&state, id, "Live path check", &format!("{} to {}", input.request.from.trim(), input.request.to.trim()));
+            c
+        }
+        None => credentials.filter(|c| !c.username.trim().is_empty()).map(Into::into).ok_or("A login is needed: pick a saved one or type one.")?,
+    };
+    let secrets = creds.secrets();
+    let auth = Auth { username: creds.username.clone(), password: secrets.first().cloned().unwrap_or_default(), enable: secrets.get(1).cloned(), private_key: None };
+    let catalogs = load_catalogs(&app)?;
+    let location = sidecar_location(&app)?;
+    let host_keys = crate::discovery::load_host_keys(&state)?;
+    let options = RunOptions { engine: Some(rust_engine(&app)?), ..RunOptions::default() };
+    // One job at a time with collections: both drive the one sidecar kind.
+    let _ticket = state.jobs.start(crate::jobs::Kind::Collect)?;
+    let mut sidecar = Sidecar::spawn(&location).await.map_err(|e| e.to_string())?;
+    let mut hops: Vec<LiveHop> = Vec::new();
+    for hop in &path.hops {
+        if hops.iter().any(|h| h.device == hop.device) {
+            continue;
+        }
+        let bx = net.find_box(&hop.device).map(|i| &net.boxes[i]);
+        let host = bx.map(|b| b.host.clone()).filter(|h| !h.is_empty());
+        let os = bx.and_then(|b| b.os.clone());
+        let catalog = os.as_deref().and_then(|o| catalogs.iter().find(|c| c.os == o));
+        let (Some(host_s), Some(os_s), Some(catalog)) = (host.clone(), os.clone(), catalog) else {
+            hops.push(LiveHop { device: hop.device.clone(), host, os, run: None, check: coreview_path::compare::LiveCheck { agrees: None, detail: "Not asked: the collection did not record how to reach this device or which catalog it uses.".into() } });
+            continue;
+        };
+        let known_host_key = host_keys.lock().ok().and_then(|k| k.known(&host_s, input.port));
+        let target = Target { host: host_s.clone(), port: input.port, os_hint: Some(os_s.clone()), role_override: None, known_host_key };
+        let vars = live_vars(hop, &os_s, &input.request);
+        let mut run = coreview_collect::live::ask(&mut sidecar, catalog, &target, &auth, &options, &vars).await;
+        if let (true, Some(key)) = (run.host_key_first_seen, run.host_key.clone()) {
+            if let Ok(mut k) = host_keys.lock() {
+                k.remember(&host_s, input.port, &key);
+            }
+            crate::discovery::persist_host_keys(&app, &host_keys);
+        }
+        for a in &mut run.answers {
+            // The login never appears in what is shown, whatever a device echoed.
+            for s in &secrets {
+                if !s.is_empty() {
+                    a.raw = a.raw.replace(s.as_str(), "********");
+                }
+            }
+        }
+        let check = match &run.failure {
+            Some(f) => coreview_path::compare::LiveCheck { agrees: None, detail: format!("Not asked: the session failed ({f}).") },
+            None => coreview_path::compare::live_check(hop, &run.answers.iter().map(evidence).collect::<Vec<_>>()),
+        };
+        let sidecar_gone = run.failure.as_deref() == Some("sidecar");
+        hops.push(LiveHop { device: hop.device.clone(), host: Some(host_s), os: Some(os_s), run: Some(run), check });
+        if sidecar_gone {
+            break;
+        }
+    }
+    sidecar.quit().await;
+    Ok(LiveReport { path: which, hops })
+}
+
 // --------------------------------------------------------------- topology
 
 /// LT-527: what the Collect tab shows after building, and hands on to the

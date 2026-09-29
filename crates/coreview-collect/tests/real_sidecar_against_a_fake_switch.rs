@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use coreview_catalog::load_dir;
+use coreview_collect::live;
 use coreview_collect::run::{collect_device, Quiet, RunOptions, Target};
 use coreview_collect::sidecar::{Auth, Sidecar, SidecarLocation};
 use russh::server::{self, Auth as SshAuth, Msg, Session};
@@ -125,6 +126,15 @@ impl server::Handler for FakeSwitch {
                  advertisement version: 2\r\n\
                  Total cdp entries displayed : 1\r\n"
                 .into(),
+            // LT-535: what a live check asks about one destination.
+            "show ip route 203.0.113.5" => "Routing entry for 203.0.113.0/24\r\n\
+                 \x20 Known via \"ospf 1\", distance 110, metric 3, type inter area\r\n\
+                 \x20 Last update from 198.51.100.2 on GigabitEthernet1/0/49, 00:10:11 ago\r\n\
+                 \x20 Routing Descriptor Blocks:\r\n\
+                 \x20 * 198.51.100.2, from 192.0.2.254, 00:10:11 ago, via GigabitEthernet1/0/49\r\n\
+                 \x20     Route metric is 3, traffic share count is 1\r\n"
+                .into(),
+            "show ip cef exact-route 192.0.2.10 203.0.113.5" => "192.0.2.10 -> 203.0.113.5 =>IP adj out of GigabitEthernet1/0/49, addr 198.51.100.2\r\n".into(),
             "show running-config" => "Building configuration...\r\n\r\nhostname SW1\r\nenable secret 5 $1$FAKE$notarealhash\r\nsnmp-server community FAKE-COMMUNITY RO\r\nend\r\n".into(),
             _ => "% Invalid input detected at '^' marker.\r\n".into(),
         };
@@ -208,5 +218,43 @@ async fn the_real_sidecar_logs_into_a_fake_switch_and_the_collector_reads_it() {
     let wrong = Auth { username: "reader".into(), password: "wrong-password-fixture".into(), enable: None, private_key: None };
     let run2 = collect_device(&mut sidecar, &catalogs, &target, &wrong, &RunOptions::default(), &Quiet).await;
     assert_eq!(run2.failure.as_deref(), Some("auth"), "{:?}", run2.log);
+    sidecar.quit().await;
+}
+
+/// LT-535: a live check through the real sidecar — the IOS catalog's
+/// `live_path` commands filled from a hop, sent under the same guard, the
+/// replies kept; a command that needs a value the hop lacks is skipped with
+/// the reason, never sent.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_live_check_asks_the_device_about_one_destination() {
+    let Some(location) = dev_sidecar() else {
+        eprintln!("skipped: no development sidecar (sidecar/.venv or COREVIEW_SIDECAR_PYTHON)");
+        return;
+    };
+    let port = start_switch().await;
+    let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+    let ios = catalogs.iter().find(|c| c.os == "cisco_ios").unwrap();
+    let mut sidecar = Sidecar::spawn(&location).await.expect("the sidecar starts from the venv");
+    let target = Target { host: "127.0.0.1".into(), port, os_hint: Some("cisco_ios".into()), role_override: None, known_host_key: None };
+    let auth = Auth { username: "reader".into(), password: "correct-horse-fixture".into(), enable: None, private_key: None };
+    let vars: std::collections::BTreeMap<String, String> =
+        [("dst", "203.0.113.5"), ("src", "192.0.2.10"), ("vrf", "default"), ("nh", "198.51.100.2")].iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+    let run = live::ask(&mut sidecar, ios, &target, &auth, &RunOptions::default(), &vars).await;
+    assert_eq!(run.failure, None, "{:?}", run.log);
+    let by = |cmd: &str| run.answers.iter().find(|a| a.command == cmd).unwrap_or_else(|| panic!("{cmd}: {:?}", run.answers.iter().map(|a| (&a.command, &a.status)).collect::<Vec<_>>()));
+    let route = by("show ip route 203.0.113.5");
+    assert_eq!(route.status, "ok");
+    assert!(route.raw.contains("198.51.100.2"), "{}", route.raw);
+    let cef = by("show ip cef exact-route 192.0.2.10 203.0.113.5");
+    assert!(cef.raw.contains("addr 198.51.100.2"), "{}", cef.raw);
+    // A value the hop did not give, and the traceroute (verify's job): not sent.
+    let mac = by("show mac address-table address {mac}");
+    assert_eq!(mac.status, "skipped");
+    assert!(mac.reason.as_deref().unwrap_or("").contains("{mac}"));
+    assert_eq!(by("traceroute {dst} source {src}").status, "skipped");
+    // A command the device refuses is recorded as such, not fatal.
+    assert_eq!(by("show ip arp 198.51.100.2").status, "unsupported");
+    assert!(run.answers.iter().filter(|a| a.status == "skipped").all(|a| a.reason.is_some()));
+    assert!(run.host_key_first_seen && run.host_key.is_some());
     sidecar.quit().await;
 }

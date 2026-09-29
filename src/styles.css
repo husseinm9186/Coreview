@@ -1181,6 +1181,15 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-trace-simulating { color: var(--warning); }
 .cv-trace-port .cv-input { width: 7ch; min-width: 0; }
 .cv-trace-made { color: var(--healthy); }
+/* LT-536: what the Rust builder adds for a collection run. */
+.cv-collected-path { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+.cv-collected-path [data-verdict="deny"] { color: var(--down); }
+.cv-collected-path [data-verdict="undetermined"] { color: var(--warning); }
+.cv-collected-path [data-verdict="allow"] { color: var(--healthy); }
+.cv-collected-path tr[data-agrees="no"] td { color: var(--warning); }
+.cv-collected-path pre { margin: 4px 0 0; padding: 6px 8px; max-height: 240px; overflow: auto; white-space: pre-wrap; border: 1px solid var(--line); border-radius: var(--radius); font-size: var(--text-sm); }
+.cv-trace-warnings { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: var(--text-md); }
+.cv-trace-ending { margin: 0; }
 
 /* LT-336: a deduction, marked as one. */
 .cv-inferred-note { color: var(--text-dim); border-left: 2px solid var(--line-strong); padding-left: 8px; }

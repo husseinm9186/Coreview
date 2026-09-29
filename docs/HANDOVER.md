@@ -474,6 +474,18 @@ trust the summary below over that file; it is a signpost and it will rot.
   the device, not under `details`); ports are kept long-form in the graph
   and shortened only in the view; the Discover panel takes a built topology
   through `pendingCrawlResult` in the store, the way it reads walk files.
+- **P3, 29 September 2026 (LT-531–LT-538, D-061).** `crates/coreview-path`
+  walks a collection run's model; `collection_path` answers Path-Trace when
+  the run it reads was built from a collection, and `collection_live` asks
+  the path's devices through the sidecar. **Mines:** Path-Trace knows such
+  a run only by its seed, `collection <run id>`, which LT-527 writes — change
+  one and change the other (`collectionRunOf`); the page's types are held
+  to `crates/coreview-path/fixtures/*.json`, rewritten with
+  `UPDATE_PATH_FIXTURE=1 cargo test -p coreview-path` — rewrite them, then
+  read the page tests, never the other way round; `Request.return_of` is
+  `#[serde(skip)]` on purpose, so the page can never tell the builder a
+  firewall already passed a flow; enum fields need `rename_all_fields` for
+  camelCase, which `rename_all` alone does not do.
 
 - **Shipped 2026-09-18, after the mission:** LT-285 the address register (the
   **Addresses** tab; `src/lib/ipam.ts` is the arithmetic, `e2e/ipam.mjs` drives

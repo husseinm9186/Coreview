@@ -132,6 +132,13 @@ crates/
                      and evidence, bundles, stacks, MAC placement, layer 3,
                      overlays — and `crawl_view`, the crawl-result shape the
                      review screen and diagram already draw.
+  coreview-path      P3's builder (LT-531–LT-535, D-061): a run's tables and
+                     graph in, the path out — policy routes, LPM per VRF,
+                     ECMP, recursion, FHRP/ARP/MAC to device, switches
+                     between routers, firewall NAT and policy per vendor,
+                     the way back, what-if, verify against a traceroute.
+                     `fixtures/` is its real output, which the page's tests
+                     read. Live checks are `coreview-collect/src/live.rs`.
 resources/
   catalog/           One YAML per OS — fingerprint, `session:` block (from
                      scrapli and netmiko, see its NOTICE), capability probes,
@@ -215,6 +222,7 @@ node e2e/folders.mjs      # folders and sub-folders on the project screen (LT-48
 node e2e/foldersettings.mjs # a project's backup and export folders, chosen where they can be kept (LT-487)
 node e2e/tracert.mjs      # the Tracert tab: from here or a device, hops named, a page from them (LT-505)
 node e2e/collection.mjs   # the Collect tab: plan preview, command log, shadow report, topology and its hand-over to review (LT-517, LT-521, LT-527)
+node e2e/collectedpath.mjs # Path-Trace over a collection run: the Rust builder's path, verdicts, way back, verify, live, exports (LT-531–LT-536)
 ```
 
 Canvas performance is measured, not asserted (LT-190), against a **production**

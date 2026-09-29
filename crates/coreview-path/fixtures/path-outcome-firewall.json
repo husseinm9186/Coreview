@@ -1,0 +1,147 @@
+{
+  "forward": {
+    "from": "203.0.113.99",
+    "to": "203.0.113.10",
+    "source": {
+      "starts": [
+        "FGT1"
+      ],
+      "endpoint": null,
+      "how": "FGT1 has 203.0.113.99's subnet as attached."
+    },
+    "paths": [
+      {
+        "hops": [
+          {
+            "device": "FGT1",
+            "inInterface": "port1",
+            "vrf": "default",
+            "src": "203.0.113.99",
+            "dst": "203.0.113.10",
+            "decision": "connected",
+            "matched": {
+              "prefix": "10.1.1.0/24",
+              "protocol": "connected",
+              "kind": "connected",
+              "distance": null,
+              "metric": null,
+              "nextHop": null,
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "port2",
+            "nextHop": null,
+            "nextHopMac": "000000001010",
+            "nextDevice": null,
+            "l2": [],
+            "firewall": {
+              "zoneIn": "port1",
+              "zoneOut": "port2",
+              "policy": "web-in (1)",
+              "action": "accept",
+              "verdict": "allow",
+              "reason": "web-in (1) is the first enabled rule that matches, and it says accept."
+            },
+            "nat": [
+              {
+                "rule": "VIP-WEB",
+                "kind": "vip",
+                "field": "destination",
+                "was": "203.0.113.10",
+                "now": "10.1.1.10"
+              }
+            ],
+            "ecmp": 0,
+            "overlay": null,
+            "notes": []
+          }
+        ],
+        "ending": {
+          "kind": "delivered",
+          "device": null,
+          "endpoint": {
+            "switch": "FGT1",
+            "port": "port2",
+            "vlan": null,
+            "mac": "000000001010"
+          }
+        }
+      }
+    ],
+    "warnings": [],
+    "truncated": false
+  },
+  "reverse": {
+    "from": "10.1.1.10",
+    "to": "203.0.113.99",
+    "source": {
+      "starts": [
+        "FGT1"
+      ],
+      "endpoint": {
+        "switch": "FGT1",
+        "port": "port2",
+        "vlan": null,
+        "mac": "000000001010"
+      },
+      "how": "FGT1 has 10.1.1.10's subnet as attached."
+    },
+    "paths": [
+      {
+        "hops": [
+          {
+            "device": "FGT1",
+            "inInterface": "port2",
+            "vrf": "default",
+            "src": "10.1.1.10",
+            "dst": "203.0.113.99",
+            "decision": "connected",
+            "matched": {
+              "prefix": "203.0.113.0/24",
+              "protocol": "connected",
+              "kind": "connected",
+              "distance": null,
+              "metric": null,
+              "nextHop": null,
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "port1",
+            "nextHop": null,
+            "nextHopMac": null,
+            "nextDevice": null,
+            "l2": [],
+            "firewall": {
+              "zoneIn": "port2",
+              "zoneOut": "port1",
+              "policy": null,
+              "action": null,
+              "verdict": "allow",
+              "reason": "The return of a flow FGT1 allowed on the way there: a stateful firewall passes it by its session."
+            },
+            "nat": [],
+            "ecmp": 0,
+            "overlay": null,
+            "notes": [
+              "FGT1 has no ARP entry for 203.0.113.99: the route says it is attached, but whether anything answers there was not seen."
+            ]
+          }
+        ],
+        "ending": {
+          "kind": "delivered",
+          "device": null,
+          "endpoint": null
+        }
+      }
+    ],
+    "warnings": [],
+    "truncated": false
+  },
+  "asymmetry": {
+    "symmetric": true,
+    "onlyForward": [],
+    "onlyReverse": [],
+    "notes": []
+  },
+  "verify": null
+}

@@ -9,7 +9,7 @@
 import { EMPTY_TREE, readTree, type FolderTree } from './projectFolders';
 import type { PagingMode } from './showCommands';
 import type { BackupCheck, CheckResult } from './checks';
-import { backupCheck, backupInput, crawlInput, credentialInput, eventRow, probeConfig, projectPackage, saveCredential, sweepOptions, visioDrawing, collectionInput, topologyViewOptions } from './ipcPayloads';
+import { backupCheck, backupInput, crawlInput, credentialInput, eventRow, probeConfig, projectPackage, saveCredential, sweepOptions, visioDrawing, collectionInput, topologyViewOptions, pathRequest, pathLiveInput } from './ipcPayloads';
 import type {
   EventRow,
   Probe,
@@ -484,6 +484,50 @@ export type TopologyGraph = {
 };
 export type TopologyViewOptions = { collapseBundles: boolean; collapseStacks: boolean; placeholders: boolean; minConfidence: number; vlan?: string; vrf?: string };
 export type TopologyBuilt = { crawlRunId: string; devices: CrawledDevice[]; notVisited: Neighbor[]; graph: TopologyGraph };
+
+// LT-531–LT-535: the path builder over a collection run (crates/coreview-path).
+export type PathRequest = {
+  from: string; to: string; vrf?: string | null; protocol?: string | null; port?: number | null; sourcePort?: number | null;
+  downDevices?: string[]; downLinks?: { device: string; interface: string }[];
+  /** Verify: each traceroute hop's answering address, null for `*`. */
+  traceroute?: (string | null)[] | null;
+  noReverse?: boolean;
+};
+export type PathMatched = { prefix: string; protocol: string; kind: string; distance: number | null; metric: number | null; nextHop: string | null; command: string };
+export type PathL2Step = { device: string; inPort: string | null; outPort: string | null; vlan: string | null; blocked: boolean };
+export type PathFirewall = { zoneIn: string | null; zoneOut: string | null; policy: string | null; action: string | null; verdict: 'allow' | 'deny' | 'undetermined'; reason: string };
+export type PathRewrite = { rule: string; kind: string; field: 'source' | 'destination'; was: string; now: string };
+export type PathOverlay = { tunnel: string; kind: string | null; local: string | null; remote: string; underlay: string[] };
+export type PathDecision = 'local' | 'connected' | 'lpm' | 'default' | 'pbr';
+export type PathHop = {
+  device: string; inInterface: string | null; vrf: string; src: string; dst: string; decision: PathDecision;
+  matched: PathMatched | null; via: PathMatched[]; outInterface: string | null; nextHop: string | null; nextHopMac: string | null;
+  nextDevice: string | null; l2: PathL2Step[]; firewall: PathFirewall | null; nat: PathRewrite[]; ecmp: number; overlay: PathOverlay | null; notes: string[];
+};
+export type PathPlace = { switch: string; port: string; vlan: string | null; mac: string };
+export type PathEnding =
+  | { kind: 'delivered'; device: string | null; endpoint: PathPlace | null }
+  | { kind: 'dropped'; at: string; reason: string }
+  | { kind: 'denied'; at: string; policy: string | null }
+  | { kind: 'unmanaged'; at: string; nextHop: string; mac: string | null; name: string | null }
+  | { kind: 'insufficient'; at: string | null; reason: string }
+  | { kind: 'loop'; at: string };
+export type CollectedPath = { hops: PathHop[]; ending: PathEnding };
+export type PathTrace = {
+  from: string; to: string; source: { starts: string[]; endpoint: PathPlace | null; how: string } | null;
+  paths: CollectedPath[]; warnings: string[]; truncated: boolean;
+};
+export type PathAsymmetry = { symmetric: boolean; onlyForward: string[]; onlyReverse: string[]; notes: string[] };
+export type PathVerify = { path: number; matchPercent: number; rows: { n: number; traceroute: string | null; tracerouteDevice: string | null; modeled: string | null; agrees: boolean }[] };
+export type PathOutcome = { forward: PathTrace; reverse: PathTrace | null; asymmetry: PathAsymmetry | null; verify: PathVerify | null };
+export type LiveAnswer = { id: string; command: string; status: string; rows: Record<string, unknown>[]; raw: string; reason: string | null; verified: string };
+export type LiveHop = {
+  device: string; host: string | null; os: string | null;
+  run: { host: string; answers: LiveAnswer[]; hostKey: string | null; hostKeyFirstSeen: boolean; failure: string | null; log: string[] } | null;
+  check: { agrees: boolean | null; detail: string };
+};
+export type LiveReport = { path: number; hops: LiveHop[] };
+export type PathLiveInput = { runId: string; request: PathRequest; credentialId?: string; port: number; path?: number };
 
 /** LT-521: per (os, command), how often both parsers read a reply and how often they disagreed. */
 export type ShadowLine = { os: string; cmd: string; parser: string; compared: number; mismatches: number; errors: number; lastDetail: string | null };
@@ -1382,6 +1426,12 @@ export const ipc = {
   },
   collectionTopology(runId: string, options: TopologyViewOptions) {
     return invoke<TopologyBuilt>('collection_topology', { runId, options: topologyViewOptions(options) });
+  },
+  collectionPath(runId: string, request: PathRequest) {
+    return invoke<PathOutcome>('collection_path', { runId, request: pathRequest(request) });
+  },
+  collectionLive(input: PathLiveInput, credentials?: CredentialInput) {
+    return invoke<LiveReport>('collection_live', { input: pathLiveInput(input), credentials: credentials ? credentialInput(credentials) : undefined });
   },
   shadowReport(projectId: string) {
     return invoke<ShadowLine[]>('shadow_report', { projectId });

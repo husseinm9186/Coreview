@@ -1,0 +1,23 @@
+{
+  "runId": "col-1",
+  "request": {
+    "from": "192.0.2.50",
+    "to": "203.0.113.50",
+    "vrf": "default",
+    "protocol": "tcp",
+    "port": 443,
+    "sourcePort": 50000,
+    "downDevices": [],
+    "downLinks": [
+      {
+        "device": "ACC1",
+        "interface": "Gi1/0/50"
+      }
+    ],
+    "traceroute": null,
+    "noReverse": true
+  },
+  "credentialId": "cred-ssh",
+  "port": 22,
+  "path": 0
+}

@@ -238,6 +238,8 @@ fn main() {
             collection::collection_table,
             collection::shadow_report,
             collection::collection_topology,
+            collection::collection_path,
+            collection::collection_live,
             collection::collection_raw,
             collection::import_captures,
             discovery::cancel_crawl,

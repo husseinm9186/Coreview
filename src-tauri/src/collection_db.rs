@@ -691,4 +691,36 @@ mod topology_tests {
         drop(conn);
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// LT-531 below the page: route, address and ARP rows as a collection
+    /// stores them (the IOS templates' own field names), read back and traced.
+    #[test]
+    fn a_runs_stored_rows_are_traced() {
+        let dir = std::env::temp_dir().join(format!("cv-path-{}-{}", std::process::id(), crate::db::now_ms()));
+        let conn = crate::db::open(&dir.join("coreview.db")).unwrap();
+        conn.execute("INSERT INTO projects (id, name, created_at, updated_at) VALUES ('p1','P',0,0)", []).unwrap();
+        open_run(&conn, "col-2", "p1", "192.0.2.1", false, None, "live").unwrap();
+        let row = |dev: &str, cmd: &str, table: &str, v: serde_json::Value| write_row(&conn, "col-2", dev, cmd, &normalise(table, &v)).unwrap();
+        write_device(&conn, "col-2", "r1", "192.0.2.1", Some("cisco_ios"), Some("router"), &[], "", "R1#", None, &[], None, &[], None).unwrap();
+        row("r1", "show_version", "device", json!({"hostname": "R1", "serial": "FAKE-R1"}));
+        row("r1", "show_ip_route", "route", json!({"protocol": "C", "network": "192.0.2.0", "prefix_length": "24", "nexthop_if": "GigabitEthernet0/0"}));
+        row("r1", "show_ip_route", "route", json!({"protocol": "C", "network": "198.51.100.0", "prefix_length": "30", "nexthop_if": "GigabitEthernet0/1"}));
+        row("r1", "show_ip_route", "route", json!({"protocol": "S", "network": "203.0.113.0", "prefix_length": "24", "nexthop_ip": "198.51.100.2"}));
+        write_device(&conn, "col-2", "r2", "198.51.100.2", Some("cisco_ios"), Some("router"), &[], "", "R2#", None, &[], None, &[], None).unwrap();
+        row("r2", "show_version", "device", json!({"hostname": "R2", "serial": "FAKE-R2"}));
+        row("r2", "show_ip_interface_brief", "ip_address", json!({"interface": "GigabitEthernet0/1", "ip_address": "198.51.100.2"}));
+        row("r2", "show_ip_route", "route", json!({"protocol": "C", "network": "198.51.100.0", "prefix_length": "30", "nexthop_if": "GigabitEthernet0/1"}));
+        row("r2", "show_ip_route", "route", json!({"protocol": "C", "network": "203.0.113.0", "prefix_length": "24", "nexthop_if": "GigabitEthernet0/2"}));
+        row("r2", "show_ip_arp", "arp", json!({"address": "203.0.113.9", "mac_address": "0000.0000.0309", "interface": "GigabitEthernet0/2"}));
+        let input = topology_input(&conn, "col-2").unwrap();
+        let out = coreview_path::trace_run(&input, &coreview_path::Request { from: "192.0.2.10".into(), to: "203.0.113.9".into(), ..Default::default() });
+        let p = &out.forward.paths[0];
+        assert_eq!(p.hops.iter().map(|h| h.device.as_str()).collect::<Vec<_>>(), vec!["R1", "R2"], "{:#?}", out.forward);
+        assert_eq!(p.hops[0].next_hop.as_deref(), Some("198.51.100.2"));
+        assert_eq!(p.hops[0].out_interface.as_deref(), Some("GigabitEthernet0/1"));
+        assert_eq!(p.hops[1].next_hop_mac.as_deref(), Some("000000000309"));
+        assert!(matches!(p.ending, coreview_path::walk::Ending::Delivered { .. }));
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

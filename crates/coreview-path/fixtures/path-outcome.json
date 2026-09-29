@@ -1,0 +1,499 @@
+{
+  "forward": {
+    "from": "192.0.2.50",
+    "to": "203.0.113.50",
+    "source": {
+      "starts": [
+        "ACC1"
+      ],
+      "endpoint": {
+        "switch": "ACC1",
+        "port": "Gi1/0/5",
+        "vlan": "10",
+        "mac": "000000005001"
+      },
+      "how": "ACC1 has 192.0.2.50's subnet as attached."
+    },
+    "paths": [
+      {
+        "hops": [
+          {
+            "device": "ACC1",
+            "inInterface": "Vlan10",
+            "vrf": "default",
+            "src": "192.0.2.50",
+            "dst": "203.0.113.50",
+            "decision": "lpm",
+            "matched": {
+              "prefix": "203.0.113.0/24",
+              "protocol": "O",
+              "kind": "ospf",
+              "distance": null,
+              "metric": null,
+              "nextHop": "198.51.100.2",
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "Gi1/0/49",
+            "nextHop": "198.51.100.2",
+            "nextHopMac": "00000000c101",
+            "nextDevice": "CORE1",
+            "l2": [],
+            "firewall": null,
+            "nat": [],
+            "ecmp": 2,
+            "overlay": null,
+            "notes": []
+          },
+          {
+            "device": "CORE1",
+            "inInterface": "Gi1/1",
+            "vrf": "default",
+            "src": "192.0.2.50",
+            "dst": "203.0.113.50",
+            "decision": "lpm",
+            "matched": {
+              "prefix": "203.0.113.0/24",
+              "protocol": "O",
+              "kind": "ospf",
+              "distance": null,
+              "metric": null,
+              "nextHop": "198.51.100.10",
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "Gi1/2",
+            "nextHop": "198.51.100.10",
+            "nextHopMac": null,
+            "nextDevice": "DC1",
+            "l2": [],
+            "firewall": null,
+            "nat": [],
+            "ecmp": 0,
+            "overlay": null,
+            "notes": []
+          },
+          {
+            "device": "DC1",
+            "inInterface": "Eth1/1",
+            "vrf": "default",
+            "src": "192.0.2.50",
+            "dst": "203.0.113.50",
+            "decision": "connected",
+            "matched": {
+              "prefix": "203.0.113.0/24",
+              "protocol": "direct",
+              "kind": "connected",
+              "distance": null,
+              "metric": null,
+              "nextHop": null,
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "Vlan20",
+            "nextHop": null,
+            "nextHopMac": "000000005002",
+            "nextDevice": null,
+            "l2": [
+              {
+                "device": "DC1",
+                "inPort": null,
+                "outPort": "Eth1/10",
+                "vlan": "20",
+                "blocked": false
+              }
+            ],
+            "firewall": null,
+            "nat": [],
+            "ecmp": 0,
+            "overlay": null,
+            "notes": []
+          }
+        ],
+        "ending": {
+          "kind": "delivered",
+          "device": null,
+          "endpoint": {
+            "switch": "DC1",
+            "port": "Eth1/10",
+            "vlan": "20",
+            "mac": "000000005002"
+          }
+        }
+      },
+      {
+        "hops": [
+          {
+            "device": "ACC1",
+            "inInterface": "Vlan10",
+            "vrf": "default",
+            "src": "192.0.2.50",
+            "dst": "203.0.113.50",
+            "decision": "lpm",
+            "matched": {
+              "prefix": "203.0.113.0/24",
+              "protocol": "O",
+              "kind": "ospf",
+              "distance": null,
+              "metric": null,
+              "nextHop": "198.51.100.6",
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "Gi1/0/50",
+            "nextHop": "198.51.100.6",
+            "nextHopMac": "00000000c201",
+            "nextDevice": "CORE2",
+            "l2": [],
+            "firewall": null,
+            "nat": [],
+            "ecmp": 2,
+            "overlay": null,
+            "notes": []
+          },
+          {
+            "device": "CORE2",
+            "inInterface": "Gi1/1",
+            "vrf": "default",
+            "src": "192.0.2.50",
+            "dst": "203.0.113.50",
+            "decision": "lpm",
+            "matched": {
+              "prefix": "203.0.113.0/24",
+              "protocol": "O",
+              "kind": "ospf",
+              "distance": null,
+              "metric": null,
+              "nextHop": "198.51.100.14",
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "Gi1/2",
+            "nextHop": "198.51.100.14",
+            "nextHopMac": null,
+            "nextDevice": "DC1",
+            "l2": [],
+            "firewall": null,
+            "nat": [],
+            "ecmp": 0,
+            "overlay": null,
+            "notes": []
+          },
+          {
+            "device": "DC1",
+            "inInterface": "Eth1/2",
+            "vrf": "default",
+            "src": "192.0.2.50",
+            "dst": "203.0.113.50",
+            "decision": "connected",
+            "matched": {
+              "prefix": "203.0.113.0/24",
+              "protocol": "direct",
+              "kind": "connected",
+              "distance": null,
+              "metric": null,
+              "nextHop": null,
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "Vlan20",
+            "nextHop": null,
+            "nextHopMac": "000000005002",
+            "nextDevice": null,
+            "l2": [
+              {
+                "device": "DC1",
+                "inPort": null,
+                "outPort": "Eth1/10",
+                "vlan": "20",
+                "blocked": false
+              }
+            ],
+            "firewall": null,
+            "nat": [],
+            "ecmp": 0,
+            "overlay": null,
+            "notes": []
+          }
+        ],
+        "ending": {
+          "kind": "delivered",
+          "device": null,
+          "endpoint": {
+            "switch": "DC1",
+            "port": "Eth1/10",
+            "vlan": "20",
+            "mac": "000000005002"
+          }
+        }
+      }
+    ],
+    "warnings": [],
+    "truncated": false
+  },
+  "reverse": {
+    "from": "203.0.113.50",
+    "to": "192.0.2.50",
+    "source": {
+      "starts": [
+        "DC1"
+      ],
+      "endpoint": {
+        "switch": "DC1",
+        "port": "Eth1/10",
+        "vlan": "20",
+        "mac": "000000005002"
+      },
+      "how": "DC1 has 203.0.113.50's subnet as attached."
+    },
+    "paths": [
+      {
+        "hops": [
+          {
+            "device": "DC1",
+            "inInterface": "Vlan20",
+            "vrf": "default",
+            "src": "203.0.113.50",
+            "dst": "192.0.2.50",
+            "decision": "lpm",
+            "matched": {
+              "prefix": "192.0.2.0/24",
+              "protocol": "ospf-1",
+              "kind": "ospf-1",
+              "distance": null,
+              "metric": null,
+              "nextHop": "198.51.100.9",
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "Eth1/1",
+            "nextHop": "198.51.100.9",
+            "nextHopMac": null,
+            "nextDevice": "CORE1",
+            "l2": [],
+            "firewall": null,
+            "nat": [],
+            "ecmp": 2,
+            "overlay": null,
+            "notes": []
+          },
+          {
+            "device": "CORE1",
+            "inInterface": "Gi1/2",
+            "vrf": "default",
+            "src": "203.0.113.50",
+            "dst": "192.0.2.50",
+            "decision": "lpm",
+            "matched": {
+              "prefix": "192.0.2.0/24",
+              "protocol": "O",
+              "kind": "ospf",
+              "distance": null,
+              "metric": null,
+              "nextHop": "198.51.100.1",
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "Gi1/1",
+            "nextHop": "198.51.100.1",
+            "nextHopMac": null,
+            "nextDevice": "ACC1",
+            "l2": [],
+            "firewall": null,
+            "nat": [],
+            "ecmp": 0,
+            "overlay": null,
+            "notes": []
+          },
+          {
+            "device": "ACC1",
+            "inInterface": "Gi1/0/49",
+            "vrf": "default",
+            "src": "203.0.113.50",
+            "dst": "192.0.2.50",
+            "decision": "connected",
+            "matched": {
+              "prefix": "192.0.2.0/24",
+              "protocol": "C",
+              "kind": "connected",
+              "distance": null,
+              "metric": null,
+              "nextHop": null,
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "Vlan10",
+            "nextHop": null,
+            "nextHopMac": "000000005001",
+            "nextDevice": null,
+            "l2": [
+              {
+                "device": "ACC1",
+                "inPort": null,
+                "outPort": "Gi1/0/5",
+                "vlan": "10",
+                "blocked": false
+              }
+            ],
+            "firewall": null,
+            "nat": [],
+            "ecmp": 0,
+            "overlay": null,
+            "notes": []
+          }
+        ],
+        "ending": {
+          "kind": "delivered",
+          "device": null,
+          "endpoint": {
+            "switch": "ACC1",
+            "port": "Gi1/0/5",
+            "vlan": "10",
+            "mac": "000000005001"
+          }
+        }
+      },
+      {
+        "hops": [
+          {
+            "device": "DC1",
+            "inInterface": "Vlan20",
+            "vrf": "default",
+            "src": "203.0.113.50",
+            "dst": "192.0.2.50",
+            "decision": "lpm",
+            "matched": {
+              "prefix": "192.0.2.0/24",
+              "protocol": "ospf-1",
+              "kind": "ospf-1",
+              "distance": null,
+              "metric": null,
+              "nextHop": "198.51.100.13",
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "Eth1/2",
+            "nextHop": "198.51.100.13",
+            "nextHopMac": null,
+            "nextDevice": "CORE2",
+            "l2": [],
+            "firewall": null,
+            "nat": [],
+            "ecmp": 2,
+            "overlay": null,
+            "notes": []
+          },
+          {
+            "device": "CORE2",
+            "inInterface": "Gi1/2",
+            "vrf": "default",
+            "src": "203.0.113.50",
+            "dst": "192.0.2.50",
+            "decision": "lpm",
+            "matched": {
+              "prefix": "192.0.2.0/24",
+              "protocol": "O",
+              "kind": "ospf",
+              "distance": null,
+              "metric": null,
+              "nextHop": "198.51.100.5",
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "Gi1/1",
+            "nextHop": "198.51.100.5",
+            "nextHopMac": null,
+            "nextDevice": "ACC1",
+            "l2": [],
+            "firewall": null,
+            "nat": [],
+            "ecmp": 0,
+            "overlay": null,
+            "notes": []
+          },
+          {
+            "device": "ACC1",
+            "inInterface": "Gi1/0/50",
+            "vrf": "default",
+            "src": "203.0.113.50",
+            "dst": "192.0.2.50",
+            "decision": "connected",
+            "matched": {
+              "prefix": "192.0.2.0/24",
+              "protocol": "C",
+              "kind": "connected",
+              "distance": null,
+              "metric": null,
+              "nextHop": null,
+              "command": "show_ip_route"
+            },
+            "via": [],
+            "outInterface": "Vlan10",
+            "nextHop": null,
+            "nextHopMac": "000000005001",
+            "nextDevice": null,
+            "l2": [
+              {
+                "device": "ACC1",
+                "inPort": null,
+                "outPort": "Gi1/0/5",
+                "vlan": "10",
+                "blocked": false
+              }
+            ],
+            "firewall": null,
+            "nat": [],
+            "ecmp": 0,
+            "overlay": null,
+            "notes": []
+          }
+        ],
+        "ending": {
+          "kind": "delivered",
+          "device": null,
+          "endpoint": {
+            "switch": "ACC1",
+            "port": "Gi1/0/5",
+            "vlan": "10",
+            "mac": "000000005001"
+          }
+        }
+      }
+    ],
+    "warnings": [],
+    "truncated": false
+  },
+  "asymmetry": {
+    "symmetric": true,
+    "onlyForward": [],
+    "onlyReverse": [],
+    "notes": []
+  },
+  "verify": {
+    "path": 0,
+    "rows": [
+      {
+        "n": 1,
+        "traceroute": "198.51.100.2",
+        "tracerouteDevice": "CORE1",
+        "modeled": "CORE1",
+        "agrees": true
+      },
+      {
+        "n": 2,
+        "traceroute": "198.51.100.10",
+        "tracerouteDevice": "DC1",
+        "modeled": "DC1",
+        "agrees": true
+      },
+      {
+        "n": 3,
+        "traceroute": "203.0.113.50",
+        "tracerouteDevice": null,
+        "modeled": "203.0.113.50",
+        "agrees": true
+      }
+    ],
+    "matchPercent": 100
+  }
+}

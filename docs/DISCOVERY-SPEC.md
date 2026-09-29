@@ -512,3 +512,65 @@ link with both ports; the 2960 stack as one node with its members; a
 LAG as one link listing its members; the ASA or any device without
 LLDP placed by MAC evidence and drawn as inferred (dashed, 0.6) with the
 evidence one click away; nothing inferred drawn as if it were seen.
+
+---
+
+# P3 plan — 2026-09-29, built on the operator's "start and finish it"
+
+Roadmap LT-531 (modeled), LT-532 (PBR, NAT, firewall), LT-533 (reverse
+path, what-if), LT-534 (verify), LT-535 (live), LT-536 (the panel). Built
+the same day; D-061 records the assumptions it makes, and LT-538 holds the
+parts of steps 6–7 it did not build (route-target leaking, MPLS L3VPN)
+with IPv6 and live checks inside a VDOM or vsys.
+
+## Where it sits
+
+Path-Trace already traces over a crawl's routing tables on the page
+(`src/lib/pathTrace.ts`, LT-346–348, LT-477–480), takes a traceroute from
+the source device and asks a device which ECMP leg it hashes a flow onto.
+It reads routes only: it cannot see a policy route, a firewall policy, an
+FHRP address, an ARP entry or a MAC table. P2 was built in Rust so that P3
+could walk the same graph with every table the collection filled, so:
+
+```
+crates/coreview-path/              pure: the tables and the graph in, a path out
+  src/model.rs                     a device's forwarding state from its rows: addresses,
+                                   routes merged per (vrf, prefix) with every next hop,
+                                   ARP, MAC tables, FHRP, STP-blocked ports, zones,
+                                   policy routes, NAT rules, firewall policies, tunnels
+  src/walk.rs                      the spec's steps 1–8: locate the source, PBR then LPM,
+                                   ECMP branches, recursive next hops (depth 3), next hop
+                                   to device, L2 between routers, tunnels, loop guard
+  src/firewall.rs                  the vendor pipelines of step 3 and the verdict
+  src/compare.rs                   the reverse path and its differences; verify against
+                                   a traceroute; the live answers against the model
+  src/export.rs                    JSON, CSV and markdown
+crates/coreview-collect/src/live.rs  a device's live_path commands through the sidecar,
+                                   placeholders filled from the trace, the guard unchanged
+src-tauri/src/collection.rs        collection_path (modeled + reverse + verify) and
+                                   collection_live (live), over a stored collection run
+src/components/PathTracePanel.tsx  the Rust result when the run came from a collection
+```
+
+## Rules it keeps
+
+- **D-050:** a path is calculated from evidence or not calculated. A
+  missing table stops the walk with the reason; an unresolved firewall
+  object makes the verdict undetermined, naming it; an address nobody
+  collected is an unmanaged hop.
+- **What-if approximates reconvergence** and says so: only the routes the
+  device held are known, so a route through a device marked down falls to
+  the next-longest match the device already had.
+- **Live mode** sends only catalog `live_path` commands, through the one
+  guard every command passes (LT-522), with the login the operator picks
+  for the run; replies are redacted before they are shown.
+
+## Acceptance, made concrete
+
+Scenario tests, each with the path written out by hand: a routed core with
+ECMP, an endpoint behind an HSRP pair, a recursive BGP next hop, a
+FortiGate with a VIP and a deny, a PAN-OS NAT rule, a PBR override, an
+asymmetric return, a switch path with a blocked port, a device marked
+down. "Modeled path matches traceroute on lab; verdicts correct" is the
+operator's run: a collection over the lab, Build topology, then a trace
+with **Compare with traceroute** — the match percentage is the answer.

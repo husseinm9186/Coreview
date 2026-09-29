@@ -102,6 +102,22 @@ export const collectionInput = (o: object) =>
 /** `ViewOptions` in `coreview-topology/src/crawl_view.rs` (LT-527). */
 export const topologyViewOptions = (o: object) => pickAll(o, ['collapseBundles', 'collapseStacks', 'placeholders', 'minConfidence', 'vlan', 'vrf']);
 
+/** `Request` and `DownLink` in `coreview-path/src/walk.rs` (LT-531). */
+export const pathRequest = (o: object) => {
+  const r = o as Obj;
+  const out = pickAll(r, ['from', 'to', 'vrf', 'protocol', 'port', 'sourcePort', 'downDevices', 'downLinks', 'traceroute', 'noReverse']);
+  if (Array.isArray(r.downLinks)) out.downLinks = r.downLinks.map((l) => pickAll(l, ['device', 'interface']));
+  return out;
+};
+
+/** `PathLiveInput` in `src-tauri/src/collection.rs` (LT-535). */
+export const pathLiveInput = (o: object) => {
+  const i = o as Obj;
+  const out = pickAll(i, ['runId', 'request', 'credentialId', 'port', 'path']);
+  if (i.request && typeof i.request === 'object') out.request = pathRequest(i.request);
+  return out;
+};
+
 /** `SweepOptions` in `coreview-probe/src/sweep.rs`. */
 export const sweepOptions = (o: object) => pickAll(o, ['timeoutMs', 'concurrency', 'identify', 'scanPorts', 'ports']);
 

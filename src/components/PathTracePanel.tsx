@@ -21,12 +21,14 @@ import {
   buildApplicationPage,
   type Application,
 } from '../lib/appPath';
+import { asTraceResult, collectionRunOf, devicesIn } from '../lib/collectedPath';
 import { saveExport, slug } from '../lib/exports';
-import { ipc, type CrawledDevice, type CrawlResult, type MeasuredLeg, type MeasuredTrace } from '../lib/ipc';
+import { ipc, type CrawledDevice, type CrawlResult, type MeasuredLeg, type MeasuredTrace, type PathOutcome, type PathRequest } from '../lib/ipc';
 import { activePage } from '../lib/pages';
 import { devicesOnPath, tracePath, type PathDevice, type TraceResult } from '../lib/pathTrace';
 import { useStore } from '../state/store';
 import type { DeviceNodeData } from '../types/domain';
+import { CollectedPathDetail } from './CollectedPathDetail';
 import { SavedCredentialSelect } from './CredentialPicker';
 
 /**
@@ -146,6 +148,11 @@ export function PathTracePanel() {
   const [measured, setMeasured] = useState<MeasuredTrace | null>(null);
   const [measuring, setMeasuring] = useState(false);
   const [legs, setLegs] = useState<Record<string, MeasuredLeg | string>>({});
+  // LT-536: a run built from a collection is traced by the Rust builder,
+  // which also takes an endpoint's address as the source.
+  const [outcome, setOutcome] = useState<PathOutcome | null>(null);
+  const [fromAddress, setFromAddress] = useState('');
+  const collectionRun = collectionRunOf(runs.find((r) => r.id === runId)?.seed);
 
   // The runs this project has. Newest first is what `listCrawlRuns` gives.
   useEffect(() => {
@@ -184,7 +191,36 @@ export function PathTracePanel() {
     );
   };
 
+  /** What the Rust builder is asked (LT-536). */
+  const pathRequest = (without: string[] = [], traceroute?: (string | null)[]): PathRequest => ({
+    from: (fromAddress.trim() || from).trim(),
+    to: to.trim(),
+    vrf: vrf.trim() || null,
+    protocol: protocol || null,
+    port: port.trim() ? Number(port) : null,
+    downDevices: without,
+    traceroute: traceroute ?? null,
+  });
+
+  const traceCollected = (runOfCollection: string, without: string[]) => {
+    setProblem(null);
+    void ipc
+      .collectionPath(runOfCollection, pathRequest(without))
+      .then((out) => {
+        setOutcome(out);
+        setTraced(asTraceResult(out.forward));
+        const names = devicesIn(out);
+        setCandidates((was) => [...new Set([...was, ...names])]);
+        setHighlight(names.length > 0 ? nodeIdsFor(names) : null);
+      })
+      .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)));
+  };
+
   const trace = (without: string[] = []) => {
+    if (collectionRun) {
+      traceCollected(collectionRun, without);
+      return;
+    }
     setProblem(null);
     const out = tracePath({
       devices,
@@ -202,6 +238,7 @@ export function PathTracePanel() {
 
   const clear = () => {
     setTraced(null);
+    setOutcome(null);
     setDown(new Set());
     setCandidates([]);
     setHighlight(null);
@@ -247,7 +284,14 @@ export function PathTracePanel() {
     setMeasuring(true);
     void ipc
       .tracerouteFromDevice(source, credentialId, to.trim())
-      .then(setMeasured)
+      .then((m) => {
+        setMeasured(m);
+        // LT-534: the same traceroute held against the modeled path.
+        if (collectionRun) {
+          return ipc.collectionPath(collectionRun, pathRequest([...down], m.hops.map((h) => h.address ?? null))).then(setOutcome);
+        }
+        return undefined;
+      })
       .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)))
       .finally(() => setMeasuring(false));
   };
@@ -330,7 +374,7 @@ export function PathTracePanel() {
       <div className="cv-discover-form">
         <label className="cv-field cv-field-narrow">
           <span>{t('trace.run')}</span>
-          <select className="cv-input" value={runId} onChange={(e) => { setRunId(e.target.value); setTraced(null); }}>
+          <select className="cv-input" value={runId} onChange={(e) => { setRunId(e.target.value); setTraced(null); setOutcome(null); }}>
             {runs.length === 0 && <option value="">{t('trace.noRuns')}</option>}
             {runs.map((r) => (
               <option key={r.id} value={r.id}>
@@ -353,6 +397,13 @@ export function PathTracePanel() {
             {devices.map((d) => <option key={d.hostname} value={d.hostname}>{d.hostname}</option>)}
           </select>
         </label>
+        {collectionRun && (
+          <label className="cv-field cv-field-narrow">
+            <span>{t('cpath.fromAddress')}</span>
+            <input className="cv-input cv-mono" value={fromAddress} spellCheck={false} placeholder="192.0.2.50"
+              onChange={(e) => setFromAddress(e.target.value)} />
+          </label>
+        )}
         <label className="cv-field cv-field-narrow">
           <span>{t('trace.to')}</span>
           <input className="cv-input cv-mono" value={to} spellCheck={false} placeholder="10.40.50.9"
@@ -382,7 +433,7 @@ export function PathTracePanel() {
           <input className="cv-input cv-mono" value={vrf} spellCheck={false} placeholder={t('trace.vrfDefault')}
             onChange={(e) => setVrf(e.target.value)} />
         </label>
-        <button type="button" className="cv-btn cv-btn-start" disabled={!from.trim() || !to.trim()}
+        <button type="button" className="cv-btn cv-btn-start" disabled={(!from.trim() && !(collectionRun && fromAddress.trim())) || !to.trim()}
           onClick={() => { setDown(new Set()); setCandidates([]); trace(); }}>
           {t('trace.go')}
         </button>
@@ -398,7 +449,9 @@ export function PathTracePanel() {
       <p className="cv-help">
         {runs.length === 0
           ? t('trace.needCrawl')
-          : t('trace.source', { devices: devices.length, withRoutes })}
+          : collectionRun
+            ? t('cpath.fromCollection', { run: collectionRun, devices: devices.length })
+            : t('trace.source', { devices: devices.length, withRoutes })}
       </p>
       {problem && <p className="cv-problem">{problem}</p>}
       {!problem && note && <p className="cv-help cv-trace-made">{note}</p>}
@@ -491,10 +544,14 @@ export function PathTracePanel() {
               ))}
             </ol>
             {/* LT-479: what no calculated path evaluates, said every time. */}
-            <p className="cv-help cv-trace-caveat">{t('trace.caveat')}</p>
+            <p className="cv-help cv-trace-caveat">{collectionRun ? t('cpath.caveat') : t('trace.caveat')}</p>
           </details>
         </div>
       ))}
+
+      {outcome && collectionRun && (
+        <CollectedPathDetail outcome={outcome} runId={collectionRun} request={pathRequest([...down])} credentialId={credentialId} />
+      )}
 
       {/* LT-477: the measured path, beside the calculated one. */}
       {traced && (
