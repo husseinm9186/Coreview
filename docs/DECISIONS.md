@@ -1132,3 +1132,30 @@ project. **Rejected:** a vault per project (a second passphrase per
 customer, and no way to reuse a login deliberately); filtering only on the
 page (the leak would be one forgotten filter away).
 
+### D-060 — A Python bridge now, a Rust collector as the end state, and the catalog as data — 2026-09-29
+**Decided by the operator** on the discovery specification (`docs/DISCOVERY-SPEC.md`, LT-507):
+- The transport and collector end state is Rust-native. A Python sidecar
+  (scrapli + ntc-templates, genie only if a gap demands it) is a temporary
+  bridge: Phase 1 uses it, Phase 2 builds a TextFSM engine in Rust that must
+  pass 100 % of ntc-templates' own fixtures, Phase 3 runs both in shadow and
+  flips a vendor only at zero mismatch, Phase 4 deletes the sidecar.
+- The per-OS catalog is data (`resources/catalog/<os>.yaml`): fingerprint,
+  role hint, capability probes, gated commands with parser, tables and a
+  `verified` mark. A new vendor is a YAML and its parsers. Session behaviour
+  (paging, prompt, enable, context switching) lives in the catalog, so no
+  Python session logic survives Phase 4.
+- API collectors (FortiOS REST, PAN-OS XML API, AOS-CX REST, Meraki) are Rust
+  from day one; native structured output (`| json`, `| display xml`) is the
+  parser of record wherever the platform has it.
+- Packaging and trust: no self-extracting or packed binaries; the sidecar
+  spawns from the install directory; pinned, hashed dependencies and an SBOM;
+  every PE signed; a release fails on any VirusTotal detection; credentials
+  in the keychain only; outbound only SSH/443 to targets the operator typed;
+  no telemetry.
+**What stands from before:** D-050 (paths from evidence), D-055 (device
+output never in the debug log — raw replies are written by Rust, redacted,
+to the run's diagnostic folder, never by the sidecar), D-058 (a parser built
+from documentation says so; the catalog's `verified: docs|unverified` is the
+same mark), D-059 (a login belongs to its project), and the backup-folder
+rule (a running configuration is kept only where the operator pointed).
+

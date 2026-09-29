@@ -91,6 +91,44 @@ assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
 
+### LT-507 — Discovery / topology / path engine: the catalog-driven collector, in four phases — proposed 2026-09-29, awaiting approval
+**Source:** the operator's specification of 2026-09-29 ("CoreView
+(LiveTopo) — Discovery / Topology / Path Engine — spec for Claude Code"),
+which asks first for a summary of what exists and a plan for its four
+phases, then approval, then implementation phase by phase.
+**What it asks for, in short:** a per-OS catalog as data (YAML:
+fingerprint, role hint, capability probes, gated `foreach`-expanded
+commands with parser, tables fed, weight, verified mark); a collector that
+fingerprints, probes capabilities, plans, runs light→heavy, and persists raw
+and parsed; normalized discovery tables (interfaces, addresses, neighbours,
+MAC, ARP, VLAN, LAG, STP, VRF, routes, routing neighbours, FHRP, policy
+routes, NAT, zones, firewall policy, tunnels, HA pairs, APs, endpoints,
+links, L3 adjacencies, runs, command log); a topology builder with
+interface normalization, chassis/mgmt/sysname matching, confidence and
+evidence, LAG and stack collapse, inferred links; a path builder (modeled,
+live, verify) with PBR, NAT and firewall pipelines, L2 expansion, tunnels,
+VRF leaking, reverse path and what-if; run diff, SNMP fallback, hosts and
+hypervisors, exports, scheduled re-discovery. Read-only allowlist,
+keychain credentials, scrubbed configs, every command optional, parsers
+fixture-tested, `verified: lab|docs|unverified`.
+**Status:** the summary was given on 2026-09-29 and the operator decided
+the architecture the same day — **D-060**: a Python bridge (scrapli +
+ntc-templates) in Phase 1, a Rust TextFSM engine in Phase 2, shadow mode in
+Phase 3, the sidecar deleted in Phase 4; the catalog as YAML data; API
+collectors in Rust from the start. The spec is checked in as
+`docs/DISCOVERY-SPEC.md` (it carries no customer data) with the final
+architecture and the **P1 plan** appended, awaiting his approval. **Nothing
+is built until he approves the P1 plan.** On approval each phase becomes its
+own item (LT-508 onward).
+**Decisions it touches:** D-050 (paths from evidence only; the what-if
+approximates reconvergence and must say so), D-055 (device output never
+in the debug log — raw captures go to files, redacted, not into the log),
+D-056/D-057 (Meraki stays GET-only), D-058/D-059 (unverified parsers say
+so; a login belongs to its project), the backup-folder rule (a running
+configuration is written only where the operator pointed, never into the
+project database), and LT-258's fixed IPC table (the catalog is data the
+collector runs, not new doors in the bridge).
+
 ### LT-501 — **bug** Something goes wrong when validation starts — reported 2026-09-28, not yet described
 **Source:** the operator, 2026-09-28: "another bug when I start
 validation". No message or screenshot came with it.
