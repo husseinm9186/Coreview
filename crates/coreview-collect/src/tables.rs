@@ -141,15 +141,20 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("remote_ip", &["remote_ip", "remote", "peer_ip", "peer_address", "destination", "dst", "peer_ip_address"]),
             ("state", &["state", "status"]),
         ],
+        // LT-552: the ASA template's names last. Cisco writes twice NAT as
+        // `destination static <mapped> <real>`, and the template names that
+        // pair by position, so its `destination_real` is the address the
+        // packet arrives with — `orig_dst` here — and `destination_mapped`
+        // the one it leaves with.
         "nat_rule" => &[
-            ("seq", &["seq", "id", "index", "line", "rule", "name"]),
-            ("type", &["type", "kind", "nat_type"]),
-            ("orig_src", &["orig_src", "source", "src", "real_src", "original_source", "srcaddr"]),
-            ("orig_dst", &["orig_dst", "destination", "dst", "real_dst", "original_destination", "dstaddr", "extip"]),
-            ("trans_src", &["trans_src", "translated_source", "mapped_src", "snat", "translated_src", "poolname"]),
-            ("trans_dst", &["trans_dst", "translated_destination", "mapped_dst", "dnat", "translated_dst", "mappedip"]),
-            ("in_zone_if", &["in_zone_if", "from", "source_zone", "real_ifc", "srcintf", "from_zone"]),
-            ("out_zone_if", &["out_zone_if", "to", "destination_zone", "mapped_ifc", "dstintf", "to_zone"]),
+            ("seq", &["seq", "id", "index", "line", "line_number", "rule", "name"]),
+            ("type", &["type", "kind", "nat_type", "source_type"]),
+            ("orig_src", &["orig_src", "source", "src", "real_src", "original_source", "srcaddr", "source_real"]),
+            ("orig_dst", &["orig_dst", "destination", "dst", "real_dst", "original_destination", "dstaddr", "extip", "destination_real"]),
+            ("trans_src", &["trans_src", "translated_source", "mapped_src", "snat", "translated_src", "poolname", "source_mapped"]),
+            ("trans_dst", &["trans_dst", "translated_destination", "mapped_dst", "dnat", "translated_dst", "mappedip", "destination_mapped"]),
+            ("in_zone_if", &["in_zone_if", "from", "source_zone", "real_ifc", "srcintf", "from_zone", "source_interface"]),
+            ("out_zone_if", &["out_zone_if", "to", "destination_zone", "mapped_ifc", "dstintf", "to_zone", "destination_interface"]),
             ("service", &["service", "port", "protocol", "proto"]),
         ],
         "fw_policy" => &[
@@ -477,6 +482,22 @@ fn flatten_xml(node: roxmltree::Node, prefix: &str, out: &mut Map<String, Value>
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// LT-552: an ASA `show nat` row, as ntc's template writes it (the
+    /// fixture's second rule), must land in the NAT columns.
+    #[test]
+    fn an_asa_nat_row_lands_in_the_nat_columns() {
+        let n = normalise("nat_rule", &json!({"nat_section_number": "1", "line_number": "2", "source_interface": "any", "destination_interface": "outside", "source_type": "dynamic", "source_real": "test1", "source_mapped": "test2", "destination_real": "test3", "destination_mapped": "test4", "inactive": "inactive"}));
+        assert_eq!(n.columns.get("orig_src").map(String::as_str), Some("test1"));
+        assert_eq!(n.columns.get("trans_src").map(String::as_str), Some("test2"));
+        // `destination static <mapped> <real>`: the template's first is what the packet arrives with.
+        assert_eq!(n.columns.get("orig_dst").map(String::as_str), Some("test3"));
+        assert_eq!(n.columns.get("trans_dst").map(String::as_str), Some("test4"));
+        assert_eq!(n.columns.get("in_zone_if").map(String::as_str), Some("any"));
+        assert_eq!(n.columns.get("out_zone_if").map(String::as_str), Some("outside"));
+        assert_eq!(n.columns.get("type").map(String::as_str), Some("dynamic"));
+        assert_eq!(n.columns.get("seq").map(String::as_str), Some("2"));
+    }
 
     /// LT-537: PAN-OS says `disabled: yes` of a rule that is off. Stored as
     /// `enabled: yes`, the path builder would count a disabled rule.

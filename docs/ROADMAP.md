@@ -601,6 +601,22 @@ needs rows the lab collection will show; none is guessed meanwhile.
 
 ## Done
 
+### LT-552 — **bug** Every ASA NAT rule arrived empty: the `show nat` template's fields were not mapped — 2026-09-29, fixed the same day
+**Found building LT-540.** ntc's `cisco_asa_show_nat` writes `source_real`,
+`source_mapped`, `destination_real`, `destination_mapped`,
+`source_interface`, `destination_interface` and `source_type`; the
+`nat_rule` normaliser knew none of them, so an ASA's rules were stored with
+no addresses and the path builder never translated through an ASA on real
+data (the P3 ASA scenario used hand-written rows). The template also names
+the destination pair by position: Cisco writes `destination static
+<mapped> <real>`, so its `destination_real` is the address the packet
+arrives with. **Reproduction first:** a normaliser test on the fixture's own
+row.
+**Fixed:** the ASA names mapped (the destination pair per Cisco's order);
+an `inactive` rule is skipped by the path builder. The fixture-row test
+failed (`orig_src` empty) before the fix.
+
+
 ### LT-539 — **bug** An ASA access list with no recorded binding was applied to traffic in every direction — 2026-09-29, fixed the same day
 **Found** adding an ASA scenario after the operator named firewall verdicts
 as the P3 acceptance item he cares most about. An ASA rule applies where

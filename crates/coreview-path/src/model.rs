@@ -560,6 +560,10 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
         });
     }
     for r in d.rows("nat_rule") {
+        // An ASA rule marked `inactive` translates nothing (LT-552).
+        if r.extra.get("inactive").and_then(|v| v.as_str()).map(|v| !v.trim().is_empty()).unwrap_or(false) {
+            continue;
+        }
         b.nat.push(NatRule {
             seq: opt(r, "seq").unwrap_or_default(),
             kind: opt(r, "type").unwrap_or_default().to_ascii_lowercase(),
