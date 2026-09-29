@@ -45,7 +45,7 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("lag_parent", &["lag", "port_channel", "channel_group", "bundle", "aggregate", "member_of", "lag_parent"]),
         ],
         "ip_address" => &[
-            ("interface", &["interface", "intf", "name", "port", "intf_name", "ifname"]),
+            ("interface", &["interface", "intf", "name", "port", "intf_name", "ifname", "vlan_name"]),
             ("ip", &["ip", "ip_address", "ipaddr", "address", "ipv4", "primary_ip", "ip_addr", "prefix", "ip_address_prefix", "ipv6_address"]),
             ("prefixlen", &["prefix_length", "prefixlen", "mask", "netmask", "subnet", "masklen", "prefix_len"]),
             ("vrf", &["vrf", "vrf_name", "routing_instance", "instance", "vpn_instance", "vrf_name_out"]),
@@ -85,7 +85,7 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
         "lag" => &[
             ("name", &["bundle_name", "bundle_iface", "group", "po_name", "name", "aggregate", "lag", "lag_name", "port_channel", "po", "trunk", "trunk_group", "interface", "aggregate_name", "port_channel_name"]),
             ("proto", &["protocol", "bundle_protocol", "mode", "proto", "type"]),
-            ("members", &["member_interface", "member_intf", "interfaces", "members", "member", "ports", "port", "member_interfaces", "member_ports"]),
+            ("members", &["member_interface", "member_intf", "interfaces", "members", "member", "ports", "port", "member_interfaces", "member_ports", "local_port"]),
             ("state", &["bundle_status", "status", "state", "flags", "member_status"]),
         ],
         "stp" => &[
@@ -113,7 +113,7 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("ad", &["distance", "admin_distance", "ad", "preference", "pref"]),
             ("metric", &["metric", "cost"]),
             ("next_hop", &["nexthop_ip", "next_hop", "nexthop", "gateway", "via", "next_hop_ip", "nh", "ipnexthop", "gw", "nexthopip"]),
-            ("interface", &["nexthop_if", "interface", "outgoing_interface", "nexthop_interface", "out_interface", "exit_interface", "next_hop_interface", "ifname", "intf", "dev", "nexthopif"]),
+            ("interface", &["nexthop_if", "interface", "outgoing_interface", "nexthop_interface", "out_interface", "exit_interface", "next_hop_interface", "ifname", "intf", "dev", "nexthopif", "vlan_name"]),
             ("age", &["uptime", "age", "time"]),
         ],
         "routing_neighbor" => &[
@@ -569,6 +569,18 @@ mod tests {
     fn an_aoscx_arp_row_has_its_interface() {
         let n = normalise("arp", &json!({"ip_address": "192.0.2.1", "mac_address": "00:00:00:00:00:01", "port_id": "vlan10", "physical_port": "1/1/1", "state": "reachable", "vrf": "default"}));
         assert_eq!(n.columns.get("interface").map(String::as_str), Some("vlan10"));
+    }
+
+    /// LT-555: AOS-S names the interface `vlan_name`, a trunk member `local_port`.
+    #[test]
+    fn aoss_addresses_routes_and_trunks_keep_their_ports() {
+        let ip = normalise("ip_address", &json!({"vlan_name": "DEFAULT_VLAN", "config": "Manual", "ip_address": "192.0.2.10", "subnet_mask": "255.255.255.0", "proxy": "No", "local": "No"}));
+        assert_eq!(ip.columns.get("interface").map(String::as_str), Some("DEFAULT_VLAN"));
+        let route = normalise("route", &json!({"destination": "192.0.2.0/24", "gateway": "DEFAULT_VLAN", "vlan_name": "1", "type": "connected", "subtype": "", "metric": "1", "distance": "0"}));
+        assert_eq!(route.columns.get("interface").map(String::as_str), Some("1"));
+        let trunk = normalise("lag", &json!({"local_port": "A1", "int_name": "", "int_type": "100/1000T", "trunk": "Trk1", "trunk_type": "LACP"}));
+        assert_eq!(trunk.columns.get("members").map(String::as_str), Some("A1"));
+        assert_eq!(trunk.columns.get("name").map(String::as_str), Some("Trk1"));
     }
 
     /// LT-537: PAN-OS says `disabled: yes` of a rule that is off. Stored as

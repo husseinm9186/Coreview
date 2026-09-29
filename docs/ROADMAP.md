@@ -601,6 +601,16 @@ needs rows the lab collection will show; none is guessed meanwhile.
 
 ## Done
 
+### LT-555 — **bug** AOS-S addresses and routes had no interface, trunks no members — 2026-09-29, fixed the same day
+**Same sweep.** `hp_procurve_show_ip` and `hp_procurve_show_ip_route` name
+the interface `vlan_name`; `hp_procurve_show_trunks` names a member port
+`local_port`. Affects the operator's 2930M. Reproduced on the fixtures' own
+rows first. (AOS-S writes a VLAN's *name* in `show ip` and its *number* in
+`show ip route`; the two are kept as written, not guessed into one.)
+**Fixed:** `vlan_name` and `local_port` mapped; the fixture-row test
+failed before.
+
+
 ### LT-554 — **bug** AOS-CX routes were dropped whole, and its ARP rows had no interface — 2026-09-29, fixed the same day
 **Same sweep.** `aruba_aoscx_show_ip_route_all-vrfs` puts the prefix in
 `ip_address`, next hops and exit interfaces in one `interface` list, the
