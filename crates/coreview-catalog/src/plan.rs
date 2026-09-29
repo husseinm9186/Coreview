@@ -95,6 +95,15 @@ pub fn plan(catalog: &Catalog, facts: &Facts) -> Plan {
             None => push(command.cmd.clone(), None),
             Some(kind) => {
                 let names = facts.contexts.get(kind).cloned().unwrap_or_default();
+                // LT-562: a device context (a FortiGate VDOM, an ASA security
+                // context) that the device does not have is not a reason to
+                // skip: a unit with VDOMs off is one VDOM, and the command is
+                // sent once, as the device is.
+                let device_context = catalog.session.contexts.as_ref().map(|c| &c.kind == kind).unwrap_or(false);
+                if names.is_empty() && device_context && !command.cmd.contains('{') {
+                    push(command.cmd.clone(), None);
+                    continue;
+                }
                 if names.is_empty() {
                     out.skipped.push(Skipped { id: command.id.clone(), cmd: command.cmd.clone(), reason: format!("no {kind} known to expand over") });
                     continue;
@@ -133,6 +142,39 @@ commands:
   - { id: bad, cmd: reload, gate: always, parser: none, feeds: [device], verified: docs }
   - { id: light_last, cmd: show clock, gate: always, parser: none, feeds: [device], weight: light, verified: docs }
 "#;
+
+    /// LT-562: a FortiGate with VDOMs off has no VDOM to expand over, and
+    /// its per-VDOM commands are still its commands — sent once, as the
+    /// device is. A command per VRF with no VRF known is still skipped.
+    #[test]
+    fn a_device_without_contexts_runs_its_per_context_commands_once() {
+        let catalog = load_str(r#"
+vendor: Test
+os: test_vdom
+name: Test VDOM
+phase: 1
+session:
+  contexts:
+    kind: vdom
+    detect: { cmd: get system status, match: "^Virtual domain configuration: enable" }
+    enter: [config vdom, "edit {vdom}"]
+    leave: [end]
+role_hint: []
+role_defaults: {}
+caps_probe: []
+live_path: []
+commands:
+  - { id: routes, cmd: get router info routing-table all, gate: always, foreach: vdom, parser: none, feeds: [route], verified: unverified }
+  - { id: vrf_routes, cmd: 'get router info routing-table vrf {vrf}', gate: always, foreach: vrf, parser: none, feeds: [route], verified: unverified }
+"#).unwrap();
+        let p = plan(&catalog, &Facts::default());
+        assert_eq!(p.steps.iter().map(|s| (s.cmd.as_str(), s.context.clone())).collect::<Vec<_>>(), vec![("get router info routing-table all", None)]);
+        assert_eq!(p.skipped.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), vec!["vrf_routes"]);
+        // With VDOMs, one per VDOM, as before.
+        let p = plan(&catalog, &Facts::default().context("vdom", ["root", "dmz"]));
+        assert_eq!(p.steps.len(), 2);
+        assert_eq!(p.steps[1].context, Some(("vdom".into(), "dmz".into())));
+    }
 
     #[test]
     fn light_before_heavy_gates_expanded_and_refusals_named() {
