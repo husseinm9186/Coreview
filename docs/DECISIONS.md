@@ -1212,7 +1212,8 @@ choice below is said in the result where it applies, not only here.
   no routing table stops the walk with that reason; a firewall rule naming
   an address or service object the tables do not define makes the verdict
   *undetermined*, naming the object; a next hop no collection reached is an
-  unmanaged hop, with its MAC where ARP gave one. Services a vendor
+  unmanaged hop, with its MAC where ARP gave one. An ASA rule with no
+  interface binding recorded is not assumed to apply (LT-539). Services a vendor
   predefines (`HTTPS`, `service-https`, `www`, …) are read by the vendor's
   own definitions; custom objects are not guessed.
 - **The way back is the return of the flow.** It is traced from the

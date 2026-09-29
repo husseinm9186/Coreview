@@ -586,7 +586,7 @@ pulled into Phase 1.*
 - **LT-269** — CI matrix: Windows 10/11, macOS 12+, Ubuntu 22.04/24.04. Cost:
   Q-010.
 
-### LT-538 — P3's remainder: route-target leaking, MPLS L3VPN, IPv6, contexts in live mode — 2026-09-29
+### LT-538 — P3's remainder: route-target leaking, MPLS L3VPN, IPv6, contexts in live mode, ASA access lists — 2026-09-29
 **Source:** the spec's path-builder steps 6 and 7, which P3 (LT-531) built
 only in part, and what LT-535 does not do yet. Following an imported route
 back to the VRF it was exported from by its route-targets; an MPLS L3VPN
@@ -594,10 +594,25 @@ hop whose BGP next hop is a remote PE reached over the IGP/LSP; IPv6
 (the model reads IPv4 only, and a trace to an IPv6 address is refused
 with that reason); a live
 check on a FortiGate VDOM, an ASA context or a PAN-OS vsys, which today
-runs in the session's default scope. Each needs rows the lab collection
-will show; none is guessed meanwhile.
+runs in the session's default scope; and an ASA's access lists with their
+`access-group` bindings and interface security levels, which its catalog
+does not collect yet, so every ASA verdict is undetermined (LT-539). Each
+needs rows the lab collection will show; none is guessed meanwhile.
 
 ## Done
+
+### LT-539 — **bug** An ASA access list with no recorded binding was applied to traffic in every direction — 2026-09-29, fixed the same day
+**Found** adding an ASA scenario after the operator named firewall verdicts
+as the P3 acceptance item he cares most about. An ASA rule applies where
+`access-group` binds it; a row with no interface recorded matched traffic
+entering any interface, so a flow no bound rule covers could be reported
+allowed. **Reproduced** by `an_asa_rule_with_no_interface_binding_is_undetermined`
+(the verdict came back `allow` before the fix). **Fixed:** on an ASA, such a
+rule leaves the verdict undetermined, naming it. The ASA's order — NAT
+before the route, policy on the real address, the static rule translating
+the source on the way out, the implicit deny — is now a scenario too. Today
+the ASA catalog collects NAT but no access lists at all (LT-538), so on real
+data an ASA's verdict reads "no policy collected" until it does.
 
 ### LT-537 — **bug** A firewall rule reported as `disabled: yes` was stored as enabled — 2026-09-29, fixed the same day
 **Found building LT-532.** The `fw_policy` table's `enabled` column took

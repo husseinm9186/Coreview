@@ -504,6 +504,82 @@ fn pan_os_between_zones_with_no_rule_is_the_interzone_default() {
     assert!(matches!(&f.paths[0].ending, Ending::Denied { policy: Some(p), .. } if p == "interzone-default"), "{:?}", f.paths[0].ending);
 }
 
+// --------------------------------------------------------------------- ASA
+
+/// ASA translates before it routes, and its access policy (8.3 on) sees the
+/// real address. A static rule is written the source way round
+/// (`real → mapped`) and is also the destination rule for the mapped address.
+fn asa() -> Vec<DeviceIn> {
+    vec![device(
+        "ASA1",
+        "10.9.9.1",
+        "cisco_asa",
+        "firewall",
+        "FAKEASA0001",
+        vec![
+            ("ip_address", vec![addr("outside", "203.0.113.2", "24"), addr("inside", "10.9.9.1", "24")]),
+            ("route", vec![route("203.0.113.0", "24", "C", "", "outside"), route("10.9.9.0", "24", "C", "", "inside")]),
+            ("arp", vec![arp("10.9.9.20", "0000.0000.0920", "inside")]),
+            ("nat_rule", vec![row("show_nat", &[("seq", "1"), ("type", "static"), ("in_zone_if", "inside"), ("out_zone_if", "outside"), ("orig_src", "10.9.9.20"), ("trans_src", "203.0.113.20")])]),
+            (
+                "fw_policy",
+                // Bound inbound on `outside`, as `access-group outside_in in interface outside` says.
+                vec![row("show_access_list", &[("seq", "10"), ("name", "outside_in"), ("src_zones", "outside"), ("src_addr", "any"), ("dst_addr", "host 10.9.9.20"), ("services", "tcp/443"), ("action", "permit")])],
+            ),
+        ],
+    )]
+}
+
+#[test]
+fn an_asa_translates_first_and_permits_on_the_real_address() {
+    let mut r = req("203.0.113.99", "203.0.113.20");
+    r.protocol = Some("tcp".into());
+    r.port = Some(443);
+    let f = run(&asa(), &r).forward;
+    let h = &f.paths[0].hops[0];
+    assert_eq!((h.nat[0].was.as_str(), h.nat[0].now.as_str()), ("203.0.113.20", "10.9.9.20"), "{h:#?}");
+    assert_eq!(h.out_interface.as_deref(), Some("inside"), "routed on the translated address");
+    let fw = h.firewall.as_ref().unwrap();
+    assert_eq!(fw.verdict, Verdict::Allow, "{}", fw.reason);
+    assert_eq!(fw.policy.as_deref(), Some("outside_in (10)"));
+    assert!(matches!(f.paths[0].ending, Ending::Delivered { .. }));
+    // Another port: nothing permits it, and the ASA's implicit deny says so.
+    r.port = Some(22);
+    let f = run(&asa(), &r).forward;
+    assert!(matches!(&f.paths[0].ending, Ending::Denied { at, policy: Some(p) } if at == "ASA1" && p == "implicit deny"), "{:?}", f.paths[0].ending);
+    // The way out: no rule is bound inbound on `inside`, so the ASA's
+    // implicit deny — the security levels that would allow it were not collected.
+    let f = run(&asa(), &req("10.9.9.20", "203.0.113.99")).forward;
+    assert!(matches!(&f.paths[0].ending, Ending::Denied { .. }), "{:?}", f.paths[0].ending);
+}
+
+/// Without the binding, an access list is not assumed to apply either way.
+#[test]
+fn an_asa_rule_with_no_interface_binding_is_undetermined() {
+    let mut net = asa();
+    for r in net[0].tables.get_mut("fw_policy").unwrap() {
+        r.columns.remove("src_zones");
+    }
+    let mut r = req("203.0.113.99", "203.0.113.20");
+    r.protocol = Some("tcp".into());
+    r.port = Some(443);
+    let fw = run(&net, &r).forward.paths[0].hops[0].firewall.clone().unwrap();
+    assert_eq!(fw.verdict, Verdict::Undetermined);
+    assert!(fw.reason.contains("bound"), "{}", fw.reason);
+}
+
+/// The same static rule translates the source on the way out, once a rule allows it.
+#[test]
+fn an_asa_static_rule_translates_the_source_on_the_way_out() {
+    let mut net = asa();
+    net[0].tables.get_mut("fw_policy").unwrap().push(row("show_access_list", &[("seq", "10"), ("name", "inside_in"), ("src_zones", "inside"), ("src_addr", "10.9.9.0/24"), ("dst_addr", "any"), ("services", "ip"), ("action", "permit")]));
+    let f = run(&net, &req("10.9.9.20", "203.0.113.99")).forward;
+    let h = &f.paths[0].hops[0];
+    assert_eq!(h.firewall.as_ref().unwrap().policy.as_deref(), Some("inside_in (10)"));
+    let snat = h.nat.iter().find(|n| n.field == "source");
+    assert_eq!(snat.map(|n| n.now.as_str()), Some("203.0.113.20"), "{h:#?}");
+}
+
 // -------------------------------------------------------------- policy route
 
 fn pbr_router() -> Vec<DeviceIn> {

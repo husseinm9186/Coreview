@@ -288,7 +288,15 @@ pub fn verdict(b: &Box_, k: Kind, flow: &Flow) -> FwVerdict {
         return out;
     }
     for p in b.fw.iter().filter(|p| p.enabled) {
-        let m = zone_match(&p.src_zones, flow.zones_in)
+        // An ASA access list applies where `access-group` binds it. A rule
+        // with no interface recorded could apply to either direction.
+        let bound = if k == Kind::Asa && p.src_zones.is_empty() && p.dst_zones.is_empty() {
+            Tri::Unknown(format!("the interface {} is bound to was not collected", p.label()))
+        } else {
+            Tri::Yes
+        };
+        let m = bound
+            .and(zone_match(&p.src_zones, flow.zones_in))
             .and(zone_match(&p.dst_zones, flow.zones_out))
             .and(addr_match(&p.src_addr, flow.src, &[]))
             .and(addr_match(&p.dst_addr, flow.dst, flow.dst_names))
