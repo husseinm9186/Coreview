@@ -497,6 +497,17 @@ trust the summary below over that file; it is a signpost and it will rot.
   which is backwards from Cisco's meaning (LT-552). A sweep of every
   template's fields against the normaliser found LT-552–LT-555 — rerun it
   when a catalog gains a template.
+- **P4, 29 September 2026 (LT-542–LT-557).** Run diff and overlay edges,
+  IPv6 / route-target leaking / L3VPN / VDOM contexts in the path builder,
+  topology exports, SNMP fallback, host catalogs. **Mines:** the path
+  builder's addresses are `IpAddr` and its prefixes `Prefix` (u128) — never
+  compare across families; a link-local next hop is resolved on its link and
+  is kept out of `by_ip`; rows read inside a VDOM or ASA context carry
+  `_context` and their VRF is the context's name, so older runs keep VDOMs
+  merged; the SNMP fallback marks the device `os = "snmp"` so the topology
+  builder takes it despite the SSH failure; the allowlist is three copies
+  (Rust, JS, Python) pinned by `allowlist-cases.json` — change all three and
+  the fixture together (LT-556, LT-557 were both found that way).
 
 - **Shipped 2026-09-18, after the mission:** LT-285 the address register (the
   **Addresses** tab; `src/lib/ipam.ts` is the arithmetic, `e2e/ipam.mjs` drives

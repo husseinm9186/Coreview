@@ -167,3 +167,14 @@ flaky test. Waiting on his word.
 **2026-09-24:** the flaky test is fixed, and it was never LibreOffice's fault
 (LT-382). So the sentence's most likely meaning has gone away, and this
 question is now only about whether the EMF/WMF conversion is wanted at all.
+
+### Q-019 — Scheduled re-discovery against D-023
+Raised 2026-09-29 by P4's order, item 6: "Scheduled re-discovery." D-023
+declines "scheduled re-crawl" "now or in the future", and after D-029/D-030
+it says scheduled re-crawl "remain[s] declined"; D-030 (proposed, not
+accepted) sets constraints only for scheduled *validation sessions*. LT-551
+is logged and not built. **What would unblock it:** the operator reversing
+that clause of D-023 — and saying whether D-030's constraints apply to a
+scheduled collection too: armed by hand, its window visible at all times,
+running only while the app is open, never a service or login item, never
+firing silently.
