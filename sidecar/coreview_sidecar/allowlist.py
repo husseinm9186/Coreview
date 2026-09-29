@@ -19,6 +19,15 @@ LITERALS = (
     "lldpcli show ", "lldpctl",
     "esxcli network nic list", "esxcli network vswitch standard list", "vim-cmd hostsvc/net/query_networkhint",
     "Get-NetIPConfiguration", "Get-NetRoute", "Get-NetNeighbor",
+    # LT-550: the JSON forms of the ESXi and Windows reads.
+    "esxcli --formatter=json system version get",
+    "esxcli --formatter=json system hostname get",
+    "esxcli --formatter=json network nic list",
+    "esxcli --formatter=json network ip interface ipv4 get",
+    "esxcli --formatter=json network ip route ipv4 list",
+    "esxcli --formatter=json network ip neighbor list",
+    "Get-NetAdapter",
+    "Get-NetIPAddress",
     "net show ", "nv show ",
     "pveversion", "qm list", "pct list",
 )

@@ -4,6 +4,7 @@
 //! live collection and an offline import.
 
 pub mod asa;
+pub mod hosts;
 
 use serde_json::Value;
 
@@ -13,13 +14,15 @@ pub fn read(name: &str, raw: &str) -> Result<Vec<Value>, String> {
         "asa_access_list" => Ok(asa::access_list(raw)),
         "asa_access_group" => Ok(asa::access_group(raw)),
         "asa_nameif" => Ok(asa::nameif(raw)),
+        "linux_ip_addr" => Ok(hosts::ip_addr(raw)),
+        "linux_lldp" => Ok(hosts::lldp(raw)),
         other => Err(format!("no Coreview reader is called {other:?}")),
     }
 }
 
 /// Whether a reader of that name exists, for the catalog's own checks.
 pub fn exists(name: &str) -> bool {
-    matches!(name, "asa_access_list" | "asa_access_group" | "asa_nameif")
+    matches!(name, "asa_access_list" | "asa_access_group" | "asa_nameif" | "linux_ip_addr" | "linux_lldp")
 }
 
 #[cfg(test)]

@@ -190,6 +190,8 @@ fn routes_of(d: &DeviceIn) -> Vec<NodeRoute> {
     let mut out = Vec::new();
     for r in d.rows("route") {
         let Some(p) = r.get("prefix") else { continue };
+        // LT-550: iproute2 and esxcli write the default route as `default`.
+        let p = if p.eq_ignore_ascii_case("default") { if r.get("next_hop").map(|h| h.contains(':')).unwrap_or(false) { "::/0" } else { "0.0.0.0/0" } } else { p };
         let (net, plen) = split_prefix(p, r.get("mask"));
         let prefix = match plen {
             Some(l) => format!("{net}/{l}"),
@@ -201,7 +203,7 @@ fn routes_of(d: &DeviceIn) -> Vec<NodeRoute> {
             vrf: r.get("vrf").map(str::to_string).filter(|v| v != "default"),
             prefix,
             proto: r.get("proto").unwrap_or("").to_string(),
-            next_hops: r.list("next_hop").into_iter().filter(|h| h.parse::<std::net::IpAddr>().is_ok()).collect(),
+            next_hops: r.list("next_hop").into_iter().filter(|h| h.parse::<std::net::IpAddr>().map(|a| !a.is_unspecified()).unwrap_or(false)).collect(),
             interface: r.list("interface").into_iter().next(),
             ad: num("ad"),
             metric: num("metric"),

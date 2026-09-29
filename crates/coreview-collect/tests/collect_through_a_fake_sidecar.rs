@@ -148,6 +148,43 @@ async fn a_live_check_asks_inside_the_hops_vdom() {
     sidecar.quit().await;
 }
 
+/// LT-550: a Proxmox host, recognised by `ip -j link`, flagged by
+/// `pveversion`, read through Coreview's readers. JSON in the shapes of
+/// iproute2's and lldpd's documentation, not captured (D-058).
+#[tokio::test]
+async fn a_proxmox_host_is_recognised_and_read_through_its_readers() {
+    let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+    let addr = r#"[{"ifindex":2,"ifname":"vmbr0","operstate":"UP","mtu":1500,"link_type":"ether","address":"00:00:00:00:00:10","addr_info":[{"family":"inet","local":"192.0.2.40","prefixlen":24,"scope":"global"}]}]"#;
+    let lldp = r#"{"lldp":{"interface":{"eno1":{"chassis":{"SW1":{"id":{"type":"mac","value":"00:00:00:00:00:20"},"mgmt-ip":"192.0.2.1"}},"port":{"id":{"type":"ifname","value":"Gi1/0/5"}}}}}}"#;
+    let script = json!({
+        "ip -j link": {"status": "ok", "raw": "[{\"ifindex\":2,\"ifname\":\"vmbr0\"}]", "rows": []},
+        "pveversion": {"status": "ok", "raw": "pve-manager/8.2.2/9355359cd7afbae4 (running kernel: 6.8.4-2-pve)", "rows": []},
+        "ip -j addr": {"status": "ok", "raw": addr, "rows": []},
+        "lldpcli show neighbors -f json": {"status": "ok", "raw": lldp, "rows": []},
+        "ip -j neigh": {"status": "ok", "raw": "[]", "rows": [{"dst": "192.0.2.1", "dev": "vmbr0", "lladdr": "00:00:00:00:00:20", "state": ["REACHABLE"]}]}
+    });
+    let loc = fake_location(&script, "[]");
+    let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
+    let target = Target { host: "192.0.2.40".into(), port: 22, os_hint: None, role_override: None, known_host_key: None };
+    let run = collect_device(&mut sidecar, &catalogs, &target, &auth(), &RunOptions::default(), &Quiet).await;
+    assert_eq!(run.failure, None, "{:?}", run.log);
+    assert_eq!(run.os.as_deref(), Some("hosts"));
+    assert_eq!(run.identified_by.as_deref(), Some("ip -j link"));
+    assert_eq!(run.role.as_deref(), Some("host"));
+    assert!(run.caps.contains(&"proxmox".to_string()), "{:?}", run.caps);
+    let by = |id: &str| run.results.iter().find(|r| r.step.id == id).unwrap_or_else(|| panic!("{id} not run"));
+    let a = by("ip_j_addr");
+    assert_eq!(a.outcome.engine.as_deref(), Some("rust"), "read by Coreview's reader, not the sidecar");
+    assert_eq!(a.outcome.rows[1]["ip_address"], "192.0.2.40");
+    let n = by("lldpcli_show_neighbors_f_json");
+    assert_eq!((n.outcome.rows[0]["neighbor_name"].as_str(), n.outcome.rows[0]["neighbor_interface"].as_str()), (Some("SW1"), Some("Gi1/0/5")));
+    // What is normalised from them is what P2 and P3 read.
+    let tables = coreview_collect::tables::normalise_all(&a.step.feeds, &a.outcome.rows);
+    assert!(tables.iter().any(|t| t.table == "ip_address" && t.columns.get("ip").map(String::as_str) == Some("192.0.2.40") && t.columns.get("prefixlen").map(String::as_str) == Some("24")));
+    assert!(tables.iter().any(|t| t.table == "interface" && t.columns.get("mac").map(String::as_str) == Some("00:00:00:00:00:10")));
+    sidecar.quit().await;
+}
+
 #[tokio::test]
 async fn a_wrong_password_ends_the_run_at_once_with_no_second_try() {
     let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();

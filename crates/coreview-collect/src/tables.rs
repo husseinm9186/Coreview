@@ -37,17 +37,17 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("oper", &["oper_status", "protocol", "line_protocol", "link", "link_state", "oper", "state", "operational"]),
             ("speed", &["speed", "bandwidth", "eth_speed", "eth_bw"]),
             ("duplex", &["duplex", "eth_duplex"]),
-            ("mac", &["mac", "mac_address", "address", "hardware_address", "bia", "eth_hw_addr", "physical_address"]),
-            ("descr", &["description", "descr", "desc", "name_alias", "alias"]),
+            ("mac", &["mac", "mac_address", "address", "hardware_address", "bia", "eth_hw_addr", "physical_address", "macaddress"]),
+            ("descr", &["description", "descr", "desc", "name_alias", "alias", "interface_description"]),
             ("mtu", &["mtu", "eth_mtu"]),
             ("vlan", &["vlan", "vlan_id", "access_vlan", "native_vlan", "vlan_tag"]),
             ("mode", &["mode", "switchport_mode", "admin_mode", "operational_mode", "switchport", "type"]),
             ("lag_parent", &["lag", "port_channel", "channel_group", "bundle", "aggregate", "member_of", "lag_parent"]),
         ],
         "ip_address" => &[
-            ("interface", &["interface", "intf", "name", "port", "intf_name", "ifname", "vlan_name"]),
-            ("ip", &["ip", "ip_address", "ipaddr", "address", "ipv4", "primary_ip", "ip_addr", "prefix", "ip_address_prefix", "ipv6_address"]),
-            ("prefixlen", &["prefix_length", "prefixlen", "mask", "netmask", "subnet", "masklen", "prefix_len"]),
+            ("interface", &["interface", "intf", "name", "port", "intf_name", "ifname", "vlan_name", "interface_alias"]),
+            ("ip", &["ip", "ip_address", "ipaddr", "address", "ipv4", "primary_ip", "ip_addr", "prefix", "ip_address_prefix", "ipv6_address", "ipaddress", "ipv4_address"]),
+            ("prefixlen", &["prefix_length", "prefixlen", "mask", "netmask", "subnet", "masklen", "prefix_len", "ipv4_netmask"]),
             ("vrf", &["vrf", "vrf_name", "routing_instance", "instance", "vpn_instance", "vrf_name_out"]),
             ("kind", &["kind", "type", "address_type"]),
         ],
@@ -65,14 +65,14 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
         "mac_table" => &[
             ("vlan", &["vlan", "vlan_id", "vlanid", "vlan_name"]),
             ("mac", &["mac", "mac_address", "destination_address", "mac_addr", "address", "macaddr"]),
-            ("interface", &["interface", "destination_port", "ports", "port", "interfaces", "intf", "port_name"]),
-            ("type", &["type", "entry_type", "mac_type", "kind"]),
+            ("interface", &["interface", "destination_port", "ports", "port", "interfaces", "intf", "port_name", "ifname", "dev"]),
+            ("type", &["type", "entry_type", "mac_type", "kind", "state"]),
             ("age", &["age", "aging"]),
         ],
         "arp" => &[
-            ("ip", &["ip", "ip_address", "address", "ipaddr", "ip_addr", "ip_addr_out"]),
-            ("mac", &["mac", "mac_address", "hardware_addr", "hw_address", "mac_addr", "hardware_address"]),
-            ("interface", &["interface", "intf", "port", "intf_out", "port_id"]),
+            ("ip", &["ip", "ip_address", "address", "ipaddr", "ip_addr", "ip_addr_out", "dst", "neighbor", "ipaddress"]),
+            ("mac", &["mac", "mac_address", "hardware_addr", "hw_address", "mac_addr", "hardware_address", "lladdr", "link_layer_address"]),
+            ("interface", &["interface", "intf", "port", "intf_out", "port_id", "dev", "vmknic", "interface_alias"]),
             ("age", &["age", "age_min", "age_sec", "time_stamp"]),
             ("vrf", &["vrf", "vrf_name", "vrf_name_out"]),
         ],
@@ -107,13 +107,13 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
         ],
         "route" => &[
             ("vrf", &["vrf", "vrf_name", "routing_instance", "table", "vrf_name_out"]),
-            ("prefix", &["network", "prefix", "destination", "dest", "route", "network_prefix", "ipprefix", "ip_prefix", "ip_address"]),
+            ("prefix", &["network", "prefix", "destination", "dest", "route", "network_prefix", "ipprefix", "ip_prefix", "ip_address", "dst", "destination_prefix"]),
             ("mask", &["mask", "prefixlen", "prefix_length", "netmask", "subnet", "masklen", "prefix_len"]),
             ("proto", &["protocol", "type", "source_proto", "route_source", "source", "clientname", "status"]),
             ("ad", &["distance", "admin_distance", "ad", "preference", "pref"]),
-            ("metric", &["metric", "cost"]),
+            ("metric", &["metric", "cost", "route_metric"]),
             ("next_hop", &["nexthop_ip", "next_hop", "nexthop", "gateway", "via", "next_hop_ip", "nh", "ipnexthop", "gw", "nexthopip"]),
-            ("interface", &["nexthop_if", "interface", "outgoing_interface", "nexthop_interface", "out_interface", "exit_interface", "next_hop_interface", "ifname", "intf", "dev", "nexthopif", "vlan_name"]),
+            ("interface", &["nexthop_if", "interface", "outgoing_interface", "nexthop_interface", "out_interface", "exit_interface", "next_hop_interface", "ifname", "intf", "dev", "nexthopif", "vlan_name", "interface_alias"]),
             ("age", &["uptime", "age", "time"]),
         ],
         "routing_neighbor" => &[
@@ -599,6 +599,35 @@ mod tests {
         let trunk = normalise("lag", &json!({"local_port": "A1", "int_name": "", "int_type": "100/1000T", "trunk": "Trk1", "trunk_type": "LACP"}));
         assert_eq!(trunk.columns.get("members").map(String::as_str), Some("A1"));
         assert_eq!(trunk.columns.get("name").map(String::as_str), Some("Trk1"));
+    }
+
+    /// LT-550: the JSON hosts answer with, from each tool's documentation
+    /// (iproute2, esxcli `--formatter=json`, PowerShell `ConvertTo-Json`) —
+    /// not captured (D-058).
+    #[test]
+    fn host_json_lands_in_the_tables() {
+        let n = normalise("arp", &json!({"dst": "192.0.2.1", "dev": "eth0", "lladdr": "00:00:00:00:00:01", "state": ["REACHABLE"]}));
+        assert_eq!((n.columns["ip"].as_str(), n.columns["mac"].as_str(), n.columns["interface"].as_str()), ("192.0.2.1", "00:00:00:00:00:01", "eth0"));
+        let r = normalise("route", &json!({"dst": "default", "gateway": "192.0.2.1", "dev": "eth0", "protocol": "dhcp", "table": "main"}));
+        assert_eq!((r.columns["prefix"].as_str(), r.columns["next_hop"].as_str(), r.columns["interface"].as_str(), r.columns["vrf"].as_str()), ("default", "192.0.2.1", "eth0", "main"));
+        let f = normalise("mac_table", &json!({"mac": "00:00:00:00:00:02", "ifname": "tap100i0", "vlan": 10, "state": "reachable"}));
+        assert_eq!(f.columns["interface"], "tap100i0");
+        // ESXi
+        let nic = normalise("interface", &json!({"Name": "vmnic0", "MACAddress": "00:00:00:00:00:03", "AdminStatus": "Up", "LinkStatus": "Up", "Speed": 1000, "Duplex": "Full", "MTU": 1500, "Description": "Fake NIC"}));
+        assert_eq!((nic.columns["name"].as_str(), nic.columns["mac"].as_str(), nic.columns["mtu"].as_str()), ("vmnic0", "00:00:00:00:00:03", "1500"));
+        let vmk = normalise("ip_address", &json!({"Name": "vmk0", "IPv4Address": "192.0.2.20", "IPv4Netmask": "255.255.255.0"}));
+        assert_eq!((vmk.columns["interface"].as_str(), vmk.columns["ip"].as_str(), vmk.columns["prefixlen"].as_str()), ("vmk0", "192.0.2.20", "255.255.255.0"));
+        let nb = normalise("arp", &json!({"Neighbor": "192.0.2.1", "MacAddress": "00:00:00:00:00:04", "Vmknic": "vmk0"}));
+        assert_eq!((nb.columns["ip"].as_str(), nb.columns["interface"].as_str()), ("192.0.2.1", "vmk0"));
+        // Windows
+        let ad = normalise("interface", &json!({"Name": "Ethernet0", "MacAddress": "00-00-00-00-00-05", "Status": "Up", "InterfaceDescription": "Fake Adapter"}));
+        assert_eq!((ad.columns["mac"].as_str(), ad.columns["descr"].as_str()), ("00-00-00-00-00-05", "Fake Adapter"));
+        let ip = normalise("ip_address", &json!({"IPAddress": "192.0.2.30", "InterfaceAlias": "Ethernet0", "PrefixLength": 24, "AddressFamily": 2}));
+        assert_eq!((ip.columns["ip"].as_str(), ip.columns["interface"].as_str(), ip.columns["prefixlen"].as_str()), ("192.0.2.30", "Ethernet0", "24"));
+        let rt = normalise("route", &json!({"DestinationPrefix": "0.0.0.0/0", "NextHop": "192.0.2.1", "InterfaceAlias": "Ethernet0", "RouteMetric": 0}));
+        assert_eq!((rt.columns["prefix"].as_str(), rt.columns["next_hop"].as_str(), rt.columns["interface"].as_str()), ("0.0.0.0/0", "192.0.2.1", "Ethernet0"));
+        let ne = normalise("arp", &json!({"IPAddress": "192.0.2.1", "LinkLayerAddress": "00-00-00-00-00-06", "InterfaceAlias": "Ethernet0", "State": 2}));
+        assert_eq!((ne.columns["ip"].as_str(), ne.columns["mac"].as_str()), ("192.0.2.1", "00-00-00-00-00-06"));
     }
 
     /// LT-537: PAN-OS says `disabled: yes` of a rule that is off. Stored as

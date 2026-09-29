@@ -18,7 +18,8 @@ import { saveExport } from '../lib/exports';
 import { topologyCsv, topologyJson, topologyMarkdown } from '../lib/topologyExport';
 import { SavedCredentialSelect } from './CredentialPicker';
 
-const PLATFORMS = ['cisco_ios', 'cisco_nxos', 'cisco_iosxr', 'arista_eos', 'juniper_junos', 'fortios', 'panos', 'aoscx', 'aoss', 'cisco_asa', 'cisco_wlc_aireos'];
+// LT-550: the hosts too — Linux and Proxmox (`hosts`), ESXi, Windows.
+const PLATFORMS = ['cisco_ios', 'cisco_nxos', 'cisco_iosxr', 'arista_eos', 'juniper_junos', 'fortios', 'panos', 'aoscx', 'aoss', 'cisco_asa', 'cisco_wlc_aireos', 'hosts', 'esxi', 'windows'];
 const ROLES = ['switch', 'router', 'firewall', 'wlc', 'host'];
 
 function describe(e: CollectionEvent, hosts: Map<string, string>): string | null {

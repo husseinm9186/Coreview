@@ -5644,7 +5644,7 @@
   "coreview": ""
  },
  {
-  "os": "hosts",
+  "os": "esxi",
   "gate": "role.esxi",
   "command": "esxcli network nic list",
   "flags": [],
@@ -5656,7 +5656,7 @@
   "coreview": ""
  },
  {
-  "os": "hosts",
+  "os": "esxi",
   "gate": "role.esxi",
   "command": "esxcli network vswitch standard list",
   "flags": [],
@@ -5668,7 +5668,7 @@
   "coreview": ""
  },
  {
-  "os": "hosts",
+  "os": "esxi",
   "gate": "role.esxi",
   "command": "vim-cmd hostsvc/net/query_networkhint",
   "flags": [],
@@ -5680,7 +5680,7 @@
   "coreview": ""
  },
  {
-  "os": "hosts",
+  "os": "windows",
   "gate": "role.windows",
   "command": "Get-NetIPConfiguration | ConvertTo-Json",
   "flags": [],
@@ -5692,7 +5692,7 @@
   "coreview": ""
  },
  {
-  "os": "hosts",
+  "os": "windows",
   "gate": "role.windows",
   "command": "Get-NetRoute",
   "flags": [],
@@ -5704,7 +5704,7 @@
   "coreview": ""
  },
  {
-  "os": "hosts",
+  "os": "windows",
   "gate": "role.windows",
   "command": "Get-NetNeighbor",
   "flags": [],

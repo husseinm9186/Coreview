@@ -101,6 +101,20 @@ mod tests {
         assert_eq!(identify(&c, "show system", " Status and Counters - General System Information\n\n  Software revision  : WC.16.11.0012").unwrap().os, "aoss");
     }
 
+    /// LT-550: the hosts, each by its own probe; a switch's `show version`
+    /// is tried first, and a host's probe never claims a network device.
+    #[test]
+    fn hosts_esxi_and_windows_are_recognised_by_their_probes() {
+        let c = catalogs();
+        let p = probes(&c);
+        let at = |x: &str| p.iter().position(|q| q == x).unwrap_or_else(|| panic!("{x} not probed: {p:?}"));
+        assert!(at("show version") < at("ip -j link"));
+        assert_eq!(identify(&c, "ip -j link", r#"[{"ifindex":1,"ifname":"lo"}]"#).map(|i| i.os), Some("hosts".into()));
+        assert_eq!(identify(&c, "esxcli --formatter=json system version get", r#"{"Build":"Releasebuild-0","Product":"VMware ESXi","Version":"8.0.2"}"#).map(|i| i.os), Some("esxi".into()));
+        assert_eq!(identify(&c, "Get-NetAdapter | ConvertTo-Json", r#"[{"Name":"Ethernet0","InterfaceDescription":"Fake Adapter"}]"#).map(|i| i.os), Some("windows".into()));
+        assert_eq!(identify(&c, "ip -j link", "% Invalid input detected at '^' marker."), None);
+    }
+
     #[test]
     fn probes_are_tried_common_first() {
         let p = probes(&catalogs());

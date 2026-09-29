@@ -37,7 +37,7 @@
   "$defs": {
     "role": { "enum": ["access_switch", "l3_switch", "switch", "router", "firewall", "wlc", "ap", "host", "unknown", "linux-proxmox", "esxi", "windows", "ftd"] },
     "flag": {
-      "enum": ["switching", "routing", "vrf", "ospf", "eigrp", "bgp", "isis", "rip", "fhrp", "pbr", "nat", "ipsec", "gre", "dmvpn", "sdwan", "mpls", "vxlan_evpn", "stack", "vss_svl", "vpc_mlag_vsx", "vpc", "ha", "fex", "cdp", "lldp", "wlc", "vdom", "vsys", "multi_context", "structured_output", "fortilink", "advanced_routing", "l2vpn", "fw_zone"]
+      "enum": ["switching", "routing", "vrf", "ospf", "eigrp", "bgp", "isis", "rip", "fhrp", "pbr", "nat", "ipsec", "gre", "dmvpn", "sdwan", "mpls", "vxlan_evpn", "stack", "vss_svl", "vpc_mlag_vsx", "vpc", "ha", "fex", "cdp", "lldp", "wlc", "vdom", "vsys", "multi_context", "structured_output", "fortilink", "advanced_routing", "l2vpn", "fw_zone", "proxmox"]
     },
     "table": {
       "enum": ["device", "interface", "ip_address", "neighbor", "mac_table", "arp", "vlan", "lag", "stp", "vrf", "route", "routing_neighbor", "fhrp", "policy_route", "nat_rule", "fw_zone", "fw_policy", "fw_binding", "fw_object", "tunnel", "ha_pair", "ap", "endpoint", "link", "l3_adjacency", "raw_config", "path_probe"]

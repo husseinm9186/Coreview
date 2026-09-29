@@ -1,4 +1,4 @@
-# Coreview discovery catalog — hosts Linux, Proxmox, ESXi, Windows (phase 4) (hosts)
+# Coreview discovery catalog — Linux and Proxmox (hosts)
 #
 # First built 2026-09-29 by scripts/build-catalog.mjs from the operator's
 # specification (docs/DISCOVERY-SPEC.md), ntc-templates' index
@@ -11,40 +11,55 @@
 # Coreview reader that met the operator's hardware); docs = documented,
 # structured, or a template with no fixture; unverified = no template, no
 # structured output, no capture yet — LT-511's list. Never invent a command.
+#
+# LT-550: split from the phase-4 hosts stub, which had no fingerprint and so
+# was never recognised. iproute2 and lldpd answer in JSON, read by the table
+# normaliser or by Coreview's readers; built from the tools' documentation
+# (D-058) — `verified: docs` until the operator's capture.
 vendor: hosts
 os: hosts
-name: Linux, Proxmox, ESXi, Windows (phase 4)
+name: Linux and Proxmox
 ntc_platform: linux
 phase: 2
-fingerprint: null
+fingerprint:
+  probe: ip -j link
+  match_regex: '"ifname"'
 session:
-  source: scrapli_community generic 'network' driver
+  source: generic shell prompt (LT-550)
   privilege_levels:
     exec:
-      pattern: ^\S+@\S+:\S+:\S+\$\s*$
+      pattern: ^\S+@\S+:.*[$#]\s?$
   default_privilege: exec
   failed_when_contains:
-    - Permission denied
-    - "ERROR:"
+    - "command not found"
+    - "Permission denied"
   on_close:
     - exit
-role_hint: []
+role_hint:
+  - match: '"ifname"'
+    role: host
 role_defaults: {}
-caps_probe: []
+caps_probe:
+  - id: pveversion
+    cmd: pveversion
+    flags:
+      proxmox: pve-manager
+    timeout: 30
 commands:
   - id: ip_j_addr
     cmd: ip -j addr
-    gate: role.linux-proxmox
-    parser: json
+    gate: always
+    parser: reader:linux_ip_addr
     feeds:
+      - interface
       - ip_address
     weight: light
     timeout: 30
     verified: docs
-    evidence: structured output (JSON); field mapping from documentation
+    evidence: structured output (JSON), nested; Coreview reader from iproute2's documentation (D-058, LT-550)
   - id: ip_j_neigh
     cmd: ip -j neigh
-    gate: role.linux-proxmox
+    gate: always
     parser: json
     feeds:
       - arp
@@ -52,96 +67,35 @@ commands:
     timeout: 30
     verified: docs
     evidence: structured output (JSON); field mapping from documentation
-  - id: lldpcli_show_neighbors_f_json
-    cmd: lldpcli show neighbors -f json
-    gate: role.linux-proxmox
-    parser: json
-    feeds:
-      - neighbor
-    weight: light
-    timeout: 30
-    verified: docs
-    evidence: structured output (JSON); field mapping from documentation
-  - id: esxcli_network_nic_list
-    cmd: esxcli network nic list
-    gate: role.esxi
-    parser: none
-    feeds:
-      - interface
-    weight: light
-    timeout: 30
-    verified: unverified
-    evidence: no template, no structured output, no capture yet (LT-511)
-  - id: esxcli_network_vswitch_standard_list
-    cmd: esxcli network vswitch standard list
-    gate: role.esxi
-    parser: none
-    feeds:
-      - device
-    weight: light
-    timeout: 30
-    verified: unverified
-    evidence: no template, no structured output, no capture yet (LT-511)
-  - id: vim_cmd_hostsvc_net_query_networkhint
-    cmd: vim-cmd hostsvc/net/query_networkhint
-    gate: role.esxi
-    parser: none
-    feeds:
-      - neighbor
-    weight: light
-    timeout: 30
-    verified: unverified
-    evidence: no template, no structured output, no capture yet (LT-511)
-  - id: get_netipconfiguration_convertto_json
-    cmd: Get-NetIPConfiguration | ConvertTo-Json
-    gate: role.windows
-    parser: json
-    feeds:
-      - interface
-      - ip_address
-    weight: light
-    timeout: 30
-    verified: docs
-    evidence: structured output (JSON); field mapping from documentation
-  - id: get_netroute
-    cmd: Get-NetRoute
-    gate: role.windows
-    parser: none
-    feeds:
-      - route
-    weight: light
-    timeout: 30
-    verified: unverified
-    evidence: no template, no structured output, no capture yet (LT-511)
-  - id: get_netneighbor
-    cmd: Get-NetNeighbor
-    gate: role.windows
-    parser: none
-    feeds:
-      - arp
-    weight: light
-    timeout: 30
-    verified: unverified
-    evidence: no template, no structured output, no capture yet (LT-511)
   - id: ip_j_route_show_table_all
     cmd: ip -j route show table all
-    gate: role.linux-proxmox
+    gate: always
     parser: json
     feeds:
       - route
-    weight: heavy
-    timeout: 120
+    weight: light
+    timeout: 30
     verified: docs
     evidence: structured output (JSON); field mapping from documentation
   - id: bridge_j_fdb_show
     cmd: bridge -j fdb show
-    gate: role.linux-proxmox
+    gate: always
     parser: json
     feeds:
       - mac_table
-    weight: heavy
-    timeout: 120
+    weight: light
+    timeout: 60
     verified: docs
     evidence: structured output (JSON); field mapping from documentation
+  - id: lldpcli_show_neighbors_f_json
+    cmd: lldpcli show neighbors -f json
+    gate: always
+    parser: reader:linux_lldp
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (JSON), keyed; Coreview reader from lldpd's documentation (D-058, LT-550)
 live_path: []
-note: "Phase-2 stub: the commands are catalogued, the session block is taken from scrapli; parsers come with Phase 2 (D-060)."
+note: "LT-550: Linux and Proxmox over SSH. A Proxmox host is flagged by `pveversion`; its bridges are read like any Linux bridge."

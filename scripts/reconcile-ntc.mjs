@@ -49,6 +49,9 @@ export const PLATFORMS = {
   cisco_wlc_aireos: ['cisco_wlc_ssh'],
   meraki: [],
   hosts: ['linux'],
+  // LT-550: ESXi and Windows have catalogs of their own.
+  esxi: [],
+  windows: [],
   huawei_vrp: ['huawei_vrp'],
   hpe_comware: ['hp_comware'],
   mikrotik_routeros: ['mikrotik_routeros'],
@@ -72,6 +75,8 @@ const NATIVE = {
   aoscx: (c) => (AOSCX_REST[c] ? `REST ${AOSCX_REST[c]}` : null),
   meraki: () => 'Dashboard API',
   hosts: (c) => (/(^ip -j |^bridge -j |-f json$|ConvertTo-Json)/.test(c) ? 'JSON' : null),
+  esxi: (c) => (/--formatter=json/.test(c) ? 'JSON' : null),
+  windows: (c) => (/ConvertTo-Json/.test(c) ? 'JSON' : null),
 };
 
 const FORTIOS_REST = {
@@ -317,11 +322,15 @@ function main() {
     }
     for (const line of section.lines) {
       let l = line;
+      // LT-550: the spec's hosts section names three platforms; each has its own catalog.
+      let os = section.os;
+      if (os === 'hosts' && /^ESXi:/.test(l)) os = 'esxi';
+      if (os === 'hosts' && /^Windows:/.test(l)) os = 'windows';
       if (section.os === 'meraki' && l.startsWith('GET ')) l = 'api: ' + l.slice(4);
       if (section.os === 'hosts') l = l.replace(/^(Linux\/Proxmox|ESXi|Windows):/, (_, k) => `role.${k.toLowerCase().replace('/', '-')}:`);
       if (/^REST/.test(l)) l = 'api: ' + l.replace(/^REST[^:]*:\s*/, '');
       if (/^FTD extra:/.test(l)) l = 'role.ftd: ' + l.replace(/^FTD extra:\s*/, '').replace('FMC REST: ', 'api: ');
-      for (const row of tokenise(l)) push(classify(section.os, row, index));
+      for (const row of tokenise(l)) push(classify(os, row, index));
     }
   }
   write(table);

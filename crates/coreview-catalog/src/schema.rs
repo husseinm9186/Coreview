@@ -277,5 +277,5 @@ pub const TABLES: &[&str] = &[
 pub const FLAGS: &[&str] = &[
     "switching", "routing", "vrf", "ospf", "eigrp", "bgp", "isis", "rip", "fhrp", "pbr", "nat", "ipsec", "gre", "dmvpn", "sdwan", "mpls",
     "vxlan_evpn", "stack", "vss_svl", "vpc_mlag_vsx", "vpc", "ha", "fex", "cdp", "lldp", "wlc", "vdom", "vsys", "multi_context",
-    "structured_output", "fortilink", "advanced_routing", "l2vpn", "fw_zone",
+    "structured_output", "fortilink", "advanced_routing", "l2vpn", "fw_zone", "proxmox",
 ];

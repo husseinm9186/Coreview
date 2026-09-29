@@ -577,8 +577,6 @@ pulled into Phase 1.*
 "start P4 without a separate plan round; write the plan into the spec and
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
-### LT-550 — P4.5 Hosts and hypervisors: Linux/Proxmox, ESXi, Windows catalogs — 2026-09-29
-
 ### LT-551 — P4.6 Scheduled re-discovery — 2026-09-29 — **blocked on the operator's ruling**
 **Conflicts with D-023**, which declines "scheduled re-crawl" and says it
 "remain[s] declined" after D-029/D-030. D-030 (proposed, not accepted)
@@ -588,6 +586,29 @@ by hand, window always visible, only while the app is open, never a
 service) apply.
 
 ## Done
+
+### LT-550 — P4.5 Hosts and hypervisors: Linux/Proxmox, ESXi, Windows catalogs — 2026-09-29, done the same day
+**Shipped:** the phase-4 hosts stub (no fingerprint, so never recognised)
+split into three catalogs. **Linux and Proxmox** (`hosts`): recognised by
+`ip -j link`; Proxmox flagged by `pveversion`; addresses and MACs (a Coreview
+reader for iproute2's nested JSON), neighbours (`ip -j neigh`), routes (`ip
+-j route show table all`), the bridge's forwarding table (`bridge -j fdb`),
+LLDP (a reader for lldpd's JSON). **ESXi** (`esxi`): esxcli's
+`--formatter=json` for version, hostname, NICs, vmkernel addresses, routes
+and neighbours; `vim-cmd … query_networkhint` stays unverified on the LT-511
+list. **Windows** (`windows`): `Get-NetAdapter`, `Get-NetIPAddress`,
+`Get-NetRoute`, `Get-NetNeighbor`, each `| ConvertTo-Json`, over OpenSSH
+with PowerShell as its default shell (from cmd.exe the host is not
+recognised, and the catalog says so). The allowlist gained the exact JSON
+forms as literals in all three implementations, and the normaliser the
+field names these tools use; a `default` route and Windows' on-link
+`0.0.0.0` next hop are read as they mean. The reconciliation table files
+ESXi and Windows under their own catalogs. Built from the tools'
+documentation (D-058). **Run:** reader, normaliser and fingerprint tests,
+and a Proxmox host collected end to end through the fake sidecar.
+**Found on the way:** LT-556 and LT-557, two holes in the read-only guard.
+**Not in it:** VM and container inventory (`qm list`, `pct list`) — raw
+text only, no table for it yet (Icebox).
 
 ### LT-557 — **bug** A host command's literal allowed its write form: `ip link set`, `ip route add` — 2026-09-29, fixed the same day
 **Found with LT-556.** The allowlist's literals for host commands (P1) are
@@ -12954,6 +12975,12 @@ internal COREVIEW-FGT-Root-CA cannot and never will.
 ---
 
 ## Icebox
+
+### A hypervisor's VMs and containers as a table — 2026-09-29
+Mentioned by LT-550: Proxmox `qm list` / `pct list` and ESXi's VM list are
+allowlisted but read only as text; a `vm` table (name, state, host,
+addresses, MACs) would let P2 place a VM's MAC on its host rather than as
+an unknown endpoint.
 
 ### The notices' heading counts test-only crates as "in the executable" — 2026-09-29
 Seen regenerating THIRD-PARTY-NOTICES for LT-518's test-only `rcgen`:

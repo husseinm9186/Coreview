@@ -57,5 +57,13 @@
   { "command": "show version; ip link set eth0 down", "verdict": "\"set\" changes the device" },
   { "command": "bridge fdb del 00:00:00:00:00:01 dev eth0", "verdict": "first word is not a read verb" },
   { "command": "ip -j route show table all", "verdict": "ok" },
-  { "command": "lldpcli show neighbors -f json", "verdict": "ok" }
+  { "command": "lldpcli show neighbors -f json", "verdict": "ok" },
+  { "command": "esxcli --formatter=json network nic list", "verdict": "ok" },
+  { "command": "esxcli --formatter=json system version get", "verdict": "ok" },
+  { "command": "esxcli --formatter=json network firewall set --enabled false", "verdict": "first word is not a read verb" },
+  { "command": "Get-NetAdapter | ConvertTo-Json", "verdict": "ok" },
+  { "command": "Get-NetIPAddress | ConvertTo-Json", "verdict": "ok" },
+  { "command": "Get-NetRoute | ConvertTo-Json", "verdict": "ok" },
+  { "command": "Get-NetAdapter | Disable-NetAdapter", "verdict": "pipe target \"Disable-NetAdapter\" is not a filter" },
+  { "command": "ip -j link", "verdict": "ok" }
 ]

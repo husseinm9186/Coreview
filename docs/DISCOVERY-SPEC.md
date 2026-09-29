@@ -411,10 +411,13 @@ unsupported, which is itself an answer.
 Not in the lab, so they stay `verified: unverified` on documentation alone:
 IOS-XR (`show ipv6 interface brief`, `show bundle`, `show lacp`, `show vrf
 all`, `show vrrp brief`, the mpls, l2vpn and evpn ones), ASA/FTD (`show
-mode`, `show nameif`, `show mac-address-table`, `show eigrp neighbors`,
+mode`, `show mac-address-table`, `show eigrp neighbors`,
 `show vrf`, `show network`, `show managers`), AireOS (`show ap cdp
 neighbors all`, `show client summary`, `show route summary`, `show network
-summary`). EOS, Junos and PAN-OS have structured output for everything.
+summary`), ESXi (`vim-cmd hostsvc/net/query_networkhint`). EOS, Junos and
+PAN-OS have structured output for everything. (Updated for P4: ASA's
+`show nameif` is now read by a Coreview reader, LT-540, and ESXi and
+Windows are read in their JSON forms, LT-550.)
 
 ## Test strategy
 

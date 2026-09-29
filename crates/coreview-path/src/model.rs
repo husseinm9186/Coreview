@@ -720,6 +720,9 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
 fn read_routes(d: &DeviceIn, b: &mut Box_) {
     for r in d.rows("route") {
         let Some(p) = r.get("prefix") else { continue };
+        // LT-550: iproute2 and esxcli write the default route as `default`.
+        let v6 = r.get("next_hop").map(|h| h.contains(':')).unwrap_or(false);
+        let p = if p.eq_ignore_ascii_case("default") { if v6 { "::/0" } else { "0.0.0.0/0" } } else { p };
         let (net, len) = coreview_topology::identity::split_prefix(p, r.get("mask"));
         let Some(net_ip) = ip(&net) else { continue };
         let Some(len) = len.or_else(|| net_ip.is_unspecified().then_some(0)) else { continue };
@@ -732,7 +735,8 @@ fn read_routes(d: &DeviceIn, b: &mut Box_) {
         let ifaces = r.list("interface");
         let mut next_hops = Vec::new();
         for (i, h) in hops_raw.iter().enumerate() {
-            let Some(a) = ip(h) else { continue };
+            // An unspecified next hop (`0.0.0.0`, `::` — Windows' on-link) is no next hop.
+            let Some(a) = ip(h).filter(|a| !a.is_unspecified()) else { continue };
             let nh_vrf = h.split_once('%').map(|(_, v)| vrf_name(Some(v))).or_else(|| row_nh_vrf.clone());
             let iface = ifaces.get(i).cloned().or_else(|| (ifaces.len() == 1).then(|| ifaces[0].clone()));
             next_hops.push(NextHop { ip: Some(a), iface, vrf: nh_vrf });
@@ -895,6 +899,17 @@ mod tests {
         // NX-OS `am` is a host learned by ARP, not the device's own address.
         assert_eq!(proto_word("am"), "am");
         assert_eq!(proto_word("L"), "local");
+    }
+
+    /// LT-550: `default`, and Windows' on-link `0.0.0.0` next hop.
+    #[test]
+    fn a_default_written_as_a_word_and_an_unspecified_next_hop() {
+        let row = |cols: &[(&str, &str)]| Row { command: "x".into(), columns: cols.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), extra: Default::default() };
+        let d = DeviceIn { device_id: "h".into(), tables: [("route".to_string(), vec![row(&[("prefix", "default"), ("next_hop", "192.0.2.1"), ("interface", "eth0")]), row(&[("prefix", "192.0.2.0/24"), ("next_hop", "0.0.0.0"), ("interface", "Ethernet0")])])].into(), ..Default::default() };
+        let mut b = Box_::default();
+        read_routes(&d, &mut b);
+        assert_eq!(b.routes[0].net.to_string(), "0.0.0.0/0");
+        assert_eq!(b.routes[1].next_hops, vec![NextHop { ip: None, iface: Some("Ethernet0".into()), vrf: None }]);
     }
 
     #[test]
