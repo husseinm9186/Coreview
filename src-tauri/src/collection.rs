@@ -720,3 +720,50 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+// --------------------------------------------------------------- topology
+
+/// LT-527: what the Collect tab shows after building, and hands on to the
+/// Discover panel's review.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopologyBuilt {
+    /// The crawl run it was stored as — the newest run, so Path-Trace,
+    /// Where-is, Tracert, the register and the change report read it too.
+    pub crawl_run_id: String,
+    pub devices: Vec<coreview_discover::crawl::CrawledDevice>,
+    pub not_visited: Vec<coreview_discover::types::Neighbor>,
+    pub graph: coreview_topology::Graph,
+}
+
+#[tauri::command(async)]
+pub fn collection_topology(state: State<'_, AppState>, run_id: String, options: Option<coreview_topology::crawl_view::ViewOptions>) -> CmdResult<TopologyBuilt> {
+    let options = options.unwrap_or_default();
+    let conn = state.db.lock().map_err(db_err)?;
+    let project = cdb::run_project(&conn, &run_id).map_err(db_err)?.ok_or("That collection run no longer exists.")?;
+    let input = cdb::topology_input(&conn, &run_id).map_err(db_err)?;
+    if input.is_empty() {
+        return Err("That run reached no device, so there is nothing to draw.".into());
+    }
+    let graph = coreview_topology::build(&input);
+    cdb::write_topology(&conn, &run_id, &graph).map_err(db_err)?;
+    let view = coreview_topology::crawl_view::view_with(&graph, &options);
+    // Stored exactly as a crawl stores a run: devices one by one, the rest as the summary.
+    let crawl_run_id = format!("topo-{run_id}-{}", crate::db::now_ms());
+    let seed = format!("collection {run_id}");
+    crate::db::open_crawl_run(&conn, &crawl_run_id, &project, crate::db::now_ms(), &seed).map_err(db_err)?;
+    for d in &view.devices {
+        let json = serde_json::to_string(d).map_err(|e| e.to_string())?;
+        crate::db::append_crawl_device(&conn, &crawl_run_id, &json).map_err(db_err)?;
+    }
+    let summary = serde_json::json!({
+        "notVisited": view.not_visited,
+        "failures": [],
+        "cancelled": false,
+        "firstSeenKeys": [],
+        "collectionRunId": run_id,
+        "findings": graph.findings,
+    });
+    crate::db::close_crawl_run(&conn, &crawl_run_id, "complete", &summary.to_string()).map_err(db_err)?;
+    Ok(TopologyBuilt { crawl_run_id, devices: view.devices, not_visited: view.not_visited, graph })
+}

@@ -99,6 +99,9 @@ export const backupInput = (input: object) => {
 export const collectionInput = (o: object) =>
   pickAll(o, ['projectId', 'targets', 'port', 'osHint', 'roleOverride', 'planOnly', 'lightOnly', 'credentialId', 'keepDiagnostic', 'connectTimeoutSecs', 'authTimeoutSecs']);
 
+/** `ViewOptions` in `coreview-topology/src/crawl_view.rs` (LT-527). */
+export const topologyViewOptions = (o: object) => pickAll(o, ['collapseBundles', 'collapseStacks', 'placeholders', 'minConfidence', 'vlan', 'vrf']);
+
 /** `SweepOptions` in `coreview-probe/src/sweep.rs`. */
 export const sweepOptions = (o: object) => pickAll(o, ['timeoutMs', 'concurrency', 'identify', 'scanPorts', 'ports']);
 

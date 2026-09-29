@@ -9,7 +9,7 @@
 import { EMPTY_TREE, readTree, type FolderTree } from './projectFolders';
 import type { PagingMode } from './showCommands';
 import type { BackupCheck, CheckResult } from './checks';
-import { backupCheck, backupInput, crawlInput, credentialInput, eventRow, probeConfig, projectPackage, saveCredential, sweepOptions, visioDrawing, collectionInput } from './ipcPayloads';
+import { backupCheck, backupInput, crawlInput, credentialInput, eventRow, probeConfig, projectPackage, saveCredential, sweepOptions, visioDrawing, collectionInput, topologyViewOptions } from './ipcPayloads';
 import type {
   EventRow,
   Probe,
@@ -465,6 +465,25 @@ export type CollectionLogEntry = {
   /** LT-521: `match`, `mismatch` or `error` when shadow mode compared both parsers. */
   shadow?: string | null; shadowDetail?: string | null; engine?: string | null;
 };
+
+/** LT-527: the topology builder's graph, as `coreview-topology` serialises it. */
+export type TopologyEnd = { node: string; port: string | null };
+export type TopologyLink = {
+  a: TopologyEnd; b: TopologyEnd; kind: 'cdp' | 'lldp' | 'api' | 'inferred_mac'; confidence: number; both_directions: boolean;
+  bundle: { a_name: string | null; b_name: string | null; members: [string, string][] } | null;
+  evidence: { device: string; command: string; note: string }[];
+};
+export type TopologyNode = { id: string; name: string; kind: 'collected' | 'neighbor' | 'unknown_switch'; os: string | null; role: string | null; model: string | null; stack_kind: string | null; members: { id: string }[]; pair: [string, string] | null; mgmt_ip: string | null };
+export type TopologyGraph = {
+  nodes: TopologyNode[];
+  links: TopologyLink[];
+  l3: { a: string; a_if: string | null; b: string; b_if: string | null; subnet: string; confirmed_by: string[]; confidence: number }[];
+  overlays: { a: string; b: string | null; kind: string; name: string | null; local_ip: string | null; remote_ip: string | null }[];
+  endpoints: { switch: string; port: string; mac: string; ip: string | null; vlan: string | null }[];
+  findings: { kind: string; note: string; nodes: string[] }[];
+};
+export type TopologyViewOptions = { collapseBundles: boolean; collapseStacks: boolean; placeholders: boolean; minConfidence: number; vlan?: string; vrf?: string };
+export type TopologyBuilt = { crawlRunId: string; devices: CrawledDevice[]; notVisited: Neighbor[]; graph: TopologyGraph };
 
 /** LT-521: per (os, command), how often both parsers read a reply and how often they disagreed. */
 export type ShadowLine = { os: string; cmd: string; parser: string; compared: number; mismatches: number; errors: number; lastDetail: string | null };
@@ -1360,6 +1379,9 @@ export const ipc = {
   },
   collectionRun(id: string) {
     return invoke<CollectionRunDetail>('collection_run', { id });
+  },
+  collectionTopology(runId: string, options: TopologyViewOptions) {
+    return invoke<TopologyBuilt>('collection_topology', { runId, options: topologyViewOptions(options) });
   },
   shadowReport(projectId: string) {
     return invoke<ShadowLine[]>('shadow_report', { projectId });

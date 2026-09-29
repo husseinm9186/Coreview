@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { t } from '../i18n';
-import { ipc, type CollectionDevice, type CollectionEvent, type CollectionLogEntry, type CollectionRunDetail, type CollectionRunSummary, type ShadowLine } from '../lib/ipc';
+import { ipc, type CollectionDevice, type CollectionEvent, type CollectionLogEntry, type CollectionRunDetail, type CollectionRunSummary, type ShadowLine, type TopologyBuilt } from '../lib/ipc';
 import { useStore } from '../state/store';
 import { SavedCredentialSelect } from './CredentialPicker';
 
@@ -65,6 +65,15 @@ export function CollectionPanel() {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [importFolder, setImportFolder] = useState('');
   const [shadow, setShadow] = useState(false);
+  // LT-527: the topology built from the selected run, and the review toggles.
+  const [topo, setTopo] = useState<TopologyBuilt | null>(null);
+  const [building, setBuilding] = useState(false);
+  const [collapseBundles, setCollapseBundles] = useState(true);
+  const [collapseStacks, setCollapseStacks] = useState(true);
+  const [placeholders, setPlaceholders] = useState(true);
+  const [minConfidence, setMinConfidence] = useState(0);
+  const [vlanFilter, setVlanFilter] = useState('');
+  const [vrfFilter, setVrfFilter] = useState('');
   const [shadowLines, setShadowLines] = useState<ShadowLine[]>([]);
 
   const refreshRuns = useCallback(() => {
@@ -93,6 +102,7 @@ export function CollectionPanel() {
       setDetail(null);
       return;
     }
+    setTopo(null);
     void ipc.collectionRun(selected).then((d) => {
       setDetail(d);
       setDevice(d.devices[0]?.deviceId ?? null);
@@ -135,6 +145,25 @@ export function CollectionPanel() {
     setBusy(true);
     void ipc.importCaptures(meta.id, importFolder.trim()).then((id) => { setBusy(false); refreshRuns(); setSelected(id); }).catch((e: unknown) => { setBusy(false); setProblem(e instanceof Error ? e.message : String(e)); });
   };
+
+  const buildTopology = () => {
+    if (!selected) return;
+    setBuilding(true);
+    setProblem(null);
+    void ipc
+      .collectionTopology(selected, { collapseBundles, collapseStacks, placeholders, minConfidence, vlan: vlanFilter.trim() || undefined, vrf: vrfFilter.trim() || undefined })
+      .then(setTopo)
+      .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)))
+      .finally(() => setBuilding(false));
+  };
+
+  const reviewTopology = () => {
+    if (!topo || !selected) return;
+    useStore.getState().setPendingCrawlResult({ devices: topo.devices, notVisited: topo.notVisited, label: t('collect.handedOver', { run: selected, devices: topo.devices.length }) });
+    useStore.getState().requestPanelTab('crawl');
+  };
+
+  const nameOf = (id: string) => topo?.graph.nodes.find((n) => n.id === id)?.name ?? id;
 
   const showTable = (name: string) => {
     if (!selected) return;
@@ -323,6 +352,80 @@ export function CollectionPanel() {
               <pre className="cv-mono cv-collect-raw">{raw.text}</pre>
             </section>
           )}
+          <section data-region="collect-topology">
+            <h3>{t('collect.topology')}</h3>
+            <p className="cv-help">{t('collect.topologyHelp')}</p>
+            <div className="cv-discover-form">
+              <label className="cv-check"><input type="checkbox" checked={collapseBundles} onChange={(e) => setCollapseBundles(e.target.checked)} /> {t('collect.collapseBundles')}</label>
+              <label className="cv-check"><input type="checkbox" checked={collapseStacks} onChange={(e) => setCollapseStacks(e.target.checked)} /> {t('collect.collapseStacks')}</label>
+              <label className="cv-check"><input type="checkbox" checked={placeholders} onChange={(e) => setPlaceholders(e.target.checked)} /> {t('collect.placeholders')}</label>
+              <label className="cv-field cv-field-narrow">
+                <span>{t('collect.minConfidence')}</span>
+                <select className="cv-input" value={String(minConfidence)} onChange={(e) => setMinConfidence(Number(e.target.value))}>
+                  <option value="0">{t('collect.confidenceAll')}</option>
+                  <option value="0.7">{t('collect.confidenceSeen')}</option>
+                  <option value="1">{t('collect.confidenceBoth')}</option>
+                </select>
+              </label>
+              <label className="cv-field cv-field-narrow"><span>{t('collect.vlan')}</span><input className="cv-input cv-mono" value={vlanFilter} onChange={(e) => setVlanFilter(e.target.value)} /></label>
+              <label className="cv-field cv-field-narrow"><span>{t('collect.vrf')}</span><input className="cv-input cv-mono" value={vrfFilter} onChange={(e) => setVrfFilter(e.target.value)} /></label>
+              <button type="button" className="cv-btn" disabled={building} onClick={buildTopology}>{building ? t('collect.building') : t('collect.build')}</button>
+              {topo && <button type="button" className="cv-btn cv-btn-start" onClick={reviewTopology}>{t('collect.review')}</button>}
+            </div>
+            {topo && (
+              <>
+                <p className="cv-help" data-region="collect-topology-summary">
+                  {t('collect.topologySummary', {
+                    nodes: topo.graph.nodes.length,
+                    links: topo.graph.links.length,
+                    both: topo.graph.links.filter((l) => l.both_directions).length,
+                    inferred: topo.graph.links.filter((l) => l.kind === 'inferred_mac').length,
+                    l3: topo.graph.l3.length,
+                    overlays: topo.graph.overlays.length,
+                    endpoints: topo.graph.endpoints.length,
+                  })}
+                </p>
+                {topo.graph.findings.length > 0 && (
+                  <div data-region="collect-topology-findings">
+                    <h4>{t('collect.findings')}</h4>
+                    <ul>{topo.graph.findings.map((f, i) => <li key={i} className="is-warning">{f.note}</li>)}</ul>
+                  </div>
+                )}
+                <h4>{t('collect.links')}</h4>
+                <table className="cv-tr-table" data-region="collect-topology-links">
+                  <thead><tr><th>{t('collect.linkFrom')}</th><th>{t('collect.linkTo')}</th><th>{t('collect.kind')}</th><th>{t('collect.confidence')}</th><th>{t('collect.evidence')}</th></tr></thead>
+                  <tbody>
+                    {topo.graph.links.map((l, i) => (
+                      <tr key={i} className={`cv-confidence-${String(l.confidence).replace('.', '')}${l.kind === 'inferred_mac' ? ' is-inferred' : ''}`}>
+                        <td>{nameOf(l.a.node)} <span className="cv-mono">{l.a.port ?? ''}</span></td>
+                        <td>{nameOf(l.b.node)} <span className="cv-mono">{l.b.port ?? ''}</span>{l.bundle ? ` (${l.bundle.members.length})` : ''}</td>
+                        <td>{l.kind}{l.both_directions ? ' ⇄' : ''}</td>
+                        <td>{l.confidence.toFixed(1)}</td>
+                        <td><details><summary>{l.evidence.length}</summary><ul>{l.evidence.map((e, j) => <li key={j} className="cv-mono">{e.note} — {e.command}</li>)}</ul></details></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {topo.graph.l3.length > 0 && (
+                  <details className="cv-crawl-table">
+                    <summary>{t('collect.l3')} ({topo.graph.l3.length})</summary>
+                    <table className="cv-tr-table">
+                      <tbody>{topo.graph.l3.map((a, i) => <tr key={i}><td>{nameOf(a.a)} {a.a_if ?? ''}</td><td>{nameOf(a.b)} {a.b_if ?? ''}</td><td className="cv-mono">{a.subnet}</td><td>{a.confirmed_by.join(', ') || '—'}</td><td>{a.confidence.toFixed(1)}</td></tr>)}</tbody>
+                    </table>
+                  </details>
+                )}
+                {topo.graph.overlays.length > 0 && (
+                  <details className="cv-crawl-table">
+                    <summary>{t('collect.overlays')} ({topo.graph.overlays.length})</summary>
+                    <p className="cv-help">{t('collect.overlaysNote')}</p>
+                    <table className="cv-tr-table">
+                      <tbody>{topo.graph.overlays.map((o, i) => <tr key={i}><td>{nameOf(o.a)}</td><td>{o.b ? nameOf(o.b) : (o.remote_ip ?? '')}</td><td>{o.kind}</td><td className="cv-mono">{o.name ?? ''}</td></tr>)}</tbody>
+                    </table>
+                  </details>
+                )}
+              </>
+            )}
+          </section>
           <section data-region="collect-tables">
             <h3>{t('collect.tables')}</h3>
             <div className="cv-collect-tables">

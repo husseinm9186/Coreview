@@ -97,6 +97,7 @@ fn every_input_reads_the_frontends_payload_and_nothing_more() {
     contract::<BackupInput>("backup_input");
     contract::<SweepOptions>("sweep_options");
     contract::<CollectionInput>("collection_input");
+    contract::<coreview_topology::crawl_view::ViewOptions>("topology_view_options");
     contract::<SaveCredential>("save_credential");
     contract::<Check>("check");
     contract::<VisioDrawing>("visio_drawing");
@@ -136,6 +137,7 @@ proptest! {
         survives::<BackupInput>(&v);
         survives::<SweepOptions>(&v);
         survives::<CollectionInput>(&v);
+        survives::<coreview_topology::crawl_view::ViewOptions>(&v);
         survives::<SaveCredential>(&v);
         survives::<Check>(&v);
         survives::<VisioDrawing>(&v);
@@ -144,8 +146,8 @@ proptest! {
     /// Each fixture with one of its values replaced by something arbitrary:
     /// closer to a real mistake than random JSON, and still never a panic.
     #[test]
-    fn a_payload_with_any_one_value_replaced_is_handled(which in 0usize..11, key in 0usize..32, v in any_json()) {
-        let names = ["probe_config", "project_package", "event_row", "credential_input", "crawl_input", "backup_input", "sweep_options", "save_credential", "check", "visio_drawing", "collection_input"];
+    fn a_payload_with_any_one_value_replaced_is_handled(which in 0usize..12, key in 0usize..32, v in any_json()) {
+        let names = ["probe_config", "project_package", "event_row", "credential_input", "crawl_input", "backup_input", "sweep_options", "save_credential", "check", "visio_drawing", "collection_input", "topology_view_options"];
         let mut payload = fixture(names[which]);
         if let Value::Object(m) = &mut payload {
             let keys: Vec<String> = m.keys().cloned().collect();

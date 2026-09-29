@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 
-import { backupCheck, backupInput, collectionInput, crawlInput, credentialInput, eventRow, probeConfig, projectPackage, saveCredential, sweepOptions, visioDrawing } from './ipcPayloads';
+import { backupCheck, backupInput, collectionInput, topologyViewOptions, crawlInput, credentialInput, eventRow, probeConfig, projectPackage, saveCredential, sweepOptions, visioDrawing } from './ipcPayloads';
 import type { EventRow, Probe } from '../types/domain';
 
 // Every field set, and one field the backend does not declare on each object,
@@ -41,6 +41,7 @@ const payloads: Record<string, unknown> = {
     kinds: ['running', 'startup'], secondFactor: false, port: 22, showCommands: ['show inventory'], paging: 'auto', filePattern: '{device}-{stamp}', ...extra,
   }),
   sweep_options: sweepOptions({ timeoutMs: 800, concurrency: 64, identify: true, scanPorts: true, ports: [22, 161], ...extra }),
+  topology_view_options: topologyViewOptions({ collapseBundles: true, collapseStacks: false, placeholders: true, minConfidence: 0.7, vlan: '10', vrf: 'default', ...extra }),
   collection_input: collectionInput({ projectId: 'project-1', targets: '192.0.2.10\n192.0.2.11', port: 22, osHint: 'cisco_ios', roleOverride: 'switch', planOnly: false, lightOnly: true, credentialId: 'cred-ssh', keepDiagnostic: true, connectTimeoutSecs: 8, authTimeoutSecs: 20, ...extra }),
   save_credential: saveCredential({ id: 'cred-ssh', label: 'Read-only', kind: 'ssh', username: 'reader', secret: 'not-a-real-password', secondSecret: 'not-a-real-enable', detail: '', ...extra }),
   check: backupCheck({ id: 'check-1', name: 'NTP synchronised', command: 'show ntp status', expect: 'contains', pattern: 'synchronized', ignoreCase: true, block: 'line vty', severity: 'critical', roles: ['router'], ...extra }),

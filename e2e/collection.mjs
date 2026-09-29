@@ -45,6 +45,31 @@ const shadowLines = [
   { os: "cisco_ios", cmd: "show ip arp", parser: "textfsm:cisco_ios_show_ip_arp", compared: 12, mismatches: 0, errors: 0, lastDetail: null },
   { os: "cisco_ios", cmd: "show version", parser: "textfsm:cisco_ios_show_version", compared: 3, mismatches: 1, errors: 0, lastDetail: "row 0 field uptime: \"3 weeks\" vs \"3 weeks, 2 days\"" },
 ];
+// LT-527: what collection_topology answers — two switches, one cable seen
+// from both ends, the firewall placed by MAC, one finding.
+const topology = {
+  crawlRunId: "topo-col-1",
+  devices: [
+    { hostname: "SW-A", address: "192.0.2.10", addresses: [{ ip: "192.0.2.10", interface: null, isManagement: true }], probeTarget: "192.0.2.10", class: "switch", platform: "WS-C2960X-24TS-L", serial: "FAKE0000001", version: "15.2(4)E7", neighbors: [{ deviceId: "SW-B", shortName: "SW-B", addresses: [{ ip: "192.0.2.11", interface: null, isManagement: true }], localInterface: "Gi1/0/1", remoteInterface: "Gi1/0/2", platform: null, capabilities: [], version: null, class: "switch", discoveredBy: "cdp", serial: null, chassisId: null, vendor: null }], hops: 0, reachedBy: "ssh", attached: [{ mac: "000000000301", port: "Gi1/0/5", address: "192.0.2.254", vendor: null, hostname: "FW-1", class: "firewall", portPopulation: 1, vlan: null }], portChannels: [], defaultNextHop: null, stack: null, routes: [], dnsName: null, evidence: {} },
+    { hostname: "SW-B", address: "192.0.2.11", addresses: [{ ip: "192.0.2.11", interface: null, isManagement: true }], probeTarget: "192.0.2.11", class: "switch", platform: null, serial: null, version: null, neighbors: [{ deviceId: "SW-A", shortName: "SW-A", addresses: [{ ip: "192.0.2.10", interface: null, isManagement: true }], localInterface: "Gi1/0/2", remoteInterface: "Gi1/0/1", platform: null, capabilities: [], version: null, class: "switch", discoveredBy: "cdp", serial: null, chassisId: null, vendor: null }], hops: 0, reachedBy: "ssh", attached: [], portChannels: [], defaultNextHop: null, stack: null, routes: [], dnsName: null, evidence: {} },
+  ],
+  notVisited: [],
+  graph: {
+    nodes: [
+      { id: "n-a", name: "SW-A", kind: "collected", os: "cisco_ios", role: "switch", model: null, stack_kind: null, members: [], pair: null, mgmt_ip: "192.0.2.10" },
+      { id: "n-b", name: "SW-B", kind: "collected", os: "cisco_ios", role: "switch", model: null, stack_kind: null, members: [], pair: null, mgmt_ip: "192.0.2.11" },
+      { id: "n-fw", name: "FW-1", kind: "collected", os: "cisco_asa", role: "firewall", model: null, stack_kind: null, members: [], pair: null, mgmt_ip: "192.0.2.254" },
+    ],
+    links: [
+      { a: { node: "n-a", port: "GigabitEthernet1/0/1" }, b: { node: "n-b", port: "GigabitEthernet1/0/2" }, kind: "cdp", confidence: 1.0, both_directions: true, bundle: null, evidence: [{ device: "dev-a", command: "show_cdp_neighbors_detail", note: "CDP says SW-B on Gi1/0/1 is Gi1/0/2" }, { device: "dev-b", command: "show_cdp_neighbors_detail", note: "CDP says SW-A on Gi1/0/2 is Gi1/0/1" }] },
+      { a: { node: "n-a", port: "GigabitEthernet1/0/5" }, b: { node: "n-fw", port: null }, kind: "inferred_mac", confidence: 0.6, both_directions: false, bundle: null, evidence: [{ device: "dev-a", command: "show_mac_address_table", note: "MAC 000000000301 of FW-1 learned on GigabitEthernet1/0/5 (1 MAC on that port); no CDP/LLDP neighbour there" }] },
+    ],
+    l3: [{ a: "n-a", a_if: "Vlan10", b: "n-fw", b_if: "inside", subnet: "192.0.2.0/24", confirmed_by: [], confidence: 0.4 }],
+    overlays: [],
+    endpoints: [],
+    findings: [{ kind: "bundle_member_unseen", note: "Port-channel1 on SW-A lists 2 members; a neighbour was seen on 1", nodes: ["n-a"] }],
+  },
+};
 const arpRows = [
   { _device: "dev-192-0-2-10", _command: "show_ip_arp", ip: "192.0.2.1", mac: "0000.0000.0001", interface: "Vlan10", age: "0" },
   { _device: "dev-192-0-2-10", _command: "show_ip_arp", ip: "192.0.2.2", mac: "0000.0000.0002", interface: "Vlan10", age: "3" },
@@ -53,7 +78,7 @@ const arpRows = [
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-await page.addInitScript(({ p, r, d, a, sh }) => {
+await page.addInitScript(({ p, r, d, a, sh, tp }) => {
   let next = 1;
   window.__calls = [];
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
@@ -68,6 +93,7 @@ await page.addInitScript(({ p, r, d, a, sh }) => {
       if (cmd === "get_settings") return Promise.resolve(window.__shadowSetting ? { collectorShadow: "true" } : {});
       if (cmd === "set_setting") { if (args.key === "collectorShadow") window.__shadowSetting = args.value === "true"; return Promise.resolve(); }
       if (cmd === "shadow_report") return Promise.resolve(sh);
+      if (cmd === "collection_topology") return Promise.resolve(tp);
       if (cmd === "vault_status") return Promise.resolve({ exists: true, unlocked: true, credentials: 1, minimumPassphrase: 12, keptInKeychain: false });
       if (cmd === "list_credentials") return Promise.resolve([{ id: "cred-ssh", label: "reader", kind: "ssh", username: "reader", detail: "", hasSecondSecret: false }]);
       if (cmd === "list_collection_runs") return Promise.resolve(r);
@@ -78,7 +104,7 @@ await page.addInitScript(({ p, r, d, a, sh }) => {
       return Promise.resolve([]);
     },
   };
-}, { p: project, r: runs, d: detail, a: arpRows, sh: shadowLines });
+}, { p: project, r: runs, d: detail, a: arpRows, sh: shadowLines, tp: topology });
 
 page.on("pageerror", (e) => console.log("PAGE EXCEPTION:", String(e).slice(0, 300)));
 await page.goto(URL, { waitUntil: "networkidle" });
@@ -121,12 +147,37 @@ check("a table shows its rows by column", (await region.locator('[data-region="c
 const shadowTick = region.locator("label.cv-check", { hasText: "Shadow the Rust parser" }).locator("input");
 check("the shadow tick starts off", !(await shadowTick.isChecked()));
 await shadowTick.check();
+await page.waitForFunction(() => window.__calls.some((c) => c.cmd === "set_setting" && c.args.key === "collectorShadow"), null, { timeout: 5000 }).catch(() => {});
 check("ticking it stores the project setting", await page.evaluate(() => window.__calls.some((c) => c.cmd === "set_setting" && c.args.key === "collectorShadow" && c.args.value === "true")));
 const versionRow = region.locator('[data-region="collect-log"] tbody tr').nth(1);
 check("the log shows a mismatch, with what differed on hover", (await versionRow.textContent()).includes("mismatch") && (await versionRow.locator("td[title]").getAttribute("title")).includes("field uptime"));
 const report = region.locator('[data-region="collect-shadow"]');
 check("the report lists each command both parsers read", (await report.locator("tbody tr").count()) === 2);
 check("a command with a mismatch is marked, one with none is not", (await report.locator("tbody tr").nth(1).getAttribute("class")).includes("is-warning") && !((await report.locator("tbody tr").nth(0).getAttribute("class")) ?? "").includes("is-warning"));
+
+// LT-527: the topology — built with the toggles, summarised, its links with evidence, handed to Discover devices.
+const topoRegion = region.locator('[data-region="collect-topology"]');
+await topoRegion.locator("label.cv-check", { hasText: "Stacks as one node" }).locator("input").uncheck();
+await topoRegion.locator("select").selectOption("0.7");
+await topoRegion.getByRole("button", { name: "Build topology" }).click();
+await page.waitForSelector('[data-region="collect-topology-summary"]');
+const built = await page.evaluate(() => window.__calls.find((c) => c.cmd === "collection_topology"));
+check("Build topology sends the run and the toggles", !!built && built.args.runId === "col-1" && built.args.options.collapseStacks === false && built.args.options.minConfidence === 0.7 && built.args.options.collapseBundles === true);
+check("the summary counts devices, links, both-ended and MAC-placed", (await region.locator('[data-region="collect-topology-summary"]').textContent()).includes("3 devices, 2 links (1 seen from both ends, 1 placed by MAC)"));
+check("a finding is shown", (await region.locator('[data-region="collect-topology-findings"]').textContent()).includes("Port-channel1"));
+const linkRows = region.locator('[data-region="collect-topology-links"] tbody tr');
+check("each link shows its ends, how it was seen and its confidence", (await linkRows.count()) === 2 && (await linkRows.nth(0).textContent()).includes("SW-B") && (await linkRows.nth(0).textContent()).includes("1.0"));
+check("a MAC-placed link is marked inferred", ((await linkRows.nth(1).getAttribute("class")) ?? "").includes("is-inferred"));
+await linkRows.nth(1).locator("summary").click();
+check("its evidence is one click away", (await linkRows.nth(1).textContent()).includes("no CDP/LLDP neighbour there"));
+await topoRegion.getByRole("button", { name: "Review and draw" }).click();
+await page.waitForTimeout(600);
+const crawlPanelText = (await page.locator(".cv-panel").textContent()) ?? "";
+check("Review and draw opens Discover devices with the built devices", crawlPanelText.includes("Topology from collection run col-1: 2 devices") && crawlPanelText.includes("SW-A") && crawlPanelText.includes("SW-B"));
+await page.locator(".cv-panel .cv-tabs button", { hasText: "Collect" }).click();
+await page.waitForSelector('[data-region="collect"]');
+await region.locator('[data-region="collect-runs"] select').selectOption("col-1");
+await page.waitForSelector('[data-region="collect-log"]');
 
 // Starting a preview sends exactly the declared input, with the saved login and no typed one.
 await region.locator("textarea").fill("192.0.2.10\n192.0.2.11");

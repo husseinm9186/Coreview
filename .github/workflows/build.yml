@@ -221,8 +221,31 @@ jobs:
         with:
           tool: cargo-auditable,cargo-audit,cargo-cyclonedx
 
+      # LT-528: the runner by absolute path — tauri moves into src-tauri before
+      # starting it — and tried on its own first, so a broken bridge fails here
+      # with its own message rather than inside the build.
+      - name: Check the auditable runner
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          & "${{ github.workspace }}\scripts\sbom\cargo-auditable-runner.cmd" --version
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error title=SBOM::cargo-auditable-runner.cmd does not run (exit $LASTEXITCODE)"; exit 1 }
+
       - name: Build bundles
-        run: npm run tauri build -- --bundles ${{ matrix.bundles }} ${{ matrix.os == 'windows-latest' && '--config src-tauri/tauri.sidecar.conf.json --runner scripts/sbom/cargo-auditable-runner.cmd' || '' }}
+        shell: pwsh
+        run: |
+          $extra = @()
+          if ("${{ matrix.os }}" -eq "windows-latest") {
+            $extra = @("--config", "src-tauri/tauri.sidecar.conf.json", "--runner", "${{ github.workspace }}\scripts\sbom\cargo-auditable-runner.cmd")
+          }
+          # The job log needs admin rights to read; a failure's last lines go
+          # into an annotation, which does not.
+          npm run tauri build -- --bundles ${{ matrix.bundles }} @extra 2>&1 | Tee-Object -FilePath build-output.txt
+          if ($LASTEXITCODE -ne 0) {
+            $tail = (Get-Content build-output.txt -Tail 25 | Where-Object { $_.Trim() }) -join " | "
+            Write-Host "::error title=Build bundles::$tail"
+            exit 1
+          }
 
       # LT-528, D-060: an SBOM for everything the installer carries — the Rust
       # executable (CycloneDX, and its embedded list audited), the sidecar's

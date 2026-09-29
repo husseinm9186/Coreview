@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import type { Edge, Node } from '@xyflow/react';
 import { applyEdgeChanges, applyNodeChanges, type EdgeChange, type NodeChange } from '@xyflow/react';
 
-import { ipc, isDesktop, type ProbeResultDto, type IconLibEntry, type StoredSettings, type JobSnapshot, setCurrentProject } from '../lib/ipc';
+import { ipc, isDesktop, type ProbeResultDto, type IconLibEntry, type StoredSettings, type JobSnapshot, type CrawledDevice, type Neighbor, setCurrentProject } from '../lib/ipc';
 import { applyJob } from '../lib/jobs';
 import { staleCredentials, withoutStaleCredentials } from '../lib/credentialScope';
 import { uid } from '../lib/id';
@@ -499,6 +499,10 @@ interface Store {
   /** LT-230: a bottom-panel tab asked for from elsewhere (the command
    *  palette); the panel opens it and clears the request. */
   panelRequest: string | null;
+  /** LT-527: a topology built from a collection run, waiting for the Discover
+   *  panel to open it in its review — as it opens SNMP walk files. */
+  pendingCrawlResult: { devices: CrawledDevice[]; notVisited: Neighbor[]; label: string } | null;
+  setPendingCrawlResult: (r: { devices: CrawledDevice[]; notVisited: Neighbor[]; label: string } | null) => void;
   /** LT-232, LT-233: what is dimmed. View state, not saved with the project. */
   canvasFilter: CanvasFilter | null;
   setCanvasFilter: (f: CanvasFilter | null) => void;
@@ -1115,6 +1119,7 @@ export const useStore = create<Store>((set, get) => ({
   presenting: false,
   printing: false,
   panelRequest: null,
+  pendingCrawlResult: null,
   canvasFilter: null,
   collapsed: [],
   focus: null,
@@ -1429,6 +1434,9 @@ export const useStore = create<Store>((set, get) => ({
     set({ focus: f });
   },
 
+  setPendingCrawlResult(r) {
+    set({ pendingCrawlResult: r });
+  },
   requestPanelTab(tab) {
     set({ panelRequest: tab, ...(tab ? { panelOpen: true } : {}) });
   },

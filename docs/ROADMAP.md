@@ -181,6 +181,42 @@ existing review/drawing path (recommended), or extend the page's
 `topology.ts`. **Approved 2026-09-29:** "build the graph in Rust from the
 discovery tables; feed the existing review screen and diagram code. P2 plan
 approved as written."
+**Status 2026-09-29 — built and tested; the lab acceptance waits on the
+operator's collection.** `crates/coreview-topology` (pure): `ifname`
+(every normalisation pair the spec names, both ways; LLDP port ids as
+name, MAC or ifIndex), `identity` (one node per box by serial and MAC,
+never by address — two collections of one switch are one node; neighbour
+rows matched chassis-id → management IP → system name; stacks with their
+members; vPC/MLAG/VSX pair markers), `links` (a cable claimed from both
+ends is one link at 1.0, one end 0.7, every row kept as evidence; bundle
+members fold into one logical link listing them; a bundle whose members
+reach two boxes, or with members nobody saw, is a finding), `inferred` (a
+box without CDP/LLDP placed at the quietest port that learned its MAC, 0.6;
+a crowd of strangers is an unknown switch; a lone stranger an endpoint,
+with its address from any ARP table), `l3` (shared subnets, 1.0 when a
+routing or FHRP neighbour confirms, 0.4 on the subnet alone, only
+confirmed pairs on a subnet with more than four routers; overlays from
+tunnel/NVE rows), and `crawl_view` (the graph as the crawl's own types,
+with the review toggles: bundles folded, stacks as one node, placeholders,
+a confidence floor, a VLAN and a VRF filter). In `src-tauri`,
+`collection_topology` builds a run's graph, writes the spec's `link` and
+`l3_adjacency` (schema 8, made in the base schema too), stores the view as
+a crawl run — so Path-Trace, Where-is, Tracert, the register and the
+change report read it as the newest run, routes included — and returns
+it. The Collect tab builds it with the toggles, shows counts, findings and
+every link with its confidence and evidence, and **Review and draw** hands
+it to Discover devices, which opens it in its table and review exactly as
+it opens SNMP walk files; drawing is the existing code. Tested: 8 unit, 11
+scenario tests (constructed in each platform's real output shape — the
+vendored fixtures come from unrelated networks whose neighbours do not name
+each other), one end-to-end test from raw IOS CDP and etherchannel output
+through the real templates and normaliser, a database test from stored
+rows to a crawl run read back as the review reads it, and 10 new checks in
+`e2e/collection.mjs` (not a separate `topology.mjs`); crawling, Path-Trace
+and Where-is harnesses still pass. **Not in it:** overlays are listed on the
+Collect tab but not drawn — the diagram code has no overlay edge; and "lab
+topology reproduced" is the operator's run over the lab (or its captures
+through Import) followed by Build topology.
 
 ### LT-521 — Phase 3: shadow mode — both collectors on every run, rows diffed per (os, command), each OS flipped at zero mismatch — 2026-09-29
 **Source:** the operator, 2026-09-29: "shadow mode behind a feature flag

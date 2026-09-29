@@ -467,6 +467,13 @@ trust the summary below over that file; it is a signpost and it will rot.
   (LT-526), and any new table must be made there too; `target/` grew to
   27 GB and filled the disk once — stale test binaries of our own crates
   are safe to delete.
+- **P2, 29 September 2026 (LT-527).** `crates/coreview-topology` builds the
+  graph from a collection run; `collection_topology` stores it as a crawl
+  run, so it is the newest run for every screen that reads one. **Mines:**
+  a device's `details` is flattened into its JSON (routes are at the top of
+  the device, not under `details`); ports are kept long-form in the graph
+  and shortened only in the view; the Discover panel takes a built topology
+  through `pendingCrawlResult` in the store, the way it reads walk files.
 
 - **Shipped 2026-09-18, after the mission:** LT-285 the address register (the
   **Addresses** tab; `src/lib/ipam.ts` is the arithmetic, `e2e/ipam.mjs` drives

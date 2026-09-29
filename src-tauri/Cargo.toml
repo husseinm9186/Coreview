@@ -19,6 +19,7 @@ coreview-discover = { path = "../crates/coreview-discover" }
 coreview-meraki = { path = "../crates/coreview-meraki" }
 coreview-catalog = { path = "../crates/coreview-catalog" }
 coreview-collect = { path = "../crates/coreview-collect" }
+coreview-topology = { path = "../crates/coreview-topology" }
 # LT-258: every message from the page passes a sandboxed frame first.
 tauri = { version = "2", features = ["isolation"] }
 tauri-plugin-dialog = "2"

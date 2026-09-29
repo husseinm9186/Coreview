@@ -2808,3 +2808,8 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-type-filter-menu { max-height: 60vh; overflow-y: auto; min-width: 210px; }
 .cv-type-filter-menu .cv-check { display: flex; align-items: center; gap: 6px; font-size: var(--text-md); }
 .cv-type-count { margin-left: auto; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+/* LT-527: link confidence on the Collect tab's topology table. */
+.cv-collect .is-inferred td { font-style: italic; }
+.cv-collect .cv-confidence-07 td:nth-child(4),
+.cv-collect .cv-confidence-06 td:nth-child(4) { color: var(--warning); }

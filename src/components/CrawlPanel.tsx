@@ -356,6 +356,20 @@ export function CrawlPanel({
 
   const seenKeys = useRef<Set<string>>(new Set());
 
+  // LT-527: a topology built from a collection run opens here, in the same
+  // table and review a crawl fills — the way saved SNMP walks are read.
+  const pendingCrawlResult = useStore((s) => s.pendingCrawlResult);
+  useEffect(() => {
+    if (!pendingCrawlResult) return;
+    const built = { devices: pendingCrawlResult.devices, notVisited: pendingCrawlResult.notVisited };
+    seenKeys.current = new Set();
+    setRows(resultRows(built, seenKeys.current));
+    setFailures([]);
+    setResult(built);
+    setStatus(pendingCrawlResult.label);
+    useStore.getState().setPendingCrawlResult(null);
+  }, [pendingCrawlResult]);
+
   useEffect(() => {
     let offEvent: (() => void) | undefined;
     let offResult: (() => void) | undefined;

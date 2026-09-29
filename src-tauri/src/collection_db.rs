@@ -543,7 +543,7 @@ mod fresh {
     fn a_brand_new_database_has_the_collection_tables_and_the_shadow_columns() {
         let dir = std::env::temp_dir().join(format!("cv-fresh-{}-{}", std::process::id(), crate::db::now_ms()));
         let conn = crate::db::open(&dir.join("coreview.db")).unwrap();
-        for table in ["collection_runs", "collection_devices", "command_log", "d_arp", "d_route", "d_neighbor"] {
+        for table in ["collection_runs", "collection_devices", "command_log", "d_arp", "d_route", "d_neighbor", "d_link", "d_l3_adjacency"] {
             let n: i64 = conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1", [table], |r| r.get(0)).unwrap();
             assert_eq!(n, 1, "a fresh database has no {table}");
         }
@@ -551,6 +551,143 @@ mod fresh {
         for c in ["shadow", "shadow_detail", "engine"] {
             assert!(cols.iter().any(|x| x == c), "a fresh command_log has no {c}");
         }
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// Schema 8 (LT-527): the spec's `link` and `l3_adjacency`, written by the
+/// topology builder for a collection run. Evidence is kept whole, as JSON.
+pub fn topology_tables(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS d_link (
+            run_id TEXT NOT NULL REFERENCES collection_runs (id) ON DELETE CASCADE,
+            a_dev TEXT NOT NULL, a_if TEXT, b_dev TEXT NOT NULL, b_if TEXT,
+            kind TEXT NOT NULL, confidence REAL NOT NULL, both_directions INTEGER NOT NULL,
+            lag_group TEXT, evidence TEXT NOT NULL DEFAULT '[]'
+        );
+        CREATE INDEX IF NOT EXISTS d_link_run ON d_link (run_id);
+        CREATE TABLE IF NOT EXISTS d_l3_adjacency (
+            run_id TEXT NOT NULL REFERENCES collection_runs (id) ON DELETE CASCADE,
+            a_dev TEXT NOT NULL, a_if TEXT, a_vrf TEXT, b_dev TEXT NOT NULL, b_if TEXT, b_vrf TEXT,
+            subnet TEXT NOT NULL, proto TEXT, confidence REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS d_l3_adjacency_run ON d_l3_adjacency (run_id);
+        "#,
+    )
+}
+
+/// Replace a run's links and layer-3 adjacencies with the graph's.
+pub fn write_topology(conn: &Connection, run_id: &str, graph: &coreview_topology::Graph) -> rusqlite::Result<()> {
+    let name = |id: &str| graph.node(id).map(|n| n.name.clone()).unwrap_or_else(|| id.to_string());
+    conn.execute("DELETE FROM d_link WHERE run_id = ?1", params![run_id])?;
+    conn.execute("DELETE FROM d_l3_adjacency WHERE run_id = ?1", params![run_id])?;
+    for l in &graph.links {
+        conn.execute(
+            "INSERT INTO d_link (run_id, a_dev, a_if, b_dev, b_if, kind, confidence, both_directions, lag_group, evidence) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                run_id,
+                name(&l.a.node),
+                l.a.port,
+                name(&l.b.node),
+                l.b.port,
+                serde_json::to_value(l.kind).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default(),
+                l.confidence as f64,
+                l.both_directions as i64,
+                l.bundle.as_ref().and_then(|b| b.a_name.clone()),
+                serde_json::to_string(&l.evidence).unwrap_or_else(|_| "[]".into())
+            ],
+        )?;
+    }
+    for a in &graph.l3 {
+        conn.execute(
+            "INSERT INTO d_l3_adjacency (run_id, a_dev, a_if, a_vrf, b_dev, b_if, b_vrf, subnet, proto, confidence) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![run_id, name(&a.a), a.a_if, a.vrf, name(&a.b), a.b_if, a.vrf, a.subnet, a.confirmed_by.join(","), a.confidence as f64],
+        )?;
+    }
+    Ok(())
+}
+
+/// Everything the builder reads for one run: each device and its rows by table.
+pub fn topology_input(conn: &Connection, run_id: &str) -> rusqlite::Result<Vec<coreview_topology::DeviceIn>> {
+    let mut out = Vec::new();
+    for d in list_devices(conn, run_id)? {
+        if d.failure.is_some() && d.os.is_none() {
+            continue;
+        }
+        let mut tables = std::collections::BTreeMap::new();
+        for (table, _) in TABLES {
+            let rows: Vec<coreview_topology::Row> = read_table(conn, run_id, table, Some(&d.device_id))?
+                .into_iter()
+                .filter_map(|v| {
+                    let mut o = v.as_object()?.clone();
+                    let command = o.remove("_command").and_then(|c| c.as_str().map(str::to_string)).unwrap_or_default();
+                    o.remove("_device");
+                    let extra = o.remove("_extra").and_then(|e| e.as_object().cloned()).unwrap_or_default();
+                    let columns = o.into_iter().filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string()))).collect();
+                    Some(coreview_topology::Row { command, columns, extra })
+                })
+                .collect();
+            if !rows.is_empty() {
+                tables.insert((*table).to_string(), rows);
+            }
+        }
+        out.push(coreview_topology::DeviceIn { device_id: d.device_id, host: d.host, os: d.os, role: d.role, prompt: d.prompt, version_text: d.version_text, tables });
+    }
+    Ok(out)
+}
+
+/// LT-527 end to end below the page: rows as a collection writes them, read
+/// back as the builder's input, built, written to `d_link`, and stored as a
+/// crawl run the review screen reads.
+#[cfg(test)]
+mod topology_tests {
+    use super::*;
+    use coreview_collect::tables::normalise;
+    use serde_json::json;
+
+    #[test]
+    fn a_runs_rows_become_links_and_a_crawl_run() {
+        let dir = std::env::temp_dir().join(format!("cv-topo-{}-{}", std::process::id(), crate::db::now_ms()));
+        let conn = crate::db::open(&dir.join("coreview.db")).unwrap();
+        conn.execute("INSERT INTO projects (id, name, created_at, updated_at) VALUES ('p1','P',0,0)", []).unwrap();
+        open_run(&conn, "col-1", "p1", "192.0.2.1", false, None, "live").unwrap();
+        for (dev, host, name, peer, peer_ip, local, remote) in [("dev-a", "192.0.2.1", "SW-A", "SW-B", "192.0.2.2", "Gi1/0/1", "Gi1/0/2"), ("dev-b", "192.0.2.2", "SW-B", "SW-A", "192.0.2.1", "Gi1/0/2", "Gi1/0/1")] {
+            write_device(&conn, "col-1", dev, host, Some("cisco_ios"), Some("switch"), &[], "", &format!("{name}#"), None, &[], None, &[], None).unwrap();
+            write_row(&conn, "col-1", dev, "show_version", &normalise("device", &json!({"hostname": name, "serial": format!("FAKE-{name}")}))).unwrap();
+            write_row(&conn, "col-1", dev, "show_cdp_neighbors_detail", &{
+                let mut n = normalise("neighbor", &json!({"neighbor_name": peer, "local_interface": local, "neighbor_interface": remote, "mgmt_address": peer_ip}));
+                n.columns.insert("proto".into(), "cdp".into());
+                n
+            })
+            .unwrap();
+            write_row(&conn, "col-1", dev, "show_ip_route", &normalise("route", &json!({"protocol": "S", "network": "0.0.0.0", "prefix_length": "0", "nexthop_ip": "192.0.2.254"}))).unwrap();
+        }
+        let input = topology_input(&conn, "col-1").unwrap();
+        assert_eq!(input.len(), 2);
+        assert_eq!(input[0].rows("neighbor")[0].command, "show_cdp_neighbors_detail");
+        let graph = coreview_topology::build(&input);
+        assert_eq!(graph.links.len(), 1);
+        assert!(graph.links[0].both_directions);
+        write_topology(&conn, "col-1", &graph).unwrap();
+        let (n, conf): (i64, f64) = conn.query_row("SELECT COUNT(*), MAX(confidence) FROM d_link WHERE run_id = 'col-1'", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((n, conf), (1, 1.0));
+        // Stored as a crawl run the way collection_topology stores it, and read back as the review reads one.
+        let view = coreview_topology::crawl_view::view(&graph);
+        crate::db::open_crawl_run(&conn, "topo-1", "p1", 1, "collection col-1").unwrap();
+        for d in &view.devices {
+            crate::db::append_crawl_device(&conn, "topo-1", &serde_json::to_string(d).unwrap()).unwrap();
+        }
+        crate::db::close_crawl_run(&conn, "topo-1", "complete", &json!({"notVisited": view.not_visited, "failures": [], "cancelled": false}).to_string()).unwrap();
+        let back = crate::db::crawl_run_result(&conn, "topo-1", "p1").unwrap().unwrap();
+        let devices = back["devices"].as_array().unwrap();
+        assert_eq!(devices.len(), 2);
+        let a = devices.iter().find(|d| d["hostname"] == "SW-A").unwrap();
+        assert_eq!(a["neighbors"][0]["shortName"], "SW-B");
+        assert_eq!(a["neighbors"][0]["localInterface"], "Gi1/0/1");
+        // `details` is flattened into the device, as the crawl writes it.
+        assert_eq!(a["routes"][0]["prefix"], "0.0.0.0/0", "Path-Trace reads routes from the newest run");
         drop(conn);
         let _ = std::fs::remove_dir_all(&dir);
     }

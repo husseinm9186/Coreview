@@ -127,6 +127,11 @@ crates/
                      XML API, AOS-CX REST) with the certificate pinned per
                      device. `examples/fake_sidecar.rs` is what its tests
                      drive, so `cargo test` needs no Python.
+  coreview-topology  P2's builder (LT-527): a collection run's tables in, one
+                     graph out — identity by serial/MAC, links with confidence
+                     and evidence, bundles, stacks, MAC placement, layer 3,
+                     overlays — and `crawl_view`, the crawl-result shape the
+                     review screen and diagram already draw.
 resources/
   catalog/           One YAML per OS — fingerprint, `session:` block (from
                      scrapli and netmiko, see its NOTICE), capability probes,
@@ -209,7 +214,7 @@ node e2e/drawer.mjs       # the details drawer: device and finding, pinned, keyb
 node e2e/folders.mjs      # folders and sub-folders on the project screen (LT-485)
 node e2e/foldersettings.mjs # a project's backup and export folders, chosen where they can be kept (LT-487)
 node e2e/tracert.mjs      # the Tracert tab: from here or a device, hops named, a page from them (LT-505)
-node e2e/collection.mjs   # the Collect tab: plan preview, command log, kept replies, the tables a run filled (LT-517)
+node e2e/collection.mjs   # the Collect tab: plan preview, command log, shadow report, topology and its hand-over to review (LT-517, LT-521, LT-527)
 ```
 
 Canvas performance is measured, not asserted (LT-190), against a **production**
