@@ -353,9 +353,14 @@ check("another project does not show the first one's logins",
   !/netadmin/.test(theirs ?? ""), (theirs ?? "").slice(0, 200));
 check("it says it refers to none of its own instead",
   /refers to no saved login/.test(theirs ?? ""), (theirs ?? "").slice(0, 200));
-check("and the machine-wide vault is offered, clearly labelled, but shut",
-  (await page.locator(".cv-settings-vault > summary").count()) === 1 &&
-  (await page.locator(".cv-settings-vault .cv-vault-table").count()) === 0);
+// D-059 (superseding LT-335's shut disclosure): no other project's login is
+// reachable from inside this one at all — no vault table, no reveal — and
+// the page says where the whole vault is managed.
+check("and no other project's login can be listed or revealed from here",
+  (await page.locator(".cv-settings-vault").count()) === 0 &&
+  (await page.locator(".cv-tools .cv-vault-table").count()) === 0 &&
+  (await page.locator(".cv-tools .cv-eye").count()) === 0 &&
+  /managed from the start screen/.test(await page.locator('[data-region="project-credentials"]').textContent()));
 check("the SSH and SNMP boxes are empty for it, not carrying the other project's",
   !/Saved as/.test(await page.locator('.cv-cred-override[data-kind="ssh"]').textContent()));
 

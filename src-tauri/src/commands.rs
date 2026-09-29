@@ -36,6 +36,21 @@ pub struct AppState {
     /// LT-456: where a native dialog pointed, by token, until it is written
     /// to once. The page never names a path to write; it names a token.
     pub export_targets: ExportTargets,
+    /// D-059: the project the window has open, told by the page when it opens
+    /// or closes one. Every secret is opened against it.
+    pub open_project: Mutex<Option<String>>,
+}
+
+/// D-059: the project the window has open, as the vault checks against it.
+pub fn open_project(state: &AppState) -> Option<String> {
+    state.open_project.lock().ok().and_then(|g| g.clone()).filter(|p| !p.is_empty())
+}
+
+/// D-059: the page says which project is open, or that none is.
+#[tauri::command(async)]
+pub fn set_open_project(state: State<'_, AppState>, project_id: Option<String>) -> CmdResult<()> {
+    *state.open_project.lock().map_err(db_err)? = project_id.filter(|p| !p.trim().is_empty());
+    Ok(())
 }
 
 /// LT-456: the paths a save or folder dialog returned, each spent by one

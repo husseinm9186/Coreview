@@ -7,7 +7,6 @@ import { MerakiSettings } from './MerakiSettings';
 import { credentialsUsedBy } from '../lib/credentialScope';
 import { ipc, isDesktop, type CredentialSummary } from '../lib/ipc';
 import { useStore } from '../state/store';
-import { VaultSettings } from './VaultSettings';
 
 /**
  * Settings, on the Tools screen (LT-327).
@@ -38,7 +37,6 @@ export function SettingsView() {
   const setTerminal = useStore((s) => s.setTerminalSettings);
   const [saved, setSaved] = useState<CredentialSummary[]>([]);
   const [pruned, setPruned] = useState(0);
-  const [everything, setEverything] = useState(false);
 
   useEffect(() => {
     void ipc
@@ -63,7 +61,6 @@ export function SettingsView() {
 
   const used = credentialsUsedBy({ pages, credentialDefaults: projectDefaults, credentialRules });
   const mine = saved.filter((c) => used.has(c.id));
-  const elsewhere = saved.length - mine.length;
 
   return (
     <div className="cv-settings">
@@ -167,15 +164,10 @@ export function SettingsView() {
             </tbody>
           </table>
         )}
-        {/* The whole vault is a machine-wide thing and is not hidden — but it
-            is not this project's business either, so it says which it is and
-            stays shut until it is asked for (LT-335). */}
-        <details className="cv-settings-vault" open={everything}
-          onToggle={(e) => setEverything((e.currentTarget as HTMLDetailsElement).open)}>
-          <summary>{t('settings.everything', { count: elsewhere })}</summary>
-          <p className="cv-help">{t('settings.everythingHint')}</p>
-          {everything && <VaultSettings />}
-        </details>
+        {/* D-059: another project's logins are not this project's business —
+            not listed, not revealed, and refused by Rust if asked for. The
+            whole vault is managed from the start screen, with no project open. */}
+        <p className="cv-help cv-settings-elsewhere">{t('settings.otherProjects')}</p>
       </section>
 
       {/* LT-404: "make sure it goes to the settings at the top menu with

@@ -591,6 +591,13 @@ export const en = {
   'crawl.attached.switch': 'Switch',
   'crawl.attached.port': 'Port',
   'crawl.attached.vlan': 'VLAN',
+  // D-059: a saved login belongs to its project.
+  'settings.otherProjects': 'Other projects’ logins are not listed here, and cannot be used here. Every login on this computer is managed from the start screen, with no project open.',
+  'vaultSettings.project': 'Project',
+  'vaultSettings.ownerOf': 'The project {name} belongs to',
+  'vaultSettings.noProject': 'None — from before logins had a project',
+  'vaultSettings.deletedProject': 'A deleted project',
+  'vaultSettings.handed': 'Moved.',
   // LT-487: where a project's folders are chosen.
   'folderSettings.perProject': 'Backup and export folders are chosen for each project, so one customer\'s configurations never land in another\'s folder. Open a project, then choose them under Tools → Settings — or in Backups, which asks when it needs one.',
   'folderSettings.notKept': 'Not kept: {reason}',

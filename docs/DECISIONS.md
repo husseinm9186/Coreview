@@ -1106,3 +1106,29 @@ falling back to the global table, the diagram's cables or a guessed next
 hop in a trace (D-050 stands); building OTV or ECMP hashing as inference —
 both are asked of the device, or not answered.
 
+### D-059 — A saved login belongs to the project it was saved in — 2026-09-28
+**Asked for:** the operator, 2026-09-28, inside one project: "I can still
+see all projects passwords and the api key that belongs to another
+project".
+**What was true:** the vault had no idea which project a credential
+belonged to. D-038 said a project's credentials are its own and LT-335 hid
+the rest of the vault behind a disclosure in Settings — but every login
+picker, the Meraki panel (which silently chose the first Meraki key on the
+machine) and the backend itself would list, choose and open any credential
+from any project. The secrets were never displayed; their names, users and
+use were.
+**Decision:** every credential has an owning project, set when it is saved
+from inside one. Inside a project, a credential is listed and **can be
+opened by the backend** only if this project owns it or this project's
+diagram already refers to it — the second clause is what carries logins
+saved before this decision, a duplicated project and an imported one. The
+check is in Rust, in the one place each kind of secret is opened (SSH,
+SNMP, Meraki, reveal, delete), so a page that forgot to filter still cannot
+use another project's secret. The start screen, with no project open, is
+the one machine-wide view: it lists every credential with the project that
+owns it, and can hand an unowned one to a project.
+**Supersedes** LT-335's "the whole vault is one disclosure away" inside a
+project. **Rejected:** a vault per project (a second passphrase per
+customer, and no way to reuse a login deliberately); filtering only on the
+page (the leak would be one forgotten filter away).
+

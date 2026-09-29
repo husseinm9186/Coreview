@@ -1,3 +1,4 @@
+import { useStore } from '../state/store';
 import { useEffect, useState } from 'react';
 
 import { ipc, isDesktop, type CredentialSummary, type CredentialUse, type VaultStatus } from '../lib/ipc';
@@ -28,6 +29,8 @@ function Eye({ open }: { open: boolean }) {
  * when it is one click away.
  */
 export function VaultSettings() {
+  // D-059: the projects a login can be handed to.
+  const projects = useStore((s) => s.projects);
   const [status, setStatus] = useState<VaultStatus | null>(null);
   const [credentials, setCredentials] = useState<CredentialSummary[]>([]);
   const [passphrase, setPassphrase] = useState('');
@@ -243,6 +246,7 @@ export function VaultSettings() {
                   <th>{t('vaultSettings.name')}</th>
                   <th>{t('vaultSettings.for')}</th>
                   <th>{t('vaultSettings.user')}</th>
+                  <th>{t('vaultSettings.project')}</th>
                   <th>{t('vaultSettings.secret')}</th>
                   <th />
                 </tr>
@@ -255,6 +259,18 @@ export function VaultSettings() {
                       <td>{c.label}</td>
                       <td>{c.kind.toUpperCase()}</td>
                       <td className="cv-mono">{c.username || '—'}</td>
+                      {/* D-059: whose it is; an unowned one can be handed to a project. */}
+                      <td>
+                        <select className="cv-input cv-vault-owner" value={c.ownerProjectId ?? ''}
+                          aria-label={t('vaultSettings.ownerOf', { name: c.label })}
+                          onChange={(e) => act(ipc.assignCredential(c.id, e.target.value || null), t('vaultSettings.handed'))}>
+                          <option value="">{t('vaultSettings.noProject')}</option>
+                          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          {c.ownerProjectId && !projects.some((p) => p.id === c.ownerProjectId) && (
+                            <option value={c.ownerProjectId}>{c.ownerProjectName ?? t('vaultSettings.deletedProject')}</option>
+                          )}
+                        </select>
+                      </td>
                       <td className="cv-mono cv-secret-cell">
                         <span>{shown ? shown.secret : '••••••••'}</span>
                         {shown?.second && <span className="cv-second-secret"> · {shown.second}</span>}

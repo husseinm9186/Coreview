@@ -34,6 +34,8 @@ pub const KIND: &str = "meraki";
 fn key_of(state: &AppState, credential_id: &str) -> CmdResult<String> {
     let stored = {
         let conn = state.db.lock().map_err(db_err)?;
+        // D-059: another project's API key is refused here, where it is opened.
+        crate::db::may_use_credential(&conn, crate::commands::open_project(state).as_deref(), credential_id)?;
         crate::db::credential(&conn, credential_id)
             .map_err(db_err)?
             .ok_or("That saved credential no longer exists.")?

@@ -38,6 +38,7 @@ await page.addInitScript(({ p, picked }) => {
       if (cmd === "plugin:event|listen") return Promise.resolve(next++);
       const meta = { id: p.meta.id, name: p.meta.name, customer: "", site: "", ticket: "", engineer: "", description: "", created_at: p.meta.createdAt, updated_at: p.meta.updatedAt, archived: false };
       if (cmd === "list_projects") return Promise.resolve([meta]);
+      if (cmd === "save_project") return Promise.resolve();
       if (cmd === "load_project") return Promise.resolve({ meta, document_version: p.documentVersion, document: p.document });
       if (cmd === "get_settings") return Promise.resolve({ ...(stored[args.projectId] ?? {}) });
       if (cmd === "plugin:dialog|open") return Promise.resolve(picked);
@@ -105,6 +106,23 @@ await backups.locator(".cv-folders .cv-folder-row", { hasText: "Configuration ba
 await page.waitForTimeout(500);
 check("and once one is chosen there, the backup form appears",
   (await backups.locator(".cv-discover-form").count()) >= 1, (await backups.innerText()).slice(0, 200));
+
+// ------------------------------------ LT-494: a project created just now
+await page.goto(URL, { waitUntil: "networkidle" });
+await page.evaluate(() => window.__cvStore.getState().createProject({ name: "Made just now" }));
+await page.waitForTimeout(700);
+await page.locator(".cv-btn-tools").first().click();
+await page.waitForTimeout(300);
+await page.locator(".cv-tools .cv-tabs button", { hasText: "Settings" }).first().click();
+await page.waitForTimeout(500);
+const fresh = page.locator('[data-region="project-folders"] .cv-folders');
+await fresh.locator(".cv-folder-row", { hasText: "Configuration backups" }).locator("button", { hasText: "Choose folder" }).click();
+await page.waitForTimeout(400);
+const made = await page.evaluate(() => window.__cvStore.getState().meta?.id);
+const sent = await page.evaluate(() => window.__calls.filter((c) => c.cmd === "set_setting").at(-1)?.args);
+check("in a project created a moment ago, the folder is kept for that project",
+  sent?.projectId === made && (await fresh.innerText()).includes("/home/example/coreview-backups") && !/no project is open/.test(await fresh.innerText()),
+  JSON.stringify({ made, sent }) + " " + (await fresh.innerText()).slice(0, 200));
 
 await browser.close();
 if (failures) {

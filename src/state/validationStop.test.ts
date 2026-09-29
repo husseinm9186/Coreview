@@ -85,3 +85,19 @@ describe('closing a project while validation runs (LT-491)', () => {
     expect(useStore.getState().statusMessage).toMatch(/disk full/);
   });
 });
+
+describe('a project just created is the open project (LT-494)', () => {
+  it('tells the backend layer which project is open, as opening one does', async () => {
+    const { currentProject, setCurrentProject } = await import('../lib/ipc');
+    setCurrentProject(null);
+    vi.spyOn(ipc, 'saveProject').mockResolvedValue();
+    vi.spyOn(ipc, 'listProjects').mockResolvedValue([]);
+    vi.spyOn(ipc, 'listProjectFolders').mockResolvedValue({ folders: [], placement: {} });
+    vi.spyOn(ipc, 'getSettings').mockResolvedValue({});
+    useStore.setState({ meta: null, session: { id: null, state: 'stopped', startedAt: null } });
+    await useStore.getState().createProject({ name: 'Fresh' });
+    const made = useStore.getState().meta;
+    expect(made?.name).toBe('Fresh');
+    expect(currentProject(), 'a folder chosen now would be refused as "no project is open"').toBe(made?.id);
+  });
+});

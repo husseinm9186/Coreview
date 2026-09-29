@@ -1147,6 +1147,11 @@ export const useStore = create<Store>((set, get) => ({
     const folder = get().projectFolderId;
     if (folder) await ipc.moveProjectToFolder(meta.id, folder).catch(() => undefined);
     set({ meta, doc: document, dirty: false, lastSavedAt: now, savedAck: null, past: [], future: [] });
+    // LT-494: a project made here is open, exactly as one opened from the
+    // list is — told to the layer that scopes settings and backups, and its
+    // (empty) settings read, so a folder chosen in it is kept.
+    await setCurrentProject(meta.id);
+    await get().loadSettings();
     await get().refreshProjects();
   },
 
@@ -1159,7 +1164,7 @@ export const useStore = create<Store>((set, get) => ({
     }
     // LT-413/LT-414: from here on, settings and backups are this project's.
     // Set before anything reads them, and cleared by `closeProject`.
-    setCurrentProject(id);
+    await setCurrentProject(id);
     // And read again, because the first read happened on the project list
     // where there was no project — so it saw this computer's preferences and
     // none of this project's.
@@ -1259,7 +1264,7 @@ export const useStore = create<Store>((set, get) => ({
     // Nothing that follows may read another project's settings or backups —
     // and what this one chose is dropped rather than left in the form for the
     // next project to inherit, which is the whole of LT-414.
-    setCurrentProject(null);
+    await setCurrentProject(null).catch(() => undefined);
     set((s) => ({ settings: { ...s.settings, backupFolder: null, exportFolder: null } }));
     if (recoveryTimer) {
       clearInterval(recoveryTimer);

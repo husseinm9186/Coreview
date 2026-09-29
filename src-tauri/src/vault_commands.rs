@@ -125,6 +125,9 @@ pub struct CredentialSummary {
     /// privacy password. Whether one exists is not itself a secret, and the
     /// interface needs it to render honestly.
     pub has_second_secret: bool,
+    /// D-059: the project that owns it, and its name, for the start screen.
+    pub owner_project_id: Option<String>,
+    pub owner_project_name: Option<String>,
 }
 
 #[tauri::command(async)]
@@ -248,8 +251,33 @@ pub fn save_credential(state: State<'_, AppState>, credential: SaveCredential) -
     };
 
     let conn = state.db.lock().map_err(db_err)?;
+    // D-059: replacing another project's login is refused like opening it.
+    if db::credential_owner(&conn, &id).map_err(db_err)?.is_some() {
+        db::may_use_credential(&conn, crate::commands::open_project(&state).as_deref(), &id)?;
+    }
+    let is_new = db::credential_owner(&conn, &id).map_err(db_err)?.is_none();
     db::save_credential(&conn, &stored, now_ms()).map_err(db_err)?;
+    // D-059: a login saved inside a project is that project's.
+    if is_new {
+        db::set_credential_owner(&conn, &id, crate::commands::open_project(&state).as_deref()).map_err(db_err)?;
+    }
     Ok(id)
+}
+
+/// D-059: hands a credential to a project, or back to none. Only from the
+/// start screen, where the whole vault is managed — inside a project this
+/// would be a way to take another project's login.
+#[tauri::command(async)]
+pub fn assign_credential(state: State<'_, AppState>, id: String, project_id: Option<String>) -> CmdResult<()> {
+    if crate::commands::open_project(&state).is_some() {
+        return Err("Close the project first: logins are handed between projects from the start screen.".into());
+    }
+    let conn = state.db.lock().map_err(db_err)?;
+    let changed = db::set_credential_owner(&conn, &id, project_id.as_deref().filter(|p| !p.is_empty())).map_err(db_err)?;
+    if changed == 0 {
+        return Err("That saved credential no longer exists.".into());
+    }
+    Ok(())
 }
 
 /// The saved credentials, without their secrets.
@@ -257,24 +285,30 @@ pub fn save_credential(state: State<'_, AppState>, credential: SaveCredential) -
 /// Works while locked, on purpose: knowing that a credential called "Core
 /// switches" exists is not the same as knowing its password, and a list that
 /// vanished when locked would make the vault unusable to reason about.
+///
+/// D-059: inside a project, only the ones it owns or its diagram refers to;
+/// on the start screen, every one, each with the project that owns it.
 #[tauri::command(async)]
 pub fn list_credentials(state: State<'_, AppState>) -> CmdResult<Vec<CredentialSummary>> {
+    let open = crate::commands::open_project(&state);
     let conn = state.db.lock().map_err(db_err)?;
-    let rows = db::list_credentials(&conn).map_err(db_err)?;
+    let rows = db::list_credentials_for(&conn, open.as_deref()).map_err(db_err)?;
     let mut out = Vec::with_capacity(rows.len());
-    for (id, label, kind, username, detail) in rows {
+    for row in rows {
         // Only to report whether one exists — the value is not read.
-        let has_second_secret = db::credential(&conn, &id)
+        let has_second_secret = db::credential(&conn, &row.id)
             .map_err(db_err)?
             .map(|c| c.extra.is_some())
             .unwrap_or(false);
         out.push(CredentialSummary {
-            id,
-            label,
-            kind,
-            username,
-            detail,
+            id: row.id,
+            label: row.label,
+            kind: row.kind,
+            username: row.username,
+            detail: row.detail,
             has_second_secret,
+            owner_project_id: row.owner_id,
+            owner_project_name: row.owner_name,
         });
     }
     Ok(out)
@@ -307,6 +341,7 @@ pub fn reveal_credential(
     let key = guard.as_ref().ok_or_else(|| vault::VaultError::Locked.to_string())?;
     let stored = {
         let conn = state.db.lock().map_err(db_err)?;
+        db::may_use_credential(&conn, crate::commands::open_project(&state).as_deref(), &id)?;
         db::credential(&conn, &id)
             .map_err(db_err)?
             .ok_or("That saved credential no longer exists.")?
@@ -324,6 +359,7 @@ pub fn reveal_credential(
 #[tauri::command(async)]
 pub fn delete_credential(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     let conn = state.db.lock().map_err(db_err)?;
+    db::may_use_credential(&conn, crate::commands::open_project(&state).as_deref(), &id)?;
     db::delete_credential(&conn, &id).map_err(db_err)?;
     Ok(())
 }
@@ -455,6 +491,8 @@ pub fn ssh_credentials(state: &AppState, id: &str) -> CmdResult<Credentials> {
     let key = guard.as_ref().ok_or_else(|| vault::VaultError::Locked.to_string())?;
     let stored = {
         let conn = state.db.lock().map_err(db_err)?;
+        // D-059: the one place an SSH secret is opened, so the one check.
+        db::may_use_credential(&conn, crate::commands::open_project(state).as_deref(), id)?;
         db::credential(&conn, id)
             .map_err(db_err)?
             .ok_or("That saved credential no longer exists.")?
@@ -522,6 +560,8 @@ pub fn snmp_credentials(state: &AppState, id: &str) -> CmdResult<SnmpAuth> {
     let key = guard.as_ref().ok_or_else(|| vault::VaultError::Locked.to_string())?;
     let stored = {
         let conn = state.db.lock().map_err(db_err)?;
+        // D-059, as for SSH.
+        db::may_use_credential(&conn, crate::commands::open_project(state).as_deref(), id)?;
         db::credential(&conn, id)
             .map_err(db_err)?
             .ok_or("That saved credential no longer exists.")?

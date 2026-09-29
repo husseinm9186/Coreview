@@ -132,6 +132,7 @@ fn main() {
             limiter: ratelimit::RateLimiter::default(),
             sessions: std::sync::Arc::new(terminal::Sessions::default()),
             export_targets: commands::ExportTargets::default(),
+            open_project: Mutex::new(None),
         })
         .setup(move |app| {
             // LT-432: every change to a running job reaches the window on
@@ -156,6 +157,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_projects,
+            commands::set_open_project,
+            vault_commands::assign_credential,
             commands::save_project,
             commands::load_project,
             commands::delete_project,

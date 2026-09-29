@@ -12,7 +12,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 /// Bumped whenever the diagram document shape changes; the frontend migrates.
 pub const DOCUMENT_VERSION: i64 = 1;
 
@@ -300,7 +300,10 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             extra_cipher BLOB,
             -- Algorithm words for SNMPv3, which are not secret.
             detail TEXT NOT NULL DEFAULT '',
-            created_ms INTEGER NOT NULL
+            created_ms INTEGER NOT NULL,
+            -- D-059: the project it was saved in. NULL for one saved before
+            -- owners existed, or from the start screen.
+            project_id TEXT
         );
 
         CREATE TABLE IF NOT EXISTS host_keys (
@@ -430,7 +433,7 @@ type Migration = (i64, fn(&Connection) -> rusqlite::Result<()>);
 /// Every migration ever written, oldest first. Adding a column is a new entry
 /// here and a bump of `SCHEMA_VERSION`, never an edit to an old one — a
 /// database in the field may be at any version in this list.
-const MIGRATIONS: &[Migration] = &[(2, split_settings_per_project), (3, crawl_runs_written_as_they_go), (4, projects_in_folders)];
+const MIGRATIONS: &[Migration] = &[(2, split_settings_per_project), (3, crawl_runs_written_as_they_go), (4, projects_in_folders), (5, credentials_have_owners)];
 
 /// LT-430: the steps that take a database from its version to
 /// `SCHEMA_VERSION`, in one transaction with the version bump last.
@@ -534,6 +537,20 @@ fn projects_in_folders(conn: &Connection) -> rusqlite::Result<()> {
         .any(|name| name == "folder_id");
     if !has {
         conn.execute("ALTER TABLE projects ADD COLUMN folder_id TEXT", [])?;
+    }
+    Ok(())
+}
+
+/// Schema 5 (D-059): a credential knows the project it belongs to. Every one
+/// that exists is left unowned; the projects that refer to it keep it.
+fn credentials_have_owners(conn: &Connection) -> rusqlite::Result<()> {
+    let has = conn
+        .prepare("PRAGMA table_info(credentials)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "project_id");
+    if !has {
+        conn.execute("ALTER TABLE credentials ADD COLUMN project_id TEXT", [])?;
     }
     Ok(())
 }
@@ -1505,6 +1522,92 @@ pub fn delete_credential(conn: &Connection, id: &str) -> rusqlite::Result<usize>
     conn.execute("DELETE FROM credentials WHERE id = ?1", params![id])
 }
 
+// --------------------------------------------------------- D-059: owners
+
+/// Sets the project a credential belongs to — at save, or when the start
+/// screen hands an unowned one to a project.
+pub fn set_credential_owner(conn: &Connection, id: &str, project: Option<&str>) -> rusqlite::Result<usize> {
+    conn.execute("UPDATE credentials SET project_id = ?2 WHERE id = ?1", params![id, project])
+}
+
+/// The project a credential belongs to: `None` when there is no such
+/// credential, `Some(None)` when it has no owner.
+pub fn credential_owner(conn: &Connection, id: &str) -> rusqlite::Result<Option<Option<String>>> {
+    conn.query_row("SELECT project_id FROM credentials WHERE id = ?1", params![id], |r| r.get(0)).optional()
+}
+
+/// Whether a project's diagram names a credential — a device's own login, the
+/// project's defaults, a rule. Read from the stored document itself, which is
+/// where every such reference lives.
+pub fn project_refers_to(conn: &Connection, project: &str, credential: &str) -> rusqlite::Result<bool> {
+    if credential.is_empty() {
+        return Ok(false);
+    }
+    conn.query_row(
+        "SELECT 1 FROM projects WHERE id = ?1 AND instr(document, ?2) > 0",
+        params![project, credential],
+        |_| Ok(()),
+    )
+    .optional()
+    .map(|r| r.is_some())
+}
+
+/// D-059: whether the open project may list or open a credential. With no
+/// project open — the start screen — everything may, because that is where
+/// the vault is managed. Inside a project: its own, and any its diagram
+/// already refers to.
+pub fn may_use_credential(conn: &Connection, open: Option<&str>, id: &str) -> Result<(), String> {
+    let Some(project) = open.filter(|p| !p.is_empty()) else { return Ok(()) };
+    let owner = credential_owner(conn, id).map_err(|e| e.to_string())?.ok_or("That saved credential no longer exists.")?;
+    if owner.as_deref() == Some(project) || project_refers_to(conn, project, id).map_err(|e| e.to_string())? {
+        return Ok(());
+    }
+    Err("That saved login belongs to another project.".into())
+}
+
+/// One credential as a listing shows it, with who owns it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnedListing {
+    pub id: String,
+    pub label: String,
+    pub kind: String,
+    pub username: String,
+    pub detail: String,
+    pub owner_id: Option<String>,
+    pub owner_name: Option<String>,
+}
+
+/// The credentials the open project may see (every one on the start screen),
+/// each with the project that owns it.
+pub fn list_credentials_for(conn: &Connection, open: Option<&str>) -> rusqlite::Result<Vec<OwnedListing>> {
+    let mut stmt = conn.prepare(
+        "SELECT c.id, c.label, c.kind, c.username, c.detail, c.project_id, p.name
+           FROM credentials c LEFT JOIN projects p ON p.id = c.project_id
+          ORDER BY c.label",
+    )?;
+    let all = stmt
+        .query_map([], |r| {
+            Ok(OwnedListing {
+                id: r.get(0)?,
+                label: r.get(1)?,
+                kind: r.get(2)?,
+                username: r.get(3)?,
+                detail: r.get(4)?,
+                owner_id: r.get(5)?,
+                owner_name: r.get(6)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let Some(project) = open.filter(|p| !p.is_empty()) else { return Ok(all) };
+    let mut out = Vec::with_capacity(all.len());
+    for c in all {
+        if c.owner_id.as_deref() == Some(project) || project_refers_to(conn, project, &c.id)? {
+            out.push(c);
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     /// LT-401. On macOS everything went to `~/.local/share/Coreview` — a
@@ -2006,6 +2109,65 @@ mod tests {
         let c = Connection::open_in_memory().unwrap();
         migrate(&c).unwrap();
         c
+    }
+
+    /// D-059, LT-495: a credential saved in one project is neither listed nor
+    /// opened in another; one a project's diagram refers to is; the start
+    /// screen sees every one, with its owner.
+    #[test]
+    fn a_login_belongs_to_the_project_it_was_saved_in() {
+        let c = mem();
+        upsert_project(&c, &pkg("pa", "Customer A")).unwrap();
+        upsert_project(&c, &pkg("pb", "Customer B")).unwrap();
+        let cred = |id: &str, kind: &str| StoredCredential {
+            id: id.into(),
+            label: format!("{id} label"),
+            kind: kind.into(),
+            username: "reader".into(),
+            secret: (vec![1], vec![2]),
+            extra: None,
+            detail: String::new(),
+        };
+        save_credential(&c, &cred("a-ssh", "ssh"), 1).unwrap();
+        set_credential_owner(&c, "a-ssh", Some("pa")).unwrap();
+        save_credential(&c, &cred("b-key", "meraki"), 1).unwrap();
+        set_credential_owner(&c, "b-key", Some("pb")).unwrap();
+        save_credential(&c, &cred("old", "ssh"), 1).unwrap(); // from before owners
+
+        let ids = |open: Option<&str>| list_credentials_for(&c, open).unwrap().into_iter().map(|l| l.id).collect::<Vec<_>>();
+        assert_eq!(ids(Some("pa")), ["a-ssh"], "A sees only its own");
+        assert_eq!(ids(Some("pb")), ["b-key"], "B does not see A's login, nor the unowned one");
+        assert_eq!(ids(None).len(), 3, "the start screen sees every one");
+        let listed = list_credentials_for(&c, None).unwrap();
+        assert_eq!(listed.iter().find(|l| l.id == "b-key").unwrap().owner_name.as_deref(), Some("Customer B"));
+
+        assert!(may_use_credential(&c, Some("pa"), "a-ssh").is_ok());
+        assert_eq!(may_use_credential(&c, Some("pa"), "b-key").unwrap_err(), "That saved login belongs to another project.");
+        assert!(may_use_credential(&c, Some("pa"), "old").is_err(), "unowned and not referred to: not A's");
+        assert!(may_use_credential(&c, None, "b-key").is_ok(), "the start screen manages the whole vault");
+        assert!(may_use_credential(&c, Some("pa"), "gone").is_err());
+
+        // A's diagram refers to the unowned login (saved before owners): A
+        // keeps it, B still does not see it.
+        let mut refers = pkg("pa", "Customer A");
+        refers.document = serde_json::json!({ "credentialDefaults": { "ssh": "old" } });
+        upsert_project(&c, &refers).unwrap();
+        assert!(may_use_credential(&c, Some("pa"), "old").is_ok());
+        assert!(ids(Some("pa")).contains(&"old".to_string()));
+        assert!(!ids(Some("pb")).contains(&"old".to_string()));
+        // An autosave never changes who owns what.
+        save_credential(&c, &cred("a-ssh", "ssh"), 2).unwrap();
+        assert_eq!(credential_owner(&c, "a-ssh").unwrap(), Some(Some("pa".to_string())));
+    }
+
+    #[test]
+    fn a_vault_from_before_owners_gains_the_column_once() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch("CREATE TABLE credentials (id TEXT PRIMARY KEY, label TEXT NOT NULL);").unwrap();
+        credentials_have_owners(&c).unwrap();
+        credentials_have_owners(&c).unwrap();
+        let n = c.prepare("PRAGMA table_info(credentials)").unwrap().query_map([], |r| r.get::<_, String>(1)).unwrap().filter_map(|r| r.ok()).filter(|n| n == "project_id").count();
+        assert_eq!(n, 1);
     }
 
     /// LT-485: folders nest; a project moves in and out; a save never

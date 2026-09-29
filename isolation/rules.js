@@ -58,6 +58,8 @@
     list_host_keys: [],
     list_icon_library: ["dir"],
     list_projects: [],
+    set_open_project: ["projectId"],
+    assign_credential: ["id", "projectId"],
     list_project_folders: [],
     create_project_folder: ["name", "parentId"],
     rename_project_folder: ["id", "name"],

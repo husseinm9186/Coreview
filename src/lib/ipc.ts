@@ -670,6 +670,9 @@ export type CredentialSummary = {
   username: string;
   detail: string;
   hasSecondSecret: boolean;
+  /** D-059: the project that owns it; listed on the start screen only. */
+  ownerProjectId?: string | null;
+  ownerProjectName?: string | null;
 };
 
 /* ── Meraki (LT-404–406). What the Dashboard answers with, as Rust hands it
@@ -900,9 +903,12 @@ export type StoredSettings = Partial<{
  */
 let currentProjectId: string | null = null;
 
-/** Told by the store when a project opens or closes. */
-export function setCurrentProject(id: string | null) {
+/** Told by the store when a project opens or closes — and, since D-059,
+ *  told to Rust too, which opens every secret against it. Awaited by the
+ *  store, so nothing lists or opens a credential before Rust knows. */
+export async function setCurrentProject(id: string | null): Promise<void> {
   currentProjectId = id?.trim() || null;
+  if (isDesktop) await invoke('set_open_project', { projectId: currentProjectId });
 }
 
 export function currentProject(): string | null {
@@ -1445,6 +1451,10 @@ export const ipc = {
     detail?: string;
   }) {
     return invoke<string>('save_credential', { credential: saveCredential(credential) });
+  },
+  /** D-059: hands a login to a project, or to none. Start screen only. */
+  async assignCredential(id: string, projectId: string | null): Promise<void> {
+    await invoke('assign_credential', { id, projectId });
   },
   listCredentials() {
     return isDesktop ? invoke<CredentialSummary[]>('list_credentials') : Promise.resolve([]);

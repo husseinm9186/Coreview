@@ -91,6 +91,17 @@ assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
 
+### LT-496 — A Nexus is asked IOS's spellings for its bundles and ports, and its ARP and MAC tables read empty — 2026-09-28
+**Source:** the operator's crawl debug log, 2026-09-28, from a Nexus 9000:
+`show etherchannel summary`, `show interfaces trunk` and `show interfaces
+status` were rejected — NX-OS says `show port-channel summary` and `show
+interface …` — and `show ip arp` (14 lines) and `show mac address-table`
+(9 lines) answered but were read as no entries.
+**Acceptance:** the NX-OS dialect asks NX-OS's spellings; the ARP and MAC
+readers read NX-OS's tables — **written against his output**, which a
+support capture of that switch will provide; tests from it.
+**Waiting on:** that capture.
+
 ### LT-463 — Cannot log in to a FortiSwitch — reported 2026-09-26, not yet reproduced
 **Source:** the operator, 2026-09-26: "can't login to fortiswitch", after
 the audit's pushes. The screenshot did not come through. Not yet known:
@@ -349,6 +360,32 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-495 — **bug** Another project's logins and Meraki key are visible and usable — 2026-09-28
+**Source:** the operator, 2026-09-28: "i can still see all projects
+passwords and the api key thats belonging to another project".
+**Cause:** the vault is machine-wide with no owner; every picker lists
+every credential, and the Meraki panel picks the first Meraki key on the
+machine. **Decision:** D-059.
+**Acceptance (D-020):** Rust tests that fail first — a credential saved in
+one project is neither listed nor openable in another; one the diagram
+refers to is; the start screen sees all with their owners — and the
+credentials harness still green.
+**Fixed 2026-09-28, per D-059 (tests first).** Schema 5: `credentials.project_id`, set when a login is saved inside a project; existing ones stay unowned. Rust knows which project the window has open (`set_open_project`, awaited by the store on every open, create and close) and checks it in the one place each secret is opened — `ssh_credentials`, `snmp_credentials`, the Meraki key, reveal, delete, and a replacing save: a project may use a login it owns or one its diagram already refers to, and anything else is refused with "That saved login belongs to another project." `list_credentials` returns only those inside a project, so every picker, the Settings page and the Meraki panel (which had been choosing the first Meraki key on the machine) see this project's logins alone. Settings no longer carries the whole-vault table with its reveal eye — the thing the operator was looking at. The start screen, with no project open, lists every login with the project that owns it and can hand an unowned one to a project (`assign_credential`, refused while a project is open). `a_login_belongs_to_the_project_it_was_saved_in` covers listing, opening, references, the start screen and an autosave not moving ownership; `credentials.mjs`'s LT-335 check is replaced by D-059's stricter one.
+
+### LT-494 — **bug** A project just created is not "open" to anything that belongs to a project — 2026-09-28
+**Source:** the operator, 2026-09-28, testing LT-487's fix in a new
+project: Settings → Folders → Choose folder says "Not kept: That setting
+belongs to a project, and no project is open." — inside an open project.
+**Cause:** `ipc.setCurrentProject` is called by `openProject` and nowhere
+else. `createProject` — and so a sample, a template and an imported
+package, which all go through it — sets the store's project without telling
+the IPC layer, so every project-scoped call (settings, folders, backups)
+goes out with no project until the project is closed and opened again.
+LT-487's harness opened an existing project and never met it.
+**Acceptance (D-020):** a unit test and a harness check that create a
+project and use a project setting in it, both failing first.
+**Fixed 2026-09-28 (test first).** `createProject` now tells the IPC layer — and, since D-059, Rust — which project is open, and reads its settings, exactly as `openProject` does; samples, templates and imports go through it. A unit test failed first (the open project was `null` right after creating one); `foldersettings.mjs` now also chooses a folder in a project created moments before.
 
 ### LT-493 — SONiC — 2026-09-28
 **Source:** the operator, 2026-09-28: "also can we support this", linking a
