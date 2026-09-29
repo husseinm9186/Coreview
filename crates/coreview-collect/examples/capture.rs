@@ -83,8 +83,11 @@ async fn main() {
         i += 1;
     }
 
-    let catalogs = load_dir(&repo().join("resources/catalog")).expect("the catalogs load");
-    let templates = repo().join("resources/templates/ntc");
+    // LT-530: an installed tree can be named instead of the repository's, so
+    // CI can prove the installed catalogs and templates are the ones used.
+    let catalog_dir = std::env::var("COREVIEW_CATALOG_DIR").map(PathBuf::from).unwrap_or_else(|_| repo().join("resources/catalog"));
+    let catalogs = load_dir(&catalog_dir).expect("the catalogs load");
+    let templates = std::env::var("COREVIEW_TEMPLATES_DIR").map(PathBuf::from).unwrap_or_else(|_| repo().join("resources/templates/ntc"));
     let location = match std::env::var("COREVIEW_SIDECAR_PYTHON") {
         Ok(python) => SidecarLocation { python: PathBuf::from(python), cwd: std::env::var("COREVIEW_SIDECAR_DIR").map(PathBuf::from).unwrap_or_else(|_| repo().join("sidecar")), templates_dir: templates },
         Err(_) => {
@@ -172,7 +175,9 @@ async fn main() {
             eprintln!("not sent: {cmd} ({why})");
             continue;
         }
-        let reply = sidecar.run("s", cmd, "none", &[], 60000).await.expect("run");
+        // The catalog's parser for this command, so a run proves parsing as well as transport.
+        let parser = catalog.commands.iter().find(|c| &c.cmd == cmd).map(|c| c.parser.clone()).filter(|p| p.starts_with("textfsm:")).unwrap_or_else(|| "none".into());
+        let reply = sidecar.run("s", cmd, &parser, &[], 60000).await.expect("run");
         let path = dir.join(format!("{}.txt", slug(cmd)));
         // These files leave the machine (they come to be turned into fixtures), so
         // every reply is scrubbed of configuration secrets and the login's own
@@ -186,7 +191,7 @@ async fn main() {
         }
         std::fs::write(&path, &text).expect("write");
         n += 1;
-        eprintln!("{:<12} {cmd}  → {}", reply.status, path.display());
+        eprintln!("{:<12} {cmd}  → {} ({} rows)", reply.status, path.display(), reply.rows.len());
     }
     let _ = sidecar.close("s").await;
     sidecar.quit().await;

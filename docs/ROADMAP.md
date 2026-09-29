@@ -151,6 +151,25 @@ set. **Not yet:** a fresh Windows install running a collection with no
 Python on the machine (the operator's test of this build), the VirusTotal
 key. The SBOM is LT-528.
 
+### LT-530 — Prove the installed Windows build collects with no Python on the machine — 2026-09-29
+**Source:** the operator, 2026-09-29: "Does the Windows build at 7584ecd
+actually run a collection with no system Python installed? That was
+listed as unconfirmed in LT-519. Tell me before I install it." It does
+not, as far as anything has shown: CI proved only that the laid sidecar
+starts (`--version`) on a runner that has Python installed. Nothing has
+installed the NSIS package, checked that the installed app finds
+`sidecar\python.exe`, `catalog\` and `templates\ntc\` where it looks,
+or opened an SSH session through paramiko on Windows.
+**Acceptance:** a CI job after the Windows bundle: installs the artifact's
+installer silently, fails unless the installed tree has `coreview.exe`,
+`sidecar\python.exe`, the catalogs and the templates at the paths
+`collection.rs` resolves, strips every Python (and the Store alias) from
+`PATH` and proves none is left, then runs a collection through the
+**installed** interpreter, catalogs and templates against the russh fake
+switch — the same `Sidecar` client the app uses — and fails unless the
+replies are written and parsed. What it cannot cover is the app's own
+window; that stays the operator's first run.
+
 ### LT-527 — P2: the topology builder — approved 2026-09-29
 **Source:** the spec's P2 ("Topology builder + reconciliation + UI.
 Accept: lab topology reproduced; LAG/stack collapse; inferred links

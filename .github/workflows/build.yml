@@ -458,3 +458,80 @@ jobs:
               exit 1
             fi
           '
+
+  # LT-530: the installed Windows build collects with no Python on the
+  # machine. Installs the artifact's own installer silently, checks the
+  # installed tree has what collection.rs looks for where it looks, strips
+  # every Python from PATH and proves none is left, then runs a collection
+  # through the *installed* interpreter, catalogs and templates against the
+  # russh fake switch, using the same Sidecar client the app uses. The one
+  # thing this cannot do is click the app's window; that is the operator's
+  # first run. Every failure is an annotation (the job log needs admin rights).
+  install-check-windows:
+    name: install check (Windows, no Python)
+    needs: bundle
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: coreview-windows
+          path: dl
+
+      - name: Build the fake switch and the collector client
+        run: cargo build -p coreview-collect --example fake_switch --example capture
+
+      - name: Install silently and check the installed tree
+        shell: pwsh
+        run: |
+          function Fail([string]$m) { Write-Host "::error title=Install check::$m"; exit 1 }
+          $setup = Get-ChildItem dl -Recurse -Filter *-setup.exe | Select-Object -First 1
+          if (-not $setup) { Fail "no NSIS installer in the artifact" }
+          $p = Start-Process $setup.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Fail "the installer exited $($p.ExitCode)" }
+          $exe = Get-ChildItem "$env:ProgramFiles\Coreview", "$env:ProgramFiles", "$env:LOCALAPPDATA\Programs" -Recurse -Filter coreview.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) { Fail "coreview.exe is not installed anywhere expected" }
+          $dir = $exe.DirectoryName
+          # The paths src-tauri/src/collection.rs resolves under the resource directory.
+          foreach ($need in @("sidecar\python.exe", "sidecar\python312._pth", "sidecar\Lib\site-packages\coreview_sidecar\__main__.py", "sidecar\Lib\site-packages\scrapli", "sidecar\Lib\site-packages\paramiko", "catalog\cisco_ios.yaml", "catalog\fortios.yaml", "templates\ntc\index", "templates\ntc\cisco_ios_show_version.textfsm", "templates\LICENSE", "THIRD-PARTY-NOTICES.md")) {
+            if (-not (Test-Path (Join-Path $dir $need))) { Fail "installed tree lacks $need (under $dir)" }
+          }
+          $sig = Get-AuthenticodeSignature $exe.FullName
+          Write-Host "::notice title=Install check::installed at $dir; coreview.exe signed by $($sig.SignerCertificate.Subject)"
+          "COREVIEW_INSTALL=$dir" >> $env:GITHUB_ENV
+
+      - name: Collect through the installed sidecar with no Python on PATH
+        shell: pwsh
+        run: |
+          function Fail([string]$m) { Write-Host "::error title=Install check::$m"; exit 1 }
+          $dir = $env:COREVIEW_INSTALL
+          # No Python anywhere on PATH: the runner's own, the tool cache, the Store alias.
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -and $_ -notmatch '(?i)python|pipx|WindowsApps|hostedtoolcache' }) -join ';'
+          Remove-Item Env:PYTHONHOME, Env:PYTHONPATH -ErrorAction SilentlyContinue
+          foreach ($name in @("python", "python3")) {
+            $found = Get-Command $name -ErrorAction SilentlyContinue
+            if ($found) { Fail "$name is still on PATH at $($found.Source); the check would prove nothing" }
+          }
+          $switch = Start-Process -FilePath target\debug\examples\fake_switch.exe -ArgumentList 2230 -PassThru -WindowStyle Hidden
+          Start-Sleep -Seconds 3
+          $env:COREVIEW_SIDECAR_PYTHON = Join-Path $dir "sidecar\python.exe"
+          $env:COREVIEW_SIDECAR_DIR = Join-Path $dir "sidecar"
+          $env:COREVIEW_CATALOG_DIR = Join-Path $dir "catalog"
+          $env:COREVIEW_TEMPLATES_DIR = Join-Path $dir "templates\ntc"
+          $env:COREVIEW_CAPTURE_PASSWORD = "correct-horse-fixture"
+          $out = & target\debug\examples\capture.exe --host 127.0.0.1 --port 2230 --user reader --out captures --os cisco_ios "show ip arp" 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Stop-Process -Id $switch.Id -ErrorAction SilentlyContinue
+          $lines = ($out -split "`n" | Where-Object { $_ -notmatch '^WARNING' -and $_.Trim() })
+          if ($code -ne 0) { Fail ("the collection failed ($code): " + (($lines | Select-Object -Last 8) -join ' | ')) }
+          $version = $lines | Where-Object { $_ -match '^ok\s+show version' -and $_ -match '\(1 rows\)' }
+          $arp = $lines | Where-Object { $_ -match '^ok\s+show ip arp' -and $_ -match '\(1 rows\)' }
+          if (-not $version -or -not $arp) { Fail ("replies were not collected and parsed: " + (($lines | Select-Object -Last 8) -join ' | ')) }
+          $text = Get-Content captures\127.0.0.1\show-version.txt -Raw
+          if ($text -notmatch 'Cisco IOS Software') { Fail "show-version.txt does not hold the switch's answer" }
+          Write-Host "::notice title=Install check::collected with the installed sidecar and no Python on PATH: $(($lines | Where-Object { $_ -match '^ok' }).Count) replies ok, show version and show ip arp parsed to rows"
