@@ -212,6 +212,10 @@ the **Actions** tab → a green run → **Artifacts**.
 | --- | --- | --- |
 | Windows | `coreview-windows` | NSIS `.exe` |
 
+Windows administrators: the installer is signed with the Coreview certificate,
+and `docs/INSTALL-WINDOWS.md` is how to check it and trust it (and what that
+does and does not do for SmartScreen and Defender).
+
 macOS, Linux, the Windows `.msi` and the offline installer are all built by the
 workflow but switched off at the operator's request (LT-349): a push produces
 one installer. Each is one edit away in `.github/workflows/build.yml`, and the

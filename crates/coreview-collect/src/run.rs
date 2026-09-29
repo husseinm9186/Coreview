@@ -15,8 +15,11 @@ use crate::fingerprint::{identify, is_refusal, probes, Identified};
 use crate::scrub::scrub;
 use crate::sidecar::{Auth, Reply, Sidecar, SidecarError};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Target {
+    /// LT-529: the SSH host-key fingerprint Coreview remembers for this host,
+    /// if any. A device presenting another is refused before a password is sent.
+    pub known_host_key: Option<String>,
     pub host: String,
     pub port: u16,
     /// The catalog `os`, when the operator or a previous run already knows it; skips the fingerprint pass.
@@ -183,7 +186,11 @@ pub struct DeviceRun {
     pub plan: Option<Plan>,
     pub results: Vec<StepResult>,
     pub log: Vec<String>,
-    /// Why the run stopped before its plan, if it did: `auth`, `timeout`, `unrecognised`, `sidecar`, …
+    /// LT-529: the host key the device presented, and whether Coreview had
+    /// none for it before — the caller remembers it then.
+    pub host_key: Option<String>,
+    pub host_key_first_seen: bool,
+    /// Why the run stopped before its plan, if it did: `auth`, `host_key`, `timeout`, `unrecognised`, `sidecar`, …
     pub failure: Option<String>,
 }
 
@@ -256,7 +263,9 @@ pub async fn collect_device(sidecar: &mut Sidecar, catalogs: &[Catalog], target:
     let catalog = catalogs.iter().find(|c| c.os == identified.os).expect("identified from these catalogs");
 
     // 2. Open the real session.
-    let opened = match sidecar.open(&session, &target.host, target.port, &catalog.os, auth, &session_spec(catalog), options.connect_ms, options.auth_ms).await {
+    // The key the fingerprint pass learned counts as known for the real session.
+    let known = target.known_host_key.clone().or_else(|| run.host_key.clone());
+    let opened = match sidecar.open(&session, &target.host, target.port, &catalog.os, auth, &session_spec(catalog), options.connect_ms, options.auth_ms, known.as_deref()).await {
         Ok(r) => r,
         Err(e) => {
             run.failure = Some("sidecar".into());
@@ -269,6 +278,7 @@ pub async fn collect_device(sidecar: &mut Sidecar, catalogs: &[Catalog], target:
         run.log.push(opened.error.clone().unwrap_or_default());
         return run;
     }
+    note_host_key(&mut run, target, &opened);
     run.prompt = opened.extra.get("prompt").and_then(Value::as_str).unwrap_or("").to_string();
     run.contexts = opened.extra.get("contexts").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
     run.context_kind = opened.extra.get("context_kind").and_then(Value::as_str).map(str::to_string);
@@ -374,6 +384,16 @@ pub async fn collect_device(sidecar: &mut Sidecar, catalogs: &[Catalog], target:
     run
 }
 
+/// Record the key the device presented; first sight only when Coreview had none.
+fn note_host_key(run: &mut DeviceRun, target: &Target, opened: &crate::sidecar::Reply) {
+    if let Some(k) = opened.extra.get("host_key").and_then(Value::as_str) {
+        if run.host_key.is_none() {
+            run.host_key_first_seen = target.known_host_key.is_none();
+        }
+        run.host_key = Some(k.to_string());
+    }
+}
+
 fn step_key(s: &Step) -> String {
     format!("{}\u{0}{}", s.id, s.cmd)
 }
@@ -381,7 +401,7 @@ fn step_key(s: &Step) -> String {
 async fn fingerprint(sidecar: &mut Sidecar, catalogs: &[Catalog], target: &Target, auth: &Auth, options: &RunOptions, run: &mut DeviceRun) -> Result<Option<Identified>, String> {
     let session = format!("fp-{}", target.host);
     let opened = sidecar
-        .open(&session, &target.host, target.port, "generic", auth, &Value::Object(Default::default()), options.connect_ms, options.auth_ms)
+        .open(&session, &target.host, target.port, "generic", auth, &Value::Object(Default::default()), options.connect_ms, options.auth_ms, target.known_host_key.as_deref())
         .await
         .map_err(|e| {
             run.log.push(e.to_string());
@@ -391,6 +411,7 @@ async fn fingerprint(sidecar: &mut Sidecar, catalogs: &[Catalog], target: &Targe
         run.log.push(opened.error.unwrap_or_default());
         return Err(opened.status);
     }
+    note_host_key(run, target, &opened);
     run.prompt = opened.extra.get("prompt").and_then(Value::as_str).unwrap_or("").to_string();
     let mut found = None;
     for probe in probes(catalogs) {

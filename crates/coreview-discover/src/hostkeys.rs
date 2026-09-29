@@ -68,6 +68,12 @@ impl HostKeyStore {
         }
     }
 
+    /// The fingerprint remembered for a host, if any — what the collector
+    /// sidecar is told to expect (LT-529).
+    pub fn known(&self, host: &str, port: u16) -> Option<String> {
+        self.keys.get(&host_id(host, port)).cloned()
+    }
+
     pub fn check(&self, host: &str, port: u16, fingerprint: &str) -> HostKeyVerdict {
         match self.keys.get(&host_id(host, port)) {
             None => HostKeyVerdict::New,

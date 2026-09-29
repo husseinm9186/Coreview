@@ -9,7 +9,10 @@ Requests:
     {"op":"hello","id":..,"protocol":1,"templates_dir":"…"}
     {"op":"open","id":..,"session":"s1","host":..,"port":22,"os":"cisco_ios",
      "auth":{"username":..,"password":..,"enable":..,"private_key":..},
-     "timeouts":{"connect_ms":8000,"auth_ms":20000}}
+     "timeouts":{"connect_ms":8000,"auth_ms":20000},
+     "known_host_key":"SHA256:…" or null}      (LT-529: the fingerprint Coreview remembers;
+                                                a different key ends the open with status
+                                                "host_key" before any credential is sent)
     {"op":"run","id":..,"session":"s1","cmd":"show ip route","parser":"textfsm:cisco_ios_show_ip_route","also":[],"timeout_ms":30000}
     {"op":"switch","id":..,"session":"s1","context":{"kind":"vdom","name":"root"}}
     {"op":"parse","id":..,"os":"cisco_ios","cmd":"show ip arp","parser":"textfsm:…","raw":"…"}
@@ -29,7 +32,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
-STATUSES = ("ok", "unsupported", "timeout", "auth", "parse_error", "refused", "error")
+STATUSES = ("ok", "unsupported", "timeout", "auth", "host_key", "parse_error", "refused", "error")
 OPS = ("hello", "open", "run", "switch", "parse", "close", "quit")
 
 

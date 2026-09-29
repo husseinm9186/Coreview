@@ -26,7 +26,7 @@ Transport/collector end state is Rust-native (B). Python sidecar (A) is a tempor
 ### Packaging / trust (applies from Phase 1)
 - No self-extracting or packed binaries. The sidecar spawns from the install dir, not `%TEMP%`.
 - Pin deps with hashes (`pip --require-hashes`; `Cargo.lock`); generate an SBOM (`cargo auditable` / `pip-audit`).
-- Sign every PE (Tauri exe, python.exe, DLLs/pyd, installer) via Tauri `signCommand` — Azure Trusted Signing.
+- Sign every PE (Tauri exe, python.exe, DLLs/pyd, installer) via Tauri `signCommand` — Azure Trusted Signing. *(Amended by the operator, 2026-09-29: the existing Coreview certificate, not Azure Trusted Signing; see docs/SIGNING.md and docs/INSTALL-WINDOWS.md.)*
 - Release CI: build → sign → VirusTotal scan (vt-cli) → fail on any detection → publish SHA-256 + SBOM.
 - Credentials in the OS keychain only. Outbound only SSH/443 to user-entered targets; no telemetry.
 

@@ -145,6 +145,9 @@ jobs:
             paths: |
               target/release/bundle/nsis/*.exe
               target/release/bundle/nsis/SHA256SUMS.txt
+              target/release/bundle/nsis/sbom/*.json
+              target/release/bundle/nsis/*.crt
+              target/release/bundle/nsis/*.cer
             #  target/release/bundle/msi/*.msi
     steps:
       - uses: actions/checkout@v5
@@ -209,8 +212,41 @@ jobs:
       # `bundle-windows-offline` below (LT-311).
       #
       # rusqlite is built with `bundled`, so there is no external SQLite.
+      # LT-528: the SBOM tools. cargo-auditable embeds the exact dependency
+      # list in coreview.exe; cargo-audit reads it back from the shipped binary;
+      # cargo-cyclonedx writes the Rust SBOM.
+      - name: Install SBOM tools
+        if: matrix.os == 'windows-latest'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-auditable,cargo-audit,cargo-cyclonedx
+
       - name: Build bundles
-        run: npm run tauri build -- --bundles ${{ matrix.bundles }} ${{ matrix.os == 'windows-latest' && '--config src-tauri/tauri.sidecar.conf.json' || '' }}
+        run: npm run tauri build -- --bundles ${{ matrix.bundles }} ${{ matrix.os == 'windows-latest' && '--config src-tauri/tauri.sidecar.conf.json --runner scripts/sbom/cargo-auditable-runner.cmd' || '' }}
+
+      # LT-528, D-060: an SBOM for everything the installer carries — the Rust
+      # executable (CycloneDX, and its embedded list audited), the sidecar's
+      # Python (pip-audit, CycloneDX, failing on any advisory not written up in
+      # sidecar/pip-audit-ignore.txt) and the page's npm packages (CycloneDX).
+      - name: SBOM and audit of what shipped
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $out = "target/release/bundle/nsis/sbom"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          cargo audit bin target/release/coreview.exe
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error title=SBOM::cargo audit found advisories in coreview.exe"; exit 1 }
+          Push-Location src-tauri
+          cargo cyclonedx --format json --target x86_64-pc-windows-msvc --override-filename coreview-rust.cdx
+          Pop-Location
+          Move-Item src-tauri/coreview-rust.cdx.json "$out/coreview-rust.cdx.json"
+          python -m pip install --disable-pip-version-check -q pip-audit==2.10.1
+          $ignore = Get-Content sidecar/pip-audit-ignore.txt | Where-Object { $_ -match '^[A-Z]' } | ForEach-Object { "--ignore-vuln"; ($_ -split '\s')[0] }
+          python -m pip_audit -r sidecar/requirements.txt --require-hashes --disable-pip @ignore --format cyclonedx-json -o "$out/sidecar-python.cdx.json"
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error title=SBOM::pip-audit found an advisory in the sidecar that is not written up in sidecar/pip-audit-ignore.txt"; exit 1 }
+          npx --yes @cyclonedx/cyclonedx-npm@6.0.1 --omit dev --output-format JSON --output-file "$out/page-npm.cdx.json"
+          Write-Host "::notice title=SBOM::$((Get-ChildItem $out).Name -join ', ')"
 
       # LT-519, D-060: every Windows installer is scanned before it is
       # published, and a single detection fails the build. Skipped with a
@@ -221,6 +257,12 @@ jobs:
         env:
           VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
         run: |
+          # The public halves of the certificates, beside the installer, for the
+          # install notes (docs/INSTALL-WINDOWS.md). Never a private key.
+          Copy-Item brand/coreview-root-ca.crt target/release/bundle/nsis/coreview-root-ca.crt
+          if ($env:COREVIEW_SIGN_THUMBPRINT) {
+            Export-Certificate -Cert "Cert:\CurrentUser\My\$env:COREVIEW_SIGN_THUMBPRINT" -FilePath target/release/bundle/nsis/coreview-code-signing.cer -Type CERT | Out-Null
+          }
           foreach ($exe in Get-ChildItem target/release/bundle/nsis/*.exe) {
             ./.github/actions/virustotal/scan.ps1 -Path $exe.FullName
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

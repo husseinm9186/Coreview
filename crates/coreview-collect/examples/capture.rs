@@ -103,7 +103,7 @@ async fn main() {
     let os = match os_arg {
         Some(os) => os,
         None => {
-            let r = sidecar.open("fp", &host, port, "generic", &auth, &json!({}), 8000, 20000).await.expect("open");
+            let r = sidecar.open("fp", &host, port, "generic", &auth, &json!({}), 8000, 20000, None).await.expect("open");
             if r.status != "ok" {
                 eprintln!("{host}: {}: {}", r.status, r.error.unwrap_or_default());
                 std::process::exit(1);
@@ -155,7 +155,11 @@ async fn main() {
     commands.dedup();
 
     let session_spec: Value = serde_json::to_value(&catalog.session).unwrap_or(Value::Null);
-    let r = sidecar.open("s", &host, port, &os, &auth, &session_spec, 8000, 20000).await.expect("open");
+    // First contact is trusted here, as `ssh` does; the fingerprint is printed to compare by hand.
+    let r = sidecar.open("s", &host, port, &os, &auth, &session_spec, 8000, 20000, None).await.expect("open");
+    if let Some(k) = r.extra.get("host_key").and_then(|v| v.as_str()) {
+        eprintln!("{host}: host key {k}");
+    }
     if r.status != "ok" {
         eprintln!("{host}: {}: {}", r.status, r.error.unwrap_or_default());
         std::process::exit(1);

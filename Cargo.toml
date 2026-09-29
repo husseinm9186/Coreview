@@ -12,6 +12,8 @@
 
 [workspace]
 resolver = "2"
+# The patched third-party crate is a dependency, not a member (LT-525).
+exclude = ["vendor/textfsm-rs"]
 members = [
     "crates/coreview-probe",
     "crates/coreview-discover",
@@ -29,3 +31,9 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 strip = true
+
+# LT-525: textfsm-rs with two fixes that make it match Python TextFSM on the
+# whole ntc-templates suite; vendor/textfsm-rs/COREVIEW-PATCHES.md says what
+# and why. Removed when a release carries them.
+[patch.crates-io]
+textfsm-rs = { path = "vendor/textfsm-rs" }

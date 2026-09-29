@@ -21,8 +21,7 @@
 # Every failure is an annotation (::error), readable without the job log,
 # which needs admin rights to download.
 #
-# Azure Trusted Signing replaces /sha1 with /dlib and a metadata file; that
-# is the one argument list below, waiting on the details.
+# The certificate is Coreview's own (decision of 2026-09-29; docs/SIGNING.md).
 param(
   [string]$Thumbprint = $env:COREVIEW_SIGN_THUMBPRINT,
   [string]$TimestampUrl = "http://timestamp.digicert.com"

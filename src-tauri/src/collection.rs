@@ -349,6 +349,8 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
     let auth = Auth { username: creds.username.clone(), password: secrets.first().cloned().unwrap_or_default(), enable: secrets.get(1).cloned(), private_key: None };
     let catalogs = load_catalogs(&app)?;
     let location = sidecar_location(&app)?;
+    // LT-529: the same host-key store the crawl and the terminal use.
+    let host_keys = crate::discovery::load_host_keys(&state)?;
     let ticket = state.jobs.start(crate::jobs::Kind::Collect)?;
     let token = ticket.token();
     let progress = ticket.progress();
@@ -403,8 +405,16 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
             let device_id = device_id_of(host);
             let _ = app2.emit("coreview://collection", &CollectionEvent::Device { run_id: run_id2.clone(), device_id: device_id.clone(), host: host.clone(), phase: "connecting".into() });
             let sink = Emit { app: app2.clone(), run_id: run_id2.clone(), device_id: device_id.clone() };
-            let target = Target { host: host.clone(), port, os_hint: os_hint.clone(), role_override: role_override.clone() };
-            let run = collect_device(&mut sidecar, &catalogs, &target, &auth, &options, &sink).await;
+            let known_host_key = host_keys.lock().ok().and_then(|k| k.known(host, port));
+            let target = Target { host: host.clone(), port, os_hint: os_hint.clone(), role_override: role_override.clone(), known_host_key };
+            let mut run = collect_device(&mut sidecar, &catalogs, &target, &auth, &options, &sink).await;
+            if let (true, Some(key)) = (run.host_key_first_seen, run.host_key.clone()) {
+                if let Ok(mut k) = host_keys.lock() {
+                    k.remember(host, port, &key);
+                }
+                crate::discovery::persist_host_keys(&app2, &host_keys);
+                run.log.push(format!("host key seen for the first time and now remembered: {key}"));
+            }
             let commands = persist_device(&state_arc, &run_id2, &run, diagnostic.as_deref(), &secrets).unwrap_or(0);
             devices += 1;
             if run.failure.is_some() {

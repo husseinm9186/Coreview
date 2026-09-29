@@ -107,17 +107,16 @@ so; tests against a local TLS server with two certificates.
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
 confirmed by the operator on accepting P1 (2026-09-29): "embeddable
-CPython resource folder, no UPX, every PE signed. Azure Trusted Signing
-details to follow." First in his order: LT-519 → LT-520 → P2 topology.
+CPython resource folder, no UPX, every PE signed." First in his order:
+LT-519 → LT-520 → P2 topology. **Signing decided 2026-09-29:** "we stay on
+the existing Coreview certificate"; the install notes say how a customer
+trusts it (`docs/INSTALL-WINDOWS.md`).
 **Acceptance:** the release workflow runs the build script before `tauri
 build`, `tauri.conf.json` ships `src-tauri/sidecar/` as a resource,
 `signCommand` signs `python.exe` and every `.dll`/`.pyd` inside, the
 VirusTotal step covers them, and a fresh Windows install runs a
-collection with no Python on the machine. The signing half waits on his
-Azure Trusted Signing details; the layout half is done first, unsigned,
-for his own testing.
-**Status 2026-09-29 — layout built, signing wired, waiting on CI and the
-Azure details.** `sidecar/build/windows.ps1` downloads the embeddable
+collection with no Python on the machine.
+**Status 2026-09-29 — layout built, signing wired.** `sidecar/build/windows.ps1` downloads the embeddable
 CPython 3.12.10 and checks its SHA-256 (pinned; the file's MD5 and size
 match python.org's published values), adds `Lib\site-packages` to its
 `._pth`, installs the hashed wheels there with the runner's pip
@@ -150,31 +149,38 @@ malicious or suspicious verdict, SHA-256 into `SHA256SUMS.txt` beside the
 installer) — skipped with a notice until a `VIRUSTOTAL_API_KEY` secret is
 set. **Not yet:** a fresh Windows install running a collection with no
 Python on the machine (the operator's test of this build), the VirusTotal
-key, an SBOM (`cargo auditable` / `pip-audit`), and Azure Trusted Signing
-in place of the PFX.
+key. The SBOM is LT-528.
 
-### LT-527 — P2: the topology builder — proposed 2026-09-29, awaiting approval
+### LT-528 — SBOM: what the installer carries, listed and audited — 2026-09-29
+**Source:** the operator, 2026-09-29: "Add the SBOM step now (cargo
+auditable + pip-audit / cyclonedx), don't leave it open."
+**Acceptance:** the Windows bundle builds `coreview.exe` through
+`cargo auditable` and `cargo audit bin` checks the shipped binary; CycloneDX
+SBOMs for the Rust executable, the sidecar's Python and the page's npm
+packages go beside the installer; pip-audit fails the build on any sidecar
+advisory not written up with a reason; the public certificates travel with
+it for the install notes.
+**Status 2026-09-29 — built, waiting on its CI run.** `tauri build` runs
+through `scripts/sbom/cargo-auditable-runner.cmd` (cargo-auditable only runs
+when cargo starts it; checked here — the embedded list reads back with
+`cargo audit bin`); then `cargo audit bin coreview.exe`, `cargo cyclonedx`
+for the Windows target, `pip-audit --require-hashes` in CycloneDX form
+(failing on any advisory not in `sidecar/pip-audit-ignore.txt`, which holds
+one, with its reason), and `@cyclonedx/cyclonedx-npm` for the page, all into
+`sbom/` beside the installer; the root and signing certificates' public
+halves go beside it too. The pip-audit run here found CVE-2026-44405 in
+paramiko 3.5.1 (no fix allowed under scrapli), which led to LT-529.
+
+### LT-527 — P2: the topology builder — approved 2026-09-29
 **Source:** the spec's P2 ("Topology builder + reconciliation + UI.
 Accept: lab topology reproduced; LAG/stack collapse; inferred links
 flagged with evidence"), third in the operator's order after LT-519 and
 LT-520. The plan is in `docs/DISCOVERY-SPEC.md` under "P2 plan", with
 one decision for him first: build the graph in Rust and feed the
 existing review/drawing path (recommended), or extend the page's
-`topology.ts`. **Nothing is built until he approves.**
-
-### LT-525 — The six upstream ntc fixtures the Rust engine does not yet match — 2026-09-29
-**Source:** LT-520's run over ntc-templates' whole suite: 1889 of 1895.
-The six: `hp_procurve_show_interfaces_status` (4 fixtures — its `Value
-NAME` regex ends in a look-ahead after the group, which textfsm-rs's
-template grammar refuses), `mikrotik_routeros_interface_print_detail` (1
-— a `${ID}+` rule loses to the catch-all description rule), and
-`linux_iwlist_wlan0_scanning` (1 — records land one row late around a
-`Continue.Record`). No catalog names any of the three today.
-**Acceptance:** each reproduced in a test against textfsm-rs, fixed
-upstream (a pull request to textfsm-rs) or in a patch kept here with its
-reason, and the whole-suite run at 1895 of 1895 — needed before the
-ProCurve `show interfaces status` or a RouterOS detail command enters a
-catalog, and before Phase 4 deletes the sidecar.
+`topology.ts`. **Approved 2026-09-29:** "build the graph in Rust from the
+discovery tables; feed the existing review screen and diagram code. P2 plan
+approved as written."
 
 ### LT-521 — Phase 3: shadow mode — both collectors on every run, rows diffed per (os, command), each OS flipped at zero mismatch — 2026-09-29
 **Source:** the operator, 2026-09-29: "shadow mode behind a feature flag
@@ -208,6 +214,8 @@ runs with shadow on, then each OS flipped by setting `parser_engine: rust`
 in its catalog once its report shows zero; the "sidecar not spawned when
 all twenty are flipped" step belongs with Phase 4, because a flipped OS
 still needs the sidecar's SSH session — only the parsing has moved.
+**The operator, 2026-09-29:** he runs the four lab boxes with shadow on and
+the capture example this week; no OS is flipped until he sends the results.
 
 ### LT-507 — Discovery / topology / path engine: the catalog-driven collector, in four phases — approved 2026-09-29, P1 in progress
 **Source:** the operator's specification of 2026-09-29 ("CoreView
@@ -501,6 +509,59 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-529 — The sidecar checks host keys against Coreview's store — 2026-09-29, done the same day
+**Source:** found by LT-528's pip-audit run (paramiko accepts SHA-1 RSA
+signatures, CVE-2026-44405, unfixable under scrapli's `paramiko<4.0.0`).
+Looking at what that exposes showed the larger gap: the sidecar opens
+sessions with `auth_strict_key=False` — it checks no host key at all — while
+the Rust crawl pins every key in its host-key store (LT-454). A man in the
+middle could collect the password a collection sends.
+**Acceptance:** Rust sends the known fingerprint for the host in `open`; the
+sidecar compares the key the device presents before authenticating and
+refuses a mismatch without sending the password; a host seen for the first
+time is reported and stored in the same store the crawl uses, as a
+first-seen finding; tested against the fake switch with a changed key.
+**Done 2026-09-29.** The sidecar keeps scrapli strict and replaces its
+`_verify_key` on each session with a check against the fingerprint Rust
+sends (`known_host_key` in `open`, OpenSSH's `SHA256:` form, the one the
+crawl's store keeps): a different key ends the open with status `host_key`
+before any credential is sent; first contact reports the key, which
+`start_collection` remembers in the same store and persists, noting it in
+the device's log. The fingerprint pass's key counts as known for the real
+session. Tested against the russh fake switch: first contact, the same key
+remembered, and a wrong key refused with the fake switch counting **zero
+passwords offered**. `sidecar/pip-audit-ignore.txt` records CVE-2026-44405
+as accepted on that basis.
+
+### LT-525 — The six upstream ntc fixtures the Rust engine does not yet match — 2026-09-29, done the same day
+**Source:** LT-520's run over ntc-templates' whole suite: 1889 of 1895.
+The six: `hp_procurve_show_interfaces_status` (4 fixtures — its `Value
+NAME` regex ends in a look-ahead after the group, which textfsm-rs's
+template grammar refuses), `mikrotik_routeros_interface_print_detail` (1
+— a `${ID}+` rule loses to the catch-all description rule), and
+`linux_iwlist_wlan0_scanning` (1 — records land one row late around a
+`Continue.Record`). No catalog names any of the three today.
+**Acceptance:** each reproduced in a test against textfsm-rs, fixed
+upstream (a pull request to textfsm-rs) or in a patch kept here with its
+reason, and the whole-suite run at 1895 of 1895 — needed before the
+ProCurve `show interfaces status` or a RouterOS detail command enters a
+catalog, and before Phase 4 deletes the sidecar.
+**The operator, 2026-09-29:** "fix the six upstream fixture failures or
+document why textfsm-rs diverges — I want 1895/1895 or a written reason per
+template."
+**Done 2026-09-29 — 1895 of 1895.** All six were textfsm-rs departing
+from Python TextFSM, not the templates; three fixes, each reproduced with
+the fixture that exposed it, carried in `vendor/textfsm-rs/` through
+`[patch.crates-io]` and listed in `COREVIEW-PATCHES.md` (Apache-2.0 allows
+it; the changed lines say so): (1) a record skipped for an empty `Required`
+value is cleared, as `_AppendRecord` does — RouterOS and Linux leaked a
+List value into the next row; (2) an empty value does not satisfy
+`Required` — Linux's first cell has an empty SSID; (3) a Value regex runs
+to the last `)` on its line, so ProCurve's `group(?=look-ahead)` form
+parses. The crate's own 25 tests still pass; `examples/parse_one.rs` is the
+tool used to compare rows by hand, kept. Upstream pull request: the
+operator's call.
 
 ### LT-526 — **bug** A new install's database had no collection tables — 2026-09-29, fixed the same day
 **Found** while adding schema 7: `apply_migrations` stamps a brand-new

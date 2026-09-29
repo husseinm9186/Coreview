@@ -6469,8 +6469,6 @@ dependencies = [
 [[package]]
 name = "textfsm-rs"
 version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c5ab48cd835cc4ad57f40fb1afa1b0def4ef193edbdcd2a00a7894aeb09f88b"
 dependencies = [
  "fancy-regex 0.17.0",
  "log",

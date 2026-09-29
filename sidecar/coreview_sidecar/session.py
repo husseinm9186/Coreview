@@ -11,6 +11,8 @@ Switch) runs on scrapli's GenericDriver with the catalog's prompt pattern.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import re
 import time
 from typing import Any, Optional
@@ -52,6 +54,13 @@ SESSION_STEP = re.compile(
 )
 
 
+def fingerprint_of(key) -> str:
+    """OpenSSH's SHA-256 fingerprint, the form Coreview's host-key store keeps:
+    `SHA256:` and the unpadded base64 of the digest of the key blob."""
+    digest = hashlib.sha256(key.asbytes()).digest()
+    return "SHA256:" + base64.b64encode(digest).decode().rstrip("=")
+
+
 class SessionError(Exception):
     def __init__(self, status: str, message: str):
         super().__init__(message)
@@ -63,7 +72,7 @@ def _fill(step: str, name: str, kind: str) -> str:
 
 
 class Session:
-    def __init__(self, sid: str, host: str, port: int, os_name: str, auth: dict, spec: dict, timeouts: dict, emit):
+    def __init__(self, sid: str, host: str, port: int, os_name: str, auth: dict, spec: dict, timeouts: dict, emit, known_key: Optional[str] = None):
         self.id = sid
         self.host = host
         self.os = os_name
@@ -74,6 +83,10 @@ class Session:
         self.has_contexts = False
         self._original_paging: Optional[str] = None
         self._current_context: Optional[str] = None
+        # LT-529: the fingerprint Coreview's store holds for this host, if any,
+        # and the one the device presented.
+        self.known_key = known_key
+        self.presented_key: Optional[str] = None
         connect_s = max(1, int(timeouts.get("connect_ms", 8000))) / 1000
         auth_s = max(1, int(timeouts.get("auth_ms", 20000))) / 1000
         common: dict[str, Any] = {
@@ -84,7 +97,9 @@ class Session:
             "auth_secondary": auth.get("enable") or auth.get("password") or "",
             "auth_private_key": auth.get("private_key") or "",
             "auth_private_key_passphrase": auth.get("passphrase") or "",
-            "auth_strict_key": False,
+            # LT-529: strict, with the check replaced below by one against
+            # Coreview's own store — the sidecar keeps no known_hosts file.
+            "auth_strict_key": True,
             "transport": "paramiko",
             "timeout_socket": connect_s,
             "timeout_transport": auth_s,
@@ -104,12 +119,30 @@ class Session:
         else:
             self.conn = Scrapli(platform=platform, **common)
             self.generic = False
+        self.conn.transport._verify_key = self._verify_key
+
+    # ------------------------------------------------------------- host key
+
+    def _verify_key(self) -> None:
+        """Called by the transport after the key exchange and before any
+        credential is sent. A key that is not the one Coreview remembers stops
+        the session here, so the password never reaches the device."""
+        key = self.conn.transport.session.get_remote_server_key()
+        self.presented_key = fingerprint_of(key)
+        if self.known_key and self.known_key != self.presented_key:
+            raise SessionError(
+                "host_key",
+                f"The SSH host key for {self.host} is not the one Coreview remembered "
+                f"(remembered {self.known_key}, presented {self.presented_key}). Nothing was sent.",
+            )
 
     # ------------------------------------------------------------- lifecycle
 
     def open(self) -> dict:
         try:
             self.conn.open()
+        except SessionError:
+            raise
         except ScrapliAuthenticationFailed as e:
             raise SessionError("auth", str(e)) from None
         except ScrapliTimeout as e:
@@ -120,7 +153,13 @@ class Session:
             self._generic_on_open()
         self._detect_contexts()
         self._disable_paging()
-        return {"prompt": self._prompt(), "contexts": self.contexts, "context_kind": self.context_kind}
+        return {
+            "prompt": self._prompt(),
+            "contexts": self.contexts,
+            "context_kind": self.context_kind,
+            "host_key": self.presented_key,
+            "host_key_first_seen": not self.known_key,
+        }
 
     def close(self) -> None:
         try:

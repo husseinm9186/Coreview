@@ -40,10 +40,14 @@ struct FakeSwitch {
     pending: String,
 }
 
+/// LT-529: how many times any client offered this switch a password.
+static PASSWORDS_OFFERED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 impl server::Handler for FakeSwitch {
     type Error = russh::Error;
 
     async fn auth_password(&mut self, _user: &str, password: &str) -> Result<SshAuth, Self::Error> {
+        PASSWORDS_OFFERED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if password == "correct-horse-fixture" {
             Ok(SshAuth::Accept)
         } else {
@@ -156,7 +160,7 @@ async fn the_real_sidecar_logs_into_a_fake_switch_and_the_collector_reads_it() {
     let mut sidecar = Sidecar::spawn(&location).await.expect("the sidecar starts from the venv");
     let hello = sidecar.hello.clone().unwrap();
     assert_eq!(hello.extra.get("protocol").and_then(|v| v.as_u64()), Some(1));
-    let target = Target { host: "127.0.0.1".into(), port, os_hint: None, role_override: None };
+    let target = Target { host: "127.0.0.1".into(), port, os_hint: None, role_override: None, known_host_key: None };
     let auth = Auth { username: "reader".into(), password: "correct-horse-fixture".into(), enable: None, private_key: None };
     let run = collect_device(&mut sidecar, &catalogs, &target, &auth, &RunOptions::default(), &Quiet).await;
     let events = sidecar.drain_events();
@@ -185,6 +189,22 @@ async fn the_real_sidecar_logs_into_a_fake_switch_and_the_collector_reads_it() {
     assert!(cfg.outcome.raw.contains("hostname SW1"));
     let unsupported = run.results.iter().filter(|r| r.outcome.status == "unsupported").count();
     assert!(unsupported > 0, "the fake refuses most commands, and that is recorded, not fatal");
+    // LT-529: first contact reported the key; the same key remembered is accepted.
+    assert!(run.host_key_first_seen);
+    let presented = run.host_key.clone().expect("the key the switch presented");
+    assert!(presented.starts_with("SHA256:") && presented.len() > 40, "{presented}");
+    let remembered = Target { known_host_key: Some(presented.clone()), ..target.clone() };
+    let again = collect_device(&mut sidecar, &catalogs, &remembered, &auth, &RunOptions { light_only: true, ..Default::default() }, &Quiet).await;
+    assert_eq!(again.failure, None, "{:?}", again.log);
+    assert!(!again.host_key_first_seen);
+    assert_eq!(again.host_key.as_deref(), Some(presented.as_str()));
+    // A different remembered key: refused before any password is offered.
+    let offered_before = PASSWORDS_OFFERED.load(std::sync::atomic::Ordering::SeqCst);
+    let impostor = Target { known_host_key: Some("SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into()), ..target.clone() };
+    let refused = collect_device(&mut sidecar, &catalogs, &impostor, &auth, &RunOptions::default(), &Quiet).await;
+    assert_eq!(refused.failure.as_deref(), Some("host_key"), "{:?}", refused.log);
+    assert!(refused.log.iter().any(|l| l.contains("not the one Coreview remembered") && l.contains(&presented)), "{:?}", refused.log);
+    assert_eq!(PASSWORDS_OFFERED.load(std::sync::atomic::Ordering::SeqCst), offered_before, "a password was offered to a host with the wrong key");
     let wrong = Auth { username: "reader".into(), password: "wrong-password-fixture".into(), enable: None, private_key: None };
     let run2 = collect_device(&mut sidecar, &catalogs, &target, &wrong, &RunOptions::default(), &Quiet).await;
     assert_eq!(run2.failure.as_deref(), Some("auth"), "{:?}", run2.log);

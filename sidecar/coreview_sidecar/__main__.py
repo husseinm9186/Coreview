@@ -90,7 +90,7 @@ class Sidecar:
             if sid in self.sessions:
                 return Response(rid, "error", session=sid, error="session already open")
             self.emit("log", sid, level="info", msg=f"opening {redact(req)['host']} as {req['os']}")
-            s = Session(sid, req["host"], int(req.get("port") or 22), req["os"], req["auth"], req.get("session_spec") or {}, req.get("timeouts") or {}, lambda ev, **kw: self.emit(ev, sid, **kw))
+            s = Session(sid, req["host"], int(req.get("port") or 22), req["os"], req["auth"], req.get("session_spec") or {}, req.get("timeouts") or {}, lambda ev, **kw: self.emit(ev, sid, **kw), known_key=req.get("known_host_key"))
             info = s.open()
             self.sessions[sid] = s
             return Response(rid, "ok", session=sid, device=req["host"], extra=info)

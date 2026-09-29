@@ -64,7 +64,7 @@ async fn a_catalyst_is_recognised_probed_planned_and_run_light_first() {
     let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
     let loc = fake_location(&catalyst_script(), "[]");
     let mut sidecar = Sidecar::spawn(&loc).await.expect("the fake sidecar starts");
-    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: None, role_override: None };
+    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: None, role_override: None, known_host_key: None };
     let run = collect_device(&mut sidecar, &catalogs, &target, &auth(), &RunOptions::default(), &Quiet).await;
     assert_eq!(run.failure, None, "{:?}", run.log);
     assert_eq!(run.os.as_deref(), Some("cisco_ios"));
@@ -108,7 +108,7 @@ async fn a_fortigate_with_vdoms_runs_its_vdom_commands_inside_each_one() {
     });
     let loc = fake_location(&script, r#"["root","dmz"]"#);
     let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
-    let target = Target { host: "192.0.2.1".into(), port: 22, os_hint: None, role_override: None };
+    let target = Target { host: "192.0.2.1".into(), port: 22, os_hint: None, role_override: None, known_host_key: None };
     let run = collect_device(&mut sidecar, &catalogs, &target, &auth(), &RunOptions::default(), &Quiet).await;
     assert_eq!(run.failure, None, "{:?}", run.log);
     assert_eq!(run.os.as_deref(), Some("fortios"));
@@ -128,7 +128,7 @@ async fn a_wrong_password_ends_the_run_at_once_with_no_second_try() {
     let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
     let loc = fake_location(&catalyst_script(), "[]");
     let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
-    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: None, role_override: None };
+    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: None, role_override: None, known_host_key: None };
     let bad = Auth { username: "reader".into(), password: "wrong-password-fixture".into(), enable: None, private_key: None };
     let run = collect_device(&mut sidecar, &catalogs, &target, &bad, &RunOptions::default(), &Quiet).await;
     assert_eq!(run.failure.as_deref(), Some("auth"));
@@ -141,7 +141,7 @@ async fn an_os_hint_skips_the_fingerprint_and_an_unknown_device_says_so() {
     let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
     let loc = fake_location(&catalyst_script(), "[]");
     let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
-    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: Some("cisco_ios".into()), role_override: Some("router".into()) };
+    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: Some("cisco_ios".into()), role_override: Some("router".into()), known_host_key: None };
     let run = collect_device(&mut sidecar, &catalogs, &target, &auth(), &RunOptions { light_only: true, ..Default::default() }, &Quiet).await;
     assert_eq!(run.failure, None);
     assert_eq!(run.role.as_deref(), Some("router"));
@@ -150,7 +150,7 @@ async fn an_os_hint_skips_the_fingerprint_and_an_unknown_device_says_so() {
 
     let unknown = fake_location(&json!({"show version": {"status": "ok", "raw": "Welcome to NoSuchOS 1.0", "rows": []}}), "[]");
     let mut sidecar2 = Sidecar::spawn(&unknown).await.unwrap();
-    let run2 = collect_device(&mut sidecar2, &catalogs, &Target { host: "192.0.2.99".into(), port: 22, os_hint: None, role_override: None }, &auth(), &RunOptions::default(), &Quiet).await;
+    let run2 = collect_device(&mut sidecar2, &catalogs, &Target { host: "192.0.2.99".into(), port: 22, os_hint: None, role_override: None, known_host_key: None }, &auth(), &RunOptions::default(), &Quiet).await;
     assert_eq!(run2.failure.as_deref(), Some("unrecognised"));
     sidecar.quit().await;
     sidecar2.quit().await;
@@ -177,7 +177,7 @@ async fn parse_answers_without_a_device_and_a_dead_sidecar_is_an_error_not_a_han
 async fn a_refused_command_never_reaches_the_sidecar_process() {
     let loc = fake_location(&json!({"show version": {"status": "ok", "raw": "Cisco IOS Software", "rows": []}}), "[]");
     let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
-    let opened = sidecar.open("s", "192.0.2.10", 22, "cisco_ios", &auth(), &json!({}), 5000, 5000).await.unwrap();
+    let opened = sidecar.open("s", "192.0.2.10", 22, "cisco_ios", &auth(), &json!({}), 5000, 5000, None).await.unwrap();
     assert_eq!(opened.status, "ok");
     let ok = sidecar.run("s", "show version", "none", &[], 5000).await.unwrap();
     assert_eq!(ok.status, "ok");
@@ -211,7 +211,7 @@ async fn shadow_mode_compares_both_parsers_and_a_flipped_os_parses_in_rust() {
     let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
     let loc = fake_location(&script, "[]");
     let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
-    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: Some("cisco_ios".into()), role_override: None };
+    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: Some("cisco_ios".into()), role_override: None, known_host_key: None };
     let options = RunOptions { engine: Some(engine.clone()), shadow: true, ..Default::default() };
     let run = collect_device(&mut sidecar, &catalogs, &target, &auth(), &options, &Quiet).await;
     let by = |cmd: &str| run.results.iter().find(|r| r.step.cmd == cmd).unwrap().outcome.clone();

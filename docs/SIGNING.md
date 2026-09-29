@@ -9,12 +9,12 @@ about SmartScreen, for the reasons below.
 
 ## What the current certificate does, and does not, do
 
-The certificate in hand is issued by **COREVIEW-FGT-Root-CA** — an internal
+The certificate in hand is issued by **COREVIEW-APP-Root-CA** — an internal
 CA, not one in the Microsoft Trusted Root Program. Its extended key usage is
 `Code Signing` (critical) and it runs to August 2036, so it signs correctly.
 What that is worth depends entirely on who is running the installer.
 
-| | Machine that trusts COREVIEW-FGT-Root-CA | Any other machine |
+| | Machine that trusts COREVIEW-APP-Root-CA | Any other machine |
 | --- | --- | --- |
 | Signature validates | Yes | No |
 | Publisher shown | COREVIEW | "Unknown Publisher" |
@@ -28,12 +28,11 @@ been altered, and it names the publisher on managed machines. It does not make
 the warning go away for anyone outside the estate, and no amount of
 configuration changes that.
 
-**If the warning is the goal**, it needs an OV or EV code-signing certificate
-from a public CA. Since June 2023 the private key for one must live in a
-FIPS 140-2 Level 2 HSM, so it arrives on a token or through a cloud signing
-service — a base64 PFX in a CI secret is no longer possible for those. Azure
-Trusted Signing is the least painful current route. EV earns reputation
-immediately; OV builds it over downloads and time.
+**Decision, 2026-09-29: Coreview stays on this certificate.** No public-CA
+certificate and no cloud signing service. What a customer does to trust it,
+and what that does and does not change for SmartScreen and Defender, is in
+`docs/INSTALL-WINDOWS.md`; the public root and signing certificates travel
+beside every installer.
 
 ## Setting it up
 
@@ -60,7 +59,10 @@ thumbprint. Signatures are timestamped against
 validating the day the certificate expires, and an installer outlives that.
 
 Both Windows artifacts are signed — the 7 MB default and the 500 MB offline
-one.
+one — and so is every PE inside the collector sidecar that its publisher has
+not already signed (`sidecar/build/sign.ps1`, LT-519). Each installer is then
+scanned on VirusTotal and fails the build on any detection; its SHA-256 goes
+into `SHA256SUMS.txt`, and CycloneDX SBOMs into `sbom/` (LT-528).
 
 ## Checking a build
 
