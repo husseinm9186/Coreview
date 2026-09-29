@@ -72,7 +72,7 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
         "arp" => &[
             ("ip", &["ip", "ip_address", "address", "ipaddr", "ip_addr", "ip_addr_out"]),
             ("mac", &["mac", "mac_address", "hardware_addr", "hw_address", "mac_addr", "hardware_address"]),
-            ("interface", &["interface", "intf", "port", "intf_out"]),
+            ("interface", &["interface", "intf", "port", "intf_out", "port_id"]),
             ("age", &["age", "age_min", "age_sec", "time_stamp"]),
             ("vrf", &["vrf", "vrf_name", "vrf_name_out"]),
         ],
@@ -107,9 +107,9 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
         ],
         "route" => &[
             ("vrf", &["vrf", "vrf_name", "routing_instance", "table", "vrf_name_out"]),
-            ("prefix", &["network", "prefix", "destination", "dest", "route", "network_prefix", "ipprefix", "ip_prefix"]),
+            ("prefix", &["network", "prefix", "destination", "dest", "route", "network_prefix", "ipprefix", "ip_prefix", "ip_address"]),
             ("mask", &["mask", "prefixlen", "prefix_length", "netmask", "subnet", "masklen", "prefix_len"]),
-            ("proto", &["protocol", "type", "source_proto", "route_source", "source", "clientname"]),
+            ("proto", &["protocol", "type", "source_proto", "route_source", "source", "clientname", "status"]),
             ("ad", &["distance", "admin_distance", "ad", "preference", "pref"]),
             ("metric", &["metric", "cost"]),
             ("next_hop", &["nexthop_ip", "next_hop", "nexthop", "gateway", "via", "next_hop_ip", "nh", "ipnexthop", "gw", "nexthopip"]),
@@ -282,7 +282,48 @@ pub fn normalise(table: &str, row: &Value) -> Normalised {
             out.extra.insert(k.clone(), (*v).clone());
         }
     }
+    if table == "route" {
+        route_fixups(&mut out.columns);
+    }
     out
+}
+
+/// LT-554: AOS-CX lists next hops and exit interfaces together (`via
+/// 172.25.0.189` and `via vlan3564` are one field), its protocol once per
+/// next hop, and distance with metric as `[20/0]`. Addresses go to
+/// `next_hop`, names stay in `interface`, a repeated protocol is said once,
+/// and the bracket pair fills `ad` and `metric`.
+fn route_fixups(c: &mut BTreeMap<String, String>) {
+    if !c.contains_key("next_hop") {
+        if let Some(list) = c.get("interface").cloned() {
+            let items: Vec<&str> = list.split(',').map(str::trim).filter(|x| !x.is_empty()).collect();
+            let (hops, names): (Vec<&str>, Vec<&str>) = items.iter().partition(|x| x.parse::<std::net::IpAddr>().is_ok());
+            if !hops.is_empty() {
+                c.insert("next_hop".into(), hops.join(", "));
+                if names.is_empty() {
+                    c.remove("interface");
+                } else {
+                    c.insert("interface".into(), names.join(", "));
+                }
+            }
+        }
+    }
+    if let Some(p) = c.get("proto").cloned() {
+        let mut words: Vec<&str> = p.split(',').map(str::trim).filter(|x| !x.is_empty()).collect();
+        words.dedup();
+        if words.len() == 1 {
+            c.insert("proto".into(), words[0].to_string());
+        }
+    }
+    if !c.contains_key("ad") {
+        if let Some(m) = c.get("metric").cloned() {
+            let first = m.split(',').next().unwrap_or("").trim();
+            if let Some((a, z)) = first.strip_prefix('[').and_then(|x| x.strip_suffix(']')).and_then(|x| x.split_once('/')) {
+                c.insert("ad".into(), a.trim().to_string());
+                c.insert("metric".into(), z.trim().to_string());
+            }
+        }
+    }
 }
 
 /// Every row of one answer into every table the command feeds.
@@ -505,6 +546,29 @@ mod tests {
         let n = normalise("route", &json!({"protocol": "S", "type": "", "network": "10.54.6.0", "netmask": "255.255.255.0", "distance": "1", "metric": "0", "nexthopip": "10.0.5.12", "nexthopif": "outside", "uptime": ""}));
         assert_eq!(n.columns.get("next_hop").map(String::as_str), Some("10.0.5.12"));
         assert_eq!(n.columns.get("interface").map(String::as_str), Some("outside"));
+    }
+
+    /// LT-554: `aruba_aoscx_show_ip_route_all-vrfs`'s own fixture rows.
+    #[test]
+    fn an_aoscx_route_has_its_prefix_next_hops_protocol_and_distance() {
+        let bgp = normalise("route", &json!({"interface": ["172.25.0.189", "172.25.0.185"], "ip_address": "0.0.0.0", "metric": ["[20/0]", "[20/0]"], "prefix_length": "0", "status": ["bgp", "bgp"], "vrf": "default"}));
+        assert_eq!(bgp.columns.get("prefix").map(String::as_str), Some("0.0.0.0"));
+        assert_eq!(bgp.columns.get("mask").map(String::as_str), Some("0"));
+        assert_eq!(bgp.columns.get("next_hop").map(String::as_str), Some("172.25.0.189, 172.25.0.185"));
+        assert_eq!(bgp.columns.get("interface"), None, "next hops are not interfaces");
+        assert_eq!(bgp.columns.get("proto").map(String::as_str), Some("bgp"));
+        assert_eq!((bgp.columns.get("ad").map(String::as_str), bgp.columns.get("metric").map(String::as_str)), (Some("20"), Some("0")));
+        let connected = normalise("route", &json!({"interface": ["vlan3564"], "ip_address": "10.252.22.128", "metric": ["[0/0]"], "prefix_length": "26", "status": ["connected"], "vrf": "default"}));
+        assert_eq!(connected.columns.get("interface").map(String::as_str), Some("vlan3564"));
+        assert_eq!(connected.columns.get("next_hop"), None);
+        assert_eq!(connected.columns.get("proto").map(String::as_str), Some("connected"));
+    }
+
+    /// LT-554: `aruba_aoscx_show_arp_all-vrfs` names the interface `port_id`.
+    #[test]
+    fn an_aoscx_arp_row_has_its_interface() {
+        let n = normalise("arp", &json!({"ip_address": "192.0.2.1", "mac_address": "00:00:00:00:00:01", "port_id": "vlan10", "physical_port": "1/1/1", "state": "reachable", "vrf": "default"}));
+        assert_eq!(n.columns.get("interface").map(String::as_str), Some("vlan10"));
     }
 
     /// LT-537: PAN-OS says `disabled: yes` of a rule that is off. Stored as

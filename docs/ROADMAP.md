@@ -601,6 +601,20 @@ needs rows the lab collection will show; none is guessed meanwhile.
 
 ## Done
 
+### LT-554 — **bug** AOS-CX routes were dropped whole, and its ARP rows had no interface — 2026-09-29, fixed the same day
+**Same sweep.** `aruba_aoscx_show_ip_route_all-vrfs` puts the prefix in
+`ip_address`, next hops and exit interfaces in one `interface` list, the
+protocol in `status` and `[distance/metric]` in `metric`; the normaliser
+found no prefix and every row was skipped — a CX switch had no routing table
+in P2 or P3. `aruba_aoscx_show_arp_all-vrfs` names the interface `port_id`.
+Affects the operator's CX 6200F. Reproduced on the fixtures' own rows first.
+**Fixed:** `ip_address` read as the route's prefix, `status` as its
+protocol, `port_id` as the ARP interface; a route rule puts the addresses of
+a mixed list in `next_hop`, keeps names in `interface`, says a repeated
+protocol once, and splits `[20/0]` into distance and metric. Both
+fixture-row tests failed before.
+
+
 ### LT-553 — **bug** ASA routes lost their next hop and interface — 2026-09-29, fixed the same day
 **Found by a sweep of every template the catalogs name** (LT-540), after
 LT-552. `cisco_asa_show_route` writes `NEXTHOPIP` and `NEXTHOPIF`; the route
