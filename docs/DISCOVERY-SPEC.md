@@ -574,3 +574,42 @@ asymmetric return, a switch path with a blocked port, a device marked
 down. "Modeled path matches traceroute on lab; verdicts correct" is the
 operator's run: a collection over the lab, Build topology, then a trace
 with **Compare with traceroute** — the match percentage is the answer.
+
+---
+
+# P4 plan — 2026-09-29, built on the operator's "start P4 without a separate plan round"
+
+Roadmap LT-542–LT-551, in the operator's order. Before it, pulled forward
+from LT-538: ASA access lists (LT-540) and an FTD's policy through its FMC
+(LT-541, which needed LT-518's API plumbing) — done, with four normaliser
+bugs a sweep found on the way (LT-552–LT-555).
+
+1. **Run diff (LT-542) and overlay edges (LT-543).** `coreview-topology`
+   gains `diff`: two runs' P2 graphs compared with devices matched by serial,
+   then MAC, then name — never by the address a run reached them on — giving
+   new and lost devices, links (with how each was seen), CDP/LLDP neighbours,
+   routing neighbours, routes (new, lost, next hop changed) and overlays.
+   `collection_diff` answers the Collect tab's "compare with an earlier run";
+   its rows share the page's existing diff row shape, so the Markdown and CSV
+   writers apply. Overlays reach the diagram: the crawl result gains
+   `tunnels` (filled from P2's overlays, and from a crawl's own VXLAN peers),
+   and the diagram draws a dotted overlay edge on the Logical view between the
+   two ends, labelled with its kind and name.
+2. **The rest of LT-538.** Route-target VRF leaking (LT-544): an imported
+   route is followed into the VRF that exports it, from the `vrf` table's
+   route-targets. MPLS L3VPN (LT-545): a BGP next hop that is a remote PE,
+   reached over the IGP, as an overlay hop with its underlay. IPv6 (LT-546):
+   the model and walk take IPv6 prefixes and addresses. Live checks inside a
+   VDOM, context or vsys (LT-547): the session enters the hop's context first.
+3. **Exports (LT-548)**: the P2 topology (devices, links with evidence,
+   overlays, findings) and the run diff as JSON, CSV and Markdown from the
+   Collect tab; the path already exports (LT-536).
+4. **SNMP fallback (LT-549)**: for a device whose SSH session could not be
+   opened, LLDP-MIB, CDP-MIB, Q-BRIDGE, IP-FORWARD and ENTITY walked with the
+   SNMP code Coreview already has, into the same tables.
+5. **Hosts and hypervisors (LT-550)**: catalogs for Linux/Proxmox, ESXi and
+   Windows, read-only.
+6. **Scheduled re-discovery (LT-551) — not built.** It conflicts with D-023,
+   which declines scheduled re-crawl "now or in the future"; D-030 proposes
+   constraints only for scheduled validation sessions and is not accepted.
+   It waits on the operator's ruling.

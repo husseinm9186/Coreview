@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { t } from '../i18n';
 import { ipc, type CollectionDevice, type CollectionEvent, type CollectionLogEntry, type CollectionRunDetail, type CollectionRunSummary, type ShadowLine, type TopologyBuilt } from '../lib/ipc';
 import { useStore } from '../state/store';
+import { CollectionRunDiff } from './CollectionRunDiff';
 import { SavedCredentialSelect } from './CredentialPicker';
 
 const PLATFORMS = ['cisco_ios', 'cisco_nxos', 'cisco_iosxr', 'arista_eos', 'juniper_junos', 'fortios', 'panos', 'aoscx', 'aoss', 'cisco_asa', 'cisco_wlc_aireos'];
@@ -360,6 +361,7 @@ export function CollectionPanel() {
               <pre className="cv-mono cv-collect-raw">{raw.text}</pre>
             </section>
           )}
+          {selected && <CollectionRunDiff runs={runs} selected={selected} />}
           <section data-region="collect-topology">
             <h3>{t('collect.topology')}</h3>
             <p className="cv-help">{t('collect.topologyHelp')}</p>

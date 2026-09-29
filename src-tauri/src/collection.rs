@@ -752,6 +752,26 @@ mod tests {
     }
 }
 
+// ------------------------------------------------------------------- diff
+
+/// LT-542: two collection runs of one project compared — devices, links,
+/// CDP/LLDP neighbours, routing neighbours, routes and overlays, with devices
+/// matched by serial and MAC rather than by the address each run reached.
+#[tauri::command(async)]
+pub fn collection_diff(state: State<'_, AppState>, before: String, after: String) -> CmdResult<coreview_topology::diff::RunDiff> {
+    let (bi, ai) = {
+        let conn = state.db.lock().map_err(db_err)?;
+        let bp = cdb::run_project(&conn, before.trim()).map_err(db_err)?.ok_or("The earlier run no longer exists.")?;
+        let ap = cdb::run_project(&conn, after.trim()).map_err(db_err)?.ok_or("That run no longer exists.")?;
+        if bp != ap {
+            return Err("Those two runs belong to different projects.".into());
+        }
+        (cdb::topology_input(&conn, before.trim()).map_err(db_err)?, cdb::topology_input(&conn, after.trim()).map_err(db_err)?)
+    };
+    let (gb, ga) = (coreview_topology::build(&bi), coreview_topology::build(&ai));
+    Ok(coreview_topology::diff::diff(coreview_topology::diff::Side { graph: &gb, devices: &bi }, coreview_topology::diff::Side { graph: &ga, devices: &ai }))
+}
+
 // ------------------------------------------------------------------- path
 
 /// LT-531: what a trace request may carry. The builder is pure and bounded;

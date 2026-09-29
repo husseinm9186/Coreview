@@ -125,6 +125,7 @@
     shadow_report: ["projectId"],
     collection_topology: ["runId", "options"],
     collection_path: ["runId", "request"],
+    collection_diff: ["before", "after"],
     collection_live: ["input", "credentials"],
     collection_raw: ["runId", "rawRef"],
     import_captures: ["projectId", "folder"],

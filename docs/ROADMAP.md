@@ -593,15 +593,6 @@ here under its ID, closed when those are.
 "start P4 without a separate plan round; write the plan into the spec and
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
-### LT-542 — P4.1 Run diff: two collection runs compared on the Collect tab — 2026-09-29
-New and lost devices, links, neighbours and routes between two runs of one
-project, shown on the Collect tab, from the P2 graph of each run.
-
-### LT-543 — P4.1 Overlay edges drawn in the diagram (VXLAN, IPsec, GRE) — 2026-09-29
-LT-527 lists overlays on the Collect tab but the diagram has no overlay
-edge; the run diff needs them drawn. Drawn apart from cables, with their
-underlay one click away.
-
 ### LT-544 — P4.2 Route-target VRF leaking in the path builder — 2026-09-29
 From LT-538: follow an imported route back to the VRF that exports it.
 
@@ -632,6 +623,38 @@ by hand, window always visible, only while the app is open, never a
 service) apply.
 
 ## Done
+
+### LT-543 — P4.1 Overlay edges drawn in the diagram (VXLAN, IPsec, GRE) — 2026-09-29, done the same day
+LT-527 lists overlays on the Collect tab but the diagram has no overlay
+edge; the run diff needs them drawn. Drawn apart from cables, with their
+underlay one click away.
+**Shipped:** the crawl result's device gains `tunnels` (kind, name, both
+addresses, the far device), filled by the collection view from P2's
+overlays; the diagram draws one dotted edge per pair and kind, labelled
+with the kind and tunnel name, on the Logical view when there is one, and
+a crawl's own VXLAN peers (LT-347) the same way. Drawn again, nothing
+doubles. **Run:** a scenario test that an IPsec tunnel reaches the view
+with its far device, a page test for IPsec and VXLAN edges, and the
+crawling, join, end-to-end and guide harnesses unchanged. **Not in it:** the
+underlay as a click on the edge — the edge's note says what carries it;
+Path-Trace shows the underlay hop by hop (LT-531).
+
+### LT-542 — P4.1 Run diff: two collection runs compared on the Collect tab — 2026-09-29, done the same day
+New and lost devices, links, neighbours and routes between two runs of one
+project, shown on the Collect tab, from the P2 graph of each run.
+**Shipped:** `coreview-topology/src/diff.rs`: devices matched across runs by
+serial, then MAC, then name (strongest first across every device, so a name
+never takes a box a serial would have), so a renamed switch reached on
+another address is "renamed", not lost and new; new, lost and changed
+devices (name, version), links (and their confidence), CDP/LLDP neighbours
+(and the far port), routing neighbours (and their state), routes per VRF
+(and their next hops) and overlays. `collection_diff` answers for two runs
+of one project; the Collect tab's "Compared with an earlier run" shows
+counts and every change, and exports Markdown and CSV through the page's
+existing diff writers. **Run:** a scenario test of two runs of one network
+(renamed and re-addressed, a cable gone, an OSPF peer dropped, a route
+added, one device gone and one new; the same run against itself is empty),
+and six checks in `e2e/collection.mjs`.
 
 ### LT-541 — FTD access policy through the FMC API — 2026-09-29, done the same day
 **Source:** the same message: "FTD equivalents via FMC API". An FTD's rules

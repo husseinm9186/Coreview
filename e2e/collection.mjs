@@ -19,7 +19,23 @@ const project = {
   documentVersion: 1,
   document: { nodes: [], edges: [], probes: [], canvas: {} },
 };
-const runs = [{ id: "col-1", projectId: "collect", seed: "192.0.2.10", startedMs: NOW, finishedMs: NOW + 9000, status: "finished", planOnly: false, diagnosticDir: "/tmp/diag", source: "live", devices: 1 }];
+const runs = [
+  { id: "col-1", projectId: "collect", seed: "192.0.2.10", startedMs: NOW, finishedMs: NOW + 9000, status: "finished", planOnly: false, diagnosticDir: "/tmp/diag", source: "live", devices: 1 },
+  // LT-542: an earlier run to compare with.
+  { id: "col-0", projectId: "collect", seed: "192.0.2.10", startedMs: NOW - 86400000, finishedMs: NOW - 86391000, status: "finished", planOnly: false, diagnosticDir: null, source: "live", devices: 1 },
+];
+// LT-542: what collection_diff answers for col-0 → col-1.
+const runDiff = {
+  changes: [
+    { kind: "device", change: "new", subject: "SW-C", before: "", after: "WS-C2960X-24TS-L" },
+    { kind: "link", change: "lost", subject: "SW-A Gi1/0/1 — SW-B Gi1/0/2", before: "cdp, confidence 1.0", after: "" },
+    { kind: "route", change: "changed", subject: "SW-A 203.0.113.0/24", before: "S via 198.51.100.9", after: "S via 198.51.100.13" },
+  ],
+  counts: [
+    { kind: "device", new: 1, lost: 0, changed: 0 }, { kind: "link", new: 0, lost: 1, changed: 0 }, { kind: "neighbor", new: 0, lost: 0, changed: 0 },
+    { kind: "routing_neighbor", new: 0, lost: 0, changed: 0 }, { kind: "route", new: 0, lost: 0, changed: 1 }, { kind: "overlay", new: 0, lost: 0, changed: 0 },
+  ],
+};
 const detail = {
   run: runs[0],
   devices: [{
@@ -78,7 +94,7 @@ const arpRows = [
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-await page.addInitScript(({ p, r, d, a, sh, tp }) => {
+await page.addInitScript(({ p, r, d, a, sh, tp, rd }) => {
   let next = 1;
   window.__calls = [];
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
@@ -94,6 +110,8 @@ await page.addInitScript(({ p, r, d, a, sh, tp }) => {
       if (cmd === "set_setting") { if (args.key === "collectorShadow") window.__shadowSetting = args.value === "true"; return Promise.resolve(); }
       if (cmd === "shadow_report") return Promise.resolve(sh);
       if (cmd === "collection_topology") return Promise.resolve(tp);
+      if (cmd === "collection_diff") return Promise.resolve(rd);
+      if (cmd === "pick_export_target") return Promise.resolve({ token: "t-diff", path: `/tmp/${args.filename}` });
       if (cmd === "vault_status") return Promise.resolve({ exists: true, unlocked: true, credentials: 1, minimumPassphrase: 12, keptInKeychain: false });
       if (cmd === "list_credentials") return Promise.resolve([
         { id: "cred-ssh", label: "reader", kind: "ssh", username: "reader", detail: "", hasSecondSecret: false },
@@ -108,7 +126,7 @@ await page.addInitScript(({ p, r, d, a, sh, tp }) => {
       return Promise.resolve([]);
     },
   };
-}, { p: project, r: runs, d: detail, a: arpRows, sh: shadowLines, tp: topology });
+}, { p: project, r: runs, d: detail, a: arpRows, sh: shadowLines, tp: topology, rd: runDiff });
 
 page.on("pageerror", (e) => console.log("PAGE EXCEPTION:", String(e).slice(0, 300)));
 await page.goto(URL, { waitUntil: "networkidle" });
@@ -117,7 +135,7 @@ await page.waitForTimeout(900);
 await page.locator(".cv-panel .cv-tabs button", { hasText: "Collect" }).click();
 await page.waitForSelector('[data-region="collect"]');
 const region = page.locator('[data-region="collect"]');
-check("the Collect tab opens with its help and a run to pick", await region.locator("p.cv-help").first().isVisible() && (await region.locator('[data-region="collect-runs"] select option').count()) === 2);
+check("the Collect tab opens with its help and a run to pick", await region.locator("p.cv-help").first().isVisible() && (await region.locator('[data-region="collect-runs"] select option').count()) === 3);
 
 await region.locator('[data-region="collect-runs"] select').selectOption("col-1");
 await page.waitForSelector('[data-region="collect-devices"]');
@@ -166,6 +184,28 @@ await topoRegion.locator("select").selectOption("0.7");
 await topoRegion.getByRole("button", { name: "Build topology" }).click();
 await page.waitForSelector('[data-region="collect-topology-summary"]');
 const built = await page.evaluate(() => window.__calls.find((c) => c.cmd === "collection_topology"));
+
+// LT-542: the selected run against an earlier one.
+{
+  const diff = region.locator('[data-region="collect-diff"]');
+  const against = diff.locator("select");
+  check("the comparison offers the earlier run and not the one selected", (await against.locator('option[value="col-0"]').count()) === 1 && (await against.locator('option[value="col-1"]').count()) === 0);
+  await against.selectOption("col-0");
+  await diff.getByRole("button", { name: "Compare" }).click();
+  await page.waitForTimeout(200);
+  const asked = await page.evaluate(() => window.__calls.find((c) => c.cmd === "collection_diff")?.args ?? null);
+  check("Compare asks for the earlier run against this one", asked?.before === "col-0" && asked?.after === "col-1", JSON.stringify(asked));
+  const counts = (await diff.locator('[data-region="collect-diff-counts"]').textContent()) ?? "";
+  check("the counts say what changed, kind by kind", counts.includes("device: 1 new, 0 gone, 0 changed") && counts.includes("link: 0 new, 1 gone") && !counts.includes("overlay"), counts);
+  const rows = diff.locator('[data-region="collect-diff-table"] tbody tr');
+  check("each change is a row, a lost one marked", (await rows.count()) === 3 && ((await rows.nth(1).getAttribute("class")) ?? "").includes("is-warning") && ((await rows.nth(1).textContent()) ?? "").includes("link gone"));
+  check("a changed route shows before and after", ((await rows.nth(2).textContent()) ?? "").includes("198.51.100.9") && ((await rows.nth(2).textContent()) ?? "").includes("198.51.100.13"));
+  await diff.getByRole("button", { name: "Export markdown" }).click();
+  await page.waitForTimeout(200);
+  const saved = await page.evaluate(() => window.__calls.filter((c) => c.cmd === "save_export").at(-1)?.args ?? null);
+  const body = saved ? Buffer.from(saved.contentsB64, "base64").toString("utf8") : "";
+  check("the comparison exports as markdown", body.includes("# Collection runs compared") && body.includes("SW-A Gi1/0/1"), body.slice(0, 120));
+}
 check("Build topology sends the run and the toggles", !!built && built.args.runId === "col-1" && built.args.options.collapseStacks === false && built.args.options.minConfidence === 0.7 && built.args.options.collapseBundles === true);
 check("the summary counts devices, links, both-ended and MAC-placed", (await region.locator('[data-region="collect-topology-summary"]').textContent()).includes("3 devices, 2 links (1 seen from both ends, 1 placed by MAC)"));
 check("a finding is shown", (await region.locator('[data-region="collect-topology-findings"]').textContent()).includes("Port-channel1"));

@@ -374,6 +374,9 @@ export interface LinkData extends Record<string, unknown> {
   /** LT-215: a layer-3 hop a crawl found — one device routes via the other —
    *  rather than a cable. Drawn on the Logical view. */
   layer3?: boolean;
+  /** LT-543: a tunnel (VXLAN, IPsec, GRE, …) between its two ends, rather
+   *  than a cable. Drawn dotted, on the Logical view when there is one. */
+  overlay?: boolean;
   sourcePortLabel: string;
   targetPortLabel: string;
   label: string;

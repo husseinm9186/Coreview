@@ -351,6 +351,8 @@ export type CrawledDevice = {
     peers: { address: string; state?: string | null; vnis: number[] }[];
     learned: { routeType: number; vni?: number | null; mac?: string | null; address?: string | null; nextHop?: string | null }[];
   };
+  /** LT-543: tunnels this device is one end of, from a collection's graph. */
+  tunnels?: { kind: string; name?: string | null; local?: string | null; remote?: string | null; peer?: string | null }[];
   /** LT-480: OTV on a Nexus 7000 — the VLANs it extends, the far edges, and
    *  which edge owns each MAC. */
   otv?: {
@@ -531,6 +533,9 @@ export type LiveHop = {
   check: { agrees: boolean | null; detail: string };
 };
 export type LiveReport = { path: number; hops: LiveHop[] };
+/** LT-542: two collection runs compared. */
+export type RunChange = { kind: 'device' | 'link' | 'neighbor' | 'routing_neighbor' | 'route' | 'overlay'; change: 'new' | 'lost' | 'changed'; subject: string; before: string; after: string };
+export type CollectionDiff = { changes: RunChange[]; counts: { kind: RunChange['kind']; new: number; lost: number; changed: number }[] };
 export type PathLiveInput = { runId: string; request: PathRequest; credentialId?: string; port: number; path?: number };
 
 /** LT-521: per (os, command), how often both parsers read a reply and how often they disagreed. */
@@ -1430,6 +1435,9 @@ export const ipc = {
   },
   collectionTopology(runId: string, options: TopologyViewOptions) {
     return invoke<TopologyBuilt>('collection_topology', { runId, options: topologyViewOptions(options) });
+  },
+  collectionDiff(before: string, after: string) {
+    return invoke<CollectionDiff>('collection_diff', { before, after });
   },
   collectionPath(runId: string, request: PathRequest) {
     return invoke<PathOutcome>('collection_path', { runId, request: pathRequest(request) });

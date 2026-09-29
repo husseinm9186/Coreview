@@ -220,6 +220,11 @@ pub struct DeviceDetails {
     /// LT-480: OTV on a Nexus 7000, read with the overlay. `None` where the
     /// platform has no OTV or the run did not ask.
     pub otv: Option<crate::otv::Otv>,
+    /// LT-543: tunnels this device is one end of (VXLAN, IPsec, GRE, DMVPN,
+    /// SD-WAN, MPLS), for overlay edges on the diagram. Filled from a
+    /// collection's P2 graph; a crawl leaves it empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tunnels: Vec<crate::overlay::Tunnel>,
 }
 
 /// Which of the extra tables a crawl collects (LT-200–204). Each costs a

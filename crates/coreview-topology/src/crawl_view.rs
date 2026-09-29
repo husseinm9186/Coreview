@@ -266,7 +266,21 @@ pub fn view_with(graph: &Graph, opts: &ViewOptions) -> CrawlView {
             port_channels,
             default_next_hop: None,
             stack: if opts.collapse_stacks { stack_of(node) } else { None },
-            details: details_of(node, opts.vrf.as_deref()),
+            details: coreview_discover::crawl::DeviceDetails {
+                tunnels: graph
+                    .overlays
+                    .iter()
+                    .filter(|o| o.a == node.id)
+                    .map(|o| coreview_discover::overlay::Tunnel {
+                        kind: o.kind.clone(),
+                        name: o.name.clone(),
+                        local: o.local_ip.clone(),
+                        remote: o.remote_ip.clone(),
+                        peer: o.b.as_deref().and_then(|b| by_id.get(b)).map(|n| n.name.clone()),
+                    })
+                    .collect(),
+                ..details_of(node, opts.vrf.as_deref())
+            },
             dns_name: None,
             evidence: Default::default(),
         });

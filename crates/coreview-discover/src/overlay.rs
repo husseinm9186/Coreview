@@ -159,6 +159,19 @@ pub struct Overlay {
     pub learned: Vec<EvpnRoute>,
 }
 
+/// LT-543: one tunnel, as the diagram draws it — its kind, its name on this
+/// device, both ends' addresses, and the far device when it is one Coreview
+/// knows.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Tunnel {
+    pub kind: String,
+    pub name: Option<String>,
+    pub local: Option<String>,
+    pub remote: Option<String>,
+    pub peer: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Peer {

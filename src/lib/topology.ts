@@ -1190,11 +1190,75 @@ export function buildTopology(
       } as TopoEdge);
     }
   }
+  // ---------------------------------------------------------------- LT-543
+  //
+  // Tunnels: a VXLAN, IPsec, GRE or DMVPN overlay between two devices is not
+  // a cable and not a route, so it is its own dotted edge, labelled with its
+  // kind and name, one per pair and kind. The far end is the device the
+  // collection named, else the one owning the far address.
+  {
+    const keyOfName = new Map<string, string>();
+    for (const d of src.devices) keyOfName.set(d.hostname.trim().toLowerCase(), identity(d.hostname, d.address));
+    const overlayDrawn = new Set(
+      (opts.existingEdges ?? [])
+        .filter((e) => (e.data as LinkData | undefined)?.overlay)
+        .map((e) => `${[e.source, e.target].sort().join('::')}:${String((e.data as LinkData).label)}`),
+    );
+    const tunnels = new Map<string, { from: string; to: string; kind: string; names: Set<string> }>();
+    const add = (from: string, to: string | undefined, kind: string, name?: string | null) => {
+      if (!to || to === from) return;
+      const k = `${[from, to].sort().join('::')}:${kind}`;
+      const t = tunnels.get(k) ?? { from, to, kind, names: new Set<string>() };
+      if (name) t.names.add(name);
+      tunnels.set(k, t);
+    };
+    for (const d of src.devices) {
+      const from = identity(d.hostname, d.address);
+      for (const t of d.tunnels ?? []) {
+        const to = (t.peer && keyOfName.get(t.peer.trim().toLowerCase())) || (t.remote ? ownerOfAddress.get(t.remote.trim()) : undefined);
+        add(from, to, t.kind, t.name);
+      }
+      // A crawl's own VXLAN peers (LT-347).
+      for (const p of d.overlay?.peers ?? []) add(from, ownerOfAddress.get(p.address.trim()), 'vxlan', p.vnis.length ? `VNI ${p.vnis.join(', ')}` : null);
+    }
+    for (const t of tunnels.values()) {
+      const source = endpointFor(t.from, '');
+      const target = endpointFor(t.to, '');
+      if (!source || !target || source === target) continue;
+      const kind = t.kind.toUpperCase() === 'IPSEC' ? 'IPsec' : t.kind.toUpperCase();
+      const label = [kind, ...t.names].join(' ');
+      const pairKey = `${[source, target].sort().join('::')}:${label}`;
+      seenLinks.add(`overlay:${pairKey}`);
+      if (overlayDrawn.has(pairKey)) continue;
+      overlayDrawn.add(pairKey);
+      edges.push({
+        id: uid(),
+        source,
+        target,
+        sourceHandle: 'b',
+        targetHandle: 't',
+        type: 'live',
+        data: {
+          sourcePortLabel: '',
+          targetPortLabel: '',
+          label,
+          notes: `A ${kind} tunnel, not a cable: what carries it is the routed path between the two ends.`,
+          direction: 'both',
+          lineStyle: 'dotted',
+          overlay: true,
+          ...(logicalView ? { layers: [logicalView] } : {}),
+          enabled: true,
+          maintenance: false,
+          healthRule: { type: 'both-endpoints' },
+        } as Partial<LinkData>,
+      } as TopoEdge);
+    }
+  }
   // Cables belong to the physical view.
   if (opts.views?.physical) {
     for (const e of [...edges, ...edgesFromAttached]) {
       const d = e.data as Partial<LinkData>;
-      if (!d.layer3) d.layers = [opts.views.physical];
+      if (!d.layer3 && !d.overlay) d.layers = [opts.views.physical];
     }
   }
 

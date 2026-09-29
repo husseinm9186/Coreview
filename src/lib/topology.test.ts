@@ -243,6 +243,32 @@ describe('buildTopology', () => {
     expect(t.edges).toHaveLength(1);
   });
 
+  it('draws a tunnel as a dotted overlay edge on the logical view, once per pair (LT-543)', () => {
+    const tunnel = (peer: string, remote: string) => ({ kind: 'ipsec', name: 'Tunnel10', local: null, remote, peer });
+    const src = {
+      devices: [
+        device('HQ-R1', '198.51.100.1', [], { tunnels: [tunnel('BRANCH-R1', '203.0.113.1')] }),
+        // The far end lists the same tunnel back: still one edge.
+        device('BRANCH-R1', '203.0.113.1', [], { hops: 1, tunnels: [tunnel('HQ-R1', '198.51.100.1')] }),
+        // A crawl's own VXLAN peer, found by the far VTEP's address.
+        device('LEAF-1', '192.0.2.11', [], { hops: 1, overlay: { vtep: '192.0.2.11', segments: [], peers: [{ address: '192.0.2.12', vnis: [10010] }], learned: [] } }),
+        device('LEAF-2', '192.0.2.12', [], { hops: 1 }),
+      ],
+      notVisited: [],
+    };
+    const t = buildTopology(src, 'p', { views: { physical: 'phys', logical: 'logi' } });
+    const overlays = t.edges.filter((e) => (e.data as LinkData).overlay);
+    expect(overlays.map((e) => (e.data as LinkData).label).sort()).toEqual(['IPsec Tunnel10', 'VXLAN VNI 10010']);
+    for (const e of overlays) {
+      const d = e.data as LinkData;
+      expect(d.lineStyle).toBe('dotted');
+      expect(d.layers).toEqual(['logi']);
+    }
+    // Drawn again onto the same diagram: nothing doubled.
+    const again = buildTopology(src, 'p', { views: { physical: 'phys', logical: 'logi' }, existingNodes: t.nodes, existingEdges: t.edges });
+    expect(again.edges.filter((e) => (e.data as LinkData).overlay)).toHaveLength(0);
+  });
+
   it('draws cables on the physical view and layer-3 hops on the logical one (LT-215)', () => {
     const route = (prefix: string, hop: string) => ({ family: 4 as const, prefix, code: 'O', protocol: 'ospf', nextHops: [hop], interface: null, distance: 110, metric: 2 });
     const src = {

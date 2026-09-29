@@ -14,6 +14,7 @@
 //! the crawl result the review screen and the diagram already draw.
 
 pub mod crawl_view;
+pub mod diff;
 pub mod identity;
 pub mod ifname;
 pub mod inferred;

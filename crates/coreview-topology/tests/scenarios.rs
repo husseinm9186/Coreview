@@ -253,3 +253,65 @@ fn the_review_toggles_shape_what_the_page_gets() {
     assert!(sw(&vlan20, "SW1").attached.iter().all(|a| a.vlan.as_deref() == Some("20")));
 }
 
+
+/// LT-542: two runs of the same network, the second changed. SW1 was
+/// renamed and reached on another address, and is still SW1; a cable went,
+/// an OSPF neighbour dropped, a route arrived, the firewall was not reached
+/// and a new switch was.
+#[test]
+fn two_runs_differ_in_devices_links_neighbours_peers_and_routes() {
+    let before = two_switches();
+    let mut after = two_switches();
+    {
+        let sw1 = after.iter_mut().find(|d| d.device_id == "sw1").unwrap();
+        sw1.host = "192.0.2.100".into();
+        sw1.tables.get_mut("device").unwrap()[0].columns.insert("hostname".into(), "SW1-CORE".into());
+        sw1.tables.get_mut("neighbor").unwrap().retain(|r| r.get("local_if") != Some("GigabitEthernet1/0/1"));
+        sw1.tables.get_mut("routing_neighbor").unwrap()[0].columns.insert("state".into(), "INIT/DROTHER".into());
+        sw1.tables.entry("route".into()).or_default().push(row("show_ip_route", &[("prefix", "203.0.113.0"), ("mask", "24"), ("proto", "S"), ("next_hop", "198.51.100.9")]));
+    }
+    for d in after.iter_mut().filter(|d| d.device_id.starts_with("sw2")) {
+        d.tables.get_mut("neighbor").unwrap().retain(|r| r.get("local_if") != Some("Gi1/0/2"));
+    }
+    after.retain(|d| d.device_id != "fw1");
+    after.push(device("sw3", "192.0.2.3", "cisco_ios", "switch", vec![("device", vec![row("show_version", &[("hostname", "SW3"), ("serial", "FAKE0000004"), ("model", "WS-C2960X-24TS-L")])])]));
+    let (gb, ga) = (build(&before), build(&after));
+    let d = diff::diff(diff::Side { graph: &gb, devices: &before }, diff::Side { graph: &ga, devices: &after });
+    let has = |kind: &str, change: &str, needle: &str| d.changes.iter().any(|c| c.kind == kind && c.change == change && (c.subject.contains(needle) || c.after.contains(needle) || c.before.contains(needle)));
+    assert!(has("device", "changed", "SW1-CORE"), "renamed, not lost and new: {:#?}", d.changes);
+    assert!(!has("device", "lost", "SW1") && !has("device", "new", "SW1-CORE"));
+    assert!(has("device", "new", "SW3"));
+    assert!(has("device", "lost", "FW1"));
+    assert!(has("link", "lost", "SW1 Gi1/0/1"), "{:#?}", d.changes);
+    assert!(has("neighbor", "lost", "SW1 Gi1/0/1"));
+    assert!(has("routing_neighbor", "changed", "INIT/DROTHER"));
+    assert!(has("route", "new", "SW1 203.0.113.0/24"));
+    // The bundle and the stack did not change, and are not reported.
+    assert!(!d.changes.iter().any(|c| c.subject.contains("Po1") || c.subject.contains("Port-channel1")), "{:#?}", d.changes);
+    let count = |kind: &str| d.counts.iter().find(|c| c.kind == kind).unwrap().clone();
+    assert_eq!((count("device").new, count("device").lost, count("device").changed), (1, 1, 1));
+    // The same run against itself: nothing.
+    let same = diff::diff(diff::Side { graph: &gb, devices: &before }, diff::Side { graph: &gb, devices: &before });
+    assert!(same.changes.is_empty(), "{:#?}", same.changes);
+}
+
+/// LT-543: an IPsec tunnel between two collected routers reaches the crawl
+/// view as a tunnel naming its far device, so the diagram can draw it.
+#[test]
+fn a_tunnel_between_two_routers_is_in_the_view_with_its_far_end() {
+    let r = |id: &str, name: &str, serial: &str, me: &str, peer: &str| {
+        device(id, me, "cisco_ios", "router", vec![
+            ("device", vec![row("show_version", &[("hostname", name), ("serial", serial)])]),
+            ("ip_address", vec![row("show_ip_interface_brief", &[("interface", "Gi0/0"), ("ip", me), ("prefixlen", "30")])]),
+            ("tunnel", vec![row("show_crypto_ipsec_sa", &[("name", "Tunnel10"), ("local_ip", me), ("remote_ip", peer)])]),
+        ])
+    };
+    let devices = vec![r("hq", "HQ-R1", "FAKEHQ00001", "198.51.100.1", "203.0.113.1"), r("br", "BRANCH-R1", "FAKEBR00001", "203.0.113.1", "198.51.100.1")];
+    let view = crawl_view::view(&build(&devices));
+    let hq = view.devices.iter().find(|d| d.hostname == "HQ-R1").unwrap();
+    let t = &hq.details.tunnels;
+    assert_eq!(t.len(), 1, "{t:?}");
+    assert_eq!((t[0].kind.as_str(), t[0].name.as_deref(), t[0].remote.as_deref(), t[0].peer.as_deref()), ("ipsec", Some("Tunnel10"), Some("203.0.113.1"), Some("BRANCH-R1")));
+    let json = serde_json::to_value(hq).unwrap();
+    assert_eq!(json["tunnels"][0]["peer"], "BRANCH-R1", "the page reads it at the top of the device, where details are flattened");
+}

@@ -239,6 +239,7 @@ fn main() {
             collection::shadow_report,
             collection::collection_topology,
             collection::collection_path,
+            collection::collection_diff,
             collection::collection_live,
             collection::collection_raw,
             collection::import_captures,
