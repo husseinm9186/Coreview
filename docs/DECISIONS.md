@@ -240,6 +240,8 @@ trend sparklines are reversed (D-029). Scheduled sessions and OS alerts are
 and this entry's decline of them stands until D-030 is accepted. Scheduled
 re-crawl, down-device alerting beyond D-030's scope, and availability / SLA
 summaries remain declined.
+**Reaffirmed 2026-09-29** (Q-019, LT-551): no scheduled re-discovery — "the
+app never touches a device unless I press Collect."
 
 ### D-024 — Do not bundle a Visio converter into the Windows installer — 2026-09-04
 **Decision:** Windows `.vss`/`.vssx` import does not carry its own copy of

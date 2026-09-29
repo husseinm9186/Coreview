@@ -577,14 +577,6 @@ pulled into Phase 1.*
 "start P4 without a separate plan round; write the plan into the spec and
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
-### LT-551 — P4.6 Scheduled re-discovery — 2026-09-29 — **blocked on the operator's ruling**
-**Conflicts with D-023**, which declines "scheduled re-crawl" and says it
-"remain[s] declined" after D-029/D-030. D-030 (proposed, not accepted)
-covers only scheduled *validation sessions*. Not built until the operator
-reverses that clause of D-023, and says whether D-030's constraints (armed
-by hand, window always visible, only while the app is open, never a
-service) apply.
-
 ## Done
 
 ### LT-550 — P4.5 Hosts and hypervisors: Linux/Proxmox, ESXi, Windows catalogs — 2026-09-29, done the same day
@@ -12930,6 +12922,17 @@ This file, `docs/DECISIONS.md`, `docs/OPEN-QUESTIONS.md` and `CLAUDE.md`.
 
 *Explicitly ruled out by the operator. Kept with their IDs (never deleted),
 never to be built.*
+
+### LT-551 — P4.6 Scheduled re-discovery — 2026-09-29 — declined 2026-09-29
+**Conflicts with D-023**, which declines "scheduled re-crawl" and says it
+"remain[s] declined" after D-029/D-030. D-030 (proposed, not accepted)
+covers only scheduled *validation sessions*. Not built until the operator
+reverses that clause of D-023, and says whether D-030's constraints (armed
+by hand, window always visible, only while the app is open, never a
+service) apply.
+**Declined 2026-09-29** by the operator on Q-019: "keep D-023. No scheduled
+re-discovery — the app never touches a device unless I press Collect. Drop
+LT-551."
 
 ### LT-396 — IPAM: JSON import and export
 **Declined 2026-09-22:** "I don't want JSON import and export." Part of the
