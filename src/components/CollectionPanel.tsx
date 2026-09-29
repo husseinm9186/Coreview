@@ -14,6 +14,8 @@ import { t } from '../i18n';
 import { ipc, type CollectionDevice, type CollectionEvent, type CollectionLogEntry, type CollectionRunDetail, type CollectionRunSummary, type ShadowLine, type TopologyBuilt } from '../lib/ipc';
 import { useStore } from '../state/store';
 import { CollectionRunDiff } from './CollectionRunDiff';
+import { saveExport } from '../lib/exports';
+import { topologyCsv, topologyJson, topologyMarkdown } from '../lib/topologyExport';
 import { SavedCredentialSelect } from './CredentialPicker';
 
 const PLATFORMS = ['cisco_ios', 'cisco_nxos', 'cisco_iosxr', 'arista_eos', 'juniper_junos', 'fortios', 'panos', 'aoscx', 'aoss', 'cisco_asa', 'cisco_wlc_aireos'];
@@ -161,6 +163,15 @@ export function CollectionPanel() {
       .finally(() => setBuilding(false));
   };
 
+  /** LT-548: the built topology, written beside the project's other exports. */
+  const exportTopology = (ext: 'json' | 'csv' | 'md') => {
+    if (!topo || !selected) return;
+    const body = ext === 'json' ? topologyJson(topo.graph) : ext === 'csv' ? topologyCsv(topo.graph) : topologyMarkdown(topo.graph, selected);
+    const mime = ext === 'json' ? 'application/json' : ext === 'csv' ? 'text/csv' : 'text/markdown';
+    void saveExport(`topology-${selected}.${ext}`, body, mime, useStore.getState().settings.exportFolder)
+      .then(() => setProblem(null))
+      .catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)));
+  };
   const reviewTopology = () => {
     if (!topo || !selected) return;
     useStore.getState().setPendingCrawlResult({ devices: topo.devices, notVisited: topo.notVisited, label: t('collect.handedOver', { run: selected, devices: topo.devices.length }) });
@@ -381,6 +392,13 @@ export function CollectionPanel() {
               <label className="cv-field cv-field-narrow"><span>{t('collect.vrf')}</span><input className="cv-input cv-mono" value={vrfFilter} onChange={(e) => setVrfFilter(e.target.value)} /></label>
               <button type="button" className="cv-btn" disabled={building} onClick={buildTopology}>{building ? t('collect.building') : t('collect.build')}</button>
               {topo && <button type="button" className="cv-btn cv-btn-start" onClick={reviewTopology}>{t('collect.review')}</button>}
+              {topo && selected && (
+                <span data-region="collect-topology-export">
+                  <button type="button" className="cv-btn cv-btn-small" onClick={() => exportTopology('json')}>{t('cpath.exportJson')}</button>
+                  <button type="button" className="cv-btn cv-btn-small" onClick={() => exportTopology('csv')}>{t('cpath.exportCsv')}</button>
+                  <button type="button" className="cv-btn cv-btn-small" onClick={() => exportTopology('md')}>{t('cpath.exportMarkdown')}</button>
+                </span>
+              )}
             </div>
             {topo && (
               <>

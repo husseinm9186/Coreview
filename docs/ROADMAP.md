@@ -577,9 +577,6 @@ pulled into Phase 1.*
 "start P4 without a separate plan round; write the plan into the spec and
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
-### LT-548 — P4.3 Exports: topology and path results as JSON, CSV and markdown — 2026-09-29
-The path already exports from Path-Trace (LT-536); the P2 topology does not.
-
 ### LT-549 — P4.4 SNMP fallback when SSH fails — 2026-09-29
 LLDP-MIB, CDP-MIB, Q-BRIDGE, IP-FORWARD and ENTITY into the same tables,
 used only for a device whose SSH session could not be opened.
@@ -595,6 +592,15 @@ by hand, window always visible, only while the app is open, never a
 service) apply.
 
 ## Done
+
+### LT-548 — P4.3 Exports: topology and path results as JSON, CSV and markdown — 2026-09-29, done the same day
+The path already exports from Path-Trace (LT-536); the P2 topology does not.
+**Shipped:** after Build topology, the Collect tab exports the graph as JSON
+(as the builder gave it), CSV (one row per link: both ends by name, how it
+was seen, confidence, bundle and members, evidence) and Markdown (devices,
+links, layer 3, overlays, findings), from `src/lib/topologyExport.ts`. The
+run diff exports from its own section (LT-542) and the path from Path-Trace
+(LT-536). **Run:** three page tests, three checks in `e2e/collection.mjs`.
 
 ### LT-547 — P4.2 Live checks inside a VDOM, context or vsys — 2026-09-29, done the same day
 From LT-538: a live check today runs in the session's default scope.

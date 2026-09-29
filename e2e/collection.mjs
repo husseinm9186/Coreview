@@ -185,6 +185,16 @@ await topoRegion.getByRole("button", { name: "Build topology" }).click();
 await page.waitForSelector('[data-region="collect-topology-summary"]');
 const built = await page.evaluate(() => window.__calls.find((c) => c.cmd === "collection_topology"));
 
+// LT-548: the built topology written out, three ways.
+for (const [label, ext, needle] of [["Export JSON", "json", '"links"'], ["Export CSV", "csv", "a_device,a_port,b_device"], ["Export markdown", "md", "# Topology from collection col-1"]]) {
+  await region.locator('[data-region="collect-topology-export"] button', { hasText: label }).click();
+  await page.waitForTimeout(200);
+  const saved = await page.evaluate(() => window.__calls.filter((c) => c.cmd === "save_export").at(-1)?.args ?? null);
+  const target = await page.evaluate(() => window.__calls.filter((c) => c.cmd === "pick_export_target").at(-1)?.args ?? null);
+  const body = saved ? Buffer.from(saved.contentsB64, "base64").toString("utf8") : "";
+  check(`the topology's ${label} writes a .${ext}`, target?.filename === `topology-col-1.${ext}` && body.includes(needle), `${target?.filename} ${body.slice(0, 80)}`);
+}
+
 // LT-542: the selected run against an earlier one.
 {
   const diff = region.locator('[data-region="collect-diff"]');
