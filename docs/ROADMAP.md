@@ -147,28 +147,8 @@ into the NSIS installer. **Added since:** a VirusTotal step after the
 build (`.github/actions/virustotal/scan.ps1`: upload, wait, fail on any
 malicious or suspicious verdict, SHA-256 into `SHA256SUMS.txt` beside the
 installer) — skipped with a notice until a `VIRUSTOTAL_API_KEY` secret is
-set. **Not yet:** a fresh Windows install running a collection with no
-Python on the machine (the operator's test of this build), the VirusTotal
-key. The SBOM is LT-528.
-
-### LT-530 — Prove the installed Windows build collects with no Python on the machine — 2026-09-29
-**Source:** the operator, 2026-09-29: "Does the Windows build at 7584ecd
-actually run a collection with no system Python installed? That was
-listed as unconfirmed in LT-519. Tell me before I install it." It does
-not, as far as anything has shown: CI proved only that the laid sidecar
-starts (`--version`) on a runner that has Python installed. Nothing has
-installed the NSIS package, checked that the installed app finds
-`sidecar\python.exe`, `catalog\` and `templates\ntc\` where it looks,
-or opened an SSH session through paramiko on Windows.
-**Acceptance:** a CI job after the Windows bundle: installs the artifact's
-installer silently, fails unless the installed tree has `coreview.exe`,
-`sidecar\python.exe`, the catalogs and the templates at the paths
-`collection.rs` resolves, strips every Python (and the Store alias) from
-`PATH` and proves none is left, then runs a collection through the
-**installed** interpreter, catalogs and templates against the russh fake
-switch — the same `Sidecar` client the app uses — and fails unless the
-replies are written and parsed. What it cannot cover is the app's own
-window; that stays the operator's first run.
+set. A fresh Windows install collecting with no Python on the machine was
+proven on CI by LT-530 (657e963). **Not yet:** the VirusTotal key. The SBOM is LT-528.
 
 ### LT-527 — P2: the topology builder — approved 2026-09-29
 **Source:** the spec's P2 ("Topology builder + reconciliation + UI.
@@ -544,6 +524,36 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-530 — Prove the installed Windows build collects with no Python on the machine — 2026-09-29, done the same day
+**Source:** the operator, 2026-09-29: "Does the Windows build at 7584ecd
+actually run a collection with no system Python installed? That was
+listed as unconfirmed in LT-519. Tell me before I install it." It does
+not, as far as anything has shown: CI proved only that the laid sidecar
+starts (`--version`) on a runner that has Python installed. Nothing has
+installed the NSIS package, checked that the installed app finds
+`sidecar\python.exe`, `catalog\` and `templates\ntc\` where it looks,
+or opened an SSH session through paramiko on Windows.
+**Acceptance:** a CI job after the Windows bundle: installs the artifact's
+installer silently, fails unless the installed tree has `coreview.exe`,
+`sidecar\python.exe`, the catalogs and the templates at the paths
+`collection.rs` resolves, strips every Python (and the Store alias) from
+`PATH` and proves none is left, then runs a collection through the
+**installed** interpreter, catalogs and templates against the russh fake
+switch — the same `Sidecar` client the app uses — and fails unless the
+replies are written and parsed. What it cannot cover is the app's own
+window; that stays the operator's first run.
+**Done 2026-09-29 — green on CI (657e963).** The job installed the
+artifact's NSIS installer silently to `C:\Program Files\Coreview`, found
+`coreview.exe` (signed, COREVIEW-APP Code Signing), `sidecar\python.exe`,
+scrapli, paramiko, the catalogs and the templates where `collection.rs`
+looks, removed every Python and the Store alias from `PATH` and proved
+none was left, and collected from the russh fake switch through the
+installed interpreter, catalogs and templates: "2 replies ok, show version
+and show ip arp parsed to rows". The installer tested is 657e963's; the
+application code is the same as 7584ecd's (only the capture example, the
+workflow and the docs changed). Not covered: the app's own window driving
+a collection — the operator's first run.
 
 ### LT-528 — SBOM: what the installer carries, listed and audited — 2026-09-29, done the same day
 **Source:** the operator, 2026-09-29: "Add the SBOM step now (cargo
