@@ -159,6 +159,15 @@ class Session:
         except (ScrapliConnectionError, OSError) as e:
             raise SessionError("error", str(e)) from None
         if self.generic:
+            if self.os == "generic":
+                # LT-561: the pass that recognises a device knows nothing of it
+                # yet, and a Catalyst's `show version` stops at --More--, where
+                # the switch drops the session. Most CLIs take this; the rest
+                # answer with an error, which is ignored.
+                try:
+                    self.conn.send_command("terminal length 0", timeout_ops=10)
+                except Exception:  # noqa: BLE001 — a device that does not know it is still recognised
+                    pass
             self._generic_on_open()
         self._detect_contexts()
         self._disable_paging()

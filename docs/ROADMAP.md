@@ -579,6 +579,17 @@ I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
 
+### LT-561 — **bug** The fingerprint session left the pager on, and a Catalyst closed the connection at `--More--` — 2026-09-29, fixed the same day
+**Found by the lab run (LT-558).** The pass that recognises a device opens a
+generic session with no paging step, so a Catalyst's `show version` stopped
+at `--More--` and the switch dropped the connection; every later probe
+failed and the device was "unrecognised". The fake switch the tests use
+never pages. **Reproduced** by a sidecar test that the generic session sends
+`terminal length 0` on opening, failing before the fix.
+**Fixed:** the fingerprint session sends `terminal length 0` on opening and
+ignores a device that does not know it. The test failed before; the
+Catalyst is now recognised.
+
 ### LT-560 — **bug** A FortiGate or FortiSwitch session never opened: `auth_secondary` passed to a driver that takes none — 2026-09-29, fixed the same day
 **Found by the lab run (LT-558).** Both Fortinet boxes were recognised as
 `fortios`, then the catalog session failed with `TypeError:
@@ -793,14 +804,6 @@ finds (LT-521) — the results go to the operator.
 validate the other devices like aruba, cisco Nexus, IOS XE and XR, asa,
 fmc, etc". Waits on the lab being on; then the same run and rules as LT-558
 per platform, the FMC through LT-541's collector.
-
-### LT-561 — **bug** The fingerprint session left the pager on, and a Catalyst closed the connection at `--More--` — 2026-09-29
-**Found by the lab run (LT-558).** The pass that recognises a device opens a
-generic session with no paging step, so a Catalyst's `show version` stopped
-at `--More--` and the switch dropped the connection; every later probe
-failed and the device was "unrecognised". The fake switch the tests use
-never pages. **Reproduced** by a sidecar test that the generic session sends
-`terminal length 0` on opening, failing before the fix.
 
 ### LT-563 — **bug** FortiOS and FortiSwitchOS 7.6 `get system status` was unread: no hostname, serial or MAC — 2026-09-29
 **Found by the lab run.** 7.6 prints lines the ntc template does not know
