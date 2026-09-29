@@ -11,6 +11,7 @@ import { useRovingTabindex } from './useRovingTabindex';
 import { eventsToCsv } from '../lib/csv';
 import { saveExport, slug } from '../lib/exports';
 import { DiscoverPanel } from './DiscoverPanel';
+import { CollectionPanel } from './CollectionPanel';
 import { CrawlPanel } from './CrawlPanel';
 import { BackupPanel } from './BackupPanel';
 import { PathCheckPanel } from './PathCheckPanel';
@@ -123,7 +124,7 @@ export function StatusPanel() {
 
   // LT-319: Compare, Racks and the two imports left for a screen of their own.
   // What is here is what reports on the diagram while it is being worked on.
-  const [tab, setTab] = useState<'objects' | 'events' | 'discover' | 'crawl' | 'backup' | 'path' | 'trace' | 'tracert' | 'whereis' | 'ssh'>('objects');
+  const [tab, setTab] = useState<'objects' | 'events' | 'discover' | 'crawl' | 'collect' | 'backup' | 'path' | 'trace' | 'tracert' | 'whereis' | 'ssh'>('objects');
   useEffect(() => {
     if (!panelRequest) return;
     // LT-300: the register moved to a screen of its own. Anything that still
@@ -309,7 +310,7 @@ export function StatusPanel() {
   }
 
   return (
-    <div className={`cv-panel${tab === 'crawl' || tab === 'discover' || tab === 'backup' || tab === 'ssh' || tab === 'trace' || tab === 'tracert' || tab === 'whereis' ? ' is-tall' : ''}`}>
+    <div className={`cv-panel${tab === 'crawl' || tab === 'collect' || tab === 'discover' || tab === 'backup' || tab === 'ssh' || tab === 'trace' || tab === 'tracert' || tab === 'whereis' ? ' is-tall' : ''}`}>
       <div className="cv-panel-head">
         <div
           className="cv-tabs"
@@ -365,6 +366,16 @@ export function StatusPanel() {
             onClick={() => setTab('crawl')}
           >
             Discover devices
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'collect'}
+            tabIndex={tab === 'collect' ? 0 : -1}
+            className={tab === 'collect' ? 'is-active' : ''}
+            onClick={() => setTab('collect')}
+          >
+            Collect
           </button>
           <button
             type="button"
@@ -436,7 +447,7 @@ export function StatusPanel() {
           </button>
         </div>
 
-        {tab !== 'discover' && tab !== 'crawl' && tab !== 'backup' && tab !== 'path' && tab !== 'trace' && tab !== 'tracert' && tab !== 'whereis' && tab !== 'ssh' && (
+        {tab !== 'discover' && tab !== 'crawl' && tab !== 'collect' && tab !== 'backup' && tab !== 'path' && tab !== 'trace' && tab !== 'tracert' && tab !== 'whereis' && tab !== 'ssh' && (
           <>
             <input
               className="cv-input cv-panel-search"
@@ -486,6 +497,8 @@ export function StatusPanel() {
           <PathCheckPanel />
         ) : tab === 'trace' ? (
           <PathTracePanel />
+        ) : tab === 'collect' ? (
+          <CollectionPanel />
         ) : tab === 'tracert' ? (
           <TracertPanel />
         ) : tab === 'whereis' ? (

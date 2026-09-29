@@ -17,6 +17,8 @@ mod ipc_contract;
 mod file_properties;
 mod commands;
 mod discovery;
+mod collection;
+mod collection_db;
 mod terminal;
 mod vault_commands;
 mod meraki;
@@ -229,6 +231,13 @@ fn main() {
             commands::cancel_sweep,
             commands::describe_subnet,
             discovery::start_crawl,
+            collection::start_collection,
+            collection::cancel_collection,
+            collection::list_collection_runs,
+            collection::collection_run,
+            collection::collection_table,
+            collection::collection_raw,
+            collection::import_captures,
             discovery::cancel_crawl,
             discovery::ping_from_device,
             discovery::traceroute_from_device,

@@ -95,6 +95,10 @@ export const backupInput = (input: object) => {
   return out;
 };
 
+/** `CollectionInput` in `src-tauri/src/collection.rs` (LT-514). */
+export const collectionInput = (o: object) =>
+  pickAll(o, ['projectId', 'targets', 'port', 'osHint', 'roleOverride', 'planOnly', 'lightOnly', 'credentialId', 'keepDiagnostic', 'connectTimeoutSecs', 'authTimeoutSecs']);
+
 /** `SweepOptions` in `coreview-probe/src/sweep.rs`. */
 export const sweepOptions = (o: object) => pickAll(o, ['timeoutMs', 'concurrency', 'identify', 'scanPorts', 'ports']);
 

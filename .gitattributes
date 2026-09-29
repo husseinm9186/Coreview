@@ -13,3 +13,6 @@
 *.deb binary
 *.woff binary
 *.woff2 binary
+# Vendored ntc-templates data stays byte-identical to upstream: TextFSM fixtures
+# are matched as captured, so no line-ending normalisation (LT-509).
+resources/templates/** -text

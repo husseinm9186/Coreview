@@ -92,7 +92,10 @@ class Session:
         }
         platform = PLATFORMS.get(os_name)
         if platform is None:
-            prompt = self.spec.get("prompt_pattern") or r"^.*[>#$]\s*$"
+            # "generic" (the fingerprint pass, before the OS is known) and any OS
+            # without a scrapli platform run on the GenericDriver with the
+            # catalog's prompt pattern, or a loose one that matches every CLI.
+            prompt = self.spec.get("prompt_pattern") or r"^.*[>#$%\]]\s*$"
             self.conn = GenericDriver(comms_prompt_pattern=prompt, **common)
             self.generic = True
         else:

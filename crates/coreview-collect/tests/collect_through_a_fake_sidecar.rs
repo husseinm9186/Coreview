@@ -1,0 +1,170 @@
+//! The collector end to end against `examples/fake_sidecar.rs`: a device
+//! is fingerprinted from its `show version`, its probes set flags, the
+//! plan runs light first with the gated commands in and the others
+//! skipped with a reason, VRFs found expand the second pass, contexts are
+//! entered and left, a raw configuration comes back scrubbed, and an
+//! authentication failure ends the run without a second try.
+
+use std::path::PathBuf;
+
+use coreview_catalog::load_dir;
+use coreview_collect::run::{collect_device, Quiet, RunOptions, Target};
+use coreview_collect::sidecar::{Auth, Sidecar, SidecarLocation};
+use serde_json::json;
+
+fn repo() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// Build the fake once and hand back a `python`-shaped location that runs it.
+fn fake_location(script: &serde_json::Value, contexts: &str) -> SidecarLocation {
+    // cargo builds every example before running the integration tests; the binary sits beside the test's own.
+    let exe = std::env::current_exe().unwrap().parent().unwrap().parent().unwrap().join("examples").join(if cfg!(windows) { "fake_sidecar.exe" } else { "fake_sidecar" });
+    assert!(exe.exists(), "no fake sidecar at {}", exe.display());
+    let dir = std::env::temp_dir().join(format!("coreview-fake-sidecar-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let script_path = dir.join(format!("script-{}.json", rand_suffix()));
+    std::fs::write(&script_path, serde_json::to_string(script).unwrap()).unwrap();
+    // The client passes `-m coreview_sidecar`; a wrapper script swallows that and sets the script.
+    let wrapper = dir.join(format!("run-{}.sh", rand_suffix()));
+    std::fs::write(&wrapper, format!("#!/bin/sh\nFAKE_SIDECAR_SCRIPT='{}' FAKE_SIDECAR_CONTEXTS='{}' exec '{}'\n", script_path.display(), contexts, exe.display())).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    SidecarLocation { python: wrapper, cwd: dir, templates_dir: repo().join("resources/templates/ntc") }
+}
+
+fn rand_suffix() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64
+}
+
+fn auth() -> Auth {
+    Auth { username: "reader".into(), password: "not-a-real-password-fixture".into(), enable: None, private_key: None }
+}
+
+fn catalyst_script() -> serde_json::Value {
+    json!({
+        "show version": {"status": "ok", "raw": "Cisco IOS Software, C2960X Software (C2960X-UNIVERSALK9-M), Version 15.2(7)E7\ncisco WS-C2960X-24TS-L (APM86XXX) processor", "rows": [{"version": "15.2(7)E7", "hostname": "SW-A", "hardware": ["WS-C2960X-24TS-L"], "serial": ["FAKE0000001"]}]},
+        "show ip protocols": {"status": "ok", "raw": "*** IP Routing is NSF aware ***\n\nRouting Protocol is \"ospf 1\"\n  Router ID 192.0.2.10", "rows": []},
+        "show run | include ^ip routing|^router |^ip route |^vrf definition|^ip vrf |^interface Tunnel|^ip nat |^crypto |^ip policy|^mpls |^interface Port-channel|^ standby|^ vrrp|^ glbp": {"status": "ok", "raw": "ip routing\nvrf definition CUST-A\nrouter ospf 1\n", "rows": []},
+        "show vrf": {"status": "ok", "raw": "  Name   Default RD   Protocols   Interfaces\n  CUST-A 65000:1      ipv4        Vl10\n", "rows": [{"name": "CUST-A", "default_rd": "65000:1", "protocols": "ipv4", "interfaces": ["Vl10"]}]},
+        "show ip route vrf CUST-A": {"status": "ok", "raw": "S 0.0.0.0/0 via 192.0.2.1", "rows": [{"protocol": "S", "network": "0.0.0.0", "mask": "0", "nexthop_ip": ["192.0.2.1"]}]},
+        "show ip arp vrf CUST-A": {"status": "ok", "raw": "Internet 192.0.2.1 0 0000.0000.0001 ARPA Vlan10", "rows": [{"ip_address": "192.0.2.1", "mac_address": "0000.0000.0001", "interface": "Vlan10", "age": "0"}]},
+        "show running-config": {"status": "ok", "raw": "hostname SW-A\nenable secret 5 $1$FAKE$notreal\nsnmp-server community FAKE-COMMUNITY RO\nend", "rows": []},
+        "show ip ospf neighbor": {"status": "ok", "raw": "Neighbor ID Pri State Dead Time Address Interface\n192.0.2.11 1 FULL/DR 00:00:35 192.0.2.11 Vlan10", "rows": [{"neighbor_id": "192.0.2.11", "priority": "1", "state": "FULL/DR", "dead_time": "00:00:35", "address": "192.0.2.11", "interface": "Vlan10"}]},
+        "show cdp neighbors detail": {"status": "ok", "raw": "Device ID: SW-B", "rows": [{"neighbor_name": "SW-B", "local_interface": "Gi1/0/1", "neighbor_interface": "Gi1/0/24", "management_ip": "192.0.2.11", "platform": "cisco WS-C2960X", "capabilities": "Switch IGMP"}]}
+    })
+}
+
+#[tokio::test]
+async fn a_catalyst_is_recognised_probed_planned_and_run_light_first() {
+    let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+    let loc = fake_location(&catalyst_script(), "[]");
+    let mut sidecar = Sidecar::spawn(&loc).await.expect("the fake sidecar starts");
+    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: None, role_override: None };
+    let run = collect_device(&mut sidecar, &catalogs, &target, &auth(), &RunOptions::default(), &Quiet).await;
+    assert_eq!(run.failure, None, "{:?}", run.log);
+    assert_eq!(run.os.as_deref(), Some("cisco_ios"));
+    assert_eq!(run.identified_by.as_deref(), Some("show version"));
+    assert_eq!(run.role.as_deref(), Some("switch"));
+    // The probe answered OSPF, so routing and ospf are on and the ospf command ran.
+    assert!(run.caps.contains(&"ospf".to_string()) && run.caps.contains(&"routing".to_string()), "{:?}", run.caps);
+    let probe = run.probes.iter().find(|p| p.id == "show_ip_protocols").unwrap();
+    assert_eq!(probe.flags_set, vec!["ospf", "routing"]);
+    let cmds: Vec<&str> = run.results.iter().map(|r| r.step.cmd.as_str()).collect();
+    assert!(cmds.contains(&"show ip ospf neighbor"), "{cmds:?}");
+    assert!(cmds.contains(&"show cdp neighbors detail"));
+    // BGP was never set, so its command was skipped and says why.
+    let plan = run.plan.as_ref().unwrap();
+    assert!(plan.skipped.iter().any(|s| s.cmd == "show bgp all summary" && s.reason.contains("cap.bgp")), "{:?}", plan.skipped);
+    // Light before heavy: the running-config (heavy) comes after every light command.
+    let heavy_at = cmds.iter().position(|c| *c == "show running-config").unwrap();
+    let light_after = run.results[heavy_at..].iter().filter(|r| r.step.weight == coreview_catalog::Weight::Light && r.step.context.is_none()).count();
+    assert_eq!(light_after, 0, "a light command ran after the heavy configuration: {cmds:?}");
+    // The VRF the first pass found expanded the second pass.
+    assert!(cmds.contains(&"show ip route vrf CUST-A"), "{cmds:?}");
+    assert!(cmds.contains(&"show ip arp vrf CUST-A"), "{cmds:?}");
+    // The configuration came back scrubbed.
+    let cfg = run.results.iter().find(|r| r.step.cmd == "show running-config").unwrap();
+    assert!(!cfg.outcome.raw.contains("FAKE-COMMUNITY") && !cfg.outcome.raw.contains("$1$FAKE"), "{}", cfg.outcome.raw);
+    assert!(cfg.outcome.raw.contains("enable secret <removed-by-coreview>"));
+    // A command the fake does not know is unsupported, not fatal.
+    let unsupported = run.results.iter().filter(|r| r.outcome.status == "unsupported").count();
+    assert!(unsupported > 0);
+    sidecar.quit().await;
+}
+
+#[tokio::test]
+async fn a_fortigate_with_vdoms_runs_its_vdom_commands_inside_each_one() {
+    let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+    let script = json!({
+        "get system status": {"status": "ok", "raw": "Version: FortiGate-60F v7.2.8,build1639,240208 (GA.M)\nVirtual domain configuration: multiple\nCurrent HA mode: standalone", "rows": []},
+        "get system interface physical": {"status": "ok", "raw": "==[port1]\n", "rows": [{"interface": "port1", "ip": "192.0.2.1", "mask": "255.255.255.0", "status": "up"}]},
+        "get router info routing-table all": {"status": "ok", "raw": "S* 0.0.0.0/0 [10/0] via 192.0.2.254, port1", "rows": [{"protocol": "S", "network": "0.0.0.0/0", "nexthop_ip": "192.0.2.254", "interface": "port1"}]}
+    });
+    let loc = fake_location(&script, r#"["root","dmz"]"#);
+    let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
+    let target = Target { host: "192.0.2.1".into(), port: 22, os_hint: None, role_override: None };
+    let run = collect_device(&mut sidecar, &catalogs, &target, &auth(), &RunOptions::default(), &Quiet).await;
+    assert_eq!(run.failure, None, "{:?}", run.log);
+    assert_eq!(run.os.as_deref(), Some("fortios"));
+    assert_eq!(run.context_kind.as_deref(), Some("vdom"));
+    assert_eq!(run.contexts, vec!["root", "dmz"]);
+    assert!(run.caps.contains(&"vdom".to_string()));
+    let per_vdom: Vec<(&str, &str)> = run.results.iter().filter_map(|r| r.step.context.as_ref().map(|c| (c.1.as_str(), r.step.cmd.as_str()))).collect();
+    assert!(per_vdom.contains(&("root", "get router info routing-table all")), "{per_vdom:?}");
+    assert!(per_vdom.contains(&("dmz", "get router info routing-table all")), "{per_vdom:?}");
+    let global: Vec<&str> = run.results.iter().filter(|r| r.step.scope.as_deref() == Some("global")).map(|r| r.step.cmd.as_str()).collect();
+    assert!(global.contains(&"get system interface physical"), "{global:?}");
+    sidecar.quit().await;
+}
+
+#[tokio::test]
+async fn a_wrong_password_ends_the_run_at_once_with_no_second_try() {
+    let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+    let loc = fake_location(&catalyst_script(), "[]");
+    let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
+    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: None, role_override: None };
+    let bad = Auth { username: "reader".into(), password: "wrong-password-fixture".into(), enable: None, private_key: None };
+    let run = collect_device(&mut sidecar, &catalogs, &target, &bad, &RunOptions::default(), &Quiet).await;
+    assert_eq!(run.failure.as_deref(), Some("auth"));
+    assert!(run.results.is_empty() && run.probes.is_empty());
+    sidecar.quit().await;
+}
+
+#[tokio::test]
+async fn an_os_hint_skips_the_fingerprint_and_an_unknown_device_says_so() {
+    let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+    let loc = fake_location(&catalyst_script(), "[]");
+    let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
+    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: Some("cisco_ios".into()), role_override: Some("router".into()) };
+    let run = collect_device(&mut sidecar, &catalogs, &target, &auth(), &RunOptions { light_only: true, ..Default::default() }, &Quiet).await;
+    assert_eq!(run.failure, None);
+    assert_eq!(run.role.as_deref(), Some("router"));
+    assert!(run.results.iter().all(|r| r.step.weight == coreview_catalog::Weight::Light));
+    assert!(!run.results.iter().any(|r| r.step.cmd == "show running-config"));
+
+    let unknown = fake_location(&json!({"show version": {"status": "ok", "raw": "Welcome to NoSuchOS 1.0", "rows": []}}), "[]");
+    let mut sidecar2 = Sidecar::spawn(&unknown).await.unwrap();
+    let run2 = collect_device(&mut sidecar2, &catalogs, &Target { host: "192.0.2.99".into(), port: 22, os_hint: None, role_override: None }, &auth(), &RunOptions::default(), &Quiet).await;
+    assert_eq!(run2.failure.as_deref(), Some("unrecognised"));
+    sidecar.quit().await;
+    sidecar2.quit().await;
+}
+
+#[tokio::test]
+async fn parse_answers_without_a_device_and_a_dead_sidecar_is_an_error_not_a_hang() {
+    let loc = fake_location(&json!({}), "[]");
+    let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
+    let r = sidecar.parse("cisco_ios", "show ip arp", "textfsm:cisco_ios_show_ip_arp", &[], "raw text").await.unwrap();
+    assert_eq!(r.status, "ok");
+    assert_eq!(r.rows[0]["parsed"], "textfsm:cisco_ios_show_ip_arp");
+    let events = sidecar.drain_events();
+    assert!(events.iter().any(|e| e.event == "log"));
+    sidecar.quit().await;
+    let missing = SidecarLocation { python: PathBuf::from("/no/such/python"), cwd: std::env::temp_dir(), templates_dir: std::env::temp_dir() };
+    assert!(matches!(Sidecar::spawn(&missing).await, Err(coreview_collect::SidecarError::Spawn(_))));
+}

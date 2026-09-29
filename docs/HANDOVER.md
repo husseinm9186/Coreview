@@ -444,9 +444,16 @@ trust the summary below over that file; it is a signpost and it will rot.
   truth — never rerun `build-catalog.mjs --force` over hand edits; ntc's
   index match is a prefix match, and `matchIndex` deliberately stops at a
   word boundary; a `config` word may appear only in a `session:` block,
-  and the sidecar refuses any session step outside `SESSION_STEP`. Not yet
-  built: Rust spawning the sidecar, the collector, the tables, offline
-  import, the plan preview (LT-514–LT-517).
+  and the sidecar refuses any session step outside `SESSION_STEP`. Built
+  the same day (LT-514–LT-517): `crates/coreview-collect` (the sidecar
+  client, fingerprint, capabilities, `run::collect_device`, scrub, tables,
+  the API collectors with certificate pinning), `src-tauri/collection.rs`
+  and `collection_db.rs` (schema 6, the commands, offline import), and
+  the Collect tab. Everything ran against `examples/fake_sidecar.rs` and
+  the stubbed page; nothing has met the operator's lab yet. The dev
+  sidecar is a venv under `sidecar/.venv` (or `COREVIEW_SIDECAR_PYTHON`);
+  the installer's copy is LT-519. The API collectors have no command yet
+  (LT-518).
 
 - **Shipped 2026-09-18, after the mission:** LT-285 the address register (the
   **Addresses** tab; `src/lib/ipam.ts` is the arithmetic, `e2e/ipam.mjs` drives

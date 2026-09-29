@@ -18,6 +18,7 @@ members = [
     "crates/coreview-meraki",
     "crates/coreview-formats",
     "crates/coreview-catalog",
+    "crates/coreview-collect",
     "src-tauri",
 ]
 

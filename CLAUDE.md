@@ -120,6 +120,13 @@ crates/
                      `resources/catalog/<os>.yaml`, evaluates gates, builds
                      the collection plan, holds the read-only allowlist. No
                      Tauri, no network.
+  coreview-collect   The collector (LT-514): fingerprint, capabilities, the
+                     run through the sidecar (`sidecar.rs` is the JSON-lines
+                     client), secret scrubbing, rows into the discovery
+                     tables, and the API collectors (FortiOS REST, PAN-OS
+                     XML API, AOS-CX REST) with the certificate pinned per
+                     device. `examples/fake_sidecar.rs` is what its tests
+                     drive, so `cargo test` needs no Python.
 resources/
   catalog/           One YAML per OS — fingerprint, `session:` block (from
                      scrapli and netmiko, see its NOTICE), capability probes,
@@ -136,6 +143,8 @@ sidecar/             The Phase-1 bridge (LT-513): scrapli + TextFSM over JSON
                      secret except on stdin, refuses what the allowlist
                      refuses. Phase 4 deletes it. `README.md` there.
 src-tauri/           Commands, SQLite, credential vault, icon library scan;
+                     `collection.rs` + `collection_db.rs` are the catalog-driven
+                     collection's commands and schema 6 (LT-514–LT-517);
                      `terminal.rs` holds the live SSH sessions, which belong
                      to the window and are never written down (D-047), and
                      launches an external client without the password (D-048)
@@ -200,6 +209,7 @@ node e2e/drawer.mjs       # the details drawer: device and finding, pinned, keyb
 node e2e/folders.mjs      # folders and sub-folders on the project screen (LT-485)
 node e2e/foldersettings.mjs # a project's backup and export folders, chosen where they can be kept (LT-487)
 node e2e/tracert.mjs      # the Tracert tab: from here or a device, hops named, a page from them (LT-505)
+node e2e/collection.mjs   # the Collect tab: plan preview, command log, kept replies, the tables a run filled (LT-517)
 ```
 
 Canvas performance is measured, not asserted (LT-190), against a **production**

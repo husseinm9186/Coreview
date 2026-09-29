@@ -1,0 +1,13 @@
+{
+  "projectId": "project-1",
+  "targets": "192.0.2.10\n192.0.2.11",
+  "port": 22,
+  "osHint": "cisco_ios",
+  "roleOverride": "switch",
+  "planOnly": false,
+  "lightOnly": true,
+  "credentialId": "cred-ssh",
+  "keepDiagnostic": true,
+  "connectTimeoutSecs": 8,
+  "authTimeoutSecs": 20
+}

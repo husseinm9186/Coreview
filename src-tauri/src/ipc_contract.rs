@@ -13,6 +13,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
 use crate::db::{EventRow, ProjectPackage};
+use crate::collection::CollectionInput;
 use crate::discovery::{BackupInput, CrawlInput, CredentialInput};
 use crate::vault_commands::SaveCredential;
 use crate::visio::VisioDrawing;
@@ -95,6 +96,7 @@ fn every_input_reads_the_frontends_payload_and_nothing_more() {
     contract::<CrawlInput>("crawl_input");
     contract::<BackupInput>("backup_input");
     contract::<SweepOptions>("sweep_options");
+    contract::<CollectionInput>("collection_input");
     contract::<SaveCredential>("save_credential");
     contract::<Check>("check");
     contract::<VisioDrawing>("visio_drawing");
@@ -133,6 +135,7 @@ proptest! {
         survives::<CrawlInput>(&v);
         survives::<BackupInput>(&v);
         survives::<SweepOptions>(&v);
+        survives::<CollectionInput>(&v);
         survives::<SaveCredential>(&v);
         survives::<Check>(&v);
         survives::<VisioDrawing>(&v);
@@ -141,8 +144,8 @@ proptest! {
     /// Each fixture with one of its values replaced by something arbitrary:
     /// closer to a real mistake than random JSON, and still never a panic.
     #[test]
-    fn a_payload_with_any_one_value_replaced_is_handled(which in 0usize..10, key in 0usize..32, v in any_json()) {
-        let names = ["probe_config", "project_package", "event_row", "credential_input", "crawl_input", "backup_input", "sweep_options", "save_credential", "check", "visio_drawing"];
+    fn a_payload_with_any_one_value_replaced_is_handled(which in 0usize..11, key in 0usize..32, v in any_json()) {
+        let names = ["probe_config", "project_package", "event_row", "credential_input", "crawl_input", "backup_input", "sweep_options", "save_credential", "check", "visio_drawing", "collection_input"];
         let mut payload = fixture(names[which]);
         if let Value::Object(m) = &mut payload {
             let keys: Vec<String> = m.keys().cloned().collect();

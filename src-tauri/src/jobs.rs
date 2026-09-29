@@ -38,6 +38,8 @@ pub enum Kind {
     /// LT-460: the icon-library scan, which converts stencils through
     /// LibreOffice and can run for minutes on a big folder.
     IconScan,
+    /// LT-514: the catalog-driven collection through the sidecar (D-060).
+    Collect,
 }
 
 impl Kind {
@@ -48,6 +50,7 @@ impl Kind {
             Kind::Sweep => "A sweep",
             Kind::Meraki => "A Meraki collection",
             Kind::IconScan => "An icon-library scan",
+            Kind::Collect => "A collection",
         }
     }
 }

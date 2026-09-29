@@ -91,47 +91,28 @@ assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
 
-### LT-513 — P1 the sidecar: scrapli + ntc-templates over JSON-lines on stdio — 2026-09-29
-**Acceptance:** `sidecar/` as laid out in the spec; open/run/switch/parse/
-close; secrets on stdin only; the allowlist enforced a second time; raw
-returned inline, never written by the sidecar; pinned hashed requirements;
-pytest over LT-509's fixtures and the protocol; Rust spawns it from the
-install directory and a contract test drives it from `cargo test`.
-**Status 2026-09-29:** `sidecar/` is written — protocol, allowlist,
-parse (TextFSM with clitable's multi-template join), session (scrapli
-platform drivers, GenericDriver for AOS-S, contexts and paging from the
-catalog's `session:` block, a fixed session-step vocabulary), the
-JSON-lines loop, `--version`; requirements pinned with hashes;
-`build/windows.ps1` (embeddable CPython, checksum required) and
-`build/linux.sh`; 568 tests pass in a venv. **Not yet:** Rust spawning it
-from the install directory, the `cargo test` contract test, and a session
-against a device — those come with LT-514.
-### LT-514 — P1 the collector: fingerprint → capabilities → plan → run, and the API collectors in Rust — 2026-09-29
-**Acceptance:** `crates/coreview-collect`; fingerprint from the catalog's
-probe; caps from the probe commands; light before heavy; every command
-optional with a `command_log` row; one failed credential per device per
-run; FortiOS REST, PAN-OS XML API and AOS-CX REST collectors in Rust with
-reqwest, Meraki through the existing crate; configs scrubbed of every
-secret kind the spec lists before they are kept; the existing crawl
-untouched behind a project setting `collector = legacy | sidecar`.
+### LT-518 — P1 the API collectors reachable: a token from the vault, a certificate pinned per device — 2026-09-29
+**Source:** LT-514 built FortiOS REST, PAN-OS XML API and AOS-CX REST
+in Rust (D-060: "API-based collectors are Rust/reqwest from day one") with
+the certificate pinned the way an SSH host key is, but nothing calls them
+yet: a token has to come from the vault (a new credential kind, or the
+existing API-key kind), and the fingerprint seen on first use has to be
+kept per device so a change is refused before the token is sent again.
+**Acceptance:** a saved API credential chosen on the Collect tab runs
+every `parser: api` command of the device's catalog through the Rust
+collector, rows into the same tables, the certificate fingerprint kept
+with the device and shown; a changed certificate stops the run and says
+so; tests against a local TLS server with two certificates.
 
-### LT-515 — P1 the discovery tables: schema 6 — 2026-09-29
-**Acceptance:** the spec's tables with run_id, device_id, collected_at on
-every row; raw per command stored gzip'd where the operator's diagnostic
-folder rule allows and referenced by `raw_ref`; a migration from schema 5;
-a loader test per table from recorded sidecar rows.
-
-### LT-516 — P1 offline import and replay — 2026-09-29
-**Acceptance:** a folder `captures/<host>/<command>.txt` runs through the
-identical pipeline with no SSH; a run replays from stored raw after a
-parser change; both tested with LT-509's fixtures as the input.
-
-### LT-517 — P1 the collection plan preview and the run view — 2026-09-29
-**Acceptance:** before a run, each device's vendor, os, role and caps and
-every command with the gate that enabled it, its parser and the tables it
-feeds, skipped commands with the reason; during and after, per-command
-status, duration and rows with a failure linking to its raw file;
-`e2e/collection.mjs` against a stubbed backend.
+### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
+**Source:** D-060's packaging rules and `sidecar/build/windows.ps1`.
+**Acceptance:** the release workflow runs the build script before `tauri
+build`, `tauri.conf.json` ships `src-tauri/sidecar/` as a resource,
+`signCommand` signs `python.exe` and every `.dll`/`.pyd` inside, the
+VirusTotal step covers them, and a fresh Windows install runs a
+collection with no Python on the machine. Waits on the operator's
+signing setup (Azure Trusted Signing) for the signing half; the layout
+half can be done first, unsigned, for his own testing.
 
 ### LT-507 — Discovery / topology / path engine: the catalog-driven collector, in four phases — approved 2026-09-29, P1 in progress
 **Source:** the operator's specification of 2026-09-29 ("CoreView
@@ -164,6 +145,14 @@ four instructions that replace the plan's "captures needed" section:
 reconcile against ntc-templates' index, vendor its tests as fixtures, take
 session behaviour from scrapli and netmiko, and ask for captures once, for
 what has neither a template nor structured output. P1 is LT-508 to LT-517.
+**P1 built 2026-09-29** (LT-508–LT-517 in Done): the reconciliation, the
+vendored fixtures, the session blocks, the one capture list, twenty
+catalogs and their crate, the sidecar, the collector, schema 6, offline
+import, and the Collect tab — all run against the fake sidecar and the
+stubbed page, none yet against the operator's lab. What is left of P1 is
+LT-518 (the API collectors reachable from a command) and the packaging
+step that lays the sidecar into the installer; P2 begins when the
+operator has run a collection.
 **Decisions it touches:** D-050 (paths from evidence only; the what-if
 approximates reconvergence and must say so), D-055 (device output never
 in the debug log — raw captures go to files, redacted, not into the log),
@@ -413,6 +402,121 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-517 — P1 the collection plan preview and the run view — 2026-09-29, done the same day
+**Acceptance:** before a run, each device's vendor, os, role and caps and
+every command with the gate that enabled it, its parser and the tables it
+feeds, skipped commands with the reason; during and after, per-command
+status, duration and rows with a failure linking to its raw file;
+`e2e/collection.mjs` against a stubbed backend.
+**Done 2026-09-29.** The **Collect** tab (`CollectionPanel.tsx`):
+devices, port, platform (or recognise it), role override, a saved login or
+a typed one, light-only, keep-diagnostic; **Preview plan** (`planOnly`)
+and **Start collection**; Stop; a folder to import captures from. Live
+lines from `coreview://collection` — recognised as, which flags each probe
+set, how many commands planned and skipped, each command's status, rows
+and time. Runs to pick from; per device: platform, role, capabilities,
+outcome; the plan preview with each command's gate, parser, tables,
+weight and verification (an unverified one says why on hover) and every
+skipped command with its reason; the command log with a kept reply read
+by reference; the tables the run filled and their rows by column.
+`e2e/collection.mjs` (17 checks) against a stubbed backend; strings in
+the catalogue. Run.
+
+### LT-516 — P1 offline import and replay — 2026-09-29, done the same day
+**Acceptance:** a folder `captures/<host>/<command>.txt` runs through the
+identical pipeline with no SSH; a run replays from stored raw after a
+parser change; both tested with LT-509's fixtures as the input.
+**Done 2026-09-29.** `import_captures(projectId, folder)`: one folder
+per device, one `.txt` per command (as the diagnostic writes them,
+`NNN-show-ip-arp.txt`, or by hand, `show ip arp.txt`), through the same
+fingerprint → capabilities → plan → parse → tables pipeline with no
+device, the sidecar's `parse` op reading each file; `{vrf}`-shaped
+commands are found by their file names and the VRFs they name expand the
+plan; a command with a file is parsed whatever its gate said. The run is
+kept as `source: import`. **Replay after a parser change** is the same
+import pointed at a run's diagnostic folder, which the collector writes
+in exactly that layout. Tested for the file matching; the whole path is
+exercised through `cargo test -p coreview` and the fake sidecar's `parse`.
+
+### LT-515 — P1 the discovery tables: schema 6 — 2026-09-29, done the same day
+**Acceptance:** the spec's tables with run_id, device_id, collected_at on
+every row; raw per command stored gzip'd where the operator's diagnostic
+folder rule allows and referenced by `raw_ref`; a migration from schema 5;
+a loader test per table from recorded sidecar rows.
+**Done 2026-09-29.** Schema 6, `src-tauri/src/collection_db.rs`:
+`collection_runs`, `collection_devices` (os, role, caps, contexts, the
+plan as JSON, the failure), `command_log` (one row per probe and command:
+status, duration, rows, `raw_ref`, verified), and one `d_<table>` per
+spec table with the spec's columns as text plus `extra` (the parser's
+other fields as JSON), every row with run, device and time; column names
+quoted because `group` and `state` are SQL words. A migration from 5,
+tests for every table taking a normalised row, the run/device/log round
+trip and the cascade. Raw replies are not in the database: gzip per
+command was in the spec, but D-055 and the backup-folder rule put device
+output on disk only where the operator pointed, so `raw_ref` names a
+redacted file under the run's diagnostic folder instead. Run.
+
+### LT-514 — P1 the collector: fingerprint → capabilities → plan → run, and the API collectors in Rust — 2026-09-29, done the same day
+**Acceptance:** `crates/coreview-collect`; fingerprint from the catalog's
+probe; caps from the probe commands; light before heavy; every command
+optional with a `command_log` row; one failed credential per device per
+run; FortiOS REST, PAN-OS XML API and AOS-CX REST collectors in Rust with
+reqwest, Meraki through the existing crate; configs scrubbed of every
+secret kind the spec lists before they are kept; the existing crawl
+untouched behind a project setting `collector = legacy | sidecar`.
+**Done 2026-09-29.** `crates/coreview-collect`: `fingerprint` (a generic
+session, the catalogs' probes in order, first `match_regex` wins, refusals
+skipped), `capabilities` (role hint, role defaults, each probe's flag
+regexes; the probe wins over the hint; the operator's override wins over
+both), `run::collect_device` (open with the catalog's session block,
+contexts reported by the sidecar, probes, `plan`, light before heavy,
+every command optional with its status kept, VDOM/context/vsys entered and
+left around the steps that need them, VRFs found by the first pass
+expanding the second, a raw configuration scrubbed before it exists
+anywhere, exactly one login tried), `scrub` (every secret kind the spec
+lists and each vendor's spelling, tested on a config carrying all of
+them), `tables` (rows into the spec's tables by column synonyms, extras
+kept; NX-OS `TABLE_/ROW_`, EOS keyed objects, Junos and PAN-OS XML
+flattened), and `api` (FortiOS REST, PAN-OS XML API with pan-python's
+`cmd_xml`, AOS-CX REST, over rustls with the certificate pinned the SSH
+host-key way — trust on first use, refuse a change before the token is
+sent). In `src-tauri`, `collection.rs`: `start_collection` (a job of its
+own, `Kind::Collect`; a saved login checked against the open project,
+D-059; events on `coreview://collection`; raw kept redacted only under
+the run's diagnostic folder), `cancel_collection`, `list_collection_runs`,
+`collection_run`, `collection_table`, `collection_raw`. **Ran** against
+the fake sidecar (five integration tests: a Catalyst recognised, probed,
+planned and run light-first with the VRF second pass and the scrubbed
+config; a FortiGate with two VDOMs run inside each; a wrong password
+ending the run at once; an OS hint and an unknown device; parse and a
+dead sidecar) and in `cargo test -p coreview`. **Not yet wired:** the
+API collectors need a token from the vault and a `pin` kept per device;
+they are built and unit-tested, not yet reachable from a command — LT-518.
+
+### LT-513 — P1 the sidecar: scrapli + ntc-templates over JSON-lines on stdio — 2026-09-29, done the same day
+**Acceptance:** `sidecar/` as laid out in the spec; open/run/switch/parse/
+close; secrets on stdin only; the allowlist enforced a second time; raw
+returned inline, never written by the sidecar; pinned hashed requirements;
+pytest over LT-509's fixtures and the protocol; Rust spawns it from the
+install directory and a contract test drives it from `cargo test`.
+**Done 2026-09-29.** `sidecar/` as laid out in the spec — protocol,
+allowlist (the shared fixture), parse (TextFSM with clitable's
+multi-template join and its `None`-as-text lists), session (scrapli's
+platform drivers, GenericDriver for AOS-S and for the fingerprint pass,
+contexts and paging driven by the catalog's `session:` block, a fixed
+session-step vocabulary), the JSON-lines loop, `--version`; requirements
+pinned with hashes; `build/windows.ps1` (embeddable CPython, checksum
+required, no PyInstaller, no UPX) and `build/linux.sh`; 568 pytest
+tests. Rust spawns it by absolute path from the install directory
+(`collection::sidecar_location`: the bundled `sidecar/` resource, else a
+dev venv, else `COREVIEW_SIDECAR_PYTHON`) and `coreview-collect`'s client
+speaks the contract with correlation by id, events drained separately,
+secrets on stdin only; `examples/fake_sidecar.rs` and five integration
+tests drive the client and the collector without Python. **Not yet:** the
+CI step that lays the sidecar under `src-tauri/sidecar/` before the
+installer is built, and a session against a real device — both wait on
+the operator's next build.
 
 ### LT-512 — P1 the catalog: `resources/catalog/<os>.yaml` and the `coreview-catalog` crate — 2026-09-29, done the same day
 **Acceptance:** one YAML per P1 platform plus the Phase-2 stubs, in the

@@ -9,7 +9,7 @@
 import { EMPTY_TREE, readTree, type FolderTree } from './projectFolders';
 import type { PagingMode } from './showCommands';
 import type { BackupCheck, CheckResult } from './checks';
-import { backupCheck, backupInput, crawlInput, credentialInput, eventRow, probeConfig, projectPackage, saveCredential, sweepOptions, visioDrawing } from './ipcPayloads';
+import { backupCheck, backupInput, crawlInput, credentialInput, eventRow, probeConfig, projectPackage, saveCredential, sweepOptions, visioDrawing, collectionInput } from './ipcPayloads';
 import type {
   EventRow,
   Probe,
@@ -431,6 +431,51 @@ export type SnmpInput = {
   privacy?: string;
   privacyPassword?: string;
 };
+
+/** LT-514: one catalog-driven collection, as `CollectionInput` in src-tauri/src/collection.rs. */
+export type CollectionInput = {
+  projectId: string;
+  targets: string;
+  port: number;
+  osHint?: string;
+  roleOverride?: string;
+  planOnly: boolean;
+  lightOnly: boolean;
+  credentialId?: string;
+  keepDiagnostic: boolean;
+  connectTimeoutSecs?: number;
+  authTimeoutSecs?: number;
+};
+
+export type CollectionRunSummary = {
+  id: string; projectId: string; seed: string; startedMs: number; finishedMs: number | null; status: string; planOnly: boolean; diagnosticDir: string | null; source: string; devices: number;
+};
+
+export type CollectionPlanStep = {
+  id: string; cmd: string; gate: string; because: string[]; parser: string; feeds: string[]; weight: 'light' | 'heavy'; timeout: number; verified: 'lab' | 'docs' | 'unverified'; context: [string, string] | null; scope: string | null;
+};
+export type CollectionPlan = { steps: CollectionPlanStep[]; skipped: { id: string; cmd: string; reason: string }[] };
+
+export type CollectionDevice = {
+  deviceId: string; host: string; os: string | null; role: string | null; caps: string[]; versionText: string; prompt: string; contextKind: string | null; contexts: string[]; failure: string | null; log: string[]; plan: CollectionPlan | null; collectedAt: number;
+};
+
+export type CollectionLogEntry = {
+  deviceId: string; seq: number; stepId: string; cmd: string; kind: 'probe' | 'command'; contextKind: string | null; contextName: string | null; gate: string; parser: string; feeds: string[]; status: string; durationMs: number; rows: number; rawRef: string | null; error: string | null; verified: string | null;
+};
+
+export type CollectionRunDetail = { run: CollectionRunSummary | null; devices: CollectionDevice[]; log: CollectionLogEntry[]; tables: [string, number][] };
+
+export type CollectionEvent =
+  | { kind: 'started'; runId: string; targets: number }
+  | { kind: 'device'; runId: string; deviceId: string; host: string; phase: string }
+  | { kind: 'identified'; runId: string; deviceId: string; os: string; probe: string }
+  | { kind: 'probe'; runId: string; deviceId: string; id: string; cmd: string; status: string; flags: string[] }
+  | { kind: 'planned'; runId: string; deviceId: string; steps: number; skipped: number }
+  | { kind: 'step'; runId: string; deviceId: string; stepId: string; cmd: string; status: string; rows: number; durationMs: number; context: string | null }
+  | { kind: 'deviceDone'; runId: string; deviceId: string; host: string; os: string | null; failure: string | null; commands: number }
+  | { kind: 'finished'; runId: string; devices: number; failed: number; cancelled: boolean }
+  | { kind: 'failed'; runId: string; error: string };
 
 export type CrawlInput = {
   seed: string;
@@ -1295,6 +1340,33 @@ export const ipc = {
   },
   cancelCrawl() {
     return invoke<void>('cancel_crawl');
+  },
+  // LT-514: the catalog-driven collection.
+  startCollection(input: CollectionInput, credentials?: CredentialInput) {
+    return invoke<string>('start_collection', { input: collectionInput(input), credentials: credentials ? credentialInput(credentials) : undefined });
+  },
+  cancelCollection() {
+    return invoke<void>('cancel_collection');
+  },
+  listCollectionRuns(projectId: string) {
+    return invoke<CollectionRunSummary[]>('list_collection_runs', { projectId });
+  },
+  collectionRun(id: string) {
+    return invoke<CollectionRunDetail>('collection_run', { id });
+  },
+  collectionTable(runId: string, table: string, deviceId?: string) {
+    return invoke<Record<string, unknown>[]>('collection_table', { runId, table, deviceId });
+  },
+  collectionRaw(runId: string, rawRef: string) {
+    return invoke<string>('collection_raw', { runId, rawRef });
+  },
+  importCaptures(projectId: string, folder: string) {
+    return invoke<string>('import_captures', { projectId, folder });
+  },
+  async onCollectionEvent(handler: (e: CollectionEvent) => void): Promise<() => void> {
+    if (!isDesktop) return () => {};
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen('coreview://collection', (e) => handler(e.payload as CollectionEvent));
   },
   async onCrawlEvent(handler: (e: CrawlEvent) => void): Promise<() => void> {
     if (!isDesktop) return () => {};

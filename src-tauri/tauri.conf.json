@@ -72,7 +72,14 @@
     "category": "Utility",
     "resources": {
       "../LICENSE": "LICENSE.txt",
-      "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md"
+      "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md",
+      "../resources/catalog/*.yaml": "catalog/",
+      "../resources/catalog/NOTICE": "catalog/NOTICE",
+      "../resources/catalog/LICENSE-scrapli": "catalog/LICENSE-scrapli",
+      "../resources/catalog/LICENSE-netmiko": "catalog/LICENSE-netmiko",
+      "../resources/templates/ntc/*": "templates/ntc/",
+      "../resources/templates/LICENSE": "templates/LICENSE",
+      "../resources/templates/NOTICE": "templates/NOTICE"
     },
     "publisher": "Mohammed Almoola",
     "copyright": "\u00a9 2026 Mohammed Almoola. All rights reserved.",
