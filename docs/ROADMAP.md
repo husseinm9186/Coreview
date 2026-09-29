@@ -579,6 +579,18 @@ I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
 
+### LT-560 — **bug** A FortiGate or FortiSwitch session never opened: `auth_secondary` passed to a driver that takes none — 2026-09-29, fixed the same day
+**Found by the lab run (LT-558).** Both Fortinet boxes were recognised as
+`fortios`, then the catalog session failed with `TypeError:
+GenericDriver.__init__() got an unexpected keyword argument
+'auth_secondary'`: scrapli's `fortinet_fortios` platform is built on the
+generic driver, and the sidecar passed the enable secret to every named
+platform. No test opened a FortiOS session. **Reproduced** by a sidecar test
+that builds a FortiOS session, failing before the fix.
+**Fixed:** a platform whose scrapli driver refuses `auth_secondary` is built
+again without it; every named platform is built in a test. The FortiOS test
+failed before.
+
 ### LT-562 — **bug** A FortiGate without VDOMs never sent its per-VDOM commands: no routing table — 2026-09-29, fixed the same day
 **Found by the lab run (LT-558).** FortiOS's routing, routes database, kernel,
 proute and BGP commands are `foreach: vdom`; on a unit with VDOMs off there
@@ -781,15 +793,6 @@ finds (LT-521) — the results go to the operator.
 validate the other devices like aruba, cisco Nexus, IOS XE and XR, asa,
 fmc, etc". Waits on the lab being on; then the same run and rules as LT-558
 per platform, the FMC through LT-541's collector.
-
-### LT-560 — **bug** A FortiGate or FortiSwitch session never opened: `auth_secondary` passed to a driver that takes none — 2026-09-29
-**Found by the lab run (LT-558).** Both Fortinet boxes were recognised as
-`fortios`, then the catalog session failed with `TypeError:
-GenericDriver.__init__() got an unexpected keyword argument
-'auth_secondary'`: scrapli's `fortinet_fortios` platform is built on the
-generic driver, and the sidecar passed the enable secret to every named
-platform. No test opened a FortiOS session. **Reproduced** by a sidecar test
-that builds a FortiOS session, failing before the fix.
 
 ### LT-561 — **bug** The fingerprint session left the pager on, and a Catalyst closed the connection at `--More--` — 2026-09-29
 **Found by the lab run (LT-558).** The pass that recognises a device opens a

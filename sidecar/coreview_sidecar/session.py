@@ -117,7 +117,16 @@ class Session:
             self.conn = GenericDriver(comms_prompt_pattern=prompt, **common)
             self.generic = True
         else:
-            self.conn = Scrapli(platform=platform, **common)
+            try:
+                self.conn = Scrapli(platform=platform, **common)
+            except TypeError as e:
+                # LT-560: some scrapli platforms (fortinet_fortios) are built on
+                # the generic driver, which knows no privilege levels and takes
+                # no enable secret.
+                if "auth_secondary" not in str(e):
+                    raise
+                del common["auth_secondary"]
+                self.conn = Scrapli(platform=platform, **common)
             self.generic = False
         self.conn.transport._verify_key = self._verify_key
 
