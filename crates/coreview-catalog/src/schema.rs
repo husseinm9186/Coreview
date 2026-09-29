@@ -221,6 +221,9 @@ pub enum Parser {
     None,
     /// A pyATS/genie parser, if one is ever needed (D-060: only for a named gap).
     Genie(String),
+    /// One of Coreview's own readers in Rust (`coreview-collect/src/readers`),
+    /// for output no template reads (LT-540). The sidecar is sent `none`.
+    Reader(String),
 }
 
 impl FromStr for Parser {
@@ -238,8 +241,10 @@ impl FromStr for Parser {
                     Parser::TextFsm(t.to_string())
                 } else if let Some(g) = other.strip_prefix("genie:") {
                     Parser::Genie(g.to_string())
+                } else if let Some(r) = other.strip_prefix("reader:") {
+                    Parser::Reader(r.to_string())
                 } else {
-                    return Err(format!("{other:?} is not a parser (textfsm:<name> | json | xml | regex | raw | api | none | genie:<name>)"));
+                    return Err(format!("{other:?} is not a parser (textfsm:<name> | json | xml | regex | raw | api | none | genie:<name> | reader:<name>)"));
                 }
             }
         })
@@ -257,6 +262,7 @@ impl fmt::Display for Parser {
             Parser::Api => f.write_str("api"),
             Parser::None => f.write_str("none"),
             Parser::Genie(g) => write!(f, "genie:{g}"),
+            Parser::Reader(r) => write!(f, "reader:{r}"),
         }
     }
 }
@@ -264,7 +270,7 @@ impl fmt::Display for Parser {
 /// The tables the spec defines; a command may feed no other.
 pub const TABLES: &[&str] = &[
     "device", "interface", "ip_address", "neighbor", "mac_table", "arp", "vlan", "lag", "stp", "vrf", "route", "routing_neighbor", "fhrp",
-    "policy_route", "nat_rule", "fw_zone", "fw_policy", "tunnel", "ha_pair", "ap", "endpoint", "link", "l3_adjacency", "raw_config", "path_probe",
+    "policy_route", "nat_rule", "fw_zone", "fw_policy", "fw_binding", "fw_object", "tunnel", "ha_pair", "ap", "endpoint", "link", "l3_adjacency", "raw_config", "path_probe",
 ];
 
 /// The capability flags the spec defines, plus the few the catalogs needed.

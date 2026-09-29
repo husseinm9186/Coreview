@@ -259,6 +259,22 @@ pub struct Box_ {
     pub iface_mac: BTreeMap<String, String>,
     /// Which discovery tables had rows for it.
     pub has: BTreeSet<String>,
+    /// LT-540: where each policy applies (ASA `access-group`).
+    pub bindings: Vec<Binding>,
+    /// LT-540: a zone's security level (ASA `nameif`), 0–100.
+    pub security: BTreeMap<String, u8>,
+    /// LT-540: object and group names → what they stand for, each item a
+    /// literal (`192.0.2.0/24`, `tcp/443`) or another object's name.
+    pub objects: BTreeMap<String, Vec<String>>,
+}
+
+/// Where a policy applies: inbound or outbound on an interface, or globally.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Binding {
+    pub policy: String,
+    pub interface: Option<String>,
+    /// `in`, `out` or `global`.
+    pub direction: String,
 }
 
 impl Box_ {
@@ -540,11 +556,19 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
     }
     for r in d.rows("fw_zone") {
         let Some(z) = opt(r, "name") else { continue };
+        if let Some(level) = r.extra.get("security").and_then(|v| v.as_str()).and_then(|v| v.trim().parse::<u8>().ok()) {
+            b.security.insert(z.clone(), level);
+        }
         let ports = b.zones.entry(z).or_default();
         for i in r.list("interfaces") {
             ports.insert(key(&i));
         }
     }
+    for r in d.rows("fw_binding") {
+        let (Some(policy), Some(direction)) = (opt(r, "policy"), opt(r, "direction")) else { continue };
+        b.bindings.push(Binding { policy, interface: opt(r, "interface"), direction: direction.to_ascii_lowercase() });
+    }
+    read_objects(d, b);
     for r in d.rows("policy_route") {
         b.pbr.push(PolicyRoute {
             seq: opt(r, "seq").unwrap_or_default(),
@@ -589,6 +613,7 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
             enabled: enabled(r.get("enabled")),
         });
     }
+    expand_policies(b);
     for r in d.rows("tunnel") {
         let Some(name) = opt(r, "name") else { continue };
         b.tunnels.push(Tunnel { name, kind: opt(r, "kind"), local_ip: r.get("local_ip").and_then(ip), remote_ip: r.get("remote_ip").and_then(ip) });
@@ -632,6 +657,102 @@ fn read_routes(d: &DeviceIn, b: &mut Box_) {
                 }
             }
             None => b.routes.push(RouteEntry { vrf, net, proto, ad: num("ad"), metric: num("metric"), next_hops, command: r.command.clone() }),
+        }
+    }
+}
+
+
+/// One object row as the literal it stands for: a host, a prefix, a range,
+/// a service in the `proto/port` form, or a member object's name.
+fn object_item(r: &Row, service: bool) -> Option<String> {
+    if let Some(m) = opt(r, "member") {
+        return Some(m);
+    }
+    if service {
+        let proto = opt(r, "protocol").unwrap_or_else(|| "ip".into()).to_ascii_lowercase();
+        let (op, a, z) = (opt(r, "port_op"), opt(r, "port_start"), opt(r, "port_end"));
+        return Some(match (op.as_deref(), a, z) {
+            (Some("eq"), Some(a), _) | (None, Some(a), None) => format!("{proto}/{a}"),
+            (Some("range"), Some(a), Some(z)) => format!("{proto}/{a}-{z}"),
+            (Some("lt"), Some(a), _) => format!("{proto}/lt {a}"),
+            (Some("gt"), Some(a), _) => format!("{proto}/gt {a}"),
+            (None, None, None) => proto,
+            (op, a, _) => format!("{proto} {} {}", op.unwrap_or(""), a.unwrap_or_default()),
+        });
+    }
+    if let Some(h) = opt(r, "host") {
+        return Some(h);
+    }
+    if let Some(n) = opt(r, "network") {
+        return Some(match opt(r, "mask") {
+            Some(m) if m.contains('.') => format!("{n} {m}"),
+            Some(m) => format!("{n}/{m}"),
+            None => n,
+        });
+    }
+    if let (Some(a), Some(z)) = (opt(r, "range_start"), opt(r, "range_end")) {
+        return Some(format!("{a}-{z}"));
+    }
+    None
+}
+
+/// Object and group definitions, by name (LT-540). A service object is told
+/// apart by the command that listed it.
+fn read_objects(d: &DeviceIn, b: &mut Box_) {
+    for r in d.rows("fw_object") {
+        let Some(name) = opt(r, "name") else { continue };
+        let service = r.command.contains("service");
+        if let Some(item) = object_item(r, service) {
+            b.objects.entry(name).or_default().push(item);
+        } else {
+            b.objects.entry(name).or_default();
+        }
+    }
+}
+
+/// A list with every object name it can resolve replaced by what it stands
+/// for; a name it cannot resolve is left as written, and decided downstream
+/// as unknown.
+fn expand(items: &[String], objects: &BTreeMap<String, Vec<String>>) -> Vec<String> {
+    fn go(item: &str, objects: &BTreeMap<String, Vec<String>>, depth: usize, out: &mut Vec<String>) {
+        match objects.get(item) {
+            Some(members) if depth < 8 && !members.is_empty() => {
+                for m in members {
+                    go(m, objects, depth + 1, out);
+                }
+            }
+            _ => {
+                if !out.iter().any(|x| x == item) {
+                    out.push(item.to_string());
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for i in items {
+        go(i, objects, 0, &mut out);
+    }
+    out
+}
+
+fn expand_policies(b: &mut Box_) {
+    if b.objects.is_empty() {
+        return;
+    }
+    let objects = b.objects.clone();
+    for p in &mut b.fw {
+        p.src_addr = expand(&p.src_addr, &objects);
+        p.dst_addr = expand(&p.dst_addr, &objects);
+        p.services = expand(&p.services, &objects);
+    }
+    for n in &mut b.nat {
+        for f in [&mut n.orig_src, &mut n.orig_dst, &mut n.trans_src, &mut n.trans_dst] {
+            if let Some(v) = f.clone() {
+                let e = expand(std::slice::from_ref(&v), &objects);
+                if e.len() == 1 {
+                    *f = Some(e[0].clone());
+                }
+            }
         }
     }
 }

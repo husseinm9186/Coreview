@@ -12,6 +12,7 @@ pub mod api;
 pub mod capabilities;
 pub mod fingerprint;
 pub mod live;
+pub mod readers;
 pub mod run;
 pub mod scrub;
 pub mod sidecar;

@@ -40,12 +40,12 @@
       "enum": ["switching", "routing", "vrf", "ospf", "eigrp", "bgp", "isis", "rip", "fhrp", "pbr", "nat", "ipsec", "gre", "dmvpn", "sdwan", "mpls", "vxlan_evpn", "stack", "vss_svl", "vpc_mlag_vsx", "vpc", "ha", "fex", "cdp", "lldp", "wlc", "vdom", "vsys", "multi_context", "structured_output", "fortilink", "advanced_routing", "l2vpn", "fw_zone"]
     },
     "table": {
-      "enum": ["device", "interface", "ip_address", "neighbor", "mac_table", "arp", "vlan", "lag", "stp", "vrf", "route", "routing_neighbor", "fhrp", "policy_route", "nat_rule", "fw_zone", "fw_policy", "tunnel", "ha_pair", "ap", "endpoint", "link", "l3_adjacency", "raw_config", "path_probe"]
+      "enum": ["device", "interface", "ip_address", "neighbor", "mac_table", "arp", "vlan", "lag", "stp", "vrf", "route", "routing_neighbor", "fhrp", "policy_route", "nat_rule", "fw_zone", "fw_policy", "fw_binding", "fw_object", "tunnel", "ha_pair", "ap", "endpoint", "link", "l3_adjacency", "raw_config", "path_probe"]
     },
     "parser": {
       "type": "string",
-      "description": "textfsm:<template basename> | json | xml | regex | raw | api | none | genie:<name>",
-      "pattern": "^(textfsm:[a-z0-9_.-]+|json|xml|regex|raw|api|none|genie:[a-z0-9_]+)$"
+      "description": "textfsm:<template basename> | json | xml | regex | raw | api | none | genie:<name> | reader:<Coreview reader>",
+      "pattern": "^(textfsm:[a-z0-9_.-]+|json|xml|regex|raw|api|none|genie:[a-z0-9_]+|reader:[a-z0-9_]+)$"
     },
     "probe": {
       "type": "object",

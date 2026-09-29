@@ -82,7 +82,8 @@ pub struct Shadow {
 /// otherwise.
 pub fn sidecar_parser(step: &Step, catalog: &Catalog, options: &RunOptions) -> String {
     let rust_primary = step.parser.starts_with("textfsm:") && options.engine.is_some() && catalog.parser_engine.as_deref() == Some("rust");
-    if step.parser == "raw" || rust_primary {
+    // LT-540: a Coreview reader reads the reply in Rust; the sidecar only carries it.
+    if step.parser == "raw" || rust_primary || step.parser.starts_with("reader:") {
         "none".to_string()
     } else {
         step.parser.clone()
@@ -93,6 +94,24 @@ pub fn sidecar_parser(step: &Step, catalog: &Catalog, options: &RunOptions) -> S
 /// Rust engine; with shadow mode on, every other `textfsm:` reply is parsed
 /// by the Rust engine too and the two row sets compared.
 pub fn settle(outcome: &mut CommandOutcome, step: &Step, catalog: &Catalog, also: &[String], options: &RunOptions) {
+    if let Some(name) = step.parser.strip_prefix("reader:") {
+        if outcome.status == "ok" || outcome.status == "parse_error" {
+            match crate::readers::read(name, &outcome.raw) {
+                Ok(rows) => {
+                    outcome.rows = rows;
+                    outcome.status = "ok".into();
+                    outcome.error = None;
+                }
+                Err(e) => {
+                    outcome.rows.clear();
+                    outcome.status = "parse_error".into();
+                    outcome.error = Some(e);
+                }
+            }
+            outcome.engine = Some("rust".into());
+        }
+        return;
+    }
     let (Some(template), Some(engine)) = (step.parser.strip_prefix("textfsm:"), &options.engine) else { return };
     if outcome.status != "ok" && outcome.status != "parse_error" {
         return;

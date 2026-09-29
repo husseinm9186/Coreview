@@ -114,3 +114,106 @@ fn ios_route_rows_walk_as_two_equal_cost_legs() {
     let out = coreview_path::trace_run(&devices, &Request { from: "ACC1".into(), to: "203.0.113.1".into(), ..Default::default() });
     assert!(out.forward.paths.iter().any(|p| matches!(&p.ending, Ending::Delivered { device: Some(d), .. } if d == "CORE1")));
 }
+
+// ------------------------------------------------------------------- ASA
+
+/// Rows from one ASA command through whatever the catalog names for it: an
+/// ntc template or a Coreview reader.
+fn asa_rows(command: &str, parser: &str, table: &str, raw: &str) -> Vec<Row> {
+    let parsed: Vec<serde_json::Value> = match parser.strip_prefix("reader:") {
+        Some(name) => coreview_collect::readers::read(name, raw).unwrap(),
+        None => engine().parse(parser.trim_start_matches("textfsm:"), &[], raw).unwrap().into_iter().map(serde_json::Value::Object).collect(),
+    };
+    assert!(!parsed.is_empty(), "{parser} read nothing from its input");
+    normalise_all(&[table.to_string()], &parsed).into_iter().map(|n| Row { command: command.into(), columns: n.columns, extra: n.extra }).collect()
+}
+
+/// LT-540 end to end. Reconstructed from Cisco's ASA command reference and
+/// the layout of ntc's own ASA fixtures, not captured from the lab (D-058):
+/// the access list and access group through Coreview's readers, the objects
+/// and NAT through ntc's templates, then traced.
+fn asa() -> Vec<DeviceIn> {
+    let route = "Codes: L - local, C - connected, S - static, R - RIP, M - mobile, B - BGP
+       D - EIGRP, EX - EIGRP external, O - OSPF, IA - OSPF inter area 
+       N1 - OSPF NSSA external type 1, N2 - OSPF NSSA external type 2
+       E1 - OSPF external type 1, E2 - OSPF external type 2, V - VPN
+       i - IS-IS, su - IS-IS summary, L1 - IS-IS level-1, L2 - IS-IS level-2
+       ia - IS-IS inter area, * - candidate default, U - per-user static route
+       o - ODR, P - periodic downloaded static route, + - replicated route
+Gateway of last resort is not set
+
+C        10.9.9.0 255.255.255.0 is directly connected, inside
+L        10.9.9.1 255.255.255.255 is directly connected, inside
+C        203.0.113.0 255.255.255.0 is directly connected, outside
+L        203.0.113.2 255.255.255.255 is directly connected, outside
+";
+    let nameif = "Interface                Name                     Security
+GigabitEthernet0/0       outside                    0
+GigabitEthernet0/1       inside                   100
+";
+    let acl = "access-list outside_in remark published servers
+access-list outside_in extended permit tcp any object WEB-01 object-group WEB-PORTS
+access-list outside_in extended deny ip any any
+";
+    let group = "access-group outside_in in interface outside\n";
+    let objects = "object network WEB-01
+ host 10.9.9.20
+object network INSIDE-NET
+ subnet 10.9.9.0 255.255.255.0
+";
+    let services = "object-group service WEB-PORTS tcp
+ port-object eq https
+ port-object eq 8443
+";
+    let nat = "Auto NAT Policies (Section 2)
+1 (inside) to (outside) source static WEB-01 203.0.113.20
+    translate_hits = 0, untranslate_hits = 0
+2 (inside) to (outside) source dynamic INSIDE-NET interface
+    translate_hits = 0, untranslate_hits = 0
+";
+    let mut t: BTreeMap<String, Vec<Row>> = BTreeMap::new();
+    t.insert("device".into(), vec![Row { command: "show_version".into(), columns: [("hostname".to_string(), "ASA1".to_string()), ("serial".to_string(), "FAKEASA0002".to_string())].into(), extra: Default::default() }]);
+    t.insert("route".into(), asa_rows("show_route", "textfsm:cisco_asa_show_route", "route", route));
+    t.insert("fw_zone".into(), asa_rows("show_nameif", "reader:asa_nameif", "fw_zone", nameif));
+    t.insert("fw_policy".into(), asa_rows("show_running_config_access_list", "reader:asa_access_list", "fw_policy", acl));
+    t.insert("fw_binding".into(), asa_rows("show_running_config_access_group", "reader:asa_access_group", "fw_binding", group));
+    let mut objs = asa_rows("show_running_config_object_network", "textfsm:cisco_asa_show_running-config_object_network", "fw_object", objects);
+    objs.extend(asa_rows("show_running_config_object_group_service", "textfsm:cisco_asa_show_running-config_object-group_service", "fw_object", services));
+    t.insert("fw_object".into(), objs);
+    t.insert("nat_rule".into(), asa_rows("show_nat", "textfsm:cisco_asa_show_nat", "nat_rule", nat));
+    vec![DeviceIn { device_id: "asa1".into(), host: "203.0.113.2".into(), os: Some("cisco_asa".into()), role: Some("firewall".into()), prompt: "ASA1#".into(), version_text: String::new(), tables: t }]
+}
+
+fn tcp(from: &str, to: &str, port: u16) -> Request {
+    Request { from: from.into(), to: to.into(), protocol: Some("tcp".into()), port: Some(port), ..Default::default() }
+}
+
+#[test]
+fn an_asa_from_its_own_output_translates_binds_and_decides() {
+    use coreview_path::firewall::Verdict;
+    let devices = asa();
+    // In from outside to the published server: the static NAT, then the list bound inbound on outside.
+    let f = coreview_path::trace_run(&devices, &tcp("203.0.113.99", "203.0.113.20", 443)).forward;
+    let h = &f.paths[0].hops[0];
+    assert_eq!(h.in_interface.as_deref(), Some("outside"));
+    assert_eq!(h.nat.first().map(|n| (n.was.as_str(), n.now.as_str())), Some(("203.0.113.20", "10.9.9.20")), "{h:#?}");
+    assert_eq!(h.out_interface.as_deref(), Some("inside"));
+    let fw = h.firewall.as_ref().unwrap();
+    assert_eq!((fw.verdict, fw.policy.as_deref()), (Verdict::Allow, Some("outside_in (2)")), "{}", fw.reason);
+    assert!(matches!(f.paths[0].ending, Ending::Delivered { .. }));
+    // The service group's second port, resolved from its object.
+    let fw = coreview_path::trace_run(&devices, &tcp("203.0.113.99", "203.0.113.20", 8443)).forward.paths[0].hops[0].firewall.clone().unwrap();
+    assert_eq!(fw.verdict, Verdict::Allow, "{}", fw.reason);
+    // Another port: the list's own deny line.
+    let f = coreview_path::trace_run(&devices, &tcp("203.0.113.99", "203.0.113.20", 22)).forward;
+    assert!(matches!(&f.paths[0].ending, Ending::Denied { policy: Some(p), .. } if p == "outside_in (3)"), "{:?}", f.paths[0].ending);
+    // Out from inside: no list bound there, so the security levels decide (100 over 0), and the dynamic rule hides it behind the interface.
+    let f = coreview_path::trace_run(&devices, &tcp("10.9.9.30", "203.0.113.99", 443)).forward;
+    let h = &f.paths[0].hops[0];
+    let fw = h.firewall.as_ref().unwrap();
+    assert_eq!((fw.verdict, fw.policy.as_deref()), (Verdict::Allow, Some("security level")), "{}", fw.reason);
+    assert_eq!(h.nat.iter().find(|n| n.field == "source").map(|n| n.now.as_str()), Some("203.0.113.2"), "{h:#?}");
+    // The published server going out keeps its static address.
+    let h = coreview_path::trace_run(&devices, &tcp("10.9.9.20", "203.0.113.99", 443)).forward.paths[0].hops[0].clone();
+    assert_eq!(h.nat.iter().find(|n| n.field == "source").map(|n| n.now.as_str()), Some("203.0.113.20"), "{h:#?}");
+}

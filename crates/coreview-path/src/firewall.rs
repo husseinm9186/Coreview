@@ -151,17 +151,100 @@ pub fn proto_number(p: &str) -> Option<u8> {
 fn port_form(s: &str) -> Option<(Option<u8>, u16, u16)> {
     let t = s.trim().to_ascii_lowercase();
     let (proto, rest) = match t.find(['/', '_', ':', '-']) {
-        Some(i) if t[..i].chars().all(|c| c.is_ascii_alphabetic()) && !t[..i].is_empty() => (proto_number(&t[..i]), &t[i + 1..]),
+        Some(i) if t[..i].chars().all(|c| c.is_ascii_alphabetic()) && !t[..i].is_empty() && proto_number(&t[..i]).is_some() => (proto_number(&t[..i]), &t[i + 1..]),
         _ => (None, t.as_str()),
     };
-    let (a, z) = match rest.split_once('-') {
-        Some((a, z)) => (a.trim().parse().ok()?, z.trim().parse().ok()?),
-        None => {
-            let p: u16 = rest.trim().parse().ok()?;
-            (p, p)
-        }
-    };
-    Some((proto, a, z))
+    let rest = rest.trim();
+    let port = |p: &str| port_number(p.trim());
+    // `lt 1024`, `gt 1023`: the ASA's open-ended forms.
+    if let Some(p) = rest.strip_prefix("lt ") {
+        return Some((proto, 1, port(p)?.checked_sub(1)?));
+    }
+    if let Some(p) = rest.strip_prefix("gt ") {
+        return Some((proto, port(p)?.checked_add(1)?, 65535));
+    }
+    // A name with a dash in it (`ftp-data`) before a range of two.
+    if let Some(p) = port(rest) {
+        return Some((proto, p, p));
+    }
+    let (a, z) = rest.split_once('-')?;
+    Some((proto, port(a)?, port(z)?))
+}
+
+/// A port by number, or by the name ASA configurations write
+/// (its command reference's TCP and UDP port literals). The same table as
+/// `coreview-collect`'s ASA reader; a test holds the two together.
+pub fn port_number(name: &str) -> Option<u16> {
+    if let Ok(n) = name.parse() {
+        return Some(n);
+    }
+    Some(match name {
+        "aol" => 5190,
+        "bgp" => 179,
+        "chargen" => 19,
+        "citrix-ica" => 1494,
+        "ctiqbe" => 2748,
+        "daytime" => 13,
+        "discard" => 9,
+        "domain" => 53,
+        "echo" => 7,
+        "exec" => 512,
+        "finger" => 79,
+        "ftp" => 21,
+        "ftp-data" => 20,
+        "gopher" => 70,
+        "h323" => 1720,
+        "hostname" => 101,
+        "http" | "www" => 80,
+        "https" => 443,
+        "ident" => 113,
+        "imap4" => 143,
+        "irc" => 194,
+        "kerberos" => 750,
+        "klogin" => 543,
+        "kshell" => 544,
+        "ldap" => 389,
+        "ldaps" => 636,
+        "login" => 513,
+        "lotusnotes" => 1352,
+        "lpd" => 515,
+        "netbios-ssn" => 139,
+        "nfs" => 2049,
+        "nntp" => 119,
+        "pop2" => 109,
+        "pop3" => 110,
+        "pptp" => 1723,
+        "rsh" | "cmd" => 514,
+        "rtsp" => 554,
+        "sip" => 5060,
+        "smtp" => 25,
+        "sqlnet" => 1521,
+        "ssh" => 22,
+        "sunrpc" => 111,
+        "tacacs" => 49,
+        "talk" => 517,
+        "telnet" => 23,
+        "uucp" => 540,
+        "whois" => 43,
+        "biff" => 512,
+        "bootpc" => 68,
+        "bootps" => 67,
+        "isakmp" => 500,
+        "nameserver" => 42,
+        "netbios-dgm" => 138,
+        "netbios-ns" => 137,
+        "ntp" => 123,
+        "radius" => 1645,
+        "radius-acct" => 1646,
+        "rip" => 520,
+        "snmp" => 161,
+        "snmptrap" => 162,
+        "syslog" => 514,
+        "tftp" => 69,
+        "vxlan" => 4789,
+        "xdmcp" => 177,
+        _ => return None,
+    })
 }
 
 pub fn svc_match(list: &[String], proto: Option<u8>, port: Option<u16>) -> Tri {
@@ -287,15 +370,18 @@ pub fn verdict(b: &Box_, k: Kind, flow: &Flow) -> FwVerdict {
         out.reason = format!("No firewall policy was collected from {}, so what it does with this flow is not known.", b.name);
         return out;
     }
+    if k == Kind::Asa && b.has_table("fw_binding") {
+        return asa_verdict(b, flow, out);
+    }
     for p in b.fw.iter().filter(|p| p.enabled) {
         // An ASA access list applies where `access-group` binds it. A rule
         // with no interface recorded could apply to either direction.
-        let bound = if k == Kind::Asa && p.src_zones.is_empty() && p.dst_zones.is_empty() {
+        let bound_here = if k == Kind::Asa && p.src_zones.is_empty() && p.dst_zones.is_empty() {
             Tri::Unknown(format!("the interface {} is bound to was not collected", p.label()))
         } else {
             Tri::Yes
         };
-        let m = bound
+        let m = bound_here
             .and(zone_match(&p.src_zones, flow.zones_in))
             .and(zone_match(&p.dst_zones, flow.zones_out))
             .and(addr_match(&p.src_addr, flow.src, &[]))
@@ -323,6 +409,109 @@ pub fn verdict(b: &Box_, k: Kind, flow: &Flow) -> FwVerdict {
     out.policy = Some(policy.into());
     out.reason = reason.into();
     out
+}
+
+/// One access list's first matching line: `Some` with the verdict when a
+/// line decides (or cannot be decided), `None` when no line matches.
+fn acl_first_match(b: &Box_, acl: &str, flow: &Flow, out: &FwVerdict) -> Option<FwVerdict> {
+    for p in b.fw.iter().filter(|p| p.enabled && p.name.as_deref() == Some(acl)) {
+        let m = addr_match(&p.src_addr, flow.src, &[]).and(addr_match(&p.dst_addr, flow.dst, flow.dst_names)).and(svc_match(&p.services, flow.proto, flow.port));
+        match m {
+            Tri::No => continue,
+            Tri::Yes => return Some(decided(out.clone(), p)),
+            Tri::Unknown(why) => {
+                let mut o = out.clone();
+                o.policy = Some(p.label());
+                o.action = Some(p.action.clone());
+                o.reason = format!("{} would decide if it matches, and whether it does is not known: {why}.", p.label());
+                return Some(o);
+            }
+        }
+    }
+    None
+}
+
+fn bound(b: &Box_, direction: &str, zones: &[String]) -> Option<String> {
+    let want: Vec<String> = zones.iter().map(|z| key(z)).collect();
+    b.bindings
+        .iter()
+        .find(|x| x.direction == direction && x.interface.as_deref().map(|i| want.contains(&key(i))).unwrap_or(false))
+        .map(|x| x.policy.clone())
+}
+
+/// An ASA with its `access-group` lines (LT-540), in the order the ASA
+/// applies them: the list bound inbound on the arriving interface, then a
+/// global list, then the implicit deny — or, with no list at all, the
+/// security levels; then the list bound outbound on the leaving interface.
+fn asa_verdict(b: &Box_, flow: &Flow, out: FwVerdict) -> FwVerdict {
+    let inbound = bound(b, "in", flow.zones_in);
+    let global = b.bindings.iter().find(|x| x.direction == "global").map(|x| x.policy.clone());
+    let mut passed: Option<FwVerdict> = None;
+    for acl in inbound.iter().chain(global.iter()) {
+        if let Some(v) = acl_first_match(b, acl, flow, &out) {
+            if v.verdict != Verdict::Allow {
+                return v;
+            }
+            passed = Some(v);
+            break;
+        }
+    }
+    let passed = match passed {
+        Some(v) => v,
+        None if inbound.is_some() || global.is_some() => {
+            let names: Vec<String> = inbound.iter().chain(global.iter()).cloned().collect();
+            let mut o = out.clone();
+            o.verdict = Verdict::Deny;
+            o.policy = Some("implicit deny".into());
+            o.reason = format!("No line of {} matches, and an access list ends in an implicit deny.", names.join(" or "));
+            return o;
+        }
+        None => {
+            // No list on the way in: the ASA compares security levels.
+            let level = |z: &Option<String>| z.as_ref().and_then(|z| b.security.get(z)).copied();
+            let mut o = out.clone();
+            match (level(&out.zone_in), level(&out.zone_out)) {
+                (Some(a), Some(z)) if a > z => {
+                    o.verdict = Verdict::Allow;
+                    o.policy = Some("security level".into());
+                    o.reason = format!("No access list is bound inbound on {}; its security level {a} is higher than {}'s {z}, which the ASA allows.", out.zone_in.clone().unwrap_or_default(), out.zone_out.clone().unwrap_or_default());
+                    o
+                }
+                (Some(a), Some(z)) if a < z => {
+                    o.verdict = Verdict::Deny;
+                    o.policy = Some("security level".into());
+                    o.reason = format!("No access list is bound inbound on {}; its security level {a} is lower than {}'s {z}, which the ASA denies.", out.zone_in.clone().unwrap_or_default(), out.zone_out.clone().unwrap_or_default());
+                    return o;
+                }
+                (Some(a), Some(_)) => {
+                    o.reason = format!("No access list is bound inbound, and both interfaces are at security level {a}; whether `same-security-traffic permit` is set was not collected.");
+                    return o;
+                }
+                _ => {
+                    o.reason = "No access list is bound inbound, and the interfaces' security levels (`show nameif`) were not collected.".into();
+                    return o;
+                }
+            }
+        }
+    };
+    if let Some(acl) = bound(b, "out", flow.zones_out) {
+        return match acl_first_match(b, &acl, flow, &out) {
+            Some(v) if v.verdict == Verdict::Allow => {
+                let mut v2 = v;
+                v2.reason = format!("{} Then {}", passed.reason, v2.reason);
+                v2
+            }
+            Some(v) => v,
+            None => {
+                let mut o = out.clone();
+                o.verdict = Verdict::Deny;
+                o.policy = Some("implicit deny".into());
+                o.reason = format!("{} Then no line of {acl}, bound outbound, matches: implicit deny.", passed.reason);
+                o
+            }
+        };
+    }
+    passed
 }
 
 fn decided(mut out: FwVerdict, p: &FwPolicy) -> FwVerdict {

@@ -1213,7 +1213,14 @@ choice below is said in the result where it applies, not only here.
   an address or service object the tables do not define makes the verdict
   *undetermined*, naming the object; a next hop no collection reached is an
   unmanaged hop, with its MAC where ARP gave one. An ASA rule with no
-  interface binding recorded is not assumed to apply (LT-539). Services a vendor
+  interface binding recorded is not assumed to apply (LT-539). With its
+  `access-group` lines (LT-540) an ASA is decided in its own order: the list
+  bound inbound on the arriving interface, then a global list, then the
+  implicit deny; with no list at all, its security levels (higher to lower
+  allowed, lower to higher denied, equal undetermined — whether
+  `same-security-traffic permit` is set is not collected); then a list bound
+  outbound. Object names are expanded from the object tables first; an
+  object not collected stays unknown. Services a vendor
   predefines (`HTTPS`, `service-https`, `www`, …) are read by the vendor's
   own definitions; custom objects are not guessed.
 - **The way back is the return of the flow.** It is traced from the

@@ -150,6 +150,19 @@ installer) — skipped with a notice until a `VIRUSTOTAL_API_KEY` secret is
 set. A fresh Windows install collecting with no Python on the machine was
 proven on CI by LT-530 (657e963). **Not yet:** the VirusTotal key. The SBOM is LT-528.
 
+### LT-541 — FTD access policy through the FMC API — 2026-09-29
+**Source:** the same message: "FTD equivalents via FMC API". An FTD's rules
+live in its FMC, not on the box: the access policy assigned to the device,
+its rules with zones, networks and ports, and the zones each interface is
+in. **Depends on LT-518** — no API collector is reachable from the app yet
+(a token from the vault, a certificate pinned per host); this needs the same
+for the FMC's host. **Acceptance:** a read-only FMC client in
+`coreview-collect/src/api/fmc.rs` (token by the documented login call, GETs
+after), rows into `fw_policy` and `fw_zone` for each FTD the collection
+reached, tested against a local TLS server; reachable from the Collect tab
+with a saved API credential; built from Cisco's API documentation under
+D-058, unverified until a capture.
+
 ### LT-531 — P3: the modeled path, in Rust, over a collection's own tables — 2026-09-29
 **Source:** the spec's P3 ("Path builder (modeled/live/verify) + fw/NAT/PBR
 awareness + reverse path + ECMP. Accept: modeled path matches traceroute on
@@ -598,6 +611,51 @@ runs in the session's default scope; and an ASA's access lists with their
 `access-group` bindings and interface security levels, which its catalog
 does not collect yet, so every ASA verdict is undetermined (LT-539). Each
 needs rows the lab collection will show; none is guessed meanwhile.
+**Split 2026-09-29** into LT-540 (ASA access lists), LT-544–LT-547; kept
+here under its ID, closed when those are.
+
+
+### P4 — set by the operator 2026-09-29, in this order
+"start P4 without a separate plan round; write the plan into the spec and
+I'll review at your first checkpoint." Overlay edges go with the run diff.
+
+### LT-542 — P4.1 Run diff: two collection runs compared on the Collect tab — 2026-09-29
+New and lost devices, links, neighbours and routes between two runs of one
+project, shown on the Collect tab, from the P2 graph of each run.
+
+### LT-543 — P4.1 Overlay edges drawn in the diagram (VXLAN, IPsec, GRE) — 2026-09-29
+LT-527 lists overlays on the Collect tab but the diagram has no overlay
+edge; the run diff needs them drawn. Drawn apart from cables, with their
+underlay one click away.
+
+### LT-544 — P4.2 Route-target VRF leaking in the path builder — 2026-09-29
+From LT-538: follow an imported route back to the VRF that exports it.
+
+### LT-545 — P4.2 MPLS L3VPN in the path builder — 2026-09-29
+From LT-538: a BGP next hop that is a remote PE, reached over the IGP/LSP.
+
+### LT-546 — P4.2 IPv6 paths — 2026-09-29
+From LT-538: the model reads IPv4 only and refuses an IPv6 trace by name.
+
+### LT-547 — P4.2 Live checks inside a VDOM, context or vsys — 2026-09-29
+From LT-538: a live check today runs in the session's default scope.
+
+### LT-548 — P4.3 Exports: topology and path results as JSON, CSV and markdown — 2026-09-29
+The path already exports from Path-Trace (LT-536); the P2 topology does not.
+
+### LT-549 — P4.4 SNMP fallback when SSH fails — 2026-09-29
+LLDP-MIB, CDP-MIB, Q-BRIDGE, IP-FORWARD and ENTITY into the same tables,
+used only for a device whose SSH session could not be opened.
+
+### LT-550 — P4.5 Hosts and hypervisors: Linux/Proxmox, ESXi, Windows catalogs — 2026-09-29
+
+### LT-551 — P4.6 Scheduled re-discovery — 2026-09-29 — **blocked on the operator's ruling**
+**Conflicts with D-023**, which declines "scheduled re-crawl" and says it
+"remain[s] declined" after D-029/D-030. D-030 (proposed, not accepted)
+covers only scheduled *validation sessions*. Not built until the operator
+reverses that clause of D-023, and says whether D-030's constraints (armed
+by hand, window always visible, only while the app is open, never a
+service) apply.
 
 ## Done
 
@@ -609,7 +667,6 @@ rows first. (AOS-S writes a VLAN's *name* in `show ip` and its *number* in
 `show ip route`; the two are kept as written, not guessed into one.)
 **Fixed:** `vlan_name` and `local_port` mapped; the fixture-row test
 failed before.
-
 
 ### LT-554 — **bug** AOS-CX routes were dropped whole, and its ARP rows had no interface — 2026-09-29, fixed the same day
 **Same sweep.** `aruba_aoscx_show_ip_route_all-vrfs` puts the prefix in
@@ -624,7 +681,6 @@ a mixed list in `next_hop`, keeps names in `interface`, says a repeated
 protocol once, and splits `[20/0]` into distance and metric. Both
 fixture-row tests failed before.
 
-
 ### LT-553 — **bug** ASA routes lost their next hop and interface — 2026-09-29, fixed the same day
 **Found by a sweep of every template the catalogs name** (LT-540), after
 LT-552. `cisco_asa_show_route` writes `NEXTHOPIP` and `NEXTHOPIF`; the route
@@ -633,7 +689,6 @@ hop and the path builder could not leave one. Reproduced on the fixture's
 own row first.
 **Fixed:** `nexthopip`/`nexthopif` mapped; the fixture-row test failed
 before.
-
 
 ### LT-552 — **bug** Every ASA NAT rule arrived empty: the `show nat` template's fields were not mapped — 2026-09-29, fixed the same day
 **Found building LT-540.** ntc's `cisco_asa_show_nat` writes `source_real`,
@@ -650,6 +705,41 @@ row.
 an `inactive` rule is skipped by the path builder. The fixture-row test
 failed (`orig_src` empty) before the fix.
 
+### LT-540 — ASA access lists collected and bound to their interfaces — 2026-09-29, done the same day
+**Source:** the operator, 2026-09-29, pulling it forward from LT-538: "collect
+show running-config access-list and show running-config access-group, bind
+rules to interfaces … Add the scenario test." The ASA catalog collects NAT
+but no access list, so every ASA verdict reads "no policy collected"
+(LT-539). **Acceptance:** both commands in `cisco_asa.yaml`; the access
+lists read into `fw_policy` (each line a rule, its ACL name kept); the
+access-group lines bind each list to an interface and direction; the path
+builder applies a list only where it is bound (inbound on the arriving
+interface, outbound on the leaving one); the object definitions the rules
+name resolved from `show running-config object` / `object-group`, so a
+rule naming one is decided rather than undetermined; a scenario test
+from ASA output in its own format through the templates and readers.
+`show running-config access-list` has no ntc template: its reader is
+built from Cisco's command reference under D-058 and says so, unverified
+until the operator's capture.
+**Shipped:** `show running-config access-list`, `show running-config
+access-group` and `show nameif` read by Coreview readers
+(`coreview-collect/src/readers/asa.rs`, a new `reader:` parser kind the
+sidecar is never asked to parse); the four object and object-group commands
+through ntc's templates into a new `fw_object` table, bindings into a new
+`fw_binding` table (both made on every database open). The path builder
+expands object names before matching, reads ASA port names (`https`,
+`domain`, …), and decides an ASA in its own order: the list bound inbound
+on the arriving interface, then a global list, then the implicit deny; with
+no list, the security levels from `show nameif` (higher to lower allowed,
+lower to higher denied, equal undetermined because `same-security-traffic`
+is not collected); then a list bound outbound (D-061). **Run:** reader unit
+tests; the end-to-end scenario `an_asa_from_its_own_output_translates_binds_and_decides`
+(ASA-format text for route, nameif, access list, access group, objects and
+NAT through the real templates and readers, then traced: static NAT in, the
+bound list allowing 443 and 8443 by its service group and denying 22 by its
+own line, security levels and interface PAT out). **Not yet:** a capture —
+the readers were built from Cisco's command reference (D-058) and say so;
+FTD through FMC is LT-541.
 
 ### LT-539 — **bug** An ASA access list with no recorded binding was applied to traffic in every direction — 2026-09-29, fixed the same day
 **Found** adding an ASA scenario after the operator named firewall verdicts
@@ -12723,6 +12813,17 @@ internal COREVIEW-FGT-Root-CA cannot and never will.
 ---
 
 ## Icebox
+
+### Normaliser sweep leftovers — 2026-09-29
+Found by the LT-540 sweep of every template the catalogs name, and not
+fixed with LT-552–LT-555 because none drops a row the path or topology
+builder needs today: IOS-XR `show hsrp brief` keeps the virtual address in
+`group_addr` (not read as the FHRP address); AOS-S and AireOS CDP name the
+neighbour only in `chassis_id` (matched by address instead); IOS `show
+route-map` keeps `set ip next-hop` inside `set_clauses` (a policy route's
+action would need a reader); `show ip nat translations` are live
+translations, not rules; `show ip route summary` is not per-prefix and
+should not feed `route`.
 
 ### LT-416 — After a discovery the devices sit in one endless row — 2026-09-25
 

@@ -169,6 +169,24 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("enabled", &["enabled", "status", "disabled", "state"]),
         ],
         "fw_zone" => &[("name", &["name", "zone", "zone_name"]), ("interfaces", &["interfaces", "interface", "members", "intf"])],
+        // LT-540: where a policy applies — ASA `access-group`.
+        "fw_binding" => &[("policy", &["access_list", "policy", "acl"]), ("interface", &["interface", "intf"]), ("direction", &["direction", "dir"])],
+        // LT-540: the address and service objects rules name.
+        "fw_object" => &[
+            ("name", &["name", "object_name"]),
+            ("type", &["type"]),
+            ("host", &["host"]),
+            ("network", &["network", "subnet"]),
+            ("mask", &["netmask", "prefix_length", "mask"]),
+            ("range_start", &["start_ip", "range_start"]),
+            ("range_end", &["end_ip", "range_end"]),
+            ("member", &["net_object", "grp_object", "svc_obj_name", "grp_obj_name", "member"]),
+            ("protocol", &["protocol", "svc_protocol", "grp_protocol"]),
+            ("port_op", &["dst_operator", "port_operator"]),
+            ("port_start", &["dst_port_start", "port_start"]),
+            ("port_end", &["dst_port_end", "port_end"]),
+            ("fqdn", &["fqdn"]),
+        ],
         "policy_route" => &[
             ("seq", &["seq", "id", "sequence", "index", "line", "rule", "name"]),
             ("in_if", &["in_if", "interface", "input_device", "ingress", "from", "srcintf", "input"]),

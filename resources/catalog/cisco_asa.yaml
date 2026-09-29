@@ -132,13 +132,13 @@ commands:
   - id: show_nameif
     cmd: show nameif
     gate: always
-    parser: none
+    parser: reader:asa_nameif
     feeds:
-      - device
+      - fw_zone
     weight: light
     timeout: 30
-    verified: unverified
-    evidence: no template, no structured output, no capture yet (LT-511)
+    verified: docs
+    evidence: Coreview reader from Cisco's ASA command reference (D-058, LT-540); no capture yet
   - id: show_nat
     cmd: show nat
     gate: always
@@ -157,6 +157,66 @@ commands:
       - nat_rule
     weight: light
     timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_running_config_access_list
+    cmd: show running-config access-list
+    gate: always
+    parser: reader:asa_access_list
+    feeds:
+      - fw_policy
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview reader from Cisco's ASA command reference (D-058, LT-540); no ntc template; no capture yet
+  - id: show_running_config_access_group
+    cmd: show running-config access-group
+    gate: always
+    parser: reader:asa_access_group
+    feeds:
+      - fw_binding
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview reader from Cisco's ASA command reference (D-058, LT-540); ntc's template stops at an `out` or `global` line
+  - id: show_running_config_object_network
+    cmd: show running-config object network
+    gate: always
+    parser: textfsm:cisco_asa_show_running-config_object_network
+    feeds:
+      - fw_object
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_running_config_object_group_network
+    cmd: show running-config object-group network
+    gate: always
+    parser: textfsm:cisco_asa_show_object-group_network
+    feeds:
+      - fw_object
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_running_config_object_service
+    cmd: show running-config object service
+    gate: always
+    parser: textfsm:cisco_asa_show_running-config_object_service
+    feeds:
+      - fw_object
+    weight: light
+    timeout: 60
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_running_config_object_group_service
+    cmd: show running-config object-group service
+    gate: always
+    parser: textfsm:cisco_asa_show_running-config_object-group_service
+    feeds:
+      - fw_object
+    weight: light
+    timeout: 60
     verified: lab
     evidence: ntc-templates tests (1 captures)
   - id: show_ospf_neighbor

@@ -27,6 +27,9 @@ pub const TABLES: &[(&str, &[&str])] = &[
     ("nat_rule", &["seq", "type", "orig_src", "orig_dst", "trans_src", "trans_dst", "in_zone_if", "out_zone_if", "service"]),
     ("fw_zone", &["name", "interfaces"]),
     ("fw_policy", &["seq", "name", "src_zones", "dst_zones", "src_addr", "dst_addr", "services", "action", "enabled"]),
+    // LT-540: where a policy applies, and the objects rules name.
+    ("fw_binding", &["policy", "interface", "direction"]),
+    ("fw_object", &["name", "type", "host", "network", "mask", "range_start", "range_end", "member", "protocol", "port_op", "port_start", "port_end", "fqdn"]),
     ("tunnel", &["name", "kind", "local_ip", "remote_ip", "state"]),
     ("ha_pair", &["kind", "member", "role", "mac", "model", "serial", "peer_link"]),
     ("ap", &["ap_name", "ap_ip", "ap_mac", "model", "nbr_switch", "nbr_port", "state"]),

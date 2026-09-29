@@ -126,7 +126,10 @@ crates/
                      tables, and the API collectors (FortiOS REST, PAN-OS
                      XML API, AOS-CX REST) with the certificate pinned per
                      device. `examples/fake_sidecar.rs` is what its tests
-                     drive, so `cargo test` needs no Python.
+                     drive, so `cargo test` needs no Python. `readers/` holds
+                     Coreview's own readers for output no template reads
+                     (`parser: reader:<name>`, LT-540) — built from vendor
+                     documentation under D-058 and saying so.
   coreview-topology  P2's builder (LT-527): a collection run's tables in, one
                      graph out — identity by serial/MAC, links with confidence
                      and evidence, bundles, stacks, MAC placement, layer 3,
