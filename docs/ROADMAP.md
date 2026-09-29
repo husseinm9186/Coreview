@@ -151,26 +151,6 @@ set. **Not yet:** a fresh Windows install running a collection with no
 Python on the machine (the operator's test of this build), the VirusTotal
 key. The SBOM is LT-528.
 
-### LT-528 — SBOM: what the installer carries, listed and audited — 2026-09-29
-**Source:** the operator, 2026-09-29: "Add the SBOM step now (cargo
-auditable + pip-audit / cyclonedx), don't leave it open."
-**Acceptance:** the Windows bundle builds `coreview.exe` through
-`cargo auditable` and `cargo audit bin` checks the shipped binary; CycloneDX
-SBOMs for the Rust executable, the sidecar's Python and the page's npm
-packages go beside the installer; pip-audit fails the build on any sidecar
-advisory not written up with a reason; the public certificates travel with
-it for the install notes.
-**Status 2026-09-29 — built, waiting on its CI run.** `tauri build` runs
-through `scripts/sbom/cargo-auditable-runner.cmd` (cargo-auditable only runs
-when cargo starts it; checked here — the embedded list reads back with
-`cargo audit bin`); then `cargo audit bin coreview.exe`, `cargo cyclonedx`
-for the Windows target, `pip-audit --require-hashes` in CycloneDX form
-(failing on any advisory not in `sidecar/pip-audit-ignore.txt`, which holds
-one, with its reason), and `@cyclonedx/cyclonedx-npm` for the page, all into
-`sbom/` beside the installer; the root and signing certificates' public
-halves go beside it too. The pip-audit run here found CVE-2026-44405 in
-paramiko 3.5.1 (no fix allowed under scrapli), which led to LT-529.
-
 ### LT-527 — P2: the topology builder — approved 2026-09-29
 **Source:** the spec's P2 ("Topology builder + reconciliation + UI.
 Accept: lab topology reproduced; LAG/stack collapse; inferred links
@@ -545,6 +525,36 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-528 — SBOM: what the installer carries, listed and audited — 2026-09-29, done the same day
+**Source:** the operator, 2026-09-29: "Add the SBOM step now (cargo
+auditable + pip-audit / cyclonedx), don't leave it open."
+**Acceptance:** the Windows bundle builds `coreview.exe` through
+`cargo auditable` and `cargo audit bin` checks the shipped binary; CycloneDX
+SBOMs for the Rust executable, the sidecar's Python and the page's npm
+packages go beside the installer; pip-audit fails the build on any sidecar
+advisory not written up with a reason; the public certificates travel with
+it for the install notes.
+**Built 2026-09-29.** `tauri build` runs
+through `scripts/sbom/cargo-auditable-runner.cmd` (cargo-auditable only runs
+when cargo starts it; checked here — the embedded list reads back with
+`cargo audit bin`); then `cargo audit bin coreview.exe`, `cargo cyclonedx`
+for the Windows target, `pip-audit --require-hashes` in CycloneDX form
+(failing on any advisory not in `sidecar/pip-audit-ignore.txt`, which holds
+one, with its reason), and `@cyclonedx/cyclonedx-npm` for the page, all into
+`sbom/` beside the installer; the root and signing certificates' public
+halves go beside it too. The pip-audit run here found CVE-2026-44405 in
+paramiko 3.5.1 (no fix allowed under scrapli), which led to LT-529.
+**Done 2026-09-29 — run on CI (7584ecd), green.** The first attempt
+(80b9e89) failed inside `tauri build`: the runner was given by a relative
+path and tauri starts it from `src-tauri`. Fixed with an absolute path, a
+step that tries the runner on its own first, and a failed build's last
+lines turned into an annotation. The run's own report: "SBOM:
+coreview-rust.cdx.json, page-npm.cdx.json, sidecar-python.cdx.json",
+`cargo audit bin` on the shipped `coreview.exe` passing, pip-audit passing
+with its one written exception. VirusTotal said "No API key configured —
+the installer was NOT scanned": the gate is in place and waits on the
+`VIRUSTOTAL_API_KEY` secret.
 
 ### LT-529 — The sidecar checks host keys against Coreview's store — 2026-09-29, done the same day
 **Source:** found by LT-528's pip-audit run (paramiko accepts SHA-1 RSA
