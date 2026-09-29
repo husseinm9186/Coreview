@@ -57,6 +57,10 @@ const FORBIDDEN: &[&str] = &[
     "system-view", "edit", "load", "rollback", "restore", "upgrade",
 ];
 
+/// LT-557: a literal is a prefix, so its command's words are checked too —
+/// `ip link` must not let `ip link set …` through.
+const WRITE_WORDS: &[&str] = &["add", "del", "delete", "set", "change", "replace", "flush", "append", "prepend", "exec", "save", "restore", "update", "configure", "unconfigure", "pause", "resume", "restart", "reset", "shutdown", "destroy", "remove", "start", "stop", "create", "migrate"];
+
 /// LT-556: shell operators — a second command, a background one, a
 /// substitution or a redirection. `|` is a pipe and is checked apart.
 const SHELL: &[&str] = &["&&", "||", "&", "`", "$(", ">", "<"];
@@ -116,6 +120,11 @@ pub fn verdict(command: &str) -> Verdict {
         let seg_literal = LITERALS.iter().any(|l| seg.starts_with(l));
         if FORBIDDEN.contains(&first) && !seg_literal {
             return Verdict::Refused(format!("forbidden verb \"{first}\""));
+        }
+        if seg_literal {
+            if let Some(w) = seg.split_whitespace().find(|w| WRITE_WORDS.contains(&w.to_ascii_lowercase().as_str())) {
+                return Verdict::Refused(format!("\"{}\" changes the device", w.to_ascii_lowercase()));
+            }
         }
         // LT-556: every chained command is a read command in its own right.
         if i > 0 && !seg.is_empty() && !seg_literal && !verb().is_match(seg) {

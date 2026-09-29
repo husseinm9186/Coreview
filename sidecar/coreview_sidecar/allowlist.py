@@ -35,6 +35,10 @@ FILTERS = frozenset(
 )
 
 
+# LT-557: a literal is a prefix, so its command's words are checked too —
+# `ip link` must not let `ip link set …` through.
+WRITE_WORDS = frozenset(("add", "del", "delete", "set", "change", "replace", "flush", "append", "prepend", "exec", "save", "restore", "update", "configure", "unconfigure", "pause", "resume", "restart", "reset", "shutdown", "destroy", "remove", "start", "stop", "create", "migrate"))
+
 # LT-556: shell operators — a second command, a background one, a
 # substitution or a redirection. `|` is a pipe and is checked apart.
 SHELL = ("&&", "||", "&", "`", "$(", ">", "<")
@@ -64,6 +68,10 @@ def verdict(command) -> str:
         seg_literal = any(seg.startswith(l) for l in LITERALS)
         if first in FORBIDDEN and not seg_literal:
             return f'forbidden verb "{first}"'
+        if seg_literal:
+            hit = next((w.lower() for w in words if w.lower() in WRITE_WORDS), None)
+            if hit:
+                return f'"{hit}" changes the device'
         # LT-556: every chained command is a read command in its own right.
         if i > 0 and seg and not seg_literal and not VERB.match(seg):
             return "a chained command's first word is not a read verb"

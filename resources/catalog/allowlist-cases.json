@@ -49,5 +49,13 @@
   { "command": "ip -j addr $(reboot)", "verdict": "carries a shell operator" },
   { "command": "ip -j addr `reboot`", "verdict": "carries a shell operator" },
   { "command": "ip -j route > /etc/motd", "verdict": "carries a shell operator" },
-  { "command": "Get-NetRoute < x", "verdict": "carries a shell operator" }
+  { "command": "Get-NetRoute < x", "verdict": "carries a shell operator" },
+  { "command": "ip link set eth0 down", "verdict": "\"set\" changes the device" },
+  { "command": "ip route add 0.0.0.0/0 via 192.0.2.1", "verdict": "\"add\" changes the device" },
+  { "command": "ip -j neigh flush all", "verdict": "\"flush\" changes the device" },
+  { "command": "ip addr del 192.0.2.10/24 dev eth0", "verdict": "\"del\" changes the device" },
+  { "command": "show version; ip link set eth0 down", "verdict": "\"set\" changes the device" },
+  { "command": "bridge fdb del 00:00:00:00:00:01 dev eth0", "verdict": "first word is not a read verb" },
+  { "command": "ip -j route show table all", "verdict": "ok" },
+  { "command": "lldpcli show neighbors -f json", "verdict": "ok" }
 ]

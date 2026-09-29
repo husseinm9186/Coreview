@@ -589,6 +589,19 @@ service) apply.
 
 ## Done
 
+### LT-557 — **bug** A host command's literal allowed its write form: `ip link set`, `ip route add` — 2026-09-29, fixed the same day
+**Found with LT-556.** The allowlist's literals for host commands (P1) are
+prefixes, so `ip link set eth0 down`, `ip route add …`, `ip neigh flush` and
+`ip addr del …` passed as "ip link", "ip route", "ip -j …" and "ip addr". No
+catalog sends them; the guard exists for the day something does.
+**Reproduced** in the shared fixture, failing in all three implementations
+first.
+**Fixed** in all three implementations alike: a command let in by a literal
+is refused when any of its words changes the device (`add`, `del`, `set`,
+`flush`, `replace`, `exec`, `update`, `configure`, `restart`, `stop`, …),
+"\"set\" changes the device". Eight fixture cases; all three suites failed
+on the five refusals before.
+
 ### LT-556 — **bug** The read-only guard checked only the first of several chained commands — 2026-09-29, fixed the same day
 **Found starting LT-550** (host catalogs, where a shell chains commands).
 Only the first `;`-separated command had to be a read verb; a later one was

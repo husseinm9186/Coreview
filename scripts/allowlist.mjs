@@ -57,6 +57,10 @@ const FILTERS = new Set([
  * 'ok', or the reason the command is refused. Every implementation returns
  * these exact strings so the shared fixture can pin them.
  */
+/** LT-557: a literal is a prefix, so its command's words are checked too —
+ *  `ip link` must not let `ip link set …` through. */
+const WRITE_WORDS = new Set(['add', 'del', 'delete', 'set', 'change', 'replace', 'flush', 'append', 'prepend', 'exec', 'save', 'restore', 'update', 'configure', 'unconfigure', 'pause', 'resume', 'restart', 'reset', 'shutdown', 'destroy', 'remove', 'start', 'stop', 'create', 'migrate']);
+
 /** LT-556: shell operators — a second command, a background one, a
  *  substitution or a redirection. `|` is a pipe and is checked apart. */
 const SHELL = ['&&', '||', '&', '`', '$(', '>', '<'];
@@ -76,6 +80,10 @@ export function allowlistVerdict(command) {
     const first = seg.split(/\s+/)[0]?.toLowerCase().replace(/^\//, '') ?? '';
     const segLiteral = LITERALS.some((l) => seg.startsWith(l));
     if (FORBIDDEN.has(first) && !segLiteral) return `forbidden verb "${first}"`;
+    if (segLiteral) {
+      const w = seg.split(/\s+/).find((x) => WRITE_WORDS.has(x.toLowerCase()));
+      if (w) return `"${w.toLowerCase()}" changes the device`;
+    }
     // LT-556: every chained command is a read command in its own right.
     if (i > 0 && seg && !segLiteral && !VERB.test(seg)) return "a chained command's first word is not a read verb";
   }
