@@ -127,9 +127,25 @@ const crates = meta.packages
   .filter((p, i, all) => all.findIndex((x) => x.name === p.name && x.version === p.version) === i)
   .sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
 
+// ------------------------------------------------------------- vendored data
+//
+// Not a package in either tree: data copied into resources/ and shipped
+// beside the application (D-060). ntc-templates' templates and test
+// fixtures (Apache-2.0) and the session behaviour read from scrapli and
+// netmiko (MIT) — their licence texts are kept next to the data.
+
+const vendored = [
+  { name: "ntc-templates (templates, index, tests)", version: "9.3.0", licence: "Apache-2.0",
+    url: "https://github.com/networktocode/ntc-templates", texts: textsIn("resources/templates").filter((t) => /Apache License/.test(t)) },
+  { name: "scrapli / scrapli_community (session data)", version: "2026.02.20 / 2025.01.30", licence: "MIT",
+    url: "https://github.com/carlmontanari/scrapli", texts: [readFileSync("resources/catalog/LICENSE-scrapli", "utf8").trim()] },
+  { name: "netmiko (session data)", version: "4.8.0", licence: "MIT",
+    url: "https://github.com/ktbyers/netmiko", texts: [readFileSync("resources/catalog/LICENSE-netmiko", "utf8").trim()] },
+];
+
 // -------------------------------------------------------------------- checks
 
-const all = [...npm, ...crates];
+const all = [...npm, ...crates, ...vendored];
 const blocking = all.filter((c) => COPYLEFT.test(c.licence) && !/ OR /i.test(c.licence));
 if (blocking.length) {
   console.error("Copyleft licences that a proprietary build cannot ship:");
@@ -210,6 +226,12 @@ ${table(npm)}
 ${tally(crates)}
 
 ${table(crates)}
+
+## Vendored data — ${vendored.length} sources under resources/
+
+${tally(vendored)}
+
+${table(vendored)}
 ${missing.length ? `
 ## Components shipping no licence file of their own
 
@@ -233,6 +255,10 @@ ${texts(npm)}
 ## Rust
 
 ${texts(crates)}
+
+## Vendored data
+
+${texts(vendored)}
 `);
 
 console.log(

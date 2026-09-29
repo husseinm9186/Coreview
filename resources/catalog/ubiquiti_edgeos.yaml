@@ -1,0 +1,44 @@
+# Coreview discovery catalog — Ubiquiti EdgeOS (ubiquiti_edgeos)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from the operator's
+# specification (docs/DISCOVERY-SPEC.md), ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist (LT-512).
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met the operator's hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — LT-511's list. Never invent a command.
+vendor: Ubiquiti
+os: ubiquiti_edgeos
+name: EdgeOS
+ntc_platform: ubiquiti_edgerouter
+phase: 2
+fingerprint:
+  probe: show version
+  match_regex: EdgeOS|EdgeRouter
+session:
+  source: scrapli_community generic 'network' driver
+  privilege_levels:
+    privilege_exec:
+      pattern: ^[a-z0-9\.\--_()/:~]{1,1000}@[a-z0-9\.\--_()/:~]{1,1000}\$
+  default_privilege: privilege_exec
+  failed_when_contains:
+    - Ambiguous command
+    - Incomplete command
+    - Invalid command
+    - Invalid value
+    - Need to specify the config node to set
+    - Set failed
+  on_open:
+    - stty cols 100000
+  on_close:
+    - exit
+role_hint: []
+role_defaults: {}
+caps_probe: []
+commands: []
+live_path: []
+note: "Phase-2 stub: the commands are catalogued, the session block is taken from scrapli; parsers come with Phase 2 (D-060)."

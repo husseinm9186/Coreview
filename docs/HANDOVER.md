@@ -426,6 +426,28 @@ trust the summary below over that file; it is a signpost and it will rot.
   `examples/probe_stack.rs` · LT-134 needs an `snmpwalk` of the FortiGate ·
   LT-136 needs the multi-chassis families to exist somewhere reachable.
 
+- **29 September 2026, the discovery engine's first day (D-060, LT-507–LT-513).**
+  The operator's specification is `docs/DISCOVERY-SPEC.md`; its
+  architecture is a Python bridge now and a Rust collector as the end
+  state, with the catalog as data. What exists: `resources/catalog/<os>.yaml`
+  (twenty, built once by `scripts/build-catalog.mjs`, hand-maintained
+  since — read one before touching the collector), `crates/coreview-catalog`
+  (loader, gate evaluator, plan, allowlist; `load::problems()` is the
+  contract every catalog is held to), `resources/templates` (ntc-templates
+  vendored, with the fixtures for every template a catalog names),
+  `sidecar/` (scrapli + TextFSM over JSON lines; `protocol.py` is the
+  contract, `session.py` drives contexts and paging from the catalog's
+  `session:` block), and `docs/DISCOVERY-RECONCILIATION.md`, the table
+  every command was checked against. The read-only allowlist exists three
+  times on purpose (Rust, JavaScript, Python) and one fixture pins them.
+  **Mines:** the catalogs were generated and then became the source of
+  truth — never rerun `build-catalog.mjs --force` over hand edits; ntc's
+  index match is a prefix match, and `matchIndex` deliberately stops at a
+  word boundary; a `config` word may appear only in a `session:` block,
+  and the sidecar refuses any session step outside `SESSION_STEP`. Not yet
+  built: Rust spawning the sidecar, the collector, the tables, offline
+  import, the plan preview (LT-514–LT-517).
+
 - **Shipped 2026-09-18, after the mission:** LT-285 the address register (the
   **Addresses** tab; `src/lib/ipam.ts` is the arithmetic, `e2e/ipam.mjs` drives
   it), LT-286 "Keep for this project" so a credential is typed once and the

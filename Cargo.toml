@@ -17,6 +17,7 @@ members = [
     "crates/coreview-discover",
     "crates/coreview-meraki",
     "crates/coreview-formats",
+    "crates/coreview-catalog",
     "src-tauri",
 ]
 

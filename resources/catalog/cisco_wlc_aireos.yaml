@@ -1,0 +1,185 @@
+# Coreview discovery catalog — Cisco AireOS WLC (cisco_wlc_aireos)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from the operator's
+# specification (docs/DISCOVERY-SPEC.md), ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist (LT-512).
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met the operator's hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — LT-511's list. Never invent a command.
+vendor: Cisco
+os: cisco_wlc_aireos
+name: AireOS WLC
+ntc_platform: cisco_wlc_ssh
+phase: 1
+fingerprint:
+  probe: show sysinfo
+  match_regex: Cisco Controller|Product Name
+session:
+  source: scrapli_community generic 'network' driver
+  privilege_levels:
+    exec:
+      pattern: ^\([\w. -]{1,31}\) >$
+  default_privilege: exec
+  failed_when_contains:
+    - Incorrect Usage. Use the '?' or <TAB> key to list commands.
+    - Incorrect input!
+  on_open:
+    - config paging disable
+  on_close:
+    steps:
+      - logout
+    confirm:
+      prompt: save
+      answer: n
+    source: netmiko cisco_wlc_ssh.py cleanup
+  ntc_platform: cisco_wlc_ssh
+  login:
+    username_prompt: "User:"
+    password_prompt: ssword
+    source: netmiko cisco_wlc_ssh.py special_login_handler; scrapli_community cisco_aireos auth_bypass
+  paging:
+    off:
+      - config paging disable
+    restore:
+      - config paging enable
+    source: scrapli_community cisco_aireos on_open; netmiko cisco_wlc_ssh.py session_preparation / cleanup
+role_hint:
+  - match: AIR-CT|5520|8540|3504
+    role: wlc
+role_defaults:
+  wlc:
+    - wlc
+    - cdp
+caps_probe: []
+commands:
+  - id: show_sysinfo
+    cmd: show sysinfo
+    gate: always
+    parser: textfsm:cisco_wlc_ssh_show_sysinfo
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_inventory
+    cmd: show inventory
+    gate: always
+    parser: textfsm:cisco_wlc_ssh_show_inventory
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+    coreview_reader: true
+  - id: show_interface_summary
+    cmd: show interface summary
+    gate: always
+    parser: textfsm:cisco_wlc_ssh_show_interface_summary
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_cdp_neighbors_detail
+    cmd: show cdp neighbors detail
+    gate: always
+    parser: textfsm:cisco_wlc_ssh_show_cdp_neighbors_detail
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ap_summary
+    cmd: show ap summary
+    gate: always
+    parser: textfsm:cisco_wlc_ssh_show_ap_summary
+    feeds:
+      - ap
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+    coreview_reader: true
+  - id: show_ap_cdp_neighbors_all
+    cmd: show ap cdp neighbors all
+    gate: always
+    parser: none
+    feeds:
+      - neighbor
+      - ap
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+    coreview_reader: true
+  - id: show_wlan_summary
+    cmd: show wlan summary
+    gate: always
+    parser: textfsm:cisco_wlc_ssh_show_wlan_sum
+    feeds:
+      - ap
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_redundancy_summary
+    cmd: show redundancy summary
+    gate: always
+    parser: textfsm:cisco_wlc_ssh_show_redundancy_summary
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_mobility_summary
+    cmd: show mobility summary
+    gate: always
+    parser: textfsm:cisco_wlc_ssh_show_mobility_sum
+    feeds:
+      - ap
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_route_summary
+    cmd: show route summary
+    gate: always
+    parser: none
+    feeds:
+      - route
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_network_summary
+    cmd: show network summary
+    gate: always
+    parser: none
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_client_summary
+    cmd: show client summary
+    gate: always
+    parser: none
+    feeds:
+      - endpoint
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+live_path: []

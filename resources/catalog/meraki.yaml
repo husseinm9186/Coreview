@@ -1,0 +1,241 @@
+# Coreview discovery catalog — Cisco Meraki Dashboard API (meraki)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from the operator's
+# specification (docs/DISCOVERY-SPEC.md), ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist (LT-512).
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met the operator's hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — LT-511's list. Never invent a command.
+vendor: Cisco Meraki
+os: meraki
+name: Dashboard API
+ntc_platform: null
+phase: 1
+fingerprint: null
+session: {}
+role_hint: []
+role_defaults: {}
+caps_probe: []
+commands:
+  - id: organizations
+    cmd: /organizations
+    gate: always
+    parser: api
+    api: /organizations
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: organizations_org_networks
+    cmd: /organizations/{org}/networks
+    gate: always
+    parser: api
+    api: /organizations/{org}/networks
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: organizations_org_devices
+    cmd: /organizations/{org}/devices
+    gate: always
+    parser: api
+    api: /organizations/{org}/devices
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: organizations_org_devices_statuses
+    cmd: /organizations/{org}/devices/statuses
+    gate: always
+    parser: api
+    api: /organizations/{org}/devices/statuses
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: networks_net_topology_linklayer
+    cmd: /networks/{net}/topology/linkLayer
+    gate: always
+    parser: api
+    api: /networks/{net}/topology/linkLayer
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: devices_serial_lldpcdp
+    cmd: /devices/{serial}/lldpCdp
+    gate: always
+    parser: api
+    api: /devices/{serial}/lldpCdp
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: devices_serial_switch_ports
+    cmd: /devices/{serial}/switch/ports
+    gate: always
+    parser: api
+    api: /devices/{serial}/switch/ports
+    feeds:
+      - ha_pair
+      - interface
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: devices_serial_switch_ports_statuses
+    cmd: /devices/{serial}/switch/ports/statuses
+    gate: always
+    parser: api
+    api: /devices/{serial}/switch/ports/statuses
+    feeds:
+      - ha_pair
+      - interface
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: networks_net_switch_stacks
+    cmd: /networks/{net}/switch/stacks
+    gate: always
+    parser: api
+    api: /networks/{net}/switch/stacks
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: devices_serial_switch_routing_interfaces
+    cmd: /devices/{serial}/switch/routing/interfaces
+    gate: always
+    parser: api
+    api: /devices/{serial}/switch/routing/interfaces
+    feeds:
+      - ha_pair
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: devices_serial_switch_routing_staticroutes
+    cmd: /devices/{serial}/switch/routing/staticRoutes
+    gate: always
+    parser: api
+    api: /devices/{serial}/switch/routing/staticRoutes
+    feeds:
+      - ha_pair
+      - route
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: networks_net_appliance_vlans
+    cmd: /networks/{net}/appliance/vlans
+    gate: always
+    parser: api
+    api: /networks/{net}/appliance/vlans
+    feeds:
+      - ip_address
+      - vlan
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: networks_net_appliance_staticroutes
+    cmd: /networks/{net}/appliance/staticRoutes
+    gate: always
+    parser: api
+    api: /networks/{net}/appliance/staticRoutes
+    feeds:
+      - route
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: organizations_org_appliance_uplink_statuses
+    cmd: /organizations/{org}/appliance/uplink/statuses
+    gate: always
+    parser: api
+    api: /organizations/{org}/appliance/uplink/statuses
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: networks_net_appliance_firewall_l3firewallrules
+    cmd: /networks/{net}/appliance/firewall/l3FirewallRules
+    gate: always
+    parser: api
+    api: /networks/{net}/appliance/firewall/l3FirewallRules
+    feeds:
+      - fw_policy
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: networks_net_appliance_vpn_sitetositevpn
+    cmd: /networks/{net}/appliance/vpn/siteToSiteVpn
+    gate: always
+    parser: api
+    api: /networks/{net}/appliance/vpn/siteToSiteVpn
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: organizations_org_appliance_vpn_statuses
+    cmd: /organizations/{org}/appliance/vpn/statuses
+    gate: always
+    parser: api
+    api: /organizations/{org}/appliance/vpn/statuses
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: networks_net_wireless_ssids
+    cmd: /networks/{net}/wireless/ssids
+    gate: always
+    parser: api
+    api: /networks/{net}/wireless/ssids
+    feeds:
+      - ap
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+  - id: networks_net_clients_timespan_86400
+    cmd: /networks/{net}/clients?timespan=86400
+    gate: always
+    parser: api
+    api: /networks/{net}/clients?timespan=86400
+    feeds:
+      - endpoint
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (Dashboard API); field mapping from documentation
+live_path: []
+structured_output: api

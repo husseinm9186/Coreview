@@ -1,0 +1,6 @@
+# The sidecar's runtime, pinned exactly (LT-513, D-060 packaging rule).
+# `pip-compile --generate-hashes requirements.in` writes requirements.txt.
+scrapli[paramiko]==2026.2.20
+scrapli-community==2025.1.30
+ntc-templates==9.3.0
+textfsm==2.1.0

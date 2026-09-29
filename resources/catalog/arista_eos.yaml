@@ -1,0 +1,490 @@
+# Coreview discovery catalog — Arista EOS (arista_eos)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from the operator's
+# specification (docs/DISCOVERY-SPEC.md), ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist (LT-512).
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met the operator's hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — LT-511's list. Never invent a command.
+vendor: Arista
+os: arista_eos
+name: EOS
+ntc_platform: arista_eos
+phase: 1
+fingerprint:
+  probe: show version
+  match_regex: Arista
+session:
+  source: scrapli scrapli.driver.core.arista_eos.sync_driver.EOSDriver
+  privilege_levels:
+    exec:
+      pattern: "^[\\w.\\-@()/: ]{1,63}>\\s?$"
+    privilege_exec:
+      pattern: "^[\\w.\\-@()/: ]{1,63}#\\s?$"
+      escalate: enable
+      escalate_auth: true
+      escalate_prompt: ^[pP]assword:\s?$
+      previous: exec
+  failed_when_contains:
+    - "% Ambiguous command"
+    - "% Error"
+    - "% Incomplete command"
+    - "% Invalid input"
+    - "% Cannot commit"
+    - "% Unavailable command"
+    - "% Duplicate sequence number"
+  on_open:
+    - terminal length 0
+    - terminal width 32767
+  on_close:
+    - exit
+  ntc_platform: arista_eos
+  paging:
+    off:
+      - terminal length 0
+      - terminal width 511
+    source: scrapli EOSDriver on_open; netmiko arista.py session_preparation
+  structured:
+    suffix: " | json"
+    source: "spec: `| json` on everything (or eAPI if enabled)"
+  default_privilege: privilege_exec
+role_hint:
+  - match: DCS-7|CCS-7|vEOS
+    role: switch
+role_defaults:
+  switch:
+    - switching
+    - lldp
+    - structured_output
+caps_probe:
+  - id: show_running_config_include_router_ip_routing_vrf_instance_i
+    cmd: show running-config | include ^router |^ip routing|^vrf instance|^ip virtual-router|^vrrp|^interface Vxlan|^mlag|^policy-map type pbr|^interface Tunnel|^ip route
+    flags:
+      routing: ^router |^ip routing|^ip route
+      ospf: ^router ospf
+      bgp: ^router bgp
+      isis: ^router isis
+      vrf: ^vrf instance
+      fhrp: ^ip virtual-router|^vrrp
+      vxlan_evpn: ^interface Vxlan
+      vpc_mlag_vsx: ^mlag
+      pbr: ^policy-map type pbr
+      gre: ^interface Tunnel
+    timeout: 30
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: json
+    shadow: textfsm:arista_eos_show_version
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (5 captures)
+    coreview_reader: true
+  - id: show_inventory
+    cmd: show inventory
+    gate: always
+    parser: json
+    shadow: textfsm:arista_eos_show_inventory
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (11 captures)
+  - id: show_hostname
+    cmd: show hostname
+    gate: always
+    parser: json
+    shadow: textfsm:arista_eos_show_hostname
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_interfaces_status
+    cmd: show interfaces status
+    gate: always
+    parser: json
+    shadow: textfsm:arista_eos_show_interfaces_status
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+  - id: show_interfaces_description
+    cmd: show interfaces description
+    gate: always
+    parser: json
+    shadow: textfsm:arista_eos_show_interfaces_description
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_interface_brief
+    cmd: show ip interface brief
+    gate: always
+    parser: json
+    shadow: textfsm:arista_eos_show_ip_interface_brief
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_lldp_neighbors_detail
+    cmd: show lldp neighbors detail
+    gate: always
+    parser: json
+    shadow: textfsm:arista_eos_show_lldp_neighbors_detail
+    feeds:
+      - neighbor
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_interfaces_switchport
+    cmd: show interfaces switchport
+    gate: cap.switching
+    parser: json
+    shadow: textfsm:arista_eos_show_interfaces
+    feeds:
+      - interface
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+  - id: show_interfaces_trunk
+    cmd: show interfaces trunk
+    gate: cap.switching
+    parser: json
+    shadow: textfsm:arista_eos_show_interfaces
+    feeds:
+      - interface
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+  - id: show_vlan
+    cmd: show vlan
+    gate: cap.switching
+    parser: json
+    shadow: textfsm:arista_eos_show_vlan
+    feeds:
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_spanning_tree
+    cmd: show spanning-tree
+    gate: cap.switching
+    parser: json
+    feeds:
+      - stp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json` / eAPI); field mapping from documentation
+  - id: show_port_channel_summary
+    cmd: show port-channel summary
+    gate: cap.switching
+    parser: json
+    shadow: textfsm:arista_eos_show_port-channel_summary
+    feeds:
+      - interface
+      - lag
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+    coreview_reader: true
+  - id: show_lacp_neighbor
+    cmd: show lacp neighbor
+    gate: cap.switching
+    parser: json
+    feeds:
+      - lag
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json` / eAPI); field mapping from documentation
+  - id: show_mlag
+    cmd: show mlag
+    gate: cap.vpc_mlag_vsx
+    parser: json
+    shadow: textfsm:arista_eos_show_mlag
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_mlag_interfaces
+    cmd: show mlag interfaces
+    gate: cap.vpc_mlag_vsx
+    parser: json
+    shadow: textfsm:arista_eos_show_mlag
+    feeds:
+      - ha_pair
+      - interface
+      - lag
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_vrf
+    cmd: show vrf
+    gate: cap.routing
+    parser: json
+    shadow: textfsm:arista_eos_show_vrf
+    feeds:
+      - vrf
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+  - id: show_ipv6_neighbors
+    cmd: show ipv6 neighbors
+    gate: cap.routing
+    parser: json
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json` / eAPI); field mapping from documentation
+  - id: show_policy_map_type_pbr
+    cmd: show policy-map type pbr
+    gate: cap.routing && cap.pbr
+    parser: json
+    feeds:
+      - policy_route
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json` / eAPI); field mapping from documentation
+  - id: show_ip_bgp_summary_vrf_all
+    cmd: show ip bgp summary vrf all
+    gate: cap.bgp
+    parser: json
+    shadow: textfsm:arista_eos_show_ip_bgp_summary
+    feeds:
+      - vrf
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (6 captures)
+  - id: show_isis_neighbors
+    cmd: show isis neighbors
+    gate: cap.isis
+    parser: json
+    shadow: textfsm:arista_eos_show_isis_neighbors
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_vrrp
+    cmd: show vrrp
+    gate: cap.fhrp
+    parser: json
+    feeds:
+      - fhrp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json` / eAPI); field mapping from documentation
+  - id: show_vxlan_vni
+    cmd: show vxlan vni
+    gate: cap.vxlan_evpn
+    parser: json
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json` / eAPI); field mapping from documentation
+  - id: show_vxlan_vtep
+    cmd: show vxlan vtep
+    gate: cap.vxlan_evpn
+    parser: json
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json` / eAPI); field mapping from documentation
+  - id: show_vxlan_address_table
+    cmd: show vxlan address-table
+    gate: cap.vxlan_evpn
+    parser: json
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json` / eAPI); field mapping from documentation
+  - id: show_bgp_evpn_summary
+    cmd: show bgp evpn summary
+    gate: cap.vxlan_evpn
+    parser: json
+    shadow: textfsm:arista_eos_show_ip_bgp_summary
+    feeds:
+      - routing_neighbor
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (6 captures)
+  - id: show_interfaces
+    cmd: show interfaces
+    gate: always
+    parser: json
+    shadow: textfsm:arista_eos_show_interfaces
+    feeds:
+      - interface
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+  - id: show_ip_arp_vrf_all
+    cmd: show ip arp vrf all
+    gate: always
+    parser: json
+    shadow: textfsm:arista_eos_show_ip_arp
+    feeds:
+      - arp
+      - vrf
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_running_config
+    cmd: show running-config
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+  - id: show_mac_address_table
+    cmd: show mac address-table
+    gate: cap.switching
+    parser: json
+    shadow: textfsm:arista_eos_show_mac_address-table
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_route_vrf_all
+    cmd: show ip route vrf all
+    gate: cap.routing
+    parser: json
+    shadow: textfsm:arista_eos_show_ip_route
+    feeds:
+      - vrf
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (7 captures)
+  - id: show_ipv6_route_vrf_all
+    cmd: show ipv6 route vrf all
+    gate: cap.routing
+    parser: json
+    feeds:
+      - vrf
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (`| json` / eAPI); field mapping from documentation
+  - id: show_ip_ospf_neighbor_vrf_all
+    cmd: show ip ospf neighbor vrf all
+    gate: cap.ospf
+    parser: json
+    shadow: textfsm:arista_eos_show_ip_ospf_neighbor
+    feeds:
+      - vrf
+      - routing_neighbor
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_ip_virtual_router
+    cmd: show ip virtual-router
+    gate: cap.fhrp
+    parser: json
+    feeds:
+      - fhrp
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (`| json` / eAPI); field mapping from documentation
+live_path:
+  - id: show_ip_route_vrf_vrf_dst
+    cmd: show ip route vrf {vrf} {dst}
+    gate: always
+    parser: json
+    shadow: textfsm:arista_eos_show_ip_route
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (7 captures)
+    phase: 3
+  - id: show_ip_arp_vrf_vrf_nh
+    cmd: show ip arp vrf {vrf} {nh}
+    gate: always
+    parser: json
+    shadow: textfsm:arista_eos_show_ip_arp
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+    phase: 3
+  - id: show_mac_address_table_address_mac
+    cmd: show mac address-table address {mac}
+    gate: always
+    parser: json
+    shadow: textfsm:arista_eos_show_mac_address-table
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    phase: 3
+  - id: traceroute_vrf_vrf_dst_source_src
+    cmd: traceroute vrf {vrf} {dst} source {src}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+    phase: 3
+structured_output: json_pipe

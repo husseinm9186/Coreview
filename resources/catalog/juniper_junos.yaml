@@ -1,0 +1,591 @@
+# Coreview discovery catalog — Juniper Junos (juniper_junos)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from the operator's
+# specification (docs/DISCOVERY-SPEC.md), ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist (LT-512).
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met the operator's hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — LT-511's list. Never invent a command.
+vendor: Juniper
+os: juniper_junos
+name: Junos
+ntc_platform: juniper_junos
+phase: 1
+fingerprint:
+  probe: show version
+  match_regex: JUNOS|Junos
+session:
+  source: scrapli scrapli.driver.core.juniper_junos.sync_driver.JunosDriver
+  privilege_levels:
+    exec:
+      pattern: ^({\w+(:(\w+){0,1}\d){0,1}}\n){0,1}[\w\-@()/:\.]{1,63}>\s?$
+  failed_when_contains:
+    - is ambiguous
+    - No valid completions
+    - unknown command
+    - syntax error
+    - missing mandatory argument
+    - invalid numeric value
+  on_open:
+    - set cli screen-length 0
+    - set cli screen-width 511
+    - set cli complete-on-space off
+  on_close:
+    - exit
+  ntc_platform: juniper_junos
+  paging:
+    off:
+      - set cli screen-length 0
+      - set cli screen-width 511
+      - set cli complete-on-space off
+    source: scrapli JunosDriver on_open; netmiko juniper.py session_preparation
+  structured:
+    suffix: " | display xml"
+    source: "spec: `| display xml` (json on ≥14.2)"
+  strip_context_lines:
+    pattern: ^\{(master|backup|line|primary|secondary)(:\d+)?\}\s*$|^\[edit\]\s*$
+    source: netmiko juniper.py strip_context_items
+  default_privilege: exec
+role_hint:
+  - match: \bEX\d|\bQFX
+    role: switch
+  - match: \bMX\d|\bACX|\bPTX
+    role: router
+  - match: \bSRX|vSRX
+    role: firewall
+role_defaults:
+  switch:
+    - switching
+    - lldp
+    - structured_output
+  router:
+    - routing
+    - lldp
+    - structured_output
+  firewall:
+    - routing
+    - lldp
+    - structured_output
+    - ha
+caps_probe:
+  - id: show_configuration_protocols_display_set
+    cmd: show configuration protocols | display set
+    flags:
+      ospf: ^set protocols ospf
+      bgp: ^set protocols bgp
+      isis: ^set protocols isis
+      rip: ^set protocols rip
+      mpls: ^set protocols (mpls|ldp|rsvp)
+      lldp: ^set protocols lldp
+      fhrp: vrrp-group
+      vxlan_evpn: ^set protocols evpn
+      routing: ^set protocols (ospf|bgp|isis|rip)
+    timeout: 30
+  - id: show_configuration_routing_instances_display_set
+    cmd: show configuration routing-instances | display set
+    flags:
+      vrf: ^set routing-instances \S+ instance-type (vrf|virtual-router)
+      vxlan_evpn: instance-type (evpn|mac-vrf)
+    timeout: 30
+  - id: show_configuration_firewall_display_set
+    cmd: show configuration firewall | display set
+    flags:
+      pbr: routing-instance
+    timeout: 30
+  - id: show_configuration_security_display_set
+    cmd: show configuration security | display set
+    flags:
+      nat: ^set security nat
+      ipsec: ^set security ipsec
+      fw_zone: ^set security zones
+    timeout: 30
+    gate: role.firewall
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: xml
+    shadow: textfsm:juniper_junos_show_version
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (5 captures)
+    coreview_reader: true
+  - id: show_chassis_hardware
+    cmd: show chassis hardware
+    gate: always
+    parser: xml
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+    coreview_reader: true
+  - id: show_system_information
+    cmd: show system information
+    gate: always
+    parser: xml
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_interfaces_terse
+    cmd: show interfaces terse
+    gate: always
+    parser: xml
+    shadow: textfsm:juniper_junos_show_interfaces
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+    coreview_reader: true
+  - id: show_interfaces_descriptions
+    cmd: show interfaces descriptions
+    gate: always
+    parser: xml
+    shadow: textfsm:juniper_junos_show_interfaces
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+  - id: show_ipv6_neighbors
+    cmd: show ipv6 neighbors
+    gate: always
+    parser: xml
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_lldp_neighbors
+    cmd: show lldp neighbors
+    gate: always
+    parser: xml
+    shadow: textfsm:juniper_junos_show_lldp_neighbors
+    feeds:
+      - neighbor
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+    coreview_reader: true
+  - id: show_lacp_interfaces
+    cmd: show lacp interfaces
+    gate: always
+    parser: xml
+    shadow: textfsm:juniper_junos_show_lacp_interfaces
+    feeds:
+      - interface
+      - lag
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_virtual_chassis
+    cmd: show virtual-chassis
+    gate: cap.stack
+    parser: xml
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+    coreview_reader: true
+  - id: show_chassis_routing_engine
+    cmd: show chassis routing-engine
+    gate: cap.stack
+    parser: xml
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_ethernet_switching_interfaces
+    cmd: show ethernet-switching interfaces
+    gate: cap.switching
+    parser: xml
+    shadow: textfsm:juniper_junos_show_ethernet-switching_interfaces
+    feeds:
+      - interface
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_vlans
+    cmd: show vlans
+    gate: cap.switching
+    parser: xml
+    shadow: textfsm:juniper_junos_show_vlans
+    feeds:
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_spanning_tree_bridge
+    cmd: show spanning-tree bridge
+    gate: cap.switching
+    parser: xml
+    feeds:
+      - stp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_spanning_tree_interface
+    cmd: show spanning-tree interface
+    gate: cap.switching
+    parser: xml
+    feeds:
+      - interface
+      - stp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_ethernet_switching_table
+    cmd: show ethernet-switching table
+    gate: cap.switching
+    parser: xml
+    shadow: textfsm:juniper_junos_show_ethernet-switching_table
+    feeds:
+      - mac_table
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+    coreview_reader: true
+  - id: show_route_instance
+    cmd: show route instance
+    gate: cap.routing
+    parser: xml
+    feeds:
+      - vrf
+      - route
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_ospf_neighbor_instance_all
+    cmd: show ospf neighbor instance all
+    gate: cap.ospf
+    parser: xml
+    shadow: textfsm:juniper_junos_show_ospf_neighbor
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_bgp_summary
+    cmd: show bgp summary
+    gate: cap.bgp
+    parser: xml
+    shadow: textfsm:juniper_junos_show_bgp_summary
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_bgp_summary_instance_ri
+    cmd: show bgp summary instance {ri}
+    gate: cap.bgp
+    foreach: vrf
+    parser: xml
+    shadow: textfsm:juniper_junos_show_bgp_summary
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_isis_adjacency
+    cmd: show isis adjacency
+    gate: cap.isis
+    parser: xml
+    shadow: textfsm:juniper_junos_show_isis_adjacency
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_vrrp_brief
+    cmd: show vrrp brief
+    gate: cap.fhrp
+    parser: xml
+    feeds:
+      - fhrp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_ldp_neighbor
+    cmd: show ldp neighbor
+    gate: cap.mpls
+    parser: xml
+    feeds:
+      - routing_neighbor
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_mpls_lsp
+    cmd: show mpls lsp
+    gate: cap.mpls
+    parser: xml
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_mpls_interface
+    cmd: show mpls interface
+    gate: cap.mpls
+    parser: xml
+    feeds:
+      - interface
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_evpn_instance
+    cmd: show evpn instance
+    gate: cap.vxlan_evpn
+    parser: xml
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_ethernet_switching_vxlan_tunnel_end_point_remote
+    cmd: show ethernet-switching vxlan-tunnel-end-point remote
+    gate: cap.vxlan_evpn
+    parser: xml
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_security_zones
+    cmd: show security zones
+    gate: role.firewall
+    parser: xml
+    feeds:
+      - fw_zone
+      - fw_policy
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_security_policies
+    cmd: show security policies
+    gate: role.firewall
+    parser: xml
+    feeds:
+      - fw_policy
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_security_nat_source_rule_all
+    cmd: show security nat source rule all
+    gate: role.firewall
+    parser: xml
+    feeds:
+      - nat_rule
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_security_nat_destination_rule_all
+    cmd: show security nat destination rule all
+    gate: role.firewall
+    parser: xml
+    feeds:
+      - nat_rule
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_security_nat_static_rule_all
+    cmd: show security nat static rule all
+    gate: role.firewall
+    parser: xml
+    feeds:
+      - nat_rule
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_security_ike_security_associations
+    cmd: show security ike security-associations
+    gate: role.firewall
+    parser: xml
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_security_ipsec_security_associations
+    cmd: show security ipsec security-associations
+    gate: role.firewall
+    parser: xml
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_chassis_cluster_status
+    cmd: show chassis cluster status
+    gate: role.firewall
+    parser: xml
+    shadow: textfsm:juniper_junos_show_chassis_cluster_status
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_interfaces
+    cmd: show interfaces
+    gate: always
+    parser: xml
+    shadow: textfsm:juniper_junos_show_interfaces
+    feeds:
+      - interface
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+  - id: show_arp_no_resolve
+    cmd: show arp no-resolve
+    gate: always
+    parser: xml
+    shadow: textfsm:juniper_junos_show_arp_no-resolve
+    feeds:
+      - arp
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_configuration_display_set
+    cmd: show configuration | display set
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+  - id: show_route
+    cmd: show route
+    gate: cap.routing
+    parser: xml
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+    coreview_reader: true
+  - id: show_route_protocol_static
+    cmd: show route protocol static
+    gate: cap.routing
+    parser: xml
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_route_forwarding_table
+    cmd: show route forwarding-table
+    gate: cap.routing
+    parser: xml
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+  - id: show_route_table_ri_inet_0
+    cmd: show route table {ri}.inet.0
+    gate: cap.routing
+    foreach: vrf
+    parser: xml
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+live_path:
+  - id: show_route_dst_table_ri_inet_0
+    cmd: show route {dst} table {ri}.inet.0
+    gate: always
+    parser: xml
+    feeds:
+      - path_probe
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+    phase: 3
+  - id: show_route_forwarding_table_destination_dst_table_ri
+    cmd: show route forwarding-table destination {dst} table {ri}
+    gate: always
+    parser: xml
+    feeds:
+      - path_probe
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+    phase: 3
+  - id: show_security_match_policies_from_zone_z1_to_zone_z2_source_ip_src_destination_ip_dst_protocol_p_source_port_sp_destination_port_dp
+    cmd: show security match-policies from-zone {z1} to-zone {z2} source-ip {src} destination-ip {dst} protocol {p} source-port {sp} destination-port {dp}
+    gate: role.firewall
+    parser: xml
+    feeds:
+      - path_probe
+    verified: docs
+    evidence: structured output (`| display xml`); field mapping from documentation
+    phase: 3
+  - id: traceroute_dst_routing_instance_ri_source_src
+    cmd: traceroute {dst} routing-instance {ri} source {src}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+    phase: 3
+structured_output: xml_pipe

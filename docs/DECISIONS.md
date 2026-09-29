@@ -1158,4 +1158,32 @@ to the run's diagnostic folder, never by the sidecar), D-058 (a parser built
 from documentation says so; the catalog's `verified: docs|unverified` is the
 same mark), D-059 (a login belongs to its project), and the backup-folder
 rule (a running configuration is kept only where the operator pointed).
+**How three lines of it are read, settled while building P1 (2026-09-29):**
+- *"never contain config/write/commit/…"* is read as verbs, not substrings:
+  a forbidden word is refused when it is the first token of the command or
+  of any `;`-separated segment, so `show running-config`, `show
+  configuration | display set` and `show config running` — which the same
+  spec lists in every catalog — are nouns after a read verb and pass. Two
+  things the literal rule misses are added: a pipe may only feed a filter
+  (`include`, `section`, `json`, …), never `redirect`, `tee`, `append`,
+  `save` or `copy`; and a command may not carry a newline. The handful of
+  read-only commands the spec lists but its own regex does not cover
+  (`execute switch-controller get-conn-status`, `packet-tracer input`, the
+  phase-4 host commands) are allowed as named literals. Three
+  implementations (Rust, JavaScript, Python) return the same reason
+  strings and are pinned to one fixture, `resources/catalog/allowlist-cases.json`.
+  Session steps (paging, console mode, VDOM/context/vsys switching) are
+  not commands: the sidecar sends only the literals in a catalog's
+  `session:` block, from a fixed vocabulary, and that is the only place a
+  `config` word may appear.
+- *"as a Tauri `externalBin`"* — that key takes one executable per target;
+  the embeddable CPython is a folder, so the sidecar ships under
+  `bundle.resources` and is spawned by absolute path from the install
+  directory, never from a temp folder. Same intent, one Tauri key different.
+- *"scrapli + ntc-templates + genie"* — nothing in P1's catalog needs genie;
+  every command has a template, structured output, or nothing (in which
+  case it is `verified: unverified` until a capture arrives). pyATS+genie
+  would add hundreds of megabytes and a Cisco licence for parsers nothing
+  calls, so it is left out until a named gap needs it; the catalog grammar
+  keeps `genie:<name>` so nothing changes if that day comes.
 

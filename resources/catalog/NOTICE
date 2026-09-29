@@ -1,0 +1,16 @@
+The session blocks in these catalogs (LT-510, D-060)
+
+The prompt patterns, privilege levels, on-open steps and failure strings in
+each catalog's `session:` block were read from the scrapli and
+scrapli_community drivers by scripts/extract-sessions.py
+(sessions.json is that output), and the VDOM, context, vsys, banner and
+login handling from netmiko's drivers, each field naming its source:
+
+  scrapli 2026.02.20 and scrapli_community 2025.01.30
+    https://github.com/carlmontanari/scrapli — Carl Montanari, MIT
+    (LICENSE-scrapli)
+  netmiko 4.8.0
+    https://github.com/ktbyers/netmiko — Kirk Byers, MIT (LICENSE-netmiko)
+
+The MIT licence asks that its notice travel with copies; it does, here and
+in THIRD-PARTY-NOTICES.md.

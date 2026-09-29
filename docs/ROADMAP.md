@@ -91,7 +91,49 @@ assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
 
-### LT-507 — Discovery / topology / path engine: the catalog-driven collector, in four phases — proposed 2026-09-29, awaiting approval
+### LT-513 — P1 the sidecar: scrapli + ntc-templates over JSON-lines on stdio — 2026-09-29
+**Acceptance:** `sidecar/` as laid out in the spec; open/run/switch/parse/
+close; secrets on stdin only; the allowlist enforced a second time; raw
+returned inline, never written by the sidecar; pinned hashed requirements;
+pytest over LT-509's fixtures and the protocol; Rust spawns it from the
+install directory and a contract test drives it from `cargo test`.
+**Status 2026-09-29:** `sidecar/` is written — protocol, allowlist,
+parse (TextFSM with clitable's multi-template join), session (scrapli
+platform drivers, GenericDriver for AOS-S, contexts and paging from the
+catalog's `session:` block, a fixed session-step vocabulary), the
+JSON-lines loop, `--version`; requirements pinned with hashes;
+`build/windows.ps1` (embeddable CPython, checksum required) and
+`build/linux.sh`; 568 tests pass in a venv. **Not yet:** Rust spawning it
+from the install directory, the `cargo test` contract test, and a session
+against a device — those come with LT-514.
+### LT-514 — P1 the collector: fingerprint → capabilities → plan → run, and the API collectors in Rust — 2026-09-29
+**Acceptance:** `crates/coreview-collect`; fingerprint from the catalog's
+probe; caps from the probe commands; light before heavy; every command
+optional with a `command_log` row; one failed credential per device per
+run; FortiOS REST, PAN-OS XML API and AOS-CX REST collectors in Rust with
+reqwest, Meraki through the existing crate; configs scrubbed of every
+secret kind the spec lists before they are kept; the existing crawl
+untouched behind a project setting `collector = legacy | sidecar`.
+
+### LT-515 — P1 the discovery tables: schema 6 — 2026-09-29
+**Acceptance:** the spec's tables with run_id, device_id, collected_at on
+every row; raw per command stored gzip'd where the operator's diagnostic
+folder rule allows and referenced by `raw_ref`; a migration from schema 5;
+a loader test per table from recorded sidecar rows.
+
+### LT-516 — P1 offline import and replay — 2026-09-29
+**Acceptance:** a folder `captures/<host>/<command>.txt` runs through the
+identical pipeline with no SSH; a run replays from stored raw after a
+parser change; both tested with LT-509's fixtures as the input.
+
+### LT-517 — P1 the collection plan preview and the run view — 2026-09-29
+**Acceptance:** before a run, each device's vendor, os, role and caps and
+every command with the gate that enabled it, its parser and the tables it
+feeds, skipped commands with the reason; during and after, per-command
+status, duration and rows with a failure linking to its raw file;
+`e2e/collection.mjs` against a stubbed backend.
+
+### LT-507 — Discovery / topology / path engine: the catalog-driven collector, in four phases — approved 2026-09-29, P1 in progress
 **Source:** the operator's specification of 2026-09-29 ("CoreView
 (LiveTopo) — Discovery / Topology / Path Engine — spec for Claude Code"),
 which asks first for a summary of what exists and a plan for its four
@@ -117,9 +159,11 @@ ntc-templates) in Phase 1, a Rust TextFSM engine in Phase 2, shadow mode in
 Phase 3, the sidecar deleted in Phase 4; the catalog as YAML data; API
 collectors in Rust from the start. The spec is checked in as
 `docs/DISCOVERY-SPEC.md` (it carries no customer data) with the final
-architecture and the **P1 plan** appended, awaiting his approval. **Nothing
-is built until he approves the P1 plan.** On approval each phase becomes its
-own item (LT-508 onward).
+architecture and the **P1 plan** appended. **Approved 2026-09-29**, with
+four instructions that replace the plan's "captures needed" section:
+reconcile against ntc-templates' index, vendor its tests as fixtures, take
+session behaviour from scrapli and netmiko, and ask for captures once, for
+what has neither a template nor structured output. P1 is LT-508 to LT-517.
 **Decisions it touches:** D-050 (paths from evidence only; the what-if
 approximates reconvergence and must say so), D-055 (device output never
 in the debug log — raw captures go to files, redacted, not into the log),
@@ -369,6 +413,108 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-512 — P1 the catalog: `resources/catalog/<os>.yaml` and the `coreview-catalog` crate — 2026-09-29, done the same day
+**Acceptance:** one YAML per P1 platform plus the Phase-2 stubs, in the
+spec's schema; a loader, schema check, gate evaluator (`always`, `&&`,
+`||`, `!`, unknown flag false) and plan builder (weight order, skip
+reasons); `cargo test` fails on a catalog command outside the read-only
+allowlist.
+**Done 2026-09-29.** Twenty catalogs under `resources/catalog/` (the
+twelve P1 platforms, hosts, and seven phase-2 stubs), built once by
+`scripts/build-catalog.mjs` from the reconciliation, the sessions and
+hand-written rules (tables fed, weight, capability-flag regexes per
+probe, gate spelling), and maintained by hand from here. `schema.json` is
+the shape. 449 commands: 215 `lab`, 151 `docs`, 83 `unverified`. The
+crate: `schema.rs` (unknown keys are errors), `gate.rs` (`always`,
+`cap.x`, `role.y`, `&&`, `||`, `!`, parentheses; unknown flag false),
+`plan.rs` (light before heavy, `foreach` expanded over the VRFs/VDOMs
+found, every skip with its reason), `allowlist.rs`, `load.rs`
+(`problems()`: gates parse, parsers known and templates present, tables
+and flags from the spec's lists, regexes compile, allowlist on every
+command and probe). 20 tests, clippy clean. `catalog.test.ts` validates
+the YAML against the JSON schema with ajv and checks each template is the
+one the index would pick. Run.
+
+### LT-511 — P1 the one short capture list: commands with no ntc template and no native structured output — 2026-09-29, done the same day
+**Source:** the operator's fourth instruction: "Only after 1–3, give me ONE
+short list … That is the only thing I'll capture from the lab. Mark those
+`verified: unverified` in the catalog until I do."
+**Acceptance:** the list, derived from LT-508's table, in
+`docs/DISCOVERY-SPEC.md` and given to him once; every such catalog entry
+says `verified: unverified`.
+**Done 2026-09-29.** Derived from LT-508's table, in
+`docs/DISCOVERY-SPEC.md` under "Captures — the one list": 40 commands on
+the lab's platforms (16 IOS, 8 FortiOS, 8 AOS-CX, 6 AOS-S; none for the
+Nexus, which is all `| json`), 21 more on platforms not in the lab that
+stay documentation-only, and the 15 live-path lookups deferred to Phase 3.
+Every such catalog entry is `verified: unverified` with `parser: none`,
+and `catalog.test.ts` checks that the unverified set is exactly the
+table's `none` set.
+
+### LT-510 — P1 session blocks: prompts, paging, enable and context switching from scrapli and netmiko — 2026-09-29, done the same day
+**Source:** the operator's third instruction: scrapli's platform
+definitions and netmiko's vendor drivers "already encode this. Extract it
+into the catalog `session:` blocks. Don't ask me how a FortiGate prompt
+looks."
+**Acceptance:** each catalog's `session:` block carries prompt patterns,
+prep commands, enable handling and context-switch commands taken from
+those two sources, each field naming which; a test loads every block and
+checks its prompt regexes compile and match the sources' own examples.
+**Done 2026-09-29.** `scripts/extract-sessions.py` imports the pinned
+scrapli 2026.02.20 and scrapli_community 2025.01.30 drivers and writes
+`resources/catalog/sessions.json`: prompt patterns per privilege level,
+escalation, on-open and on-close steps, failure strings, for 17 platforms.
+`build-catalog.mjs` places them in each catalog's `session:` block and
+adds what scrapli does not encode from netmiko 4.8.0, each field naming
+its source: the FortiOS post-login banner, VDOM detection and `config
+global`/`config vdom`+`edit`, the console output mode read-set-restore;
+PAN-OS scripting mode and vsys; ASA `changeto context`; the WLC `User:`
+login; the ProCurve "any key to continue", enable-before-`no page`, and
+logout confirm; Junos context lines. `coreview-catalog` compiles every
+prompt regex (fancy-regex, for the look-arounds) in `cargo test`. Not
+asked for: how a FortiGate prompt looks. Run.
+
+### LT-509 — P1 fixtures: ntc-templates' own tests vendored as ours — 2026-09-29, done the same day
+**Source:** the operator's second instruction: for every matched template,
+`tests/<platform>/<command>/*.raw` and `*.yml` "are your fixtures — copy
+them into our test suite. Do not ask me for captures for anything that has
+an ntc test."
+**Acceptance:** the raw/yml pairs for every matched template live under
+`resources/templates/tests/` with ntc-templates' Apache-2.0 LICENSE and
+NOTICE beside them; the sidecar's parse tests run every pair and pass; the
+same files are the Phase 2 conformance set.
+**Done 2026-09-29.** `scripts/vendor-ntc.sh` copies every template and
+the index (980 files, ntc-templates 9.3.0 at d86d09fa) with the Apache-2.0
+LICENSE and a NOTICE naming the commit, and the tests for the 23 platforms
+the catalogs name; `scripts/prune-ntc-tests.mjs` keeps only the fixture
+directories of the 192 templates a catalog names — 519 `.raw`/`.yml`
+pairs, 6 MB. `sidecar/tests/test_parse_fixtures.py` runs all of them and
+passes 568/568, including the multi-template index rows (`show module`,
+`show switch`) joined the way clitable joins them. The notices generator
+ships the licence text. Run.
+
+### LT-508 — P1 reconciliation: every spec command against ntc-templates' index — 2026-09-29, done the same day
+**Source:** the operator, 2026-09-29, approving the P1 plan with four
+instructions that replace "ask me for captures": "Stop asking me for show
+commands or captures. Use what already exists." This is his first: parse
+`templates/index` (platform + command regex → template) and reconcile
+every command in `docs/DISCOVERY-SPEC.md` against it.
+**Acceptance:** a table, spec command → matched ntc template | native
+structured output (`| json` / xml / REST) | no template, kept in
+`docs/DISCOVERY-SPEC.md`, produced by a script that is checked in and rerun
+when ntc-templates is updated.
+**Done 2026-09-29.** `scripts/reconcile-ntc.mjs` parses the spec's catalog
+sections and ntc-templates' index the way clitable does (`[[ow]]` expanded,
+Platform as a regex, prefix match, first row wins — one thing tighter: the
+prefix must end at a word boundary, so `show stackwise-virtual` is not
+handed `show st[[andby]]`'s template). Output: `docs/DISCOVERY-RECONCILIATION.md`
+and `.json` — 514 rows: 103 both (native first, template as shadow), 126
+template, 159 native, 12 raw configs, 11 capability greps, 101 none, 2
+session steps. A "Coreview reads it" column marks the 47 commands the
+existing crawl already parses, the Rust side of shadow mode. Kept beside
+the spec rather than in it, and `src/lib/catalog.test.ts` holds the
+catalogs to it. Run.
 
 ### LT-506 — A session log is appended to, never overwritten — 2026-09-28
 **Source:** the operator, 2026-09-28, on LT-503: "make sure we don't

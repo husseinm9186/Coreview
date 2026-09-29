@@ -1,0 +1,618 @@
+# Coreview discovery catalog — Cisco NX-OS (cisco_nxos)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from the operator's
+# specification (docs/DISCOVERY-SPEC.md), ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist (LT-512).
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met the operator's hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — LT-511's list. Never invent a command.
+vendor: Cisco
+os: cisco_nxos
+name: NX-OS
+ntc_platform: cisco_nxos
+phase: 1
+fingerprint:
+  probe: show version
+  match_regex: Cisco Nexus Operating System|NX-OS
+session:
+  source: scrapli scrapli.driver.core.cisco_nxos.sync_driver.NXOSDriver
+  privilege_levels:
+    exec:
+      pattern: ^[\w.\-]{1,63}(\(maint\-mode\))?>\s?$
+    privilege_exec:
+      pattern: ^[\w.\-]{1,63}(\(maint\-mode\))?#\s?$
+      escalate: enable
+      escalate_auth: true
+      escalate_prompt: ^[pP]assword:\s?$
+      previous: exec
+  failed_when_contains:
+    - "% Ambiguous command"
+    - "% Incomplete command"
+    - "% Invalid input detected"
+    - "% Invalid command at"
+    - "% Invalid parameter"
+  on_open:
+    - terminal length 0
+    - terminal width 511
+  on_close:
+    - exit
+  ntc_platform: cisco_nxos
+  paging:
+    off:
+      - terminal length 0
+      - terminal width 511
+    source: scrapli NXOSDriver on_open; netmiko cisco_nxos.py session_preparation
+  structured:
+    suffix: " | json"
+    source: "spec: append `| json` wherever supported (TextFSM fallback)"
+  default_privilege: privilege_exec
+role_hint:
+  - match: Nexus|N[3579]K|N9K
+    role: switch
+role_defaults:
+  switch:
+    - switching
+    - cdp
+    - lldp
+    - structured_output
+caps_probe:
+  - id: show_feature
+    cmd: show feature
+    flags:
+      ospf: ^ospf\s+\d+\s+enabled
+      eigrp: ^eigrp\s+\d+\s+enabled
+      bgp: ^bgp\s+\d+\s+enabled
+      isis: ^isis\s+\d+\s+enabled
+      vpc_mlag_vsx: ^vpc\s+\d+\s+enabled
+      vpc: ^vpc\s+\d+\s+enabled
+      switching: ^lacp\s+\d+\s+enabled|^interface-vlan\s+\d+\s+enabled
+      fhrp: ^hsrp_engine\s+\d+\s+enabled|^vrrp\s+\d+\s+enabled
+      lldp: ^lldp\s+\d+\s+enabled
+      fex: ^fex\s+\d+\s+enabled
+      vxlan_evpn: ^nv overlay\s+\d+\s+enabled|^vn-segment-vlan-based\s+\d+\s+enabled
+      mpls: ^mpls\S*\s+\d+\s+enabled
+      routing: ^(ospf|eigrp|bgp|isis|rip)\s+\d+\s+enabled
+    timeout: 30
+    parser: textfsm:cisco_nxos_show_feature
+  - id: show_run_include_ip_route_route_map_interface_tunnel_ip_poli
+    cmd: show run | include ^ip route |^route-map|^interface Tunnel|^ip policy|^vrf context
+    flags:
+      routing: "^ip route "
+      pbr: ^ip policy|^route-map
+      gre: ^interface Tunnel
+      vrf: ^vrf context (?!management)
+    timeout: 30
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_version
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (8 captures); Coreview cisco_nxos reader
+    coreview_reader: true
+  - id: show_inventory
+    cmd: show inventory
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_inventory
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures); Coreview cisco_nxos reader
+    coreview_reader: true
+  - id: show_module
+    cmd: show module
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_module
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+  - id: show_hostname
+    cmd: show hostname
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_hostname
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_interface_brief
+    cmd: show interface brief
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_interface_brief
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (5 captures)
+  - id: show_interface_description
+    cmd: show interface description
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_interface_description
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_ip_interface_brief_vrf_all
+    cmd: show ip interface brief vrf all
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_ip_interface_brief
+    feeds:
+      - interface
+      - ip_address
+      - vrf
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+  - id: show_cdp_neighbors_detail
+    cmd: show cdp neighbors detail
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_cdp_neighbors_detail
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures); Coreview cisco_nxos reader
+    coreview_reader: true
+  - id: show_lldp_neighbors_detail
+    cmd: show lldp neighbors detail
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_lldp_neighbors_detail
+    feeds:
+      - neighbor
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures); Coreview cisco_nxos reader
+    coreview_reader: true
+  - id: show_interface_status
+    cmd: show interface status
+    gate: cap.switching
+    parser: json
+    shadow: textfsm:cisco_nxos_show_interface_status
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (7 captures)
+  - id: show_interface_switchport
+    cmd: show interface switchport
+    gate: cap.switching
+    parser: json
+    shadow: textfsm:cisco_nxos_show_interface_switchport
+    feeds:
+      - interface
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+  - id: show_interface_trunk
+    cmd: show interface trunk
+    gate: cap.switching
+    parser: json
+    shadow: textfsm:cisco_nxos_show_interface
+    feeds:
+      - interface
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (15 captures)
+  - id: show_vlan_brief
+    cmd: show vlan brief
+    gate: cap.switching
+    parser: json
+    shadow: textfsm:cisco_nxos_show_vlan
+    feeds:
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_spanning_tree
+    cmd: show spanning-tree
+    gate: cap.switching
+    parser: json
+    feeds:
+      - stp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+  - id: show_port_channel_summary
+    cmd: show port-channel summary
+    gate: cap.switching
+    parser: json
+    shadow: textfsm:cisco_nxos_show_port-channel_summary
+    feeds:
+      - interface
+      - lag
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+    coreview_reader: true
+  - id: show_vpc
+    cmd: show vpc
+    gate: cap.vpc_mlag_vsx
+    parser: json
+    shadow: textfsm:cisco_nxos_show_vpc
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_vpc_consistency_parameters_global
+    cmd: show vpc consistency-parameters global
+    gate: cap.vpc_mlag_vsx
+    parser: json
+    shadow: textfsm:cisco_nxos_show_vpc
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_fex
+    cmd: show fex
+    gate: cap.fex
+    parser: json
+    shadow: textfsm:cisco_nxos_show_fex
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_fex_detail
+    cmd: show fex detail
+    gate: cap.fex
+    parser: json
+    shadow: textfsm:cisco_nxos_show_fex_id
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_vrf
+    cmd: show vrf
+    gate: cap.routing
+    parser: json
+    shadow: textfsm:cisco_nxos_show_vrf
+    feeds:
+      - vrf
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_isis_adjacency_vrf_all
+    cmd: show isis adjacency vrf all
+    gate: cap.isis
+    parser: json
+    feeds:
+      - vrf
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+  - id: show_bgp_sessions_vrf_all
+    cmd: show bgp sessions vrf all
+    gate: cap.bgp
+    parser: json
+    feeds:
+      - vrf
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+  - id: show_bgp_all_summary
+    cmd: show bgp all summary
+    gate: cap.bgp
+    parser: json
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+  - id: show_hsrp_brief
+    cmd: show hsrp brief
+    gate: cap.fhrp
+    parser: json
+    feeds:
+      - fhrp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+  - id: show_vrrp
+    cmd: show vrrp
+    gate: cap.fhrp
+    parser: json
+    feeds:
+      - fhrp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+  - id: show_nve_peers
+    cmd: show nve peers
+    gate: cap.vxlan_evpn
+    parser: json
+    shadow: textfsm:cisco_nxos_show_nve_peers
+    feeds:
+      - routing_neighbor
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_nve_vni
+    cmd: show nve vni
+    gate: cap.vxlan_evpn
+    parser: json
+    shadow: textfsm:cisco_nxos_show_nve_vni
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+    coreview_reader: true
+  - id: show_bgp_l2vpn_evpn_summary
+    cmd: show bgp l2vpn evpn summary
+    gate: cap.vxlan_evpn
+    parser: json
+    feeds:
+      - routing_neighbor
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+  - id: show_mpls_ldp_neighbor_brief
+    cmd: show mpls ldp neighbor brief
+    gate: cap.mpls
+    parser: json
+    feeds:
+      - routing_neighbor
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+  - id: show_mpls_switching
+    cmd: show mpls switching
+    gate: cap.mpls
+    parser: json
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+  - id: show_interface
+    cmd: show interface
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_interface
+    feeds:
+      - interface
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (15 captures)
+  - id: show_ip_arp_vrf_all
+    cmd: show ip arp vrf all
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_ip_arp
+    feeds:
+      - arp
+      - vrf
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_running_config
+    cmd: show running-config
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+  - id: show_mac_address_table
+    cmd: show mac address-table
+    gate: cap.switching
+    parser: json
+    shadow: textfsm:cisco_nxos_show_mac_address-table
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_ip_route_vrf_all
+    cmd: show ip route vrf all
+    gate: cap.routing
+    parser: json
+    shadow: textfsm:cisco_nxos_show_ip_route
+    feeds:
+      - vrf
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (5 captures)
+  - id: show_ip_route_static_vrf_all
+    cmd: show ip route static vrf all
+    gate: cap.routing
+    parser: json
+    shadow: textfsm:cisco_nxos_show_ip_route
+    feeds:
+      - vrf
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (5 captures)
+  - id: show_ipv6_route_vrf_all
+    cmd: show ipv6 route vrf all
+    gate: cap.routing
+    parser: json
+    feeds:
+      - vrf
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+  - id: show_ipv6_neighbor_vrf_all
+    cmd: show ipv6 neighbor vrf all
+    gate: cap.routing
+    parser: json
+    feeds:
+      - arp
+      - vrf
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+  - id: show_route_map
+    cmd: show route-map
+    gate: cap.routing
+    parser: json
+    shadow: textfsm:cisco_nxos_show_route-map
+    feeds:
+      - policy_route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_ospf_neighbors_vrf_all
+    cmd: show ip ospf neighbors vrf all
+    gate: cap.ospf
+    parser: json
+    feeds:
+      - vrf
+      - routing_neighbor
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+  - id: show_ip_eigrp_neighbors_vrf_all
+    cmd: show ip eigrp neighbors vrf all
+    gate: cap.eigrp
+    parser: json
+    shadow: textfsm:cisco_nxos_show_ip_eigrp_neighbors
+    feeds:
+      - vrf
+      - routing_neighbor
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_l2route_evpn_mac_all
+    cmd: show l2route evpn mac all
+    gate: cap.vxlan_evpn
+    parser: json
+    feeds:
+      - mac_table
+      - tunnel
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+live_path:
+  - id: show_ip_route_dst_vrf_vrf
+    cmd: show ip route {dst} vrf {vrf}
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_ip_route
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (5 captures)
+    phase: 3
+  - id: show_routing_hash_src_dst_vrf_vrf
+    cmd: show routing hash {src} {dst} vrf {vrf}
+    gate: always
+    parser: json
+    feeds:
+      - path_probe
+    verified: docs
+    evidence: structured output (`| json`); field mapping from documentation
+    phase: 3
+  - id: show_ip_arp_nh_vrf_vrf
+    cmd: show ip arp {nh} vrf {vrf}
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_ip_arp
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    phase: 3
+  - id: show_mac_address_table_address_mac
+    cmd: show mac address-table address {mac}
+    gate: always
+    parser: json
+    shadow: textfsm:cisco_nxos_show_mac_address-table
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    phase: 3
+  - id: traceroute_dst_vrf_vrf_source_src
+    cmd: traceroute {dst} vrf {vrf} source {src}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+    phase: 3
+structured_output: json_pipe

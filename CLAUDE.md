@@ -116,6 +116,25 @@ crates/
                      named host family (LT-404, D-056, D-057). Meraki has no
                      CLI, so this is the only way to see such an estate from
                      the inside.
+  coreview-catalog   The discovery catalog (D-060, LT-512): loads
+                     `resources/catalog/<os>.yaml`, evaluates gates, builds
+                     the collection plan, holds the read-only allowlist. No
+                     Tauri, no network.
+resources/
+  catalog/           One YAML per OS — fingerprint, `session:` block (from
+                     scrapli and netmiko, see its NOTICE), capability probes,
+                     gated commands with parser, tables, weight and
+                     `verified: lab|docs|unverified`. `schema.json` is its
+                     shape; `allowlist-cases.json` pins the allowlist's three
+                     implementations to one fixture.
+  templates/         ntc-templates vendored whole (Apache-2.0, LICENSE and
+                     NOTICE beside it) with the test fixtures for every
+                     template a catalog names — the sidecar's parse tests
+                     and the Phase-2 Rust engine's conformance set (LT-509).
+sidecar/             The Phase-1 bridge (LT-513): scrapli + TextFSM over JSON
+                     lines on stdio. Never writes a file, never takes a
+                     secret except on stdin, refuses what the allowlist
+                     refuses. Phase 4 deletes it. `README.md` there.
 src-tauri/           Commands, SQLite, credential vault, icon library scan;
                      `terminal.rs` holds the live SSH sessions, which belong
                      to the window and are never written down (D-047), and
@@ -124,7 +143,11 @@ src-tauri/           Commands, SQLite, credential vault, icon library scan;
                      src/lib/ipcPayloads.ts and read by the Rust contract test
 isolation/           The sandboxed frame every IPC message passes (LT-258);
                      its command table is checked against src-tauri
-scripts/             Stencil and shape import, run by hand
+scripts/             Stencil and shape import, run by hand; and the catalog's
+                     tooling — `reconcile-ntc.mjs` (spec ↔ ntc index, LT-508),
+                     `extract-sessions.py` (scrapli drivers → sessions.json),
+                     `build-catalog.mjs` (the one-time bootstrap of the YAML),
+                     `vendor-ntc.sh` + `prune-ntc-tests.mjs`, `allowlist.mjs`
 e2e/                 Playwright harnesses driving the real app
 docs/                ROADMAP, DECISIONS, OPEN-QUESTIONS, and the rest
 ```
@@ -137,6 +160,8 @@ npx eslint src --ext .ts,.tsx
 npx vitest run
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
+cd sidecar && python -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.txt -r requirements-dev.txt && .venv/bin/python -m pytest
+                       # the sidecar: allowlist, protocol, and every ntc fixture the catalogs name (LT-509, LT-513)
 npm run dev            # then, in another terminal:
 node e2e/interact.mjs     # ~280 interaction checks
 node e2e/change.mjs       # the change report, against a stubbed backend

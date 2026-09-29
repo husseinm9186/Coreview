@@ -71,9 +71,9 @@ MIT (23), ISC (9), MIT OR Apache-2.0 (3), Apache-2.0 OR MIT (1), BSD-3-Clause (1
 | yaml | 2.9.1 | ISC |
 | zustand | 4.5.7 | MIT |
 
-## Rust — 729 crates in the executable
+## Rust — 732 crates in the executable
 
-MIT OR Apache-2.0 (343), MIT (136), Apache-2.0 OR MIT (101), MIT/Apache-2.0 (35), Zlib OR Apache-2.0 OR MIT (18), Unicode-3.0 (18), Unlicense OR MIT (10), BSD-3-Clause (7), Apache-2.0 (7), MIT OR Apache-2.0 OR Zlib (6), MPL-2.0 (5), Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (5), ISC (4), Apache-2.0/MIT (3), Zlib (3), MIT OR Zlib OR Apache-2.0 (2), BSD-3-Clause OR Apache-2.0 (2), BSD-3-Clause OR MIT OR Apache-2.0 (2), MIT OR Apache-2.0 OR LGPL-2.1-or-later (2), Unlicense/MIT (2), BSD-2-Clause OR Apache-2.0 OR MIT (2), 0BSD OR MIT OR Apache-2.0 (1), BSD-2-Clause (1), ISC AND (Apache-2.0 OR ISC) (1), ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0) (1), BSD-3-Clause AND MIT (1), BSD-3-Clause/MIT (1), Apache-2.0 AND MIT (1), CC0-1.0 OR MIT-0 OR Apache-2.0 (1), MIT OR Apache-2.0 OR BSD-1-Clause (1), Apache-2.0 / MIT (1), Apache-2.0 AND ISC (1), Apache-2.0 OR ISC OR MIT (1), Apache-2.0 OR BSL-1.0 (1), Apache-2.0 WITH LLVM-exception (1), (MIT OR Apache-2.0) AND Unicode-3.0 (1), CDLA-Permissive-2.0 (1)
+MIT OR Apache-2.0 (343), MIT (139), Apache-2.0 OR MIT (101), MIT/Apache-2.0 (35), Zlib OR Apache-2.0 OR MIT (18), Unicode-3.0 (18), Unlicense OR MIT (10), BSD-3-Clause (7), Apache-2.0 (7), MIT OR Apache-2.0 OR Zlib (6), MPL-2.0 (5), Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (5), ISC (4), Apache-2.0/MIT (3), Zlib (3), MIT OR Zlib OR Apache-2.0 (2), BSD-3-Clause OR Apache-2.0 (2), BSD-3-Clause OR MIT OR Apache-2.0 (2), MIT OR Apache-2.0 OR LGPL-2.1-or-later (2), Unlicense/MIT (2), BSD-2-Clause OR Apache-2.0 OR MIT (2), 0BSD OR MIT OR Apache-2.0 (1), BSD-2-Clause (1), ISC AND (Apache-2.0 OR ISC) (1), ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0) (1), BSD-3-Clause AND MIT (1), BSD-3-Clause/MIT (1), Apache-2.0 AND MIT (1), CC0-1.0 OR MIT-0 OR Apache-2.0 (1), MIT OR Apache-2.0 OR BSD-1-Clause (1), Apache-2.0 / MIT (1), Apache-2.0 AND ISC (1), Apache-2.0 OR ISC OR MIT (1), Apache-2.0 OR BSL-1.0 (1), Apache-2.0 WITH LLVM-exception (1), (MIT OR Apache-2.0) AND Unicode-3.0 (1), CDLA-Permissive-2.0 (1)
 
 | Component | Version | Licence |
 | --- | --- | --- |
@@ -246,6 +246,7 @@ MIT OR Apache-2.0 (343), MIT (136), Apache-2.0 OR MIT (101), MIT/Apache-2.0 (35)
 | event-listener-strategy | 0.5.4 | Apache-2.0 OR MIT |
 | fallible-iterator | 0.3.0 | MIT/Apache-2.0 |
 | fallible-streaming-iterator | 0.1.9 | MIT/Apache-2.0 |
+| fancy-regex | 0.19.2 | MIT |
 | fastrand | 2.5.0 | Apache-2.0 OR MIT |
 | fdeflate | 0.3.7 | MIT OR Apache-2.0 |
 | ff | 0.14.0 | MIT/Apache-2.0 |
@@ -559,6 +560,7 @@ MIT OR Apache-2.0 (343), MIT (136), Apache-2.0 OR MIT (101), MIT/Apache-2.0 (35)
 | serde_spanned | 1.1.1 | MIT OR Apache-2.0 |
 | serde_with | 3.22.0 | MIT OR Apache-2.0 |
 | serde_with_macros | 3.22.0 | MIT OR Apache-2.0 |
+| serde_yaml_ng | 0.10.0 | MIT |
 | serde-untagged | 0.1.9 | MIT OR Apache-2.0 |
 | serdect | 0.4.3 | Apache-2.0 OR MIT |
 | serialize-to-javascript | 0.1.2 | MIT OR Apache-2.0 |
@@ -679,6 +681,7 @@ MIT OR Apache-2.0 (343), MIT (136), Apache-2.0 OR MIT (101), MIT/Apache-2.0 (35)
 | unicode-vo | 0.1.0 | MIT/Apache-2.0 |
 | universal-hash | 0.5.1 | MIT OR Apache-2.0 |
 | universal-hash | 0.6.1 | MIT OR Apache-2.0 |
+| unsafe-libyaml | 0.2.11 | MIT |
 | untrusted | 0.7.1 | ISC |
 | untrusted | 0.9.0 | ISC |
 | url | 2.5.8 | MIT OR Apache-2.0 |
@@ -806,6 +809,16 @@ MIT OR Apache-2.0 (343), MIT (136), Apache-2.0 OR MIT (101), MIT/Apache-2.0 (35)
 | zvariant | 4.2.0 | MIT |
 | zvariant_derive | 4.2.0 | MIT |
 | zvariant_utils | 2.1.0 | MIT |
+
+## Vendored data — 3 sources under resources/
+
+MIT (2), Apache-2.0 (1)
+
+| Component | Version | Licence |
+| --- | --- | --- |
+| ntc-templates (templates, index, tests) | 9.3.0 | Apache-2.0 |
+| scrapli / scrapli_community (session data) | 2026.02.20 / 2025.01.30 | MIT |
+| netmiko (session data) | 4.8.0 | MIT |
 
 ## Components shipping no licence file of their own
 
@@ -1796,7 +1809,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### 111 components
+### 112 components
 
 - adler2 2.0.1
 - anyhow 1.0.104
@@ -1896,6 +1909,7 @@ limitations under the License.
 - tinyvec 1.12.0
 - typeid 1.0.3
 - unicode-ident 1.0.24
+- unsafe-libyaml 0.2.11
 - wasi 0.11.1+wasi-snapshot-preview1
 - wasip2 1.0.4+wasi-0.2.12
 - wasm-streams 0.5.0
@@ -13364,6 +13378,32 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+### fancy-regex 0.19.2
+
+```
+The MIT License
+
+Copyright 2015 The Fancy Regex Authors.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
 ### ff 0.14.0
 
 ```
@@ -18382,6 +18422,33 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+```
+
+### serde_yaml_ng 0.10.0
+
+```
+MIT License
+
+Copyright 2024 Antoine Catton
+Copyright 2016-2024 David Tolnay
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the “Software”), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 ### serdect 0.4.3
@@ -23616,4 +23683,96 @@ Apache License
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+```
+
+## Vendored data
+
+### ntc-templates (templates, index, tests) 9.3.0
+
+```
+Copyright 2015 Jason Edelman <jason@networktocode.com>
+Network to Code, LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
+### ntc-templates (templates, index, tests) 9.3.0
+
+```
+ntc-templates — vendored (LT-509, D-060)
+
+The templates under ntc/, their index, and the test fixtures under tests/
+are copied unchanged from ntc-templates 9.3.0 (commit
+d86d09fa105ee2a432795022e7df04737c65dd28, 16 September 2026),
+https://github.com/networktocode/ntc-templates, by Network to Code, LLC,
+under the Apache License, Version 2.0. The full licence text is in LICENSE
+beside this file, and it travels with the application through
+bundle.resources and THIRD-PARTY-NOTICES.md.
+
+Only the tests for the platforms Coreview's catalogs name are kept; the
+templates are kept whole. Rerun `scripts/vendor-ntc.sh <checkout>` to
+refresh, then `node scripts/reconcile-ntc.mjs`.
+```
+
+### scrapli / scrapli_community (session data) 2026.02.20 / 2025.01.30
+
+```
+MIT License
+
+Copyright (c) 2021 Carl Montanari
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### netmiko (session data) 4.8.0
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2016 Kirk Byers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```

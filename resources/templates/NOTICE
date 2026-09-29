@@ -1,0 +1,13 @@
+ntc-templates — vendored (LT-509, D-060)
+
+The templates under ntc/, their index, and the test fixtures under tests/
+are copied unchanged from ntc-templates 9.3.0 (commit
+d86d09fa105ee2a432795022e7df04737c65dd28, 16 September 2026),
+https://github.com/networktocode/ntc-templates, by Network to Code, LLC,
+under the Apache License, Version 2.0. The full licence text is in LICENSE
+beside this file, and it travels with the application through
+bundle.resources and THIRD-PARTY-NOTICES.md.
+
+Only the tests for the platforms Coreview's catalogs name are kept; the
+templates are kept whole. Rerun `scripts/vendor-ntc.sh <checkout>` to
+refresh, then `node scripts/reconcile-ntc.mjs`.

@@ -1,0 +1,490 @@
+# Coreview discovery catalog — Aruba (HPE) AOS-CX (aoscx)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from the operator's
+# specification (docs/DISCOVERY-SPEC.md), ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist (LT-512).
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met the operator's hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — LT-511's list. Never invent a command.
+vendor: Aruba (HPE)
+os: aoscx
+name: AOS-CX
+ntc_platform: aruba_aoscx
+phase: 1
+fingerprint:
+  probe: show version
+  match_regex: ArubaOS-CX
+session:
+  source: scrapli_community generic 'network' driver
+  privilege_levels:
+    privilege_exec:
+      pattern: ^[\w.\-@/:]{1,63}#\s?$
+  default_privilege: privilege_exec
+  failed_when_contains:
+    - "% Command incomplete."
+    - "Invalid input:"
+    - doesn't exist
+  on_open:
+    - no page
+  on_close:
+    - exit
+  ntc_platform: aruba_aoscx
+  paging:
+    off:
+      - no page
+    source: scrapli_community aruba_aoscx on_open; netmiko aruba_aoscx.py session_preparation; Coreview arubacx dialect (verified on the lab 6200F)
+  ansi:
+    strip: true
+    source: netmiko aruba_aoscx.py ansi_escape_codes = True
+role_hint:
+  - match: \b(6[0-4]\d\d|8[0-4]\d\d|10000)\b
+    role: switch
+role_defaults:
+  switch:
+    - switching
+    - lldp
+caps_probe:
+  - id: show_running_config_include_router_vrf_vrrp_active_gateway_i
+    cmd: show running-config | include ^router |^vrf |^vrrp|^active-gateway|^interface vxlan|^evpn|^vsx|^vsf|^ip route |^interface lag
+    flags:
+      routing: "^router |^ip route "
+      ospf: ^router ospf
+      bgp: ^router bgp
+      vrf: ^vrf (?!mgmt)
+      fhrp: ^vrrp|^active-gateway
+      vxlan_evpn: ^interface vxlan|^evpn
+      vpc_mlag_vsx: ^vsx
+      stack: ^vsf
+      switching: ^interface lag
+    timeout: 30
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: api
+    api: /rest/v10.xx/firmware
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: Coreview aoscx reader, met the operator's hardware
+    coreview_reader: true
+  - id: show_system
+    cmd: show system
+    gate: always
+    parser: textfsm:aruba_aoscx_show_system
+    api: /rest/v10.xx/system
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (5 captures); Coreview aoscx reader
+    coreview_reader: true
+  - id: show_hostname
+    cmd: show hostname
+    gate: always
+    parser: api
+    api: /rest/v10.xx/system
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /rest/v10.xx/system); field mapping from documentation
+  - id: show_interface_brief
+    cmd: show interface brief
+    gate: always
+    parser: textfsm:aruba_aoscx_show_interface
+    api: /rest/v10.xx/system/interfaces
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (10 captures)
+  - id: show_ip_interface_brief
+    cmd: show ip interface brief
+    gate: always
+    parser: api
+    api: /rest/v10.xx/system/interfaces
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /rest/v10.xx/system/interfaces); field mapping from documentation
+    coreview_reader: true
+  - id: show_lldp_neighbor_info
+    cmd: show lldp neighbor-info
+    gate: always
+    parser: api
+    api: /rest/v10.xx/system/interfaces/{if}/lldp_neighbors
+    feeds:
+      - neighbor
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /rest/v10.xx/system/interfaces/{if}/lldp_neighbors); field mapping from documentation
+  - id: show_lldp_neighbor_info_detail
+    cmd: show lldp neighbor-info detail
+    gate: always
+    parser: textfsm:aruba_aoscx_show_lldp_neighbors-info_detail
+    api: /rest/v10.xx/system/interfaces/{if}/lldp_neighbors
+    feeds:
+      - neighbor
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+    coreview_reader: true
+  - id: show_vsf
+    cmd: show vsf
+    gate: (cap.stack || cap.vpc_mlag_vsx)
+    parser: api
+    api: /rest/v10.xx/system/vsf
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /rest/v10.xx/system/vsf); field mapping from documentation
+    coreview_reader: true
+  - id: show_vsx_status
+    cmd: show vsx status
+    gate: (cap.stack || cap.vpc_mlag_vsx)
+    parser: api
+    api: /rest/v10.xx/system/vsx
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /rest/v10.xx/system/vsx); field mapping from documentation
+  - id: show_vsx_brief
+    cmd: show vsx brief
+    gate: (cap.stack || cap.vpc_mlag_vsx)
+    parser: api
+    api: /rest/v10.xx/system/vsx
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /rest/v10.xx/system/vsx); field mapping from documentation
+    coreview_reader: true
+  - id: show_module
+    cmd: show module
+    gate: (cap.stack || cap.vpc_mlag_vsx)
+    parser: textfsm:aruba_aoscx_show_module
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_vlan
+    cmd: show vlan
+    gate: cap.switching
+    parser: textfsm:aruba_aoscx_show_vlan
+    api: /rest/v10.xx/system/vlans
+    feeds:
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_spanning_tree
+    cmd: show spanning-tree
+    gate: cap.switching
+    parser: none
+    feeds:
+      - stp
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_lag_brief
+    cmd: show lag brief
+    gate: cap.switching
+    parser: api
+    api: /rest/v10.xx/system/interfaces
+    feeds:
+      - lag
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /rest/v10.xx/system/interfaces); field mapping from documentation
+  - id: show_lacp_interfaces
+    cmd: show lacp interfaces
+    gate: cap.switching
+    parser: none
+    feeds:
+      - interface
+      - lag
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_vrf
+    cmd: show vrf
+    gate: cap.routing
+    parser: textfsm:aruba_aoscx_show_vrf
+    api: /rest/v10.xx/system/vrfs
+    feeds:
+      - vrf
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_bgp_ipv4_unicast_summary_all_vrfs
+    cmd: show bgp ipv4 unicast summary all-vrfs
+    gate: cap.bgp
+    parser: none
+    feeds:
+      - vrf
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+    note: 'the spec marks this command "verify": its spelling is not confirmed'
+  - id: show_vrrp_brief
+    cmd: show vrrp brief
+    gate: cap.fhrp
+    parser: none
+    feeds:
+      - fhrp
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_active_gateway
+    cmd: show active-gateway
+    gate: cap.fhrp
+    parser: none
+    feeds:
+      - fhrp
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_interface_vxlan_1_vni
+    cmd: show interface vxlan 1 vni
+    gate: cap.vxlan_evpn
+    parser: textfsm:aruba_aoscx_show_interface
+    feeds:
+      - interface
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (10 captures)
+  - id: show_evpn
+    cmd: show evpn
+    gate: cap.vxlan_evpn
+    parser: none
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_bgp_l2vpn_evpn_summary
+    cmd: show bgp l2vpn evpn summary
+    gate: cap.vxlan_evpn
+    parser: none
+    feeds:
+      - routing_neighbor
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: rest_v10_xx_system
+    cmd: /rest/v10.xx/system
+    gate: always
+    parser: api
+    api: /rest/v10.xx/system
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); field mapping from documentation
+  - id: system_interfaces
+    cmd: /system/interfaces
+    gate: always
+    parser: api
+    api: /system/interfaces
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); field mapping from documentation
+  - id: system_vlans
+    cmd: /system/vlans
+    gate: always
+    parser: api
+    api: /system/vlans
+    feeds:
+      - vlan
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); field mapping from documentation
+  - id: system_interfaces_if_lldp_neighbors
+    cmd: /system/interfaces/{if}/lldp_neighbors
+    gate: always
+    parser: api
+    api: /system/interfaces/{if}/lldp_neighbors
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); field mapping from documentation
+  - id: show_interface
+    cmd: show interface
+    gate: always
+    parser: textfsm:aruba_aoscx_show_interface
+    api: /rest/v10.xx/system/interfaces
+    feeds:
+      - interface
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (10 captures)
+  - id: show_arp_all_vrfs
+    cmd: show arp all-vrfs
+    gate: always
+    parser: textfsm:aruba_aoscx_show_arp_all-vrfs
+    api: /rest/v10.xx/system/vrfs/{vrf}/neighbors
+    feeds:
+      - arp
+      - vrf
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_ipv6_neighbors_all_vrfs
+    cmd: show ipv6 neighbors all-vrfs
+    gate: always
+    parser: api
+    api: /rest/v10.xx/system/vrfs/{vrf}/neighbors
+    feeds:
+      - arp
+      - vrf
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (REST /rest/v10.xx/system/vrfs/{vrf}/neighbors); field mapping from documentation
+  - id: show_running_config
+    cmd: show running-config
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+  - id: show_mac_address_table
+    cmd: show mac-address-table
+    gate: cap.switching
+    parser: textfsm:aruba_aoscx_show_mac-address-table
+    api: /rest/v10.xx/system/vlans/{vlan}/macs
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_ip_route_all_vrfs
+    cmd: show ip route all-vrfs
+    gate: cap.routing
+    parser: textfsm:aruba_aoscx_show_ip_route_all-vrfs
+    api: /rest/v10.xx/system/vrfs/{vrf}/routes
+    feeds:
+      - vrf
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_ipv6_route_all_vrfs
+    cmd: show ipv6 route all-vrfs
+    gate: cap.routing
+    parser: api
+    api: /rest/v10.xx/system/vrfs/{vrf}/routes
+    feeds:
+      - vrf
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (REST /rest/v10.xx/system/vrfs/{vrf}/routes); field mapping from documentation
+  - id: show_ip_ospf_neighbors_all_vrfs
+    cmd: show ip ospf neighbors all-vrfs
+    gate: cap.ospf
+    parser: none
+    feeds:
+      - vrf
+      - routing_neighbor
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: system_vrfs_vrf_routes
+    cmd: /system/vrfs/{vrf}/routes
+    gate: always
+    parser: api
+    api: /system/vrfs/{vrf}/routes
+    feeds:
+      - vrf
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (REST); field mapping from documentation
+live_path:
+  - id: show_ip_route_dst_vrf_vrf
+    cmd: show ip route {dst} vrf {vrf}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+    phase: 3
+  - id: show_arp_vrf_vrf
+    cmd: show arp vrf {vrf}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+    phase: 3
+  - id: traceroute_dst_vrf_vrf_source_src
+    cmd: traceroute {dst} vrf {vrf} source {src}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+    phase: 3
