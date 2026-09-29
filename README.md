@@ -279,6 +279,11 @@ container with no `libwebkit2gtk` installed specifically to prove it.
 **Diagram.** Infinite canvas, pan and zoom, grid and snap, minimap, marquee
 selection, undo/redo, autosave, alignment and distribution, grouping, layers.
 
+**Folders.** Projects file into folders and sub-folders on the start screen,
+one folder open at a time with a breadcrumb back up. Folders are this
+machine's arrangement, kept in its local database: an exported project
+carries none of it.
+
 **Pages.** Several independent drawings in one project, as tabs along the
 bottom — a rack elevation and a logical topology are two diagrams, not two
 views of one. Monitoring is project-wide regardless of which page draws a
@@ -333,6 +338,35 @@ copy beside it; a re-crawl then reports what it found that your diagram does
 not say — a switch that has gone, a link that now lands on a different port —
 because folding those in silently would turn change detection back into
 drawing.
+
+**Which devices it can log into.** Each platform is a dialect: one reading
+of the version banner decides every command a device is sent, and a
+platform is asked only its own spellings. Verified against real hardware:
+Cisco IOS/IOS-XE, NX-OS, FortiOS (FortiGate and FortiSwitch), ArubaOS-Switch.
+Built from vendor documentation and honest about it — each reports itself
+unverified until real output replaces its test data: Junos, Arista EOS,
+ArubaOS-CX, Dell, Palo Alto PAN-OS, Cisco ASA, Check Point Gaia, HPE
+Comware, Huawei VRP, MikroTik RouterOS, EdgeOS/VyOS, Cisco and Aruba
+wireless controllers, NVIDIA Cumulus Linux, SONiC. Anything with SNMP is
+identified over SNMP. The way to turn "unverified" into "verified" is the
+**Keep a diagnostic of this run** tick on a crawl: one folder with a debug
+log of what the app did and every device reply with passwords, communities
+and secrets removed, to send with a report.
+
+**Where a packet goes.** **Path-Trace** calculates the path from the
+routing tables the crawl collected — longest prefix, distance, metric,
+recursive next hops, ECMP as branches, per-VRF tables, VXLAN/EVPN and OTV
+where the data was collected — and refuses rather than guesses where it was
+not. It says what it did not evaluate (ACLs, firewall policy, policy
+routing it found). **Tracert** measures instead: a traceroute from this
+machine or run by a device itself, each hop named by the crawled device
+that answered, drawn onto a page of its own like a calculated path. A
+device can also be asked which equal-cost leg it hashes a given flow onto.
+
+**Logins are a project's.** A saved login belongs to the project it was
+saved in and cannot be listed, shown or used from another; the whole vault
+is managed from the start screen with no project open. A project keeps as
+many SSH logins and SNMP credentials as it needs, tried in order.
 
 **Import.** A Coreview project package, a CSV of devices, or a Visio `.vsdx`
 drawing. The `.vsdx` reader turns a drawing into devices and links rather than

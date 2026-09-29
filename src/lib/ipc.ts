@@ -463,6 +463,8 @@ export type CrawlInput = {
   retries?: number;
   /** LT-389: write a debug log of this run. Off unless asked for. */
   debugLog?: boolean;
+  /** LT-497: the project's other saved SSH logins, tried after the first. */
+  fallbackCredentialIds?: string[];
   /** LT-481: keep every identity command's reply, redacted, for support. */
   supportCapture?: boolean;
   /** LT-424: the project the run is kept under. Without one, nothing is kept. */

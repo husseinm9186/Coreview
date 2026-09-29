@@ -1637,35 +1637,7 @@ async fn visit(
             &device.run("execute dhcp lease-list").await.unwrap_or_default(),
         );
         merge_endpoint_lists(&mut endpoints, leases);
-        let mut forti_neighbors = crate::fortios::parse_lldp_summary(&neighbours);
-        // The summary is the list; the detail fills it in. Merged on the local
-        // port, which is the one thing both forms always agree on — a summary
-        // row with no detail keeps exactly what it had.
-        for d in detail {
-            let Some(port) = d.local_interface.as_deref() else { continue };
-            match forti_neighbors
-                .iter_mut()
-                .find(|n| n.local_interface.as_deref() == Some(port))
-            {
-                Some(n) => {
-                    if n.chassis_id.is_none() {
-                        n.chassis_id = d.chassis_id;
-                    }
-                    if n.addresses.is_empty() {
-                        n.addresses = d.addresses;
-                    }
-                    if n.version.is_none() {
-                        n.version = d.version;
-                    }
-                    if n.remote_interface.is_none() {
-                        n.remote_interface = d.remote_interface;
-                    }
-                }
-                // A neighbour the detail form saw and the summary did not is
-                // still a neighbour.
-                None => forti_neighbors.push(d),
-            }
-        }
+        let mut forti_neighbors = crate::fortios::merge_lldp(crate::fortios::parse_lldp_summary(&neighbours), detail);
         for m in managed {
             if !forti_neighbors.iter().any(|n| n.device_id == m.device_id) {
                 forti_neighbors.push(m);
@@ -2052,6 +2024,12 @@ async fn read_details(device: &mut Session, version: &str, wanted: DetailOptions
         }
     }
 
+    // LT-498: a platform that does not answer Cisco's spellings is asked none
+    // of the details below — its own readers come with its dialect, and until
+    // one exists the honest answer is nothing, not a table of refusals.
+    if !platform.reads_cisco_details() {
+        return details;
+    }
     if wanted.spanning_tree {
         let out = device.run(crate::stp::COMMAND).await.unwrap_or_default();
         details.spanning_tree = crate::stp::parse_spanning_tree(&out);

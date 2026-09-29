@@ -26,6 +26,7 @@ export function credentialsUsedBy(doc: Pick<ProjectDocument, 'pages' | 'credenti
     if (t) used.add(t);
   };
   add(doc.credentialDefaults?.ssh);
+  for (const id of doc.credentialDefaults?.sshMore ?? []) add(id);
   for (const id of doc.credentialDefaults?.snmp ?? []) add(id);
   for (const rule of doc.credentialRules ?? []) add(rule.credentialId);
   for (const node of allNodes(doc)) {

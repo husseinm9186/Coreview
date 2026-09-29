@@ -90,6 +90,10 @@ pub struct CrawlInput {
     /// A saved credential to use instead of typed ones. The interface sends an
     /// id; the password is fetched inside Rust and never travels.
     pub credential_id: Option<String>,
+    /// LT-497: the project's other saved SSH logins, tried in order after the
+    /// first when a device refuses it. By id; resolved from the vault here.
+    #[serde(default)]
+    pub fallback_credential_ids: Vec<String>,
     /// Saved SNMP credentials, likewise by reference. A list, for the same
     /// reason as `snmp`.
     #[serde(default)]
@@ -405,13 +409,27 @@ pub async fn start_crawl(
             .filter(|v| !v.is_empty())
             .unwrap_or("root")
             .to_string(),
-        fallback_credentials: fallback_credentials
-            .unwrap_or_default()
-            .into_iter()
-            // A set with no username is an empty form, not a credential.
-            .filter(|c| !c.username.trim().is_empty())
-            .map(Credentials::from)
-            .collect(),
+        // LT-497: the project's saved logins first, in its order, then any
+        // typed ones. One that has gone is one fewer to try (LT-335).
+        fallback_credentials: {
+            let mut all = Vec::new();
+            for id in &input.fallback_credential_ids {
+                if !crate::vault_commands::credential_exists(&state, id) {
+                    continue;
+                }
+                all.push(crate::vault_commands::ssh_credentials(&state, id)?);
+                crate::vault_commands::note_use(&state, id, "Crawl (fallback login)", &input.seed);
+            }
+            all.extend(
+                fallback_credentials
+                    .unwrap_or_default()
+                    .into_iter()
+                    // A set with no username is an empty form, not a credential.
+                    .filter(|c| !c.username.trim().is_empty())
+                    .map(Credentials::from),
+            );
+            all
+        },
         // Saved credentials first, then typed ones: a reference the operator
         // picked from a list is a deliberate choice, and a form left filled
         // in from last time is not. Every one that resolves is kept, because
@@ -506,11 +524,13 @@ pub async fn start_crawl(
     // LT-481: the support capture, opened now for the same reason as the
     // debug log below. Every secret the run holds is handed to the redaction
     // before a single reply is written.
+    // LT-499: one stamp for the run, so the log and the replies share a folder.
+    let run_stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
     if input.support_capture {
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or_default();
+        let stamp = run_stamp;
         let mut secrets: Vec<String> = credentials.secrets();
         for c in &options.fallback_credentials {
             secrets.extend(c.secrets());
@@ -526,18 +546,21 @@ pub async fn start_crawl(
     // be opened is reported now. Somebody ticked a box and is waiting for a
     // file; silently not writing one is worse than saying so.
     if input.debug_log {
-        let dir = crate::db::data_dir().join("logs");
+        // LT-499: beside the replies, in the run's own diagnostic folder,
+        // when both were asked for; on its own otherwise.
+        let dir = if input.support_capture {
+            coreview_discover::support::diagnostic_folder(&crate::db::data_dir(), run_stamp)
+        } else {
+            crate::db::data_dir().join("logs")
+        };
         let _ = std::fs::create_dir_all(&dir);
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or_default();
         let header = format!(
             "Coreview {} — crawl debug log\nSeeds: {seed}\nMax hops: {}",
             env!("CARGO_PKG_VERSION"),
             options.max_hops,
         );
-        coreview_discover::debuglog::start(&dir.join(format!("crawl-{stamp}.log")), &header)
+        let file = if input.support_capture { dir.join("debug.log") } else { dir.join(format!("crawl-{run_stamp}.log")) };
+        coreview_discover::debuglog::start(&file, &header)
             .map_err(|e| format!("could not open the debug log: {e}"))?;
     } else {
         // A previous run may have left it on.

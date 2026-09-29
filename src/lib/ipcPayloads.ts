@@ -77,7 +77,7 @@ export const crawlInput = (input: object) => {
   const out = pickAll(i, [
     'seed', 'subnets', 'crawlClasses', 'maxHops', 'maxDevices', 'secondFactor', 'addressPreference', 'interfaceName', 'port',
     'transport', 'vdom', 'snmp', 'credentialId', 'snmpCredentialIds', 'details', 'bindings', 'reverseDns', 'concurrency',
-    'perHostTimeoutSecs', 'retries', 'debugLog', 'supportCapture', 'projectId',
+    'perHostTimeoutSecs', 'retries', 'debugLog', 'supportCapture', 'fallbackCredentialIds', 'projectId',
   ]);
   if (Array.isArray(i.snmp)) out.snmp = i.snmp.map((s) => pickAll(s, SNMP_INPUT_KEYS));
   // LT-483: `vrfs` and `overlay` were missing here since LT-347 added them,

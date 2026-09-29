@@ -139,13 +139,13 @@ page.on("pageerror", (e) => console.log("PAGE EXCEPTION:", String(e).slice(0, 30
 await page.goto(URL, { waitUntil: "networkidle" });
 await page.locator(".cv-project-open").first().click();
 await page.waitForTimeout(900);
-await page.locator(".cv-panel .cv-tabs button", { hasText: "Trace path" }).click();
+await page.locator(".cv-panel .cv-tabs button", { hasText: "Path-Trace" }).click();
 await page.waitForTimeout(700);
 
 const panel = page.locator(".cv-pathtrace");
 const field = (label) =>
   panel.locator(".cv-field", { has: page.locator(`span:text-is("${label}")`) }).locator("input, select").first();
-const go = panel.locator("button", { hasText: "Trace path" });
+const go = panel.locator("button", { hasText: "Run Path-Trace" });
 
 check("the panel reads a saved crawl run rather than the network",
   /7 devices in this run, 6 with a routing table/.test(await panel.textContent()),
@@ -153,7 +153,7 @@ check("the panel reads a saved crawl run rather than the network",
 
 // ------------------------------------------------ the path it would take
 
-await field("Source").fill("EDGE");
+await field("Source").selectOption({ label: "EDGE" });
 await field("Destination").fill("10.40.50.9");
 await go.click();
 await page.waitForTimeout(600);
@@ -244,7 +244,7 @@ check("a VRF nothing holds a table for says so rather than using the global one"
 check("and draws no path at all for it", (await rows().count()) === 0);
 
 await field("VRF").fill("");
-await field("Source").fill("EDGE");
+await field("Source").selectOption({ label: "EDGE" });
 await field("Destination").fill("198.51.100.7");
 await go.click();
 await page.waitForTimeout(500);
@@ -252,18 +252,19 @@ check("a destination with no route says which device would drop it",
   /Stops at EDGE/.test(await panel.textContent()) && /no route to 198\.51\.100\.7/.test(await panel.textContent()),
   (await panel.textContent()).slice(0, 300));
 
-await field("Source").fill("DARK");
+await field("Source").selectOption({ label: "DARK" });
 await field("Destination").fill("10.40.50.9");
 await go.click();
 await page.waitForTimeout(500);
 check("a device whose routing table was never collected says exactly that",
   /routing table was not collected/.test(await panel.textContent()), (await panel.textContent()).slice(0, 300));
 
-await field("Source").fill("GHOST");
-await go.click();
-await page.waitForTimeout(500);
-check("a device this project never crawled is refused by name",
-  /not a device this project has crawled/.test(await panel.textContent()), (await panel.textContent()).slice(0, 300));
+// LT-504: the source is chosen from the run's devices, so a device this
+// project never crawled cannot be asked for at all — and, once one is
+// chosen, every other is still on offer.
+const offered = await field("Source").locator("option").allInnerTexts();
+check("the source offers the run's devices and nothing else",
+  offered.includes("EDGE") && offered.includes("DARK") && !offered.includes("GHOST") && offered.length === 8, JSON.stringify(offered));
 
 
 // -------------------------- LT-348 the application page, drawn and separate
@@ -276,7 +277,7 @@ const originalBefore = await page.evaluate(() => JSON.stringify(window.__cvStore
 await page.locator("button", { hasText: /^Clear$/ }).first().click();
 await page.waitForTimeout(300);
 await field("Application").fill("Customer Portal");
-await field("Source").fill("FW-01");
+await field("Source").selectOption({ label: "FW-01" });
 await field("Destination").fill("203.0.113.50");
 await field("Port").fill("443");
 await go.click();
@@ -312,7 +313,7 @@ check("nothing is left highlighted on the original",
 // A second application makes a second page rather than editing the first.
 await page.locator(".cv-page-tab, .cv-pages button", { hasText: "Core" }).first().click().catch(() => {});
 await page.waitForTimeout(400);
-await page.locator(".cv-panel .cv-tabs button", { hasText: "Trace path" }).click();
+await page.locator(".cv-panel .cv-tabs button", { hasText: "Path-Trace" }).click();
 await page.waitForTimeout(400);
 await field("Application").fill("Reporting");
 await field("Port").fill("8443");

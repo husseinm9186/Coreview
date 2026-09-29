@@ -105,7 +105,7 @@ export function TraceroutePanel({ target, onClose }: { target: string; onClose: 
   );
 }
 
-function TraceHopRow({ hop, changed }: { hop: TracerouteHopDto; changed: boolean }) {
+export function TraceHopRow({ hop, changed, device }: { hop: TracerouteHopDto; changed: boolean; device?: string }) {
   // Consecutive probes from the same router are grouped onto one line, the
   // way the raw traceroute text does; a router that changes mid-hop (an
   // ECMP path) gets its own line, so a path that changed after a failover
@@ -128,6 +128,8 @@ function TraceHopRow({ hop, changed }: { hop: TracerouteHopDto; changed: boolean
           <td className="cv-mono">
             {g.rtts.map((r) => (r == null ? '*' : `${r.toFixed(r < 10 ? 1 : 0)} ms`)).join('  ')}
           </td>
+          {/* LT-505: the crawled device the hop answered from, where known. */}
+          {device !== undefined && i === 0 && <td rowSpan={groups.length}>{device}</td>}
         </tr>
       ))}
     </>

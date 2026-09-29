@@ -55,7 +55,13 @@ the **Now** and **Blocked** sections back in three lines or fewer.
   instruction (D-026), and the VRF and VXLAN/EVPN parsers the same way
   (D-051) — `examples/probe_overlay.rs` is what earns those. Each says so in its own doc comment and reports
   `verified_against_hardware() == false` until it has met a device;
-  `examples/probe_stack.rs` is how that gets earned.
+  `examples/probe_stack.rs` is how that gets earned. **D-058 widened the
+  exception** to the vendor dialects of 2026-09-26 (Junos, Arista, PAN-OS,
+  ASA, Gaia, Comware, Huawei, RouterOS, EdgeOS/VyOS, wireless controllers,
+  Cumulus, SONiC) and the measured-path features: built from documentation,
+  each unverified until the operator's **support capture** — the "Keep a
+  diagnostic of this run" tick on a crawl (LT-481, LT-499) — replaces its
+  fixtures. A fixture reconstructed from documentation says so in its test.
 - **A test fixture is never a plausible credential.** Obviously fake strings
   only — a real device password was once used as a sample secret and ended up
   in the repository's history (LT-137).
@@ -168,6 +174,7 @@ node e2e/meraki.mjs       # the Meraki tab: customers, networks, backup, health 
 node e2e/drawer.mjs       # the details drawer: device and finding, pinned, keyboard (LT-444)
 node e2e/folders.mjs      # folders and sub-folders on the project screen (LT-485)
 node e2e/foldersettings.mjs # a project's backup and export folders, chosen where they can be kept (LT-487)
+node e2e/tracert.mjs      # the Tracert tab: from here or a device, hops named, a page from them (LT-505)
 ```
 
 Canvas performance is measured, not asserted (LT-190), against a **production**

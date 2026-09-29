@@ -176,6 +176,46 @@ pub fn parse_lldp_summary(out: &str) -> Vec<Neighbor> {
     neighbors
 }
 
+/// The summary is the list; the detail fills it in. Merged on the local
+/// port, which is the one thing both forms always agree on — a summary row
+/// with no detail keeps exactly what it had, and a neighbour the detail saw
+/// and the summary did not is still a neighbour.
+pub fn merge_lldp(mut summary: Vec<Neighbor>, detail: Vec<Neighbor>) -> Vec<Neighbor> {
+    for d in detail {
+        let Some(port) = d.local_interface.as_deref() else { continue };
+        match summary.iter_mut().find(|n| n.local_interface.as_deref() == Some(port)) {
+            Some(n) => {
+                if n.chassis_id.is_none() {
+                    n.chassis_id = d.chassis_id;
+                }
+                if n.addresses.is_empty() {
+                    n.addresses = d.addresses;
+                }
+                if n.version.is_none() {
+                    n.version = d.version;
+                }
+                if n.remote_interface.is_none() {
+                    n.remote_interface = d.remote_interface;
+                }
+                // LT-463: and what it is. The summary knows only capability
+                // codes; the detail also has the system description, and a
+                // neighbour left Unknown is one the crawl never logs into.
+                if n.class == DeviceClass::Unknown {
+                    n.class = d.class;
+                }
+                if n.capabilities.is_empty() {
+                    n.capabilities = d.capabilities;
+                }
+                if n.platform.is_none() {
+                    n.platform = d.platform;
+                }
+            }
+            None => summary.push(d),
+        }
+    }
+    summary
+}
+
 /// Neighbours from `get switch lldp neighbors-detail` (LT-334).
 ///
 /// The summary table gives the link and little else. This form gives what the
@@ -339,6 +379,25 @@ IEEE802.1, Port VLAN ID: 1
         assert_eq!(super::parse_lldp_detail(DETAIL)[0].class, crate::types::DeviceClass::Switch);
         let router = DETAIL.replace("BR", "R").replace("C2960CX Software (C2960CX-UNIVERSALK9-M)", "Software");
         assert_eq!(super::parse_lldp_detail(&router)[0].class, crate::types::DeviceClass::Router);
+    }
+
+    /// LT-463, the real cause: the crawl lists a FortiSwitch's neighbours from
+    /// the summary and fills them in from the detail — and never took the
+    /// detail's kind. A Cisco whose summary row carried no capability codes
+    /// stayed Unknown, and a crawl does not log into Unknown, so it stopped at
+    /// the FortiSwitch. The fix to the detail reader alone could not reach it.
+    #[test]
+    fn the_detail_decides_the_kind_the_summary_could_not() {
+        let mut summary = super::parse_lldp_detail(DETAIL);
+        summary[0].class = crate::types::DeviceClass::Unknown;
+        summary[0].version = None;
+        let merged = super::merge_lldp(summary, super::parse_lldp_detail(DETAIL));
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].class, crate::types::DeviceClass::Switch, "the detail knew it was a switch");
+        // A kind the summary did know is not overridden.
+        let mut known = super::parse_lldp_detail(DETAIL);
+        known[0].class = crate::types::DeviceClass::Router;
+        assert_eq!(super::merge_lldp(known, super::parse_lldp_detail(DETAIL))[0].class, crate::types::DeviceClass::Router);
     }
 
     #[test]

@@ -396,6 +396,28 @@ trust the summary below over that file; it is a signpost and it will rot.
   `asyncCommands.test.ts` (no I/O on the UI thread), `typeScale.test.ts`
   (font sizes are tokens), the dialect equivalence test, and the licence
   test now listing every crate. LT-124 and LT-125 are done.
+- **26–28 September 2026, from the operator's own testing (LT-459–LT-506).**
+  What landed, and where to look: **D-058** — dialects and path features may
+  be built from vendor documentation, each saying `verified_against_hardware()
+  == false` until a support capture replaces its fixtures; the families are
+  one file each in `coreview-discover/src/` (`junos`, `arista`, `panos`,
+  `asa`, `gaia`, `comware`, `huawei`, `routeros`, `vyatta`, `wlc`, `cumulus`,
+  `sonic`, `arubacx`) and `dialect.rs` routes every command to them; the
+  fake network (`tests/crawl_a_fake_network.rs`) has a Junos and a Cumulus
+  and records every command each fake was asked. **D-059** — a saved login
+  belongs to the project it was saved in, checked in Rust where each secret
+  is opened (`vault_commands.rs`, `meraki.rs`), with `set_open_project` told
+  by the store on every open, create and close. Folders on the project
+  screen (schema 4, `db::project_folders`), owners on credentials (schema
+  5). The support capture (`support.rs`) and the one diagnostic tick
+  (LT-499). Path-Trace's measured half: `trace.rs` (device traceroute, ECMP
+  hash), `policyroutes.rs`, `otv.rs`; the Tracert tab (`TracertPanel.tsx`).
+  Twelve bugs from his screenshots and logs, each with a test that failed
+  first — read their Done entries (LT-483/484/487/488/491/492/494/495/502)
+  before touching the crawl review, the folder settings, the validation
+  session events or the vault. **Still waiting on him:** LT-496 (a Nexus's
+  ARP/MAC tables read empty; needs the capture) and LT-501 (a validation
+  bug with no description yet).
 - **Half done:** LT-139 the stacking parsers exist and have met no hardware ·
   LT-110 Visio import (the Lucidchart/geometric path has no `<Connect>` data
   at all).

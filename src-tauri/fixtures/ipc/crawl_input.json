@@ -49,5 +49,8 @@
   "retries": 1,
   "debugLog": true,
   "supportCapture": true,
+  "fallbackCredentialIds": [
+    "cred-ssh-2"
+  ],
   "projectId": "project-1"
 }

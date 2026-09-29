@@ -591,6 +591,13 @@ export const en = {
   'crawl.attached.switch': 'Switch',
   'crawl.attached.port': 'Port',
   'crawl.attached.vlan': 'VLAN',
+  // LT-497: several logins per project.
+  'settings.thisProjectNth': 'This project — login {n}',
+  'settings.anotherSsh': 'Another SSH login for this project',
+  'settings.anotherSnmp': 'Another SNMP credential for this project',
+  // LT-503: an ended session, reopened from its tab.
+  'ssh.pressEnter': 'Press Enter to reconnect.',
+  'ssh.reconnecting': 'Reconnecting to {name}…',
   // D-059: a saved login belongs to its project.
   'settings.otherProjects': 'Other projects’ logins are not listed here, and cannot be used here. Every login on this computer is managed from the start screen, with no project open.',
   'vaultSettings.project': 'Project',
@@ -630,6 +637,11 @@ export const en = {
   'crawl.support.title': 'Writes what each device answered to the identity commands — never a configuration — into a folder, with every password, community and secret removed. Send it with a bug report so a parser can be corrected against a real device.',
   'crawl.support.written': { one: '{count} reply kept for support in', other: '{count} replies kept for support in' },
   'crawl.support.copyPath': 'Copy path',
+  // LT-499: one diagnostic.
+  'crawl.diagnostic.tick': 'Keep a diagnostic of this run',
+  'crawl.diagnostic.title': 'Writes one folder: a debug log of every command, login and decision with timings and which reply file each went to, beside every reply itself with passwords, communities and secrets removed. Never a configuration. Send it with a bug report.',
+  'crawl.diagnostic.written': { one: 'Diagnostic kept — the debug log and {count} reply — in', other: 'Diagnostic kept — the debug log and {count} replies — in' },
+  'crawl.diagnostic.logOnly': 'The debug log for the last run is in',
   'crawl.support.openFolder': 'Open folder',
   'jobs.kind.iconScan': 'Icon library',
   'jobs.count': '{done} of {total}',
@@ -722,7 +734,8 @@ export const en = {
   'trace.to': 'Destination',
   'trace.vrf': 'VRF',
   'trace.vrfDefault': 'default',
-  'trace.go': 'Trace path',
+  // LT-500: the operator's name for it.
+  'trace.go': 'Run Path-Trace',
   'trace.clear': 'Clear',
   'trace.needCrawl': 'Tracing reads routing tables a crawl collected. Run Discover devices with “Routing table” ticked first.',
   'trace.source': '{devices} devices in this run, {withRoutes} with a routing table. Nothing is sent — this reads what was collected.',
@@ -743,6 +756,20 @@ export const en = {
   'trace.simulateHint': 'Take a device out of the calculation and work the path out again. Nothing is sent and no device is changed — this filters the copy of the routing tables already held.',
   'trace.simulating': 'Calculated without: {names}',
   // LT-477: the measured path. LT-478: the leg the device hashes onto. LT-479: what was not evaluated.
+  'trace.chooseSource': 'Choose a device…',
+  // LT-505: Tracert.
+  'tracert.help': 'Where a packet actually went: a traceroute run now, from this machine or by a device itself. Path-Trace, beside this, says where the routing tables would send it.',
+  'tracert.from': 'From',
+  'tracert.to': 'To',
+  'tracert.thisMachine': 'This machine',
+  'tracert.run': 'Run tracert',
+  'tracert.running': 'Tracing…',
+  'tracert.ranHere': 'Run from this machine.',
+  'tracert.first': 'First trace to this target this session.',
+  'tracert.changed': { one: 'The path changed at {count} hop since the last trace — marked below.', other: 'The path changed at {count} hops since the last trace — marked below.' },
+  'tracert.same': 'Same path as the last trace to this target.',
+  'tracert.cutShort': 'Cut short — the trace was still running when time ran out. The hops below are real; what lies past the last one is unknown.',
+  'tracert.device': 'Device',
   'trace.credential': 'Saved SSH credential for {device}',
   'trace.measure': 'Measure from {device}',
   'trace.measuring': 'Measuring…',

@@ -481,13 +481,31 @@ await closedTab.locator("button").first().click();
 await page.waitForTimeout(400);
 const ended = await page.locator(".cv-ssh-screen:not([hidden]) .xterm-rows").textContent();
 check("and says so on the screen", /closed the session/.test(ended ?? ""), (ended ?? "").slice(-120));
+check("with how to get it back", /Press Enter to reconnect/.test(ended ?? ""), (ended ?? "").slice(-120));
+
+// ------------------------------------------- LT-503: Enter reconnects it
+const before = await st(() => window.__opened.length);
+const firstOpen = await st(() => window.__opened.find((o) => o.address === window.__opened.at(-1)?.address) ?? null);
+const sw7 = await st(() => window.__cvStore.getState().sshSessions.find((t) => t.label === "ACCESS-SW7"));
+await page.locator(".cv-ssh-screen:not([hidden]) textarea").first().focus();
+await page.keyboard.press("Enter");
+await page.waitForTimeout(700);
+const again = await st(() => window.__opened.at(-1));
+check("Enter in an ended tab opens a new session to the same device with the same login",
+  (await st(() => window.__opened.length)) === before + 1 && again?.address === sw7?.address && again?.credentialId === sw7?.credentialId,
+  JSON.stringify({ before, again, sw7, firstOpen }));
+const reopened = await st(() => window.__cvStore.getState().sshSessions.filter((t) => t.label === "ACCESS-SW7"));
+check("in the same tab, now open", reopened.length === 1 && reopened[0].status === "open" && reopened[0].id !== sw7?.id, JSON.stringify(reopened));
+check("and the screen says it is reconnecting",
+  /Reconnecting to ACCESS-SW7/.test(await page.locator(".cv-ssh-screen:not([hidden]) .xterm-rows").textContent() ?? ""));
+const newId = reopened[0]?.id;
 
 // ------------------------------------------------------------ closing
 
 await closedTab.locator(".cv-ssh-close").click();
 await page.waitForTimeout(400);
 check("closing a tab takes it away", (await page.locator(".cv-ssh-tab").count()) === 1);
-check("and tells the backend to end it", (await st(() => window.__closed)).includes("ssh-2"));
+check("and tells the backend to end it", (await st(() => window.__closed)).includes(newId), JSON.stringify(await st(() => window.__closed)));
 
 // ------------------------------------ closing the project ends every shell
 

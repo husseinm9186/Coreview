@@ -178,6 +178,13 @@ pub trait Dialect: Send + Sync {
     fn default_class(&self) -> Option<crate::types::DeviceClass> {
         None
     }
+    /// LT-498: whether the ports, VLANs, trunks, spanning tree and counters
+    /// are read with Cisco's spellings (which the families that imitate
+    /// Cisco answer). A family that does not is asked none of them, rather
+    /// than twenty-five rejected commands it will never answer.
+    fn reads_cisco_details(&self) -> bool {
+        true
+    }
 }
 
 // The sequences, as the crawler asked them before LT-461, one static per
@@ -481,6 +488,10 @@ impl Dialect for Chosen {
     fn verified_against_hardware(&self) -> bool {
         self.known.verified
     }
+    fn reads_cisco_details(&self) -> bool {
+        use Family::*;
+        matches!(self.known.family, CiscoIos | CiscoNxOs | AristaEos | ArubaOsSwitch | ArubaOsCx | Dell | Generic)
+    }
     fn default_class(&self) -> Option<crate::types::DeviceClass> {
         match self.known.family {
             // Every one of these is a switch whatever its SKU says.
@@ -736,6 +747,12 @@ mod tests {
         let w = dialect_for("Product Name..... Cisco Controller");
         assert_eq!((commands(w.ap_readings()), w.identity_commands(), w.paging_off()), (vec!["show ap summary"], &["show inventory"][..], Some("config paging disable")));
         assert!(w.route_commands().is_empty() && w.lldp_readings().is_empty() && w.arp_commands().is_empty());
+        // LT-498: the Cisco-shaped details are read only where they are answered.
+        assert!(dialect_for("Cisco IOS Software").reads_cisco_details());
+        assert!(dialect_for("Dell EMC Networking OS10").reads_cisco_details());
+        for banner in ["JUNOS 21.4R3", "model: PA-220\nsw-version: 10.1", "HPE Comware Software", "platform: MikroTik", "Cumulus Linux 4.4.0", "SONiC Software Version: SONiC.4\nHwSKU: x", "Version: FortiGate-60F v7.6.7", "Product Name..... Cisco Controller"] {
+            assert!(!dialect_for(banner).reads_cisco_details(), "{banner}");
+        }
         let nine = dialect_for("Cisco IOS XE Software, Version 17.9.4a\ncisco C9800-40-K9 (1RU) processor");
         assert_eq!((nine.family(), commands(nine.ap_readings())), (Family::CiscoIos, vec!["show ap summary"]));
         assert!(dialect_for("Cisco IOS XE Software, Version 17.9.4a\ncisco C9300-48P").ap_readings().is_empty(), "only a 9800 has an AP table");

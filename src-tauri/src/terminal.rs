@@ -267,7 +267,7 @@ pub async fn ssh_open(
                         }
                     }
                     Some(Instruction::LogTo(path)) => {
-                        match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+                        match open_session_log(&path) {
                             Ok(file) => {
                                 shaper = SessionLog::new();
                                 let said = path.display().to_string();
@@ -403,6 +403,14 @@ pub async fn ssh_log_start(
         .await
         .map_err(|_| "That session is no longer open.".to_string())?;
     Ok(said)
+}
+
+/// LT-506: a session log is only ever opened for appending. One file per
+/// device per day (`ssh_log_start`), so a session reopened from its tab
+/// (LT-503) — or three in an afternoon — writes on after what is there,
+/// never over it.
+pub fn open_session_log(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    std::fs::OpenOptions::new().create(true).append(true).open(path)
 }
 
 /// Stops writing the transcript. What is already on disk stays.
@@ -722,3 +730,21 @@ pub async fn ssh_test_credential(
         },
     })
 }
+
+#[cfg(test)]
+mod session_log_tests {
+    use std::io::Write;
+
+    /// LT-506: opening the same log twice — as a reconnect does — keeps what
+    /// the first session wrote.
+    #[test]
+    fn a_log_opened_again_appends_rather_than_overwrites() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("20260928-session-EXAMPLE-SW.txt");
+        writeln!(super::open_session_log(&path).unwrap(), "first session").unwrap();
+        writeln!(super::open_session_log(&path).unwrap(), "second session").unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(text, "first session\nsecond session\n");
+    }
+}
+

@@ -620,7 +620,7 @@ from this machine on ICMP, a TCP port or a UDP port, or from a device using its
 own ping over SSH. It shows the path the diagram draws between them, hop by hop,
 and names the first one that is down.
 
-**Trace path.** **Trace path** in the bottom panel answers a different question
+**Path-Trace.** **Path-Trace** in the bottom panel answers a different question
 from Path check beside it: not *can* A reach B, but *which way would it go*.
 Pick a source device, a destination address, and it reads the routing tables a
 crawl collected — nothing is sent. You get the hop-by-hop decisions with the

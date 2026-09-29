@@ -339,6 +339,24 @@ const mine = page.locator('[data-region="project-credentials"]');
 check("this project's Settings lists the login it uses",
   /CORE-SW1|netadmin/.test(await mine.textContent()), (await mine.textContent()).slice(0, 200));
 
+// LT-497: a project keeps several logins. Save one for the project; a place
+// for the next appears, and the first stays.
+{
+  const logins = page.locator('[data-region="project-logins"]');
+  const first = logins.locator('.cv-cred-override[data-kind="ssh"]').first();
+  await field(first, "Username").fill("backup-reader");
+  await field(first, "Password").fill(SECRETS.password);
+  await page.waitForTimeout(200);
+  await first.locator("button", { hasText: /^Save$/ }).first().click();
+  await page.waitForTimeout(600);
+  const sshBlocks = logins.locator('.cv-cred-override[data-kind="ssh"]');
+  check("a project can keep more than one SSH login: saving one offers a place for the next",
+    (await sshBlocks.count()) === 2 && /Another SSH login for this project/.test(await logins.textContent()),
+    String(await sshBlocks.count()) + " " + (await logins.textContent()).slice(0, 200));
+  check("and the crawl would try the project's logins in order",
+    (await page.evaluate(() => window.__cvStore.getState().doc.credentialDefaults?.ssh)) !== undefined);
+}
+
 // Now the other project on the same machine and the same vault.
 await page.locator(".cv-tools .cv-register-back").first().click();
 await page.waitForTimeout(300);

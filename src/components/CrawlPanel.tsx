@@ -25,7 +25,7 @@ import { seedsFromCsv } from '../lib/seeds';
 import { discoverySuggestions } from '../lib/discoverySuggestions';
 import { dryRun, inCidr, ipToInt, parseCidr, type DryRunPlan } from '../lib/dryRun';
 import { reconcile, type Change } from '../lib/reconcile';
-import type { TopoNode } from '../state/store';
+import { reviewable } from '../lib/reviewFilter';
 import { readProfile, type CrawlProfile } from '../lib/crawlProfiles';
 import { crawlFindings, FINDING_LABEL, type DrawnLink } from '../lib/crawlFindings';
 import { INTENT_KINDS, intentFindings, intentUnjudged, newIntentRule, ruleComplete, ruleLabel, type IntentKind, type IntentRule } from '../lib/intentChecks';
@@ -34,7 +34,7 @@ import { reduceCrawlTable, stateCounts, STATE_LABEL, tableRows, type CrawlTable 
 import { SubnetList } from './SubnetList';
 import { failureAdvice, failureHeading, reasonWithoutAddress } from '../lib/failures';
 import { newProbe } from '../lib/probes';
-import { buildTopology, identitiesOfNode, identity } from '../lib/topology';
+import { buildTopology, identity } from '../lib/topology';
 import { ChangeReport } from './ChangeReport';
 import { inferredSwitches, selectAttached, vendorCounts, attachedRows, sortAttachedRows, type AttachedColumn } from '../lib/attached';
 import type { DeviceNodeData } from '../types/domain';
@@ -488,11 +488,18 @@ export function CrawlPanel({
           transport,
           snmp: snmpForRun().typed,
           credentialId: credentialId ?? undefined,
+          // LT-497: the project's other SSH logins, tried in order after the
+          // first on a device with no login of its own.
+          fallbackCredentialIds: [
+            useStore.getState().doc.credentialDefaults?.ssh,
+            ...(useStore.getState().doc.credentialDefaults?.sshMore ?? []),
+          ].filter((id): id is string => !!id && id !== credentialId),
           // The backend has taken saved SNMP credentials by id all along;
           // nothing ever sent one, so the vault's SNMP half was unreachable
           // from a crawl (LT-135). The passphrases are fetched inside Rust
           // and never travel through the interface.
-          snmpCredentialIds: snmpForRun().savedIds,
+          // LT-497: and, when SNMP is asked for, the project's SNMP ones too.
+          snmpCredentialIds: [...new Set([...snmpForRun().savedIds, ...(snmpOpen ? (useStore.getState().doc.credentialDefaults?.snmp ?? []) : [])])],
           details,
           reverseDns,
           debugLog,
@@ -650,15 +657,10 @@ export function CrawlPanel({
       },
     });
 
-    // The ticks in the table decide what is placed. A node is wanted when any
-    // identity it carries — its MAC, any of its addresses, or its name — is
-    // one a ticked row carries too.
-    const wanted = (n: TopoNode) =>
-      keep.size === 0 || identitiesOfNode(n).some((k) => keep.has(k));
-
     // LT-216: nothing is written yet. The crawl's changes are listed for
     // review — additions and updates ticked, removals and moves not — and
-    // only what is accepted is applied, as one undo step.
+    // only what is accepted is applied, as one undo step. What reaches the
+    // review is `reviewable`'s decision (LT-417, LT-502).
     const limits = subnets.map(parseCidr).filter((c): c is NonNullable<typeof c> => c !== null);
     const inScope = limits.length
       ? (address: string) => {
@@ -666,20 +668,7 @@ export function CrawlPanel({
           return ip !== null && limits.some((c) => inCidr(ip, c));
         }
       : null;
-    const changes = reconcile({ page, topo, devices: result.devices, inScope })
-      .filter((c) => !(c.kind === 'added' && c.subject === 'device' && c.addNodes?.some((n) => !wanted(n))))
-      // A link to a device left unticked in the table has nowhere to land.
-      //
-      // LT-417: **both** ends, which this used to check only for the source.
-      // A link whose target was dropped survived the review, was applied, and
-      // then vanished when React Flow found no node at one end — so the device
-      // was missing *and* so was any sign that it should have been there.
-      .filter((c) => {
-        if (c.kind !== 'added' || c.subject !== 'link') return true;
-        const lands = (id: string) =>
-          page.nodes.some((n) => n.id === id) || topo.nodes.some((n) => n.id === id && wanted(n));
-        return !c.addEdges?.some((e) => !lands(e.source) || !lands(e.target));
-      });
+    const changes = reviewable(reconcile({ page, topo, devices: result.devices, inScope }), page, topo, keep);
     setReview({ changes, ticked: new Set(changes.filter((c) => c.accept).map((c) => c.id)), dangling: topo.danglingLinks });
   };
 
@@ -1027,72 +1016,45 @@ export function CrawlPanel({
         </label>
       </fieldset>
 
-      {/* LT-389: what the app did, as it did it — every command, login and
-          protocol decision, with timings. It names commands and counts their
-          output; it never writes down a password, an SNMP community or any
-          device output (D-055). */}
-      <label
-        className="cv-check cv-check-inline"
-        title="Writes a file naming every command, login and failure, with timings. It contains no passwords, no SNMP communities and no command output."
-      >
+      {/* LT-499: one tick, one folder. The debug log — every command, login
+          and decision, with timings, and which reply file each command went
+          to; never a password, a community or any device output (D-055) —
+          beside the replies themselves, redacted (LT-481, D-058). It is the
+          diagnostic to send with a report. */}
+      <label className="cv-check cv-check-inline cv-support-capture" title={t('crawl.diagnostic.title')}>
         <input
           type="checkbox"
-          checked={debugLog}
+          checked={debugLog && supportCapture}
           disabled={running}
-          onChange={(e) => setDebugLog(e.target.checked)}
+          onChange={(e) => {
+            setDebugLog(e.target.checked);
+            setSupportCapture(e.target.checked);
+          }}
         />
-        Write a debug log of this run
+        {t('crawl.diagnostic.tick')}
       </label>
-      {/* LT-481 (D-058): the file that turns a documentation-built parser
-          into a verified one. Identity replies only, never a configuration;
-          every secret the run holds is redacted before a byte is written. */}
-      <label
-        className="cv-check cv-check-inline cv-support-capture"
-        title={t('crawl.support.title')}
-      >
-        <input
-          type="checkbox"
-          checked={supportCapture}
-          disabled={running}
-          onChange={(e) => setSupportCapture(e.target.checked)}
-        />
-        {t('crawl.support.tick')}
-      </label>
-      {supportResult && (
-        <div className="cv-failure-log cv-support-result">
-          <span className="cv-help">
-            {t('crawl.support.written', { count: supportResult.files })}
-            {supportResult.problem ? ` — ${supportResult.problem}` : ''}
-          </span>
-          <code className="cv-failure-log-path">{supportResult.folder}</code>
-          <button type="button" className="cv-btn cv-btn-small" onClick={() => void navigator.clipboard.writeText(supportResult.folder)}>
-            {t('crawl.support.copyPath')}
-          </button>
-          <button type="button" className="cv-btn cv-btn-small" onClick={() => void ipc.openAttachment(supportResult.folder, true)}>
-            {t('crawl.support.openFolder')}
-          </button>
-        </div>
-      )}
-      {debugLogPath && (
-        <div className="cv-failure-log">
-          <span className="cv-help">The debug log for the last run:</span>
-          <code className="cv-failure-log-path">{debugLogPath}</code>
-          <button
-            type="button"
-            className="cv-btn cv-btn-small"
-            onClick={() => void navigator.clipboard.writeText(debugLogPath)}
-          >
-            Copy path
-          </button>
-          <button
-            type="button"
-            className="cv-btn cv-btn-small"
-            onClick={() => void ipc.openAttachment(debugLogPath, true)}
-          >
-            Open folder
-          </button>
-        </div>
-      )}
+      {(supportResult || debugLogPath) && (() => {
+        // The folder holding both, where both were kept; the log's own
+        // folder otherwise.
+        const folder = supportResult ? supportResult.folder.replace(/[\\/]replies[\\/]?$/, '') : (debugLogPath ?? '').replace(/[\\/][^\\/]*$/, '');
+        return (
+          <div className="cv-failure-log cv-support-result">
+            <span className="cv-help">
+              {supportResult
+                ? t('crawl.diagnostic.written', { count: supportResult.files })
+                : t('crawl.diagnostic.logOnly')}
+              {supportResult?.problem ? ` — ${supportResult.problem}` : ''}
+            </span>
+            <code className="cv-failure-log-path">{folder}</code>
+            <button type="button" className="cv-btn cv-btn-small" onClick={() => void navigator.clipboard.writeText(folder)}>
+              {t('crawl.support.copyPath')}
+            </button>
+            <button type="button" className="cv-btn cv-btn-small" onClick={() => void ipc.openAttachment(folder, true)}>
+              {t('crawl.support.openFolder')}
+            </button>
+          </div>
+        );
+      })()}
 
       <details className="cv-snmp" open={snmpOpen}
         onToggle={(e) => setSnmpOpen((e.target as HTMLDetailsElement).open)}>

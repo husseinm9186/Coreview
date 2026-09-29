@@ -81,6 +81,13 @@ fn sw2_lldp() -> String {
 /// LT-407: a Dell's answers are a different shape, and the crawl has to notice
 /// from `show version` alone. Testing the parsers proves they read Dell output;
 /// only this proves the crawl ever hands them any.
+/// LT-498: every command every fake was asked, by hostname.
+static ASKED: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+
+fn asked_of(hostname: &str) -> Vec<String> {
+    ASKED.lock().unwrap().iter().filter(|(h, _)| h == hostname).map(|(_, c)| c.clone()).collect()
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Flavour {
     Cisco,
@@ -159,6 +166,10 @@ impl server::Handler for FakeSwitch {
     ) -> Result<(), Self::Error> {
         let line = String::from_utf8_lossy(data);
         let command = line.trim();
+        // LT-498: what each fake was asked, so a test can say what it was not.
+        if let Ok(mut asked) = ASKED.lock() {
+            asked.push((self.hostname.clone(), command.to_string()));
+        }
 
         if self.flavour == Flavour::DellOs10 {
             let body = dell_answer(command, self.hostname_address());
@@ -1124,6 +1135,12 @@ async fn a_cumulus_switch_in_a_bash_shell_is_identified_and_read() {
     let spine = result.not_visited.iter().find(|n| n.short_name == "spine01").expect("lldpctl was read");
     assert_eq!(spine.addresses.first().map(|a| a.ip.as_str()), Some("10.9.9.1"), "with the address a crawl goes on by");
     assert!(c.attached.iter().any(|a| a.mac == "005056aabbcc" && a.address.as_deref() == Some("10.9.9.9")), "fdb and neighbours met: {:?}", c.attached);
+    // LT-498: once known for what it is, it is asked only its own questions.
+    let asked = asked_of("cumulus@LAB-CUMULUS-1:mgmt:~");
+    for cisco in ["show vlan brief", "show interfaces status", "show interfaces trunk", "show spanning-tree", "show switch", "show ip route", "show cdp neighbors detail", "show ip policy"] {
+        assert!(!asked.contains(&cisco.to_string()), "a Cumulus was asked `{cisco}`: {asked:?}");
+    }
+    assert!(asked.contains(&"net show system".to_string()) && asked.contains(&"lldpctl".to_string()), "{asked:?}");
 }
 
 #[tokio::test]

@@ -91,6 +91,11 @@ assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
 
+### LT-501 — **bug** Something goes wrong when validation starts — reported 2026-09-28, not yet described
+**Source:** the operator, 2026-09-28: "another bug when I start
+validation". No message or screenshot came with it.
+**Waiting on:** what the screen said.
+
 ### LT-496 — A Nexus is asked IOS's spellings for its bundles and ports, and its ARP and MAC tables read empty — 2026-09-28
 **Source:** the operator's crawl debug log, 2026-09-28, from a Nexus 9000:
 `show etherchannel summary`, `show interfaces trunk` and `show interfaces
@@ -101,40 +106,6 @@ interface …` — and `show ip arp` (14 lines) and `show mac address-table`
 readers read NX-OS's tables — **written against his output**, which a
 support capture of that switch will provide; tests from it.
 **Waiting on:** that capture.
-
-### LT-463 — Cannot log in to a FortiSwitch — reported 2026-09-26, not yet reproduced
-**Source:** the operator, 2026-09-26: "can't login to fortiswitch", after
-the audit's pushes. The screenshot did not come through. Not yet known:
-whether this is the terminal panel or a crawl, what the app said, and which
-build he was running. A FortiSwitch on the bench logged in for LT-320–325
-and the FortiOS branch of `crawl::visit` has met one, so this is either a
-regression from the audit's changes to the login path or a device-side
-change (D-020: reproduced before it is fixed).
-**Acceptance:** the failure reproduced with its message; a test that fails
-without the fix; the fix; the device logged in again.
-**Narrowed 2026-09-27 by the operator's screenshot:** the login works — the
-FortiSwitch-224E is "Logged in" — and the crawl **stops there**. Its one
-neighbour, a switch at an address the crawl holds, is listed as
-**Unknown**, "Seen by a neighbour", never visited. "can't crawl from the
-fortiswitch to the cisco switch or other switches." An Unknown neighbour
-is not a kind a default crawl logs into, so the question is why it is
-Unknown. **Found, not yet shown to be the cause:** `fortios::parse_lldp_detail`
-classified a neighbour from its capability letters alone and never from
-its system description, where `lldp::parse_lldp_detail` falls back to
-`classify` on both — so a neighbour whose capability codes are missing or
-unreadable comes out Unknown through a FortiSwitch and a switch through a
-Cisco. That gap is fixed with a test (below); whether it is *this* device's
-cause needs the FortiSwitch's `get switch lldp neighbors-detail` for that
-port, which the support capture (LT-481) and the debug log (LT-392, which
-names the reason a neighbour was not followed) will show.
-**Workaround meanwhile:** tick **Unclassified** under the kinds to log into.
-**The gap, fixed 2026-09-27 (D-020: test first).** `fortios::parse_lldp_detail`
-now classifies from the system description when the capability codes give
-nothing, as the ordinary LLDP reader does; codes that are there still
-decide. `a_neighbour_with_no_capability_codes_is_classified_from_its_description`
-failed with Unknown before the change and passes after. The summary form
-has no description and is unchanged. **LT-463 stays open** until the
-operator's capture shows this was his device's cause, or shows what was.
 
 ### LT-453 — Level of detail, measured to LT-188's protocol — 2026-09-25
 **Source:** the audit, R-31. Culling was measured twice and rejected (D-010,
@@ -360,6 +331,211 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-506 — A session log is appended to, never overwritten — 2026-09-28
+**Source:** the operator, 2026-09-28, on LT-503: "make sure we don't
+overwrite the logs, rather we append please".
+**Acceptance:** a reopened session appends to the log its tab already had;
+a log file is only ever opened for appending; a test that fails first.
+**Confirmed and pinned 2026-09-28.** The session log was already opened
+for appending — `create(true).append(true)` — and named per device per
+day, so a reconnect writes on after the earlier session. Extracted as
+`terminal::open_session_log` with a test that opens the same file twice and
+finds both sessions' lines. Nothing overwrote; now nothing can quietly
+start to.
+
+### LT-505 — A Tracert tab: a measured trace from this machine or a device, and a page from it — 2026-09-28
+**Source:** the operator, 2026-09-28: "can we create another tab call it
+tracert to do similar function as traceroute in windows CLI and trace
+route in cisco and also give us an option to create page just like the
+trace path (Create application path page)".
+**What exists:** a traceroute from this machine, on demand from a device's
+menu (LT-090) with a diff against the last run (LT-093), and a device's
+own traceroute from the Path-Trace tab (LT-477). Neither makes a page.
+**Acceptance:** a **Tracert** tab in the bottom panel: a target, run from
+this machine or from a chosen device with a saved login, the hops as a
+table with what changed since last time, each hop named by the crawled
+device it answered from where one did, and **Create application path
+page** drawing the measured hops the way Path-Trace draws a calculated
+path; `tracert.mjs`.
+**Shipped 2026-09-28.** A **Tracert** tab beside Path-Trace: a target; from
+this machine (LT-090's traceroute) or from a device chosen from the newest
+crawl run with a saved login (LT-477's device traceroute); the hops as a
+table with the crawled device each answered from where one holds the
+address, what changed since the last trace to that target from that source
+(LT-093), and cut-short said plainly (LT-129). **Create application path
+page** draws the measured hops the way Path-Trace draws a calculated path
+— source, each hop by its device or address, a silent hop as `* (hop n)`,
+the destination — and the page says it stopped short where the last hop was
+not the target. `measuredPath` and `hopsFromDevice` are the pure parts;
+`tracert.mjs` drives both ways of running it and the page.
+
+### LT-504 — **bug** Path-Trace's source cannot be changed once it has been typed — 2026-09-28
+**Source:** the operator, 2026-09-28, with a screenshot: "when I select a
+device in the trace path source and click trace I can't change the
+source". The screenshot shows the source box open with one suggestion —
+the device already in it.
+**Cause, from the screenshot:** the source is a text box with a
+suggestion list, and WebView2 filters the list by what is typed, so once
+a name is in the box the only suggestion is that name; to pick another
+the text has to be deleted first, which nothing says.
+**Acceptance:** the source is a list of the run's devices — the engine
+needs a crawled device anyway — chosen, not typed; the harness follows.
+**Fixed 2026-09-28.** The source is a list of the run's devices; a device
+this project never crawled cannot be asked for, and choosing another needs
+no clearing first. The harness chooses rather than types.
+
+### LT-503 — A closed SSH tab reopens with Enter — 2026-09-28
+**Source:** the operator, 2026-09-28: "when the session closed I can't
+open it, I need to be able to press enter and open the session by pressing
+enter".
+**Acceptance:** a tab whose session has ended says so and offers
+reconnecting; Enter in it opens a new session to the same device with the
+same login, in the same tab; covered in `ssh.mjs`.
+**Shipped 2026-09-28.** A tab whose session ended says "Press Enter to
+reconnect." and Enter opens a new session to the same device with the
+login the tab was opened with (its id, never a secret — `SshTab.credentialId`),
+in the same tab: the screen and its scrollback stay, the terminal is
+re-keyed to the new session before the tab is, and the tab's own identity
+(`tabKey`) no longer changes with its session. `ssh.mjs` covers it.
+
+### LT-502 — **bug** "Add 8 + 49 to diagram" does not add the 49 — 2026-09-28
+**Source:** the operator, 2026-09-28, with a screenshot of the crawl review
+after a run that found 8 devices and 49 more on switch ports: "add 8 + 49
+doesn't really add all the devices to the diagram".
+**Acceptance (D-020):** reproduced by a check that fails first; the button
+adds what it counts, or counts what it adds.
+**Fixed 2026-09-28 (D-020: `reviewFilter.test.ts` failed first).** The
+review kept a device only when one of its identities matched a ticked row —
+and a silent device on a switch port, or the unmanaged switch inferred in
+front of several, is not a row and matched nothing, so the filter dropped
+every one while the button counted them. What reaches the review is now
+`reviewable`, tested: a node tagged `attached` is kept (its own section
+being open and it being chosen there is the decision), an unticked crawled
+device and the link to it are still left out.
+
+### LT-500 — "Trace path" is called Path-Trace — 2026-09-28
+**Source:** the operator, 2026-09-28: "the tracepath should be renamed to
+Path-Trace".
+**Acceptance:** the tab, its heading, its buttons and the guide say
+Path-Trace; the harnesses follow.
+**Shipped 2026-09-28.** The tab reads Path-Trace, the button Run
+Path-Trace; the guide and the harness follow. The engine's file keeps its
+name.
+
+### LT-499 — One tick for a complete diagnostic of a discovery — 2026-09-28
+**Source:** the operator, 2026-09-28: "is there a way to expand the debug
+to log everything the discover devices do?"
+**Constraint:** D-055 — the debug log never holds device output — stands;
+the replies live in the support capture (LT-481), redacted.
+**Acceptance:** one tick writes the debug log and the support replies into
+one folder; the log names, for every command, the reply file it went to
+and what was read from it (rows, neighbours, addresses), and for every
+neighbour why it was or was not followed; the result offers the folder.
+**Shipped 2026-09-28.** One tick, **Keep a diagnostic of this run**, in
+place of the two: the debug log and the redacted replies go into one folder,
+`<data>/diagnostics/crawl-<stamp>/` (`debug.log` beside `replies/`), and
+the result names it with Copy path and Open folder. The log now says, for
+every command whose reply was kept, which file it went to — the file, never
+the reply (D-055 stands). What the log already said stays: every command
+with timing and byte and line counts, which way of asking each table
+answered and how many rows it gave (LT-392), and for every neighbour why it
+was or was not followed.
+
+### LT-498 — Once a platform is known, only its own commands are sent — 2026-09-28
+**Source:** the operator, 2026-09-28: "we should use filters when we ssh to
+devices so we don't overwhelm it with wrong commands if its not setup
+already". His debug log shows the cost: a Linux switch asked 25 Cisco
+commands, each rejected, and a Nexus asked IOS spellings for its bundles
+and ports.
+**Acceptance:** the details read after identity — ports, VLANs, trunks,
+spanning tree, stacking, policy routes — are asked by the dialect, and a
+family with no reader for a table is asked nothing for it; the fallback
+spellings tried by result (LT-391) are tried only on the families they
+belong to; a test counts what a known platform is sent.
+**Shipped 2026-09-28, the first half.** `Dialect::reads_cisco_details`
+says whether a family answers the Cisco-shaped port, VLAN, trunk, spanning
+tree and counter commands; `read_details` asks none of them of a family
+that does not (Junos, PAN-OS, ASA, Gaia, Comware, Huawei, RouterOS,
+Vyatta, AireOS, Aruba controllers, Cumulus, SONiC — FortiOS was already
+skipped). The fake network now records every command each fake was asked,
+and the Cumulus test asserts it was never sent a Cisco spelling. **Not in
+it:** those families' own port and VLAN readers, which need captures; and
+the result-based fallbacks of the identity half (LT-391) still try Aruba's
+spelling on a Cisco that answered nothing — a rejected command each, kept
+because a Cisco with no neighbours is indistinguishable from one whose
+answer was not understood.
+
+### LT-497 — A project keeps several SSH logins and several SNMP credentials — 2026-09-28
+**Source:** the operator, 2026-09-28, on Tools → Settings: "it looks like I
+can only save one login info in settings. I need the option to add more
+please same for SNMP".
+**Acceptance:** the project's Settings lists every SSH login and every SNMP
+credential it keeps, each can be added, replaced and removed; a crawl
+tries them in order where a device has none of its own (the fallback the
+crawl already supports); each belongs to the project (D-059).
+**Shipped 2026-09-28.** `credentialDefaults.sshMore` holds the project's
+further SSH logins in order after `ssh`; `snmp` was already a list. The
+project's Settings shows one block per login it keeps (numbered when there
+are several), each with Replace and Clear, and an empty block headed
+"Another SSH login for this project" / "Another SNMP credential for this
+project" to add the next; the first saved becomes the first tried. A crawl
+sends the project's other SSH logins as `fallbackCredentialIds`, resolved
+from the vault in Rust and tried in the project's order on a device with
+no login of its own (the fallback the crawl already had for typed logins);
+the project's SNMP credentials go with a run when SNMP is on. Every one is
+the project's (D-059). `credentials.mjs` saves a project login and checks
+the next is offered.
+
+### LT-463 — Cannot log in to a FortiSwitch — reported 2026-09-26, not yet reproduced
+**Source:** the operator, 2026-09-26: "can't login to fortiswitch", after
+the audit's pushes. The screenshot did not come through. Not yet known:
+whether this is the terminal panel or a crawl, what the app said, and which
+build he was running. A FortiSwitch on the bench logged in for LT-320–325
+and the FortiOS branch of `crawl::visit` has met one, so this is either a
+regression from the audit's changes to the login path or a device-side
+change (D-020: reproduced before it is fixed).
+**Acceptance:** the failure reproduced with its message; a test that fails
+without the fix; the fix; the device logged in again.
+**Narrowed 2026-09-27 by the operator's screenshot:** the login works — the
+FortiSwitch-224E is "Logged in" — and the crawl **stops there**. Its one
+neighbour, a switch at an address the crawl holds, is listed as
+**Unknown**, "Seen by a neighbour", never visited. "can't crawl from the
+fortiswitch to the cisco switch or other switches." An Unknown neighbour
+is not a kind a default crawl logs into, so the question is why it is
+Unknown. **Found, not yet shown to be the cause:** `fortios::parse_lldp_detail`
+classified a neighbour from its capability letters alone and never from
+its system description, where `lldp::parse_lldp_detail` falls back to
+`classify` on both — so a neighbour whose capability codes are missing or
+unreadable comes out Unknown through a FortiSwitch and a switch through a
+Cisco. That gap is fixed with a test (below); whether it is *this* device's
+cause needs the FortiSwitch's `get switch lldp neighbors-detail` for that
+port, which the support capture (LT-481) and the debug log (LT-392, which
+names the reason a neighbour was not followed) will show.
+**Workaround meanwhile:** tick **Unclassified** under the kinds to log into.
+**The gap, fixed 2026-09-27 (D-020: test first).** `fortios::parse_lldp_detail`
+now classifies from the system description when the capability codes give
+nothing, as the ordinary LLDP reader does; codes that are there still
+decide. `a_neighbour_with_no_capability_codes_is_classified_from_its_description`
+failed with Unknown before the change and passes after. The summary form
+has no description and is unchanged. **LT-463 stays open** until the
+operator's capture shows this was his device's cause, or shows what was.
+**Reproduced and fixed 2026-09-28, in two steps, and the operator's own
+FortiSwitch session confirmed the symptom.** The crawl lists a
+FortiSwitch's neighbours from `get switch lldp neighbors-summary` and fills
+them in from `neighbors-detail` — and the merge never took the detail's
+*kind*. A Cisco whose summary row carried no capability codes stayed
+Unknown, a crawl does not log into Unknown, and it stopped at the
+FortiSwitch. First fix (the detail reader classifying from the description)
+was right and could not reach it; `fortios::merge_lldp` now takes the
+detail's class, capabilities and platform where the summary had none, with
+`the_detail_decides_the_kind_the_summary_could_not` failing first. **A
+second cause on the same network, LT-488:** from the FortiSwitch itself,
+`execute ssh` to the Cisco was refused for want of a common key exchange —
+the Cisco offers only `diffie-hellman-group14-sha1` and
+`group-exchange-sha1`, which Coreview has offered since LT-054, so the
+crawl was not affected by that one. Closed on the fix; his next crawl from
+the FortiSwitch is the confirmation.
 
 ### LT-495 — **bug** Another project's logins and Meraki key are visible and usable — 2026-09-28
 **Source:** the operator, 2026-09-28: "i can still see all projects

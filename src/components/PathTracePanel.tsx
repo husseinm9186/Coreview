@@ -1,5 +1,5 @@
 /**
- * Trace Path (LT-346): which routing decision each device makes, and where a
+ * Path-Trace (LT-346, named LT-500): which routing decision each device makes, and where a
  * packet actually ends up.
  *
  * The Path check tab beside this one asks "can A reach B" and finds out by
@@ -345,11 +345,13 @@ export function PathTracePanel() {
         </label>
         <label className="cv-field cv-field-narrow">
           <span>{t('trace.from')}</span>
-          <input className="cv-input cv-mono" value={from} spellCheck={false} list="cv-trace-devices"
-            placeholder="CORE-SW1" onChange={(e) => setFrom(e.target.value)} />
-          <datalist id="cv-trace-devices">
-            {devices.map((d) => <option key={d.hostname} value={d.hostname} />)}
-          </datalist>
+          {/* LT-504: chosen from the run, not typed — the engine needs a
+              crawled device, and a suggestion list filtered by what was
+              typed hid every other name once one was in the box. */}
+          <select className="cv-input cv-mono" value={from} onChange={(e) => setFrom(e.target.value)}>
+            <option value="">{devices.length ? t('trace.chooseSource') : t('trace.noRuns')}</option>
+            {devices.map((d) => <option key={d.hostname} value={d.hostname}>{d.hostname}</option>)}
+          </select>
         </label>
         <label className="cv-field cv-field-narrow">
           <span>{t('trace.to')}</span>

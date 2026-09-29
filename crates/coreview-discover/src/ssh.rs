@@ -557,7 +557,11 @@ impl Device {
         // found is an echo that is never removed.
         let output = extract_output(&crate::cli::readable(&raw), command);
         if let Some(capture) = &self.options.support_capture {
-            capture.record(&self.host, command, &output);
+            // LT-499: the log names the file the reply went to — the file,
+            // never the reply (D-055).
+            if let Some(file) = capture.record(&self.host, command, &output) {
+                crate::say!(crate::debuglog::Area::Ssh, "{}: `{command}` kept as replies/{file}", self.host);
+            }
         }
         Ok(output)
     }

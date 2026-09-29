@@ -144,6 +144,12 @@ export interface SshTab {
   /** LT-325: when the device last took a keepalive, so "is it still up" is
    *  answered by looking rather than by typing into somebody's command line. */
   lastAlive?: number;
+  /** LT-503: the tab's own identity, fixed when it is first opened. `id` is
+   *  the session's and changes when an ended session is reopened here. */
+  tabKey?: string;
+  /** LT-503: the saved login it was opened with — its id, never a secret —
+   *  so an ended session can be opened again from its own tab. */
+  credentialId?: string;
 }
 
 export interface ProjectDocument {
@@ -185,7 +191,8 @@ export interface ProjectDocument {
    *  to someone else carries a reference to nothing they can open. Written by
    *  "Keep for this project" in the crawl and backup forms, so a rescan or a
    *  backup does not start by typing the same password again. */
-  credentialDefaults?: { ssh?: string; snmp?: string[] };
+  /** `ssh` is the first login tried; `sshMore` (LT-497) the others, in order. */
+  credentialDefaults?: { ssh?: string; sshMore?: string[]; snmp?: string[] };
   /** LT-285: the address register's declared half — subnets someone wrote
    *  down and addresses held back. What is *known* about addresses is derived
    *  from the devices themselves and is not stored twice. */
@@ -466,6 +473,8 @@ interface Store {
   /** The session ended — at the device's end or ours. The tab stays, with
    *  what it said, until it is closed by hand: a shell that vanishes the
    *  moment it drops takes the error message with it. */
+  /** LT-503: an ended session's tab takes its new session's id. */
+  reopenSshTab: (oldId: string, newId: string) => void;
   endSshTab: (id: string, reason: string) => void;
   /** Takes the tab away. The backend is told separately. */
   forgetSshTab: (id: string) => void;
@@ -523,6 +532,8 @@ interface Store {
   bumpVault: () => void;
   /** LT-286: this project uses that saved credential from now on. */
   rememberCredential: (kind: 'ssh' | 'snmp', id: string) => void;
+  addProjectSsh: (id: string) => void;
+  replaceProjectCredential: (kind: 'ssh' | 'snmp', oldId: string, newId: string | undefined) => void;
   forgetCredential: (kind: 'ssh' | 'snmp', id?: string) => void;
   /** LT-212. */
   saveCrawlProfile: (profile: CrawlProfile) => void;
@@ -1452,7 +1463,7 @@ export const useStore = create<Store>((set, get) => ({
 
   openSshTab(tab) {
     set((s) => ({
-      sshSessions: [...s.sshSessions.filter((t) => t.id !== tab.id), tab],
+      sshSessions: [...s.sshSessions.filter((t) => t.id !== tab.id), { ...tab, tabKey: tab.tabKey ?? tab.id }],
       sshActive: tab.id,
       panelOpen: true,
     }));
@@ -1460,6 +1471,13 @@ export const useStore = create<Store>((set, get) => ({
 
   setSshActive(id) {
     set({ sshActive: id });
+  },
+
+  reopenSshTab(oldId, newId) {
+    set((s) => ({
+      sshSessions: s.sshSessions.map((t) => (t.id === oldId ? { ...t, id: newId, status: 'open' as const, reason: undefined, logPath: null } : t)),
+      sshActive: s.sshActive === oldId ? newId : s.sshActive,
+    }));
   },
 
   endSshTab(id, reason) {
@@ -2408,6 +2426,32 @@ export const useStore = create<Store>((set, get) => ({
         kind === 'ssh'
           ? { ...had, ssh: id }
           : { ...had, snmp: [...new Set([...(had.snmp ?? []), id])] };
+      return { doc: { ...s.doc, credentialDefaults: next }, dirty: true };
+    });
+  },
+
+  /** LT-497: another SSH login for the project, tried after the first. */
+  addProjectSsh(id) {
+    set((s) => {
+      const had = s.doc.credentialDefaults ?? {};
+      if (had.ssh === id || (had.sshMore ?? []).includes(id)) return {};
+      // The first one saved is the project's first login.
+      const next = had.ssh ? { ...had, sshMore: [...(had.sshMore ?? []), id] } : { ...had, ssh: id };
+      return { doc: { ...s.doc, credentialDefaults: next }, dirty: true };
+    });
+  },
+
+  /** LT-497: one of the project's logins, replaced by another or removed. */
+  replaceProjectCredential(kind, oldId, newId) {
+    set((s) => {
+      const had = s.doc.credentialDefaults ?? {};
+      const swap = (list: string[] | undefined) => (list ?? []).flatMap((x) => (x === oldId ? (newId ? [newId] : []) : [x]));
+      const next =
+        kind === 'ssh'
+          ? had.ssh === oldId
+            ? { ...had, ssh: newId ?? had.sshMore?.[0], sshMore: newId ? had.sshMore : (had.sshMore ?? []).slice(1) }
+            : { ...had, sshMore: swap(had.sshMore) }
+          : { ...had, snmp: swap(had.snmp) };
       return { doc: { ...s.doc, credentialDefaults: next }, dirty: true };
     });
   },

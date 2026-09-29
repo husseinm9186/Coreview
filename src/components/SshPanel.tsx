@@ -33,7 +33,47 @@ import { useStore, type SshTab } from '../state/store';
  * inactive ones are hidden, and the instances are kept in the module-level map
  * below, which is also where the event listener finds them.
  */
-const terminals = new Map<string, { term: Terminal; fit: FitAddon; search: SearchAddon; colour: Colouriser }>();
+type Held = {
+  term: Terminal;
+  fit: FitAddon;
+  search: SearchAddon;
+  colour: Colouriser;
+  /** LT-503: the session this screen is showing now — it changes when an
+   *  ended session is reopened in the same tab, and the screen stays. */
+  id: string;
+  reconnecting?: boolean;
+};
+const terminals = new Map<string, Held>();
+
+/**
+ * LT-503: opens a new session to the same device with the same saved login,
+ * in the tab of the one that ended — the screen and its scrollback kept, the
+ * terminal re-keyed to the new session before the tab is, so nothing in
+ * between takes it for a tab that has gone.
+ */
+async function reconnect(held: Held) {
+  if (held.reconnecting) return;
+  const tab = useStore.getState().sshSessions.find((t) => t.id === held.id);
+  if (!tab || tab.status !== 'closed' || !tab.credentialId) return;
+  held.reconnecting = true;
+  held.term.write(`\r\n\x1b[2m${t('ssh.reconnecting', { name: tab.label })}\x1b[0m\r\n`);
+  try {
+    const { keepaliveSeconds, logByDefault } = useStore.getState().settings.terminal;
+    const id = await ipc.sshOpen(tab.address, tab.credentialId, { cols: held.term.cols, rows: held.term.rows }, undefined, keepaliveSeconds);
+    terminals.set(id, held);
+    terminals.delete(held.id);
+    held.id = id;
+    useStore.getState().reopenSshTab(tab.id, id);
+    const folder = useStore.getState().settings.backupFolder;
+    if (logByDefault && folder) {
+      await ipc.sshLogStart(id, { folder, device: tab.label, address: tab.address, site: '' }).catch(() => undefined);
+    }
+  } catch (e: unknown) {
+    held.term.write(`\x1b[2m${e instanceof Error ? e.message : String(e)}\x1b[0m\r\n\x1b[2m${t('ssh.pressEnter')}\x1b[0m\r\n`);
+  } finally {
+    held.reconnecting = false;
+  }
+}
 
 /** Drops a terminal and everything it was holding. */
 function dispose(id: string) {
@@ -184,6 +224,10 @@ export function SshPanel() {
         if (e.kind === 'closed') {
           if (held?.colour.pending) held.term.write(held.colour.flush());
           held?.term.write(`\r\n\x1b[2m${e.reason}\x1b[0m\r\n`);
+          // LT-503: and how to get it back, where that is possible.
+          if (useStore.getState().sshSessions.find((x) => x.id === e.id)?.credentialId) {
+            held?.term.write(`\x1b[2m${t('ssh.pressEnter')}\x1b[0m\r\n`);
+          }
           useStore.getState().endSshTab(e.id, e.reason);
           return;
         }
@@ -447,7 +491,7 @@ export function SshPanel() {
       {!problem && note && <p className="cv-help">{note}</p>}
       <div className="cv-ssh-screens">
         {tabs.map((tab) => (
-          <SshTerminal key={tab.id} tab={tab} visible={tab.id === active} />
+          <SshTerminal key={tab.tabKey ?? tab.id} tab={tab} visible={tab.id === active} />
         ))}
       </div>
     </div>
@@ -480,7 +524,7 @@ function SshTerminal({ tab, visible }: { tab: SshTab; visible: boolean }) {
       // read, and scrollback nobody can search is scrollback nobody uses.
       const search = new SearchAddon();
       term.loadAddon(search);
-      held = { term, fit, search, colour: new Colouriser() };
+      held = { term, fit, search, colour: new Colouriser(), id: tab.id };
       terminals.set(tab.id, held);
 
       // LT-344: clipboard manners, both off until asked for. Read from the
@@ -493,7 +537,17 @@ function SshTerminal({ tab, visible }: { tab: SshTab; visible: boolean }) {
       });
       // Keystrokes as typed. Nothing is added, not even a newline: Enter is
       // already a carriage return in the data xterm hands over.
-      term.onData((data) => void sendText(tab.id, data));
+      // LT-503: the session it sends to is the screen's current one, and in a
+      // tab whose session has ended, Enter opens it again instead.
+      const mine = held;
+      term.onData((data) => {
+        const now = useStore.getState().sshSessions.find((x) => x.id === mine.id);
+        if (now?.status === 'closed') {
+          if (data.includes('\r')) void reconnect(mine);
+          return;
+        }
+        void sendText(mine.id, data);
+      });
     }
     if (held.term.element?.parentElement !== mount) held.term.open(mount);
     return () => undefined;

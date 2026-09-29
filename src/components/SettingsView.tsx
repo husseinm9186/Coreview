@@ -53,10 +53,9 @@ export function SettingsView() {
       .catch(() => setSaved([]));
   }, [vaultRevision]);
 
-  const ssh = projectDefaults?.ssh;
-  // A project keeps a list of SNMP credentials because a scan tries each in
-  // turn; the first is the one everything else falls back to.
-  const snmp = projectDefaults?.snmp?.[0];
+  // LT-497: every login the project keeps, in the order a crawl tries them.
+  const sshIds = [projectDefaults?.ssh, ...(projectDefaults?.sshMore ?? [])].filter((id): id is string => !!id);
+  const snmpIds = projectDefaults?.snmp ?? [];
   const named = (id: string | undefined) => (id ? saved.find((c) => c.id === id)?.label : undefined);
 
   const used = credentialsUsedBy({ pages, credentialDefaults: projectDefaults, credentialRules });
@@ -70,37 +69,61 @@ export function SettingsView() {
         {!isDesktop ? (
           <p className="cv-help">{t('cred.desktopOnly')}</p>
         ) : (
-          <div className="cv-settings-creds">
+          <div className="cv-settings-creds" data-region="project-logins">
             {/* The same control the inspector uses on a device (LT-318) —
                 type it, Save, Replace, Wipe — pointed at the project instead
-                of at one switch. One form, one set of words, two scopes. */}
+                of at one switch. One form, one set of words, two scopes.
+                LT-497: one block per login the project keeps, in the order a
+                crawl tries them, and an empty one to add the next. */}
+            {sshIds.map((id, i) => (
+              <CredentialOverride
+                key={id}
+                kind="ssh"
+                scope="project"
+                device={sshIds.length > 1 ? t('settings.thisProjectNth', { n: i + 1 }) : t('settings.thisProject')}
+                credentialId={id}
+                onChange={(next) => useStore.getState().replaceProjectCredential('ssh', id, next)}
+              />
+            ))}
+            {sshIds.length > 0 && <p className="cv-help cv-settings-another">{t('settings.anotherSsh')}</p>}
             <CredentialOverride
+              key={`ssh-new-${sshIds.length}`}
               kind="ssh"
               scope="project"
               device={t('settings.thisProject')}
-              credentialId={ssh}
+              credentialId={undefined}
               onChange={(id) => {
-                if (id) useStore.getState().rememberCredential('ssh', id);
-                else useStore.getState().forgetCredential('ssh');
+                if (id) useStore.getState().addProjectSsh(id);
               }}
             />
+            {snmpIds.map((id, i) => (
+              <CredentialOverride
+                key={id}
+                kind="snmp"
+                scope="project"
+                device={snmpIds.length > 1 ? t('settings.thisProjectNth', { n: i + 1 }) : t('settings.thisProject')}
+                credentialId={id}
+                onChange={(next) => useStore.getState().replaceProjectCredential('snmp', id, next)}
+              />
+            ))}
+            {snmpIds.length > 0 && <p className="cv-help cv-settings-another">{t('settings.anotherSnmp')}</p>}
             <CredentialOverride
+              key={`snmp-new-${snmpIds.length}`}
               kind="snmp"
               scope="project"
               device={t('settings.thisProject')}
-              credentialId={snmp}
+              credentialId={undefined}
               onChange={(id) => {
                 if (id) useStore.getState().rememberCredential('snmp', id);
-                else if (snmp) useStore.getState().forgetCredential('snmp', snmp);
               }}
             />
           </div>
         )}
         <p className="cv-help">
-          {ssh || snmp
+          {sshIds.length || snmpIds.length
             ? t('settings.inUse', {
-                ssh: named(ssh) ?? t('settings.none'),
-                snmp: named(snmp) ?? t('settings.none'),
+                ssh: sshIds.map((id) => named(id) ?? '?').join(', ') || t('settings.none'),
+                snmp: snmpIds.map((id) => named(id) ?? '?').join(', ') || t('settings.none'),
               })
             : t('settings.noneYet')}
         </p>

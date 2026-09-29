@@ -51,15 +51,17 @@ impl SupportCapture {
         })
     }
 
-    /// Writes one reply as `<dir>/<host>/<n>-<command>.txt`. A command that
-    /// reads a configuration is skipped, whatever it answered.
-    pub fn record(&self, host: &str, command: &str, output: &str) {
+    /// Writes one reply as `<dir>/<host>/<n>-<command>.txt` and says where,
+    /// relative to the folder, so the debug log can name it (LT-499). A
+    /// command that reads a configuration is skipped, whatever it answered.
+    pub fn record(&self, host: &str, command: &str, output: &str) -> Option<String> {
         if is_configuration(command) {
-            return;
+            return None;
         }
         let n = self.written.fetch_add(1, Ordering::SeqCst) + 1;
         let folder = self.dir.join(component(host));
-        let path = folder.join(format!("{n:03}-{}.txt", component(command)));
+        let name = format!("{n:03}-{}.txt", component(command));
+        let path = folder.join(&name);
         let body = format!(
             "# Coreview support capture\n# host: {host}\n# command: {command}\n# lines: {}\n\n{}\n",
             output.lines().count(),
@@ -70,7 +72,9 @@ impl SupportCapture {
             if let Ok(mut p) = self.problem.lock() {
                 p.get_or_insert_with(|| format!("could not write {}: {e}", path.display()));
             }
+            return None;
         }
+        Some(format!("{}/{name}", component(host)))
     }
 
     pub fn summary(&self) -> Summary {
@@ -147,9 +151,15 @@ pub fn redact(output: &str, secrets: &[String]) -> String {
     out
 }
 
-/// `<data dir>/support/<stamp>`, the way the debug log picks its file.
+/// `<data dir>/diagnostics/crawl-<stamp>/replies` (LT-499): one folder per
+/// run, the debug log beside it.
 pub fn folder_under(root: &Path, stamp: u64) -> PathBuf {
-    root.join("support").join(format!("crawl-{stamp}"))
+    diagnostic_folder(root, stamp).join("replies")
+}
+
+/// The run's diagnostic folder, which holds the debug log and the replies.
+pub fn diagnostic_folder(root: &Path, stamp: u64) -> PathBuf {
+    root.join("diagnostics").join(format!("crawl-{stamp}"))
 }
 
 #[cfg(test)]
@@ -165,16 +175,17 @@ mod tests {
             "show version",
             "Cisco IOS Software\nsnmp-server community not-a-real-community RO\nenable secret 5 $1$abcd\nline vty\n password not-a-real-password\nModel number : WS-C2960X\n",
         );
+        assert_eq!(cap.record("192.0.2.10", "show ip arp", "x").as_deref(), Some("192.0.2.10/002-show-ip-arp.txt"));
         let files: Vec<PathBuf> = std::fs::read_dir(dir.path().join("sup").join("192.0.2.10")).unwrap().map(|e| e.unwrap().path()).collect();
-        assert_eq!(files.len(), 1);
-        assert!(files[0].ends_with("001-show-version.txt"), "{:?}", files[0]);
-        let text = std::fs::read_to_string(&files[0]).unwrap();
+        assert_eq!(files.len(), 2);
+        let first = files.iter().find(|f| f.ends_with("001-show-version.txt")).expect("the version file");
+        let text = std::fs::read_to_string(first).unwrap();
         assert!(!text.contains("not-a-real-password"));
         assert!(!text.contains("not-a-real-community"));
         assert!(!text.contains("$1$abcd"));
         assert!(text.contains("Model number : WS-C2960X"));
         assert!(text.contains("# command: show version"));
-        assert_eq!(cap.summary(), Summary { folder: dir.path().join("sup").display().to_string(), files: 1, problem: None });
+        assert_eq!(cap.summary(), Summary { folder: dir.path().join("sup").display().to_string(), files: 2, problem: None });
     }
 
     #[test]
@@ -200,7 +211,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cap = SupportCapture::open(dir.path().join("sup"), vec![]).unwrap();
         std::fs::write(dir.path().join("sup").join("h"), "not a folder").unwrap();
-        cap.record("h", "show version", "x");
+        assert_eq!(cap.record("h", "show version", "x"), None, "a failed write names no file");
         let s = cap.summary();
         assert_eq!(s.files, 1);
         assert!(s.problem.unwrap().contains("could not write"));

@@ -15,6 +15,7 @@ import { CrawlPanel } from './CrawlPanel';
 import { BackupPanel } from './BackupPanel';
 import { PathCheckPanel } from './PathCheckPanel';
 import { PathTracePanel } from './PathTracePanel';
+import { TracertPanel } from './TracertPanel';
 import { WhereIsPanel } from './WhereIsPanel';
 import { SshPanel } from './SshPanel';
 import { STATUS_COLOR } from './edges/LiveEdge';
@@ -122,7 +123,7 @@ export function StatusPanel() {
 
   // LT-319: Compare, Racks and the two imports left for a screen of their own.
   // What is here is what reports on the diagram while it is being worked on.
-  const [tab, setTab] = useState<'objects' | 'events' | 'discover' | 'crawl' | 'backup' | 'path' | 'trace' | 'whereis' | 'ssh'>('objects');
+  const [tab, setTab] = useState<'objects' | 'events' | 'discover' | 'crawl' | 'backup' | 'path' | 'trace' | 'tracert' | 'whereis' | 'ssh'>('objects');
   useEffect(() => {
     if (!panelRequest) return;
     // LT-300: the register moved to a screen of its own. Anything that still
@@ -308,7 +309,7 @@ export function StatusPanel() {
   }
 
   return (
-    <div className={`cv-panel${tab === 'crawl' || tab === 'discover' || tab === 'backup' || tab === 'ssh' || tab === 'trace' || tab === 'whereis' ? ' is-tall' : ''}`}>
+    <div className={`cv-panel${tab === 'crawl' || tab === 'discover' || tab === 'backup' || tab === 'ssh' || tab === 'trace' || tab === 'tracert' || tab === 'whereis' ? ' is-tall' : ''}`}>
       <div className="cv-panel-head">
         <div
           className="cv-tabs"
@@ -395,7 +396,19 @@ export function StatusPanel() {
             className={tab === 'trace' ? 'is-active' : ''}
             onClick={() => setTab('trace')}
           >
-            Trace path
+            Path-Trace
+          </button>
+          {/* LT-505: where it actually went — a traceroute from here or from
+              a device — beside Path-Trace's where it would go. */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'tracert'}
+            tabIndex={tab === 'tracert' ? 0 : -1}
+            className={tab === 'tracert' ? 'is-active' : ''}
+            onClick={() => setTab('tracert')}
+          >
+            Tracert
           </button>
           {/* LT-338: where a thing is, from what the crawl already found. */}
           <button
@@ -423,7 +436,7 @@ export function StatusPanel() {
           </button>
         </div>
 
-        {tab !== 'discover' && tab !== 'crawl' && tab !== 'backup' && tab !== 'path' && tab !== 'trace' && tab !== 'whereis' && tab !== 'ssh' && (
+        {tab !== 'discover' && tab !== 'crawl' && tab !== 'backup' && tab !== 'path' && tab !== 'trace' && tab !== 'tracert' && tab !== 'whereis' && tab !== 'ssh' && (
           <>
             <input
               className="cv-input cv-panel-search"
@@ -473,6 +486,8 @@ export function StatusPanel() {
           <PathCheckPanel />
         ) : tab === 'trace' ? (
           <PathTracePanel />
+        ) : tab === 'tracert' ? (
+          <TracertPanel />
         ) : tab === 'whereis' ? (
           <WhereIsPanel />
         ) : tab === 'ssh' ? (

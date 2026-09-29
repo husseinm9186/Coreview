@@ -180,7 +180,7 @@ async function openSsh(nodeId: string, data: DeviceNodeData) {
     // one as soon as it has been laid out.
     const { keepaliveSeconds, logByDefault } = store.settings.terminal;
     const id = await ipc.sshOpen(plan.address, plan.credentialId, { cols: 120, rows: 30 }, undefined, keepaliveSeconds);
-    useStore.getState().openSshTab({ id, address: plan.address, label: plan.label, nodeId, status: 'open' });
+    useStore.getState().openSshTab({ id, address: plan.address, label: plan.label, nodeId, status: 'open', credentialId: plan.credentialId });
     useStore.getState().setStatusMessage(null);
     // LT-324: logging every session without being asked each time.
     const folder = useStore.getState().settings.backupFolder;
