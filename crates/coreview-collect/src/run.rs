@@ -25,7 +25,7 @@ pub struct Target {
     pub role_override: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RunOptions {
     pub connect_ms: u64,
     pub auth_ms: u64,
@@ -34,11 +34,17 @@ pub struct RunOptions {
     /// Stop after the plan: fingerprint, probe, plan, close — the preview the
     /// operator sees before a run (LT-517). Nothing from `commands:` is sent.
     pub plan_only: bool,
+    /// LT-521: the Rust TextFSM engine. With it, a catalog marked
+    /// `parser_engine: rust` is parsed in Rust (the sidecar only carries the
+    /// session); and with `shadow`, every other `textfsm:` reply is parsed by
+    /// both and the rows compared.
+    pub engine: Option<std::sync::Arc<coreview_catalog::textfsm::Engine>>,
+    pub shadow: bool,
 }
 
 impl Default for RunOptions {
     fn default() -> Self {
-        RunOptions { connect_ms: 8000, auth_ms: 20000, light_only: false, plan_only: false }
+        RunOptions { connect_ms: 8000, auth_ms: 20000, light_only: false, plan_only: false, engine: None, shadow: false }
     }
 }
 
@@ -50,11 +56,101 @@ pub struct CommandOutcome {
     pub raw: String,
     pub duration_ms: u64,
     pub error: Option<String>,
+    /// LT-521: what the other parser made of the same reply, when shadow mode is on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shadow: Option<Shadow>,
+    /// Which parser produced `rows`: `sidecar` or `rust`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub engine: Option<String>,
+}
+
+/// One reply parsed twice (LT-521).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Shadow {
+    /// `match`, `mismatch`, or `error` (the shadow parser failed where the primary did not, or the reverse).
+    pub verdict: String,
+    /// The first difference, for the command log: `row 3 field vlan: "10" vs "20"`, or the error.
+    pub detail: Option<String>,
+}
+
+/// What the sidecar is asked to parse a step with (LT-521): nothing for a
+/// configuration, nothing when this OS has been flipped to the Rust engine
+/// — the sidecar then only carries the session — the catalog's parser
+/// otherwise.
+pub fn sidecar_parser(step: &Step, catalog: &Catalog, options: &RunOptions) -> String {
+    let rust_primary = step.parser.starts_with("textfsm:") && options.engine.is_some() && catalog.parser_engine.as_deref() == Some("rust");
+    if step.parser == "raw" || rust_primary {
+        "none".to_string()
+    } else {
+        step.parser.clone()
+    }
+}
+
+/// After the sidecar answered (LT-521): a flipped OS gets its rows from the
+/// Rust engine; with shadow mode on, every other `textfsm:` reply is parsed
+/// by the Rust engine too and the two row sets compared.
+pub fn settle(outcome: &mut CommandOutcome, step: &Step, catalog: &Catalog, also: &[String], options: &RunOptions) {
+    let (Some(template), Some(engine)) = (step.parser.strip_prefix("textfsm:"), &options.engine) else { return };
+    if outcome.status != "ok" && outcome.status != "parse_error" {
+        return;
+    }
+    let rust = engine.parse(template, also, &outcome.raw).map(|rows| rows.into_iter().map(Value::Object).collect::<Vec<_>>());
+    if catalog.parser_engine.as_deref() == Some("rust") {
+        match rust {
+            Ok(rows) => {
+                outcome.rows = rows;
+                outcome.status = "ok".into();
+                outcome.error = None;
+            }
+            Err(e) => {
+                outcome.rows.clear();
+                outcome.status = "parse_error".into();
+                outcome.error = Some(e);
+            }
+        }
+        outcome.engine = Some("rust".into());
+    } else if options.shadow {
+        outcome.shadow = Some(match (outcome.status.as_str(), rust) {
+            ("ok", Ok(rows)) => match first_difference(&outcome.rows, &rows) {
+                None => Shadow { verdict: "match".into(), detail: None },
+                Some(d) => Shadow { verdict: "mismatch".into(), detail: Some(d) },
+            },
+            ("ok", Err(e)) => Shadow { verdict: "error".into(), detail: Some(format!("rust: {e}")) },
+            (_, Ok(_)) => Shadow { verdict: "error".into(), detail: Some(format!("sidecar: {}", outcome.error.clone().unwrap_or_default())) },
+            (_, Err(_)) => Shadow { verdict: "match".into(), detail: Some("both parsers refused it".into()) },
+        });
+    }
+}
+
+/// The first place two row sets differ, or `None` when they are the same.
+pub fn first_difference(primary: &[Value], shadow: &[Value]) -> Option<String> {
+    if primary.len() != shadow.len() {
+        return Some(format!("{} rows vs {}", primary.len(), shadow.len()));
+    }
+    for (i, (a, b)) in primary.iter().zip(shadow).enumerate() {
+        if a == b {
+            continue;
+        }
+        let (Some(ao), Some(bo)) = (a.as_object(), b.as_object()) else {
+            return Some(format!("row {i}: {a} vs {b}"));
+        };
+        let mut keys: Vec<&String> = ao.keys().chain(bo.keys()).collect();
+        keys.sort();
+        keys.dedup();
+        for k in keys {
+            let (x, y) = (ao.get(k), bo.get(k));
+            if x != y {
+                let show = |v: Option<&Value>| v.map(|v| v.to_string()).unwrap_or_else(|| "(absent)".into());
+                return Some(format!("row {i} field {k}: {} vs {}", show(x), show(y)));
+            }
+        }
+    }
+    None
 }
 
 impl From<Reply> for CommandOutcome {
     fn from(r: Reply) -> Self {
-        CommandOutcome { status: r.status, rows: r.rows, raw: r.raw, duration_ms: r.duration_ms, error: r.error }
+        CommandOutcome { status: r.status, rows: r.rows, raw: r.raw, duration_ms: r.duration_ms, error: r.error, shadow: None, engine: Some("sidecar".into()) }
     }
 }
 
@@ -244,7 +340,7 @@ pub async fn collect_device(sidecar: &mut Sidecar, catalogs: &[Catalog], target:
         if steps.is_empty() {
             break;
         }
-        if let Err(e) = run_steps(sidecar, &session, catalog, &steps, &mut run, &mut ran, sink).await {
+        if let Err(e) = run_steps(sidecar, &session, catalog, &steps, &mut run, &mut ran, sink, options).await {
             run.failure = Some("sidecar".into());
             run.log.push(e.to_string());
             let _ = sidecar.close(&session).await;
@@ -319,7 +415,8 @@ async fn fingerprint(sidecar: &mut Sidecar, catalogs: &[Catalog], target: &Targe
     Ok(found)
 }
 
-async fn run_steps(sidecar: &mut Sidecar, session: &str, catalog: &Catalog, steps: &[Step], run: &mut DeviceRun, ran: &mut BTreeSet<String>, sink: &dyn RunSink) -> Result<(), SidecarError> {
+#[allow(clippy::too_many_arguments)] // the run's state, threaded through one loop
+async fn run_steps(sidecar: &mut Sidecar, session: &str, catalog: &Catalog, steps: &[Step], run: &mut DeviceRun, ran: &mut BTreeSet<String>, sink: &dyn RunSink, options: &RunOptions) -> Result<(), SidecarError> {
     let has_contexts = catalog.session.contexts.is_some() && !run.contexts.is_empty();
     let mut current: Option<String> = None; // None = system
     for step in steps {
@@ -345,9 +442,10 @@ async fn run_steps(sidecar: &mut Sidecar, session: &str, catalog: &Catalog, step
             current = wanted;
         }
         let also: Vec<String> = catalog.commands.iter().find(|c| c.id == step.id).map(|c| c.also.clone()).unwrap_or_default();
-        let parser = if step.parser == "raw" { "none".to_string() } else { step.parser.clone() };
+        let parser = sidecar_parser(step, catalog, options);
         let reply = sidecar.run(session, &step.cmd, &parser, &also, u64::from(step.timeout) * 1000).await?;
         let mut outcome: CommandOutcome = reply.into();
+        settle(&mut outcome, step, catalog, &also, options);
         if step.parser == "raw" || step.feeds.iter().any(|t| t == "raw_config") {
             outcome.raw = scrub(&outcome.raw);
         }

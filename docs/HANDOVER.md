@@ -454,6 +454,19 @@ trust the summary below over that file; it is a signpost and it will rot.
   sidecar is a venv under `sidecar/.venv` (or `COREVIEW_SIDECAR_PYTHON`);
   the installer's copy is LT-519. The API collectors have no command yet
   (LT-518).
+- **Later on 29 September 2026 (LT-519–LT-527).** The installer now carries
+  the sidecar: `sidecar/build/windows.ps1` lays it, `sign.ps1` signs it,
+  `tauri.sidecar.conf.json` ships it (Windows bundle only). The read-only
+  guard lives in `Sidecar::run`, the one method every device command
+  passes. `coreview-catalog::textfsm` is the Rust TextFSM engine on
+  textfsm-rs, with `tests/ntc_conformance.rs` (519/519 vendored; set
+  `COREVIEW_NTC_CHECKOUT` for ntc's whole suite, 1889/1895). Shadow mode is
+  the `collectorShadow` project setting; `run::settle` is where both
+  parsers meet. **Mines:** a table made only in a migration never exists on
+  a fresh database — `migrate()` now calls the collection steps directly
+  (LT-526), and any new table must be made there too; `target/` grew to
+  27 GB and filled the disk once — stale test binaries of our own crates
+  are safe to delete.
 
 - **Shipped 2026-09-18, after the mission:** LT-285 the address register (the
   **Addresses** tab; `src/lib/ipam.ts` is the arithmetic, `e2e/ipam.mjs` drives

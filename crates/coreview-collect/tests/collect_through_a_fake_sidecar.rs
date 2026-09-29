@@ -192,3 +192,48 @@ async fn a_refused_command_never_reaches_the_sidecar_process() {
     sidecar.quit().await;
 }
 
+
+/// LT-521: with the Rust engine and shadow on, every `textfsm:` reply the
+/// sidecar parsed is parsed again in Rust and the rows compared; with the
+/// catalog flipped to `parser_engine: rust`, the sidecar is asked for no
+/// parse at all and the rows are Rust's.
+#[tokio::test]
+async fn shadow_mode_compares_both_parsers_and_a_flipped_os_parses_in_rust() {
+    use coreview_catalog::textfsm::Engine;
+    let arp_raw = "Protocol  Address          Age (min)  Hardware Addr   Type   Interface\nInternet  192.0.2.1               0   0000.0000.0001  ARPA   Vlan10\n";
+    let engine = std::sync::Arc::new(Engine::new(repo().join("resources/templates/ntc")));
+    let rust_arp: Vec<serde_json::Value> = engine.parse("cisco_ios_show_ip_arp", &[], arp_raw).unwrap().into_iter().map(serde_json::Value::Object).collect();
+    let mut script = catalyst_script();
+    // The sidecar agrees on the ARP table …
+    script["show ip arp"] = json!({"status": "ok", "raw": arp_raw, "rows": rust_arp});
+    // … and is made to disagree on the inventory.
+    script["show inventory"] = json!({"status": "ok", "raw": "NAME: \"1\", DESCR: \"WS-C2960X-24TS-L\"\nPID: WS-C2960X-24TS-L  , VID: V05  , SN: FAKE0000001\n", "rows": [{"name": "1", "descr": "WRONG", "pid": "WS-C2960X-24TS-L", "vid": "V05", "sn": "FAKE0000001"}]});
+    let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+    let loc = fake_location(&script, "[]");
+    let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
+    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: Some("cisco_ios".into()), role_override: None };
+    let options = RunOptions { engine: Some(engine.clone()), shadow: true, ..Default::default() };
+    let run = collect_device(&mut sidecar, &catalogs, &target, &auth(), &options, &Quiet).await;
+    let by = |cmd: &str| run.results.iter().find(|r| r.step.cmd == cmd).unwrap().outcome.clone();
+    let arp = by("show ip arp");
+    assert_eq!(arp.shadow.as_ref().unwrap().verdict, "match", "{:?}", arp.shadow);
+    let inv = by("show inventory");
+    let s = inv.shadow.as_ref().unwrap();
+    assert_eq!(s.verdict, "mismatch");
+    assert!(s.detail.as_deref().unwrap().contains("row 0 field descr"), "{:?}", s.detail);
+    assert_eq!(inv.engine.as_deref(), Some("sidecar"), "shadow mode does not change whose rows are kept");
+    // A command the fake refuses was never parsed, so it has no verdict.
+    assert!(run.results.iter().filter(|r| r.outcome.status == "unsupported").all(|r| r.outcome.shadow.is_none()));
+    sidecar.quit().await;
+
+    // Flipped: the sidecar returns wrong rows, and they are not the ones kept.
+    let mut flipped = catalogs.clone();
+    flipped.iter_mut().find(|c| c.os == "cisco_ios").unwrap().parser_engine = Some("rust".into());
+    let mut sidecar = Sidecar::spawn(&fake_location(&script, "[]")).await.unwrap();
+    let run = collect_device(&mut sidecar, &flipped, &target, &auth(), &RunOptions { engine: Some(engine), shadow: true, ..Default::default() }, &Quiet).await;
+    let inv = run.results.iter().find(|r| r.step.cmd == "show inventory").unwrap().outcome.clone();
+    assert_eq!(inv.engine.as_deref(), Some("rust"));
+    assert_eq!(inv.rows[0]["descr"], "WS-C2960X-24TS-L", "the Rust engine's rows, not the sidecar's");
+    assert!(inv.shadow.is_none(), "a flipped OS is not shadowed");
+    sidecar.quit().await;
+}

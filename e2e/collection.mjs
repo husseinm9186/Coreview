@@ -36,11 +36,15 @@ const detail = {
   }],
   log: [
     { deviceId: "dev-192-0-2-10", seq: 1, stepId: "show_ip_protocols", cmd: "show ip protocols", kind: "probe", contextKind: null, contextName: null, gate: "", parser: "regex", feeds: [], status: "ok", durationMs: 40, rows: 2, rawRef: "192.0.2.10/001-show-ip-protocols.txt", error: null, verified: null },
-    { deviceId: "dev-192-0-2-10", seq: 2, stepId: "show_version", cmd: "show version", kind: "command", contextKind: null, contextName: null, gate: "always", parser: "textfsm:cisco_ios_show_version", feeds: ["device"], status: "ok", durationMs: 120, rows: 1, rawRef: "192.0.2.10/002-show-version.txt", error: null, verified: "lab" },
+    { deviceId: "dev-192-0-2-10", seq: 2, stepId: "show_version", cmd: "show version", kind: "command", contextKind: null, contextName: null, gate: "always", parser: "textfsm:cisco_ios_show_version", feeds: ["device"], status: "ok", durationMs: 120, rows: 1, rawRef: "192.0.2.10/002-show-version.txt", error: null, verified: "lab", shadow: "mismatch", shadowDetail: "row 0 field uptime: \"3 weeks\" vs \"3 weeks, 2 days\"", engine: "sidecar" },
     { deviceId: "dev-192-0-2-10", seq: 3, stepId: "show_ip_ospf_neighbor", cmd: "show ip ospf neighbor", kind: "command", contextKind: null, contextName: null, gate: "cap.ospf", parser: "textfsm:cisco_ios_show_ip_ospf_neighbor", feeds: ["routing_neighbor"], status: "unsupported", durationMs: 30, rows: 0, rawRef: null, error: "rejected by device", verified: "lab" },
   ],
   tables: [["device", 1], ["interface", 0], ["arp", 3], ["routing_neighbor", 0]],
 };
+const shadowLines = [
+  { os: "cisco_ios", cmd: "show ip arp", parser: "textfsm:cisco_ios_show_ip_arp", compared: 12, mismatches: 0, errors: 0, lastDetail: null },
+  { os: "cisco_ios", cmd: "show version", parser: "textfsm:cisco_ios_show_version", compared: 3, mismatches: 1, errors: 0, lastDetail: "row 0 field uptime: \"3 weeks\" vs \"3 weeks, 2 days\"" },
+];
 const arpRows = [
   { _device: "dev-192-0-2-10", _command: "show_ip_arp", ip: "192.0.2.1", mac: "0000.0000.0001", interface: "Vlan10", age: "0" },
   { _device: "dev-192-0-2-10", _command: "show_ip_arp", ip: "192.0.2.2", mac: "0000.0000.0002", interface: "Vlan10", age: "3" },
@@ -49,7 +53,7 @@ const arpRows = [
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-await page.addInitScript(({ p, r, d, a }) => {
+await page.addInitScript(({ p, r, d, a, sh }) => {
   let next = 1;
   window.__calls = [];
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
@@ -61,7 +65,9 @@ await page.addInitScript(({ p, r, d, a }) => {
       const meta = { id: p.meta.id, name: p.meta.name, customer: "", site: "", ticket: "", engineer: "", description: "", created_at: p.meta.createdAt, updated_at: p.meta.updatedAt, archived: false };
       if (cmd === "list_projects") return Promise.resolve([meta]);
       if (cmd === "load_project") return Promise.resolve({ meta, document_version: p.documentVersion, document: p.document });
-      if (cmd === "get_settings") return Promise.resolve({});
+      if (cmd === "get_settings") return Promise.resolve(window.__shadowSetting ? { collectorShadow: "true" } : {});
+      if (cmd === "set_setting") { if (args.key === "collectorShadow") window.__shadowSetting = args.value === "true"; return Promise.resolve(); }
+      if (cmd === "shadow_report") return Promise.resolve(sh);
       if (cmd === "vault_status") return Promise.resolve({ exists: true, unlocked: true, credentials: 1, minimumPassphrase: 12, keptInKeychain: false });
       if (cmd === "list_credentials") return Promise.resolve([{ id: "cred-ssh", label: "reader", kind: "ssh", username: "reader", detail: "", hasSecondSecret: false }]);
       if (cmd === "list_collection_runs") return Promise.resolve(r);
@@ -72,7 +78,7 @@ await page.addInitScript(({ p, r, d, a }) => {
       return Promise.resolve([]);
     },
   };
-}, { p: project, r: runs, d: detail, a: arpRows });
+}, { p: project, r: runs, d: detail, a: arpRows, sh: shadowLines });
 
 page.on("pageerror", (e) => console.log("PAGE EXCEPTION:", String(e).slice(0, 300)));
 await page.goto(URL, { waitUntil: "networkidle" });
@@ -110,6 +116,17 @@ check("only tables with rows are offered", (await tables.locator("button").count
 await tables.getByRole("button", { name: /^arp/ }).click();
 await page.waitForSelector('[data-region="collect-table"]');
 check("a table shows its rows by column", (await region.locator('[data-region="collect-table"] tbody tr').count()) === 3 && (await region.locator('[data-region="collect-table"] thead').textContent()).includes("mac"));
+
+// LT-521: shadow mode — the tick is a project setting, the log shows each verdict, the report counts per platform and command.
+const shadowTick = region.locator("label.cv-check", { hasText: "Shadow the Rust parser" }).locator("input");
+check("the shadow tick starts off", !(await shadowTick.isChecked()));
+await shadowTick.check();
+check("ticking it stores the project setting", await page.evaluate(() => window.__calls.some((c) => c.cmd === "set_setting" && c.args.key === "collectorShadow" && c.args.value === "true")));
+const versionRow = region.locator('[data-region="collect-log"] tbody tr').nth(1);
+check("the log shows a mismatch, with what differed on hover", (await versionRow.textContent()).includes("mismatch") && (await versionRow.locator("td[title]").getAttribute("title")).includes("field uptime"));
+const report = region.locator('[data-region="collect-shadow"]');
+check("the report lists each command both parsers read", (await report.locator("tbody tr").count()) === 2);
+check("a command with a mismatch is marked, one with none is not", (await report.locator("tbody tr").nth(1).getAttribute("class")).includes("is-warning") && !((await report.locator("tbody tr").nth(0).getAttribute("class")) ?? "").includes("is-warning"));
 
 // Starting a preview sends exactly the declared input, with the saved login and no typed one.
 await region.locator("textarea").fill("192.0.2.10\n192.0.2.11");

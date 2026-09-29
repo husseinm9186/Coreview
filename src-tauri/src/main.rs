@@ -236,6 +236,7 @@ fn main() {
             collection::list_collection_runs,
             collection::collection_run,
             collection::collection_table,
+            collection::shadow_report,
             collection::collection_raw,
             collection::import_captures,
             discovery::cancel_crawl,

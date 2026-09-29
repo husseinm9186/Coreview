@@ -14,6 +14,7 @@
     "phase": { "type": "integer", "minimum": 1, "maximum": 4 },
     "note": { "type": "string" },
     "structured_output": { "enum": ["json_pipe", "xml_pipe", "xml_api", "api"] },
+    "parser_engine": { "enum": ["sidecar", "rust"], "description": "LT-521: who parses textfsm: commands; rust once shadow mode shows zero mismatches" },
     "fingerprint": {
       "type": ["object", "null"],
       "required": ["probe", "match_regex"],

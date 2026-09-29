@@ -942,7 +942,9 @@ pub fn set_setting(
     // This table is plain text in the same database as the projects, and the
     // operator asked in as many words that nothing he types is ever written
     // where it could leave the machine.
-    const ALLOWED: [&str; 25] = [
+    const ALLOWED: [&str; 26] = [
+        // LT-521: the shadow-mode feature flag, per project.
+        "collectorShadow",
         "backupFolder",
         "exportFolder",
         "iconLibraryDir",

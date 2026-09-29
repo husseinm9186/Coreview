@@ -122,6 +122,7 @@
     list_collection_runs: ["projectId"],
     collection_run: ["id"],
     collection_table: ["runId", "table", "deviceId"],
+    shadow_report: ["projectId"],
     collection_raw: ["runId", "rawRef"],
     import_captures: ["projectId", "folder"],
     start_sweep: ["subnets", "options"],

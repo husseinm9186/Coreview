@@ -462,7 +462,12 @@ export type CollectionDevice = {
 
 export type CollectionLogEntry = {
   deviceId: string; seq: number; stepId: string; cmd: string; kind: 'probe' | 'command'; contextKind: string | null; contextName: string | null; gate: string; parser: string; feeds: string[]; status: string; durationMs: number; rows: number; rawRef: string | null; error: string | null; verified: string | null;
+  /** LT-521: `match`, `mismatch` or `error` when shadow mode compared both parsers. */
+  shadow?: string | null; shadowDetail?: string | null; engine?: string | null;
 };
+
+/** LT-521: per (os, command), how often both parsers read a reply and how often they disagreed. */
+export type ShadowLine = { os: string; cmd: string; parser: string; compared: number; mismatches: number; errors: number; lastDetail: string | null };
 
 export type CollectionRunDetail = { run: CollectionRunSummary | null; devices: CollectionDevice[]; log: CollectionLogEntry[]; tables: [string, number][] };
 
@@ -890,6 +895,8 @@ export type IconLibrary = { dir: string; icons: IconLibEntry[]; skipped: string[
 
 /** Preferences that outlive a restart. Paths only — nothing secret. */
 export type StoredSettings = Partial<{
+  /** LT-521: "true" runs the Rust parser beside the sidecar on every collection. */
+  collectorShadow: string;
   backupFolder: string;
   exportFolder: string;
   iconLibraryDir: string;
@@ -1353,6 +1360,9 @@ export const ipc = {
   },
   collectionRun(id: string) {
     return invoke<CollectionRunDetail>('collection_run', { id });
+  },
+  shadowReport(projectId: string) {
+    return invoke<ShadowLine[]>('shadow_report', { projectId });
   },
   collectionTable(runId: string, table: string, deviceId?: string) {
     return invoke<Record<string, unknown>[]>('collection_table', { runId, table, deviceId });

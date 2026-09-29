@@ -21,6 +21,10 @@ pub struct Catalog {
     pub note: Option<String>,
     #[serde(default)]
     pub structured_output: Option<String>,
+    /// LT-521: `rust` once this OS's TextFSM parsing has been flipped to the
+    /// Rust engine (zero shadow mismatches); absent means the sidecar parses.
+    #[serde(default)]
+    pub parser_engine: Option<String>,
     #[serde(default)]
     pub fingerprint: Option<Fingerprint>,
     pub session: Session,

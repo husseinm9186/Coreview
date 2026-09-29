@@ -111,6 +111,53 @@ pub fn discovery_tables(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Schema 7 (LT-521): the shadow verdict per command — `match`, `mismatch`
+/// or `error`, what differed first, and which parser produced the rows.
+pub fn shadow_columns(conn: &Connection) -> rusqlite::Result<()> {
+    let have: Vec<String> = conn.prepare("PRAGMA table_info(command_log)")?.query_map([], |r| r.get::<_, String>(1))?.filter_map(|r| r.ok()).collect();
+    for col in ["shadow", "shadow_detail", "engine"] {
+        if !have.iter().any(|c| c == col) {
+            conn.execute(&format!("ALTER TABLE command_log ADD COLUMN {col} TEXT"), [])?;
+        }
+    }
+    Ok(())
+}
+
+/// Per (os, command): how many replies both parsers read, and how many
+/// they disagreed on — the numbers each OS's flip to Rust is decided by.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ShadowLine {
+    pub os: String,
+    pub cmd: String,
+    pub parser: String,
+    pub compared: i64,
+    pub mismatches: i64,
+    pub errors: i64,
+    pub last_detail: Option<String>,
+}
+
+/// Across every run of a project, or every project when `project_id` is `None`.
+pub fn shadow_report(conn: &Connection, project_id: Option<&str>) -> rusqlite::Result<Vec<ShadowLine>> {
+    let mut stmt = conn.prepare(
+        "SELECT COALESCE(d.os, '?'), l.cmd, l.parser,
+                COUNT(*),
+                SUM(CASE WHEN l.shadow = 'mismatch' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN l.shadow = 'error' THEN 1 ELSE 0 END),
+                MAX(CASE WHEN l.shadow IN ('mismatch', 'error') THEN l.shadow_detail END)
+         FROM command_log l
+         JOIN collection_devices d ON d.run_id = l.run_id AND d.device_id = l.device_id
+         JOIN collection_runs r ON r.id = l.run_id
+         WHERE l.shadow IS NOT NULL AND (?1 IS NULL OR r.project_id = ?1)
+         GROUP BY d.os, l.cmd, l.parser
+         ORDER BY d.os, l.cmd",
+    )?;
+    let rows = stmt.query_map(params![project_id], |r| {
+        Ok(ShadowLine { os: r.get(0)?, cmd: r.get(1)?, parser: r.get(2)?, compared: r.get(3)?, mismatches: r.get(4)?, errors: r.get(5)?, last_detail: r.get(6)? })
+    })?;
+    rows.collect()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunSummary {
@@ -163,6 +210,12 @@ pub struct LogEntry {
     pub raw_ref: Option<String>,
     pub error: Option<String>,
     pub verified: Option<String>,
+    #[serde(default)]
+    pub shadow: Option<String>,
+    #[serde(default)]
+    pub shadow_detail: Option<String>,
+    #[serde(default)]
+    pub engine: Option<String>,
 }
 
 pub fn open_run(conn: &Connection, id: &str, project_id: &str, seed: &str, plan_only: bool, diagnostic_dir: Option<&str>, source: &str) -> rusqlite::Result<()> {
@@ -276,8 +329,8 @@ pub fn list_devices(conn: &Connection, run_id: &str) -> rusqlite::Result<Vec<Dev
 #[allow(clippy::too_many_arguments)] // one row, one call
 pub fn write_log(conn: &Connection, run_id: &str, device_id: &str, seq: i64, e: &LogEntry) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT OR REPLACE INTO command_log (run_id, device_id, seq, step_id, cmd, kind, context_kind, context_name, gate, parser, feeds, status, duration_ms, rows, raw_ref, error, verified, collected_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+        "INSERT OR REPLACE INTO command_log (run_id, device_id, seq, step_id, cmd, kind, context_kind, context_name, gate, parser, feeds, status, duration_ms, rows, raw_ref, error, verified, collected_at, shadow, shadow_detail, engine)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
         params![
             run_id,
             device_id,
@@ -296,14 +349,17 @@ pub fn write_log(conn: &Connection, run_id: &str, device_id: &str, seq: i64, e: 
             e.raw_ref,
             e.error,
             e.verified,
-            crate::db::now_ms()
+            crate::db::now_ms(),
+            e.shadow,
+            e.shadow_detail,
+            e.engine
         ],
     )?;
     Ok(())
 }
 
 pub fn list_log(conn: &Connection, run_id: &str, device_id: Option<&str>) -> rusqlite::Result<Vec<LogEntry>> {
-    let mut stmt = conn.prepare("SELECT device_id, seq, step_id, cmd, kind, context_kind, context_name, gate, parser, feeds, status, duration_ms, rows, raw_ref, error, verified FROM command_log WHERE run_id = ?1 AND (?2 IS NULL OR device_id = ?2) ORDER BY device_id, seq")?;
+    let mut stmt = conn.prepare("SELECT device_id, seq, step_id, cmd, kind, context_kind, context_name, gate, parser, feeds, status, duration_ms, rows, raw_ref, error, verified, shadow, shadow_detail, engine FROM command_log WHERE run_id = ?1 AND (?2 IS NULL OR device_id = ?2) ORDER BY device_id, seq")?;
     let rows = stmt.query_map(params![run_id, device_id], |r| {
         let feeds: String = r.get(9)?;
         Ok(LogEntry {
@@ -323,6 +379,9 @@ pub fn list_log(conn: &Connection, run_id: &str, device_id: Option<&str>) -> rus
             raw_ref: r.get(13)?,
             error: r.get(14)?,
             verified: r.get(15)?,
+            shadow: r.get(16)?,
+            shadow_detail: r.get(17)?,
+            engine: r.get(18)?,
         })
     })?;
     rows.collect()
@@ -401,7 +460,32 @@ mod tests {
         let c = Connection::open_in_memory().unwrap();
         c.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
         discovery_tables(&c).unwrap();
+        shadow_columns(&c).unwrap();
         c
+    }
+
+    #[test]
+    fn the_shadow_report_counts_per_os_and_command() {
+        let c = conn();
+        open_run(&c, "run-1", "p1", "seed", false, None, "live").unwrap();
+        write_device(&c, "run-1", "dev-1", "h", Some("cisco_ios"), None, &[], "", "", None, &[], None, &[], None).unwrap();
+        let entry = |seq: i64, cmd: &str, shadow: Option<&str>, detail: Option<&str>| LogEntry {
+            device_id: "dev-1".into(), seq, step_id: cmd.replace(' ', "_"), cmd: cmd.into(), kind: "command".into(), context_kind: None, context_name: None,
+            gate: "always".into(), parser: "textfsm:t".into(), feeds: vec![], status: "ok".into(), duration_ms: 1, rows: 1, raw_ref: None, error: None,
+            verified: None, shadow: shadow.map(Into::into), shadow_detail: detail.map(Into::into), engine: Some("sidecar".into()),
+        };
+        write_log(&c, "run-1", "dev-1", 1, &entry(1, "show ip arp", Some("match"), None)).unwrap();
+        write_log(&c, "run-1", "dev-1", 2, &entry(2, "show ip arp", Some("mismatch"), Some("row 0 field age: \"0\" vs \"-\""))).unwrap();
+        write_log(&c, "run-1", "dev-1", 3, &entry(3, "show version", Some("match"), None)).unwrap();
+        write_log(&c, "run-1", "dev-1", 4, &entry(4, "show clock", None, None)).unwrap();
+        let report = shadow_report(&c, Some("p1")).unwrap();
+        assert_eq!(report.len(), 2, "the command with no shadow verdict is not counted");
+        let arp = report.iter().find(|l| l.cmd == "show ip arp").unwrap();
+        assert_eq!((arp.os.as_str(), arp.compared, arp.mismatches, arp.errors), ("cisco_ios", 2, 1, 0));
+        assert!(arp.last_detail.as_deref().unwrap().contains("field age"));
+        assert_eq!(report.iter().find(|l| l.cmd == "show version").unwrap().mismatches, 0);
+        assert!(shadow_report(&c, Some("other")).unwrap().is_empty());
+        assert_eq!(list_log(&c, "run-1", None).unwrap()[1].shadow.as_deref(), Some("mismatch"));
     }
 
     #[test]
@@ -430,7 +514,7 @@ mod tests {
         let c = conn();
         open_run(&c, "run-1", "p1", "seed", true, Some("/tmp/diag"), "live").unwrap();
         write_device(&c, "run-1", "dev-1", "h", None, None, &[], "", "", Some("vdom"), &["root".into()], Some("auth"), &["no".into()], Some(&json!({"steps": []}))).unwrap();
-        let e = LogEntry { device_id: "dev-1".into(), seq: 1, step_id: "show_version".into(), cmd: "show version".into(), kind: "command".into(), context_kind: None, context_name: None, gate: "always".into(), parser: "textfsm:x".into(), feeds: vec!["device".into()], status: "ok".into(), duration_ms: 12, rows: 1, raw_ref: Some("h/001-show-version.txt".into()), error: None, verified: Some("lab".into()) };
+        let e = LogEntry { device_id: "dev-1".into(), seq: 1, step_id: "show_version".into(), cmd: "show version".into(), kind: "command".into(), context_kind: None, context_name: None, gate: "always".into(), parser: "textfsm:x".into(), feeds: vec!["device".into()], status: "ok".into(), duration_ms: 12, rows: 1, raw_ref: Some("h/001-show-version.txt".into()), error: None, verified: Some("lab".into()), shadow: None, shadow_detail: None, engine: Some("sidecar".into()) };
         write_log(&c, "run-1", "dev-1", 1, &e).unwrap();
         finish_run(&c, "run-1", "finished").unwrap();
         let runs = list_runs(&c, "p1").unwrap();
@@ -446,5 +530,28 @@ mod tests {
         c.execute("DELETE FROM collection_runs WHERE id = 'run-1'", []).unwrap();
         assert!(list_devices(&c, "run-1").unwrap().is_empty());
         assert!(list_log(&c, "run-1", None).unwrap().is_empty());
+    }
+}
+
+/// LT-526: a database made new today must have what a migrated one has.
+/// The runner stamps a new database with the current version without
+/// running the steps, so a table that only a migration creates was never
+/// made on a fresh install.
+#[cfg(test)]
+mod fresh {
+    #[test]
+    fn a_brand_new_database_has_the_collection_tables_and_the_shadow_columns() {
+        let dir = std::env::temp_dir().join(format!("cv-fresh-{}-{}", std::process::id(), crate::db::now_ms()));
+        let conn = crate::db::open(&dir.join("coreview.db")).unwrap();
+        for table in ["collection_runs", "collection_devices", "command_log", "d_arp", "d_route", "d_neighbor"] {
+            let n: i64 = conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1", [table], |r| r.get(0)).unwrap();
+            assert_eq!(n, 1, "a fresh database has no {table}");
+        }
+        let cols: Vec<String> = conn.prepare("PRAGMA table_info(command_log)").unwrap().query_map([], |r| r.get::<_, String>(1)).unwrap().filter_map(|r| r.ok()).collect();
+        for c in ["shadow", "shadow_detail", "engine"] {
+            assert!(cols.iter().any(|x| x == c), "a fresh command_log has no {c}");
+        }
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -12,7 +12,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-pub const SCHEMA_VERSION: i64 = 6;
+pub const SCHEMA_VERSION: i64 = 7;
 /// Bumped whenever the diagram document shape changes; the frontend migrates.
 pub const DOCUMENT_VERSION: i64 = 1;
 
@@ -423,6 +423,15 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         "#,
     )?;
 
+    // LT-526: tables that arrived after the base schema was last written are
+    // made here too. `apply_migrations` stamps a brand-new database with the
+    // current version *without* running its steps, so a table only a
+    // migration creates never existed on a fresh install. Both steps are
+    // idempotent (IF NOT EXISTS; a column check), so an old database that
+    // migrates is unaffected.
+    crate::collection_db::discovery_tables(conn)?;
+    crate::collection_db::shadow_columns(conn)?;
+
     apply_migrations(conn, MIGRATIONS)
 }
 
@@ -433,7 +442,7 @@ type Migration = (i64, fn(&Connection) -> rusqlite::Result<()>);
 /// Every migration ever written, oldest first. Adding a column is a new entry
 /// here and a bump of `SCHEMA_VERSION`, never an edit to an old one — a
 /// database in the field may be at any version in this list.
-const MIGRATIONS: &[Migration] = &[(2, split_settings_per_project), (3, crawl_runs_written_as_they_go), (4, projects_in_folders), (5, credentials_have_owners), (6, crate::collection_db::discovery_tables)];
+const MIGRATIONS: &[Migration] = &[(2, split_settings_per_project), (3, crawl_runs_written_as_they_go), (4, projects_in_folders), (5, credentials_have_owners), (6, crate::collection_db::discovery_tables), (7, crate::collection_db::shadow_columns)];
 
 /// LT-430: the steps that take a database from its version to
 /// `SCHEMA_VERSION`, in one transaction with the version bump last.
@@ -1288,7 +1297,9 @@ pub fn all_settings(conn: &Connection) -> rusqlite::Result<std::collections::Has
 ///
 /// Everything a backup run is shaped by: where it writes, what it names the
 /// files, which commands it sends, which checks it applies.
-pub const PROJECT_KEYS: [&str; 15] = [
+pub const PROJECT_KEYS: [&str; 16] = [
+    // LT-521: shadow mode — both parsers on every collection in this project.
+    "collectorShadow",
     // Where this customer's work is written.
     "backupFolder",
     "exportFolder",

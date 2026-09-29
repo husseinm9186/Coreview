@@ -154,6 +154,17 @@ pub fn sidecar_location(app: &AppHandle) -> CmdResult<SidecarLocation> {
 /// does not parse, a template that is not there — stops the collection
 /// before it starts (LT-522). Data the app ships is still checked at the
 /// door, because a resource folder is a folder.
+/// LT-521: the Rust TextFSM engine over the same templates the sidecar reads.
+fn rust_engine(app: &AppHandle) -> CmdResult<std::sync::Arc<coreview_catalog::textfsm::Engine>> {
+    Ok(std::sync::Arc::new(coreview_catalog::textfsm::Engine::new(templates_dir(app)?)))
+}
+
+/// LT-521's feature flag: the project setting `collectorShadow`.
+fn shadow_on(state: &AppState, project_id: &str) -> bool {
+    let Ok(conn) = state.db.lock() else { return false };
+    crate::db::project_settings(&conn, project_id).ok().and_then(|s| s.get("collectorShadow").cloned()).as_deref() == Some("true")
+}
+
 fn load_catalogs(app: &AppHandle) -> CmdResult<Vec<Catalog>> {
     let dir = catalog_dir(app)?;
     let catalogs = coreview_catalog::load_dir(&dir).map_err(|e| format!("The discovery catalogs could not be read: {e}"))?;
@@ -242,6 +253,9 @@ fn persist_device(state: &AppState, run_id: &str, run: &DeviceRun, diagnostic: O
             raw_ref,
             error: p.outcome.error.clone(),
             verified: None,
+            shadow: None,
+            shadow_detail: None,
+            engine: None,
         };
         cdb::write_log(&conn, run_id, &device_id, seq, &e).map_err(db_err)?;
     }
@@ -268,6 +282,9 @@ fn persist_device(state: &AppState, run_id: &str, run: &DeviceRun, diagnostic: O
             raw_ref,
             error: r.outcome.error.clone(),
             verified: Some(format!("{:?}", r.step.verified).to_lowercase()),
+            shadow: r.outcome.shadow.as_ref().map(|s| s.verdict.clone()),
+            shadow_detail: r.outcome.shadow.as_ref().and_then(|s| s.detail.clone()),
+            engine: r.outcome.engine.clone(),
         };
         cdb::write_log(&conn, run_id, &device_id, seq, &e).map_err(db_err)?;
         if !rows.is_empty() {
@@ -350,6 +367,8 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
         auth_ms: input.auth_timeout_secs.unwrap_or(20).clamp(1, 300) * 1000,
         light_only: input.light_only,
         plan_only: input.plan_only,
+        engine: Some(rust_engine(&app)?),
+        shadow: shadow_on(&state, &project_id),
     };
     let port = input.port;
     let os_hint = input.os_hint.clone().filter(|s| !s.trim().is_empty());
@@ -436,6 +455,14 @@ pub fn collection_run(state: State<'_, AppState>, id: String) -> CmdResult<RunDe
     Ok(RunDetail { run, devices: cdb::list_devices(&conn, &id).map_err(db_err)?, log: cdb::list_log(&conn, &id, None).map_err(db_err)?, tables: cdb::table_counts(&conn, &id).map_err(db_err)? })
 }
 
+/// LT-521: per (os, command), how often both parsers read a reply and how
+/// often they disagreed — across every run of the project.
+#[tauri::command(async)]
+pub fn shadow_report(state: State<'_, AppState>, project_id: String) -> CmdResult<Vec<cdb::ShadowLine>> {
+    let conn = state.db.lock().map_err(db_err)?;
+    cdb::shadow_report(&conn, Some(&project_id)).map_err(db_err)
+}
+
 #[tauri::command(async)]
 pub fn collection_table(state: State<'_, AppState>, run_id: String, table: String, device_id: Option<String>) -> CmdResult<Vec<Value>> {
     let conn = state.db.lock().map_err(db_err)?;
@@ -480,6 +507,7 @@ pub async fn import_captures(app: AppHandle, state: State<'_, AppState>, project
         let conn = state.db.lock().map_err(db_err)?;
         cdb::open_run(&conn, &run_id, &project_id, &folder, false, Some(&folder), "import").map_err(db_err)?;
     }
+    let options = RunOptions { engine: Some(rust_engine(&app)?), shadow: shadow_on(&state, &project_id), ..Default::default() };
     let mut sidecar = Sidecar::spawn(&location).await.map_err(|e| e.to_string())?;
     let mut hosts: Vec<PathBuf> = std::fs::read_dir(&root).map_err(|e| e.to_string())?.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_dir()).collect();
     hosts.sort();
@@ -487,7 +515,7 @@ pub async fn import_captures(app: AppHandle, state: State<'_, AppState>, project
     for host_dir in hosts {
         let host = host_dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let files = capture_files(&host_dir);
-        let run = import_one(&mut sidecar, &catalogs, &host, &files).await;
+        let run = import_one(&mut sidecar, &catalogs, &host, &files, &options).await;
         persist_device(&state, &run_id, &run, None, &[])?;
         imported += 1;
     }
@@ -560,7 +588,7 @@ fn files_for(files: &[(String, PathBuf)], cmd: &str) -> Vec<(Option<String>, Pat
         .collect()
 }
 
-async fn import_one(sidecar: &mut Sidecar, catalogs: &[Catalog], host: &str, files: &[(String, PathBuf)]) -> DeviceRun {
+async fn import_one(sidecar: &mut Sidecar, catalogs: &[Catalog], host: &str, files: &[(String, PathBuf)], options: &RunOptions) -> DeviceRun {
     use coreview_catalog::{plan, Facts};
     use coreview_collect::capabilities::{apply_probe, initial_facts};
     use coreview_collect::fingerprint::{identify, probes};
@@ -630,10 +658,11 @@ async fn import_one(sidecar: &mut Sidecar, catalogs: &[Catalog], host: &str, fil
         let candidates: Vec<PathBuf> = files_for(files, &step.cmd).into_iter().map(|(_, p)| p).collect();
         let Some(path) = candidates.first() else { continue };
         let raw = read(path);
-        let parser = if step.parser == "raw" { "none".to_string() } else { step.parser.clone() };
+        let parser = coreview_collect::run::sidecar_parser(step, catalog, options);
         let outcome = match sidecar.parse(&catalog.os, &step.cmd, &parser, &also, &raw).await {
             Ok(r) => {
                 let mut o: CommandOutcome = r.into();
+                coreview_collect::run::settle(&mut o, step, catalog, &also, options);
                 if step.parser == "raw" {
                     o.raw = coreview_collect::scrub::scrub(&o.raw);
                 }

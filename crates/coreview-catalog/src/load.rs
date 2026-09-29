@@ -77,6 +77,11 @@ pub fn problems(catalog: &Catalog, templates: Option<&Path>) -> Vec<String> {
             }
         }
     }
+    if let Some(e) = &catalog.parser_engine {
+        if e != "rust" && e != "sidecar" {
+            out.push(format!("{os}: parser_engine {e:?} is not rust or sidecar"));
+        }
+    }
     if let Some(p) = &catalog.session.prompt_pattern {
         check_fancy("session.prompt_pattern", p, &mut out);
     }

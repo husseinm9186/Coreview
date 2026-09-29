@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { t } from '../i18n';
-import { ipc, type CollectionDevice, type CollectionEvent, type CollectionLogEntry, type CollectionRunDetail, type CollectionRunSummary } from '../lib/ipc';
+import { ipc, type CollectionDevice, type CollectionEvent, type CollectionLogEntry, type CollectionRunDetail, type CollectionRunSummary, type ShadowLine } from '../lib/ipc';
 import { useStore } from '../state/store';
 import { SavedCredentialSelect } from './CredentialPicker';
 
@@ -64,11 +64,25 @@ export function CollectionPanel() {
   const [table, setTable] = useState<string | null>(null);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [importFolder, setImportFolder] = useState('');
+  const [shadow, setShadow] = useState(false);
+  const [shadowLines, setShadowLines] = useState<ShadowLine[]>([]);
 
   const refreshRuns = useCallback(() => {
     if (!meta) return;
     void ipc.listCollectionRuns(meta.id).then(setRuns).catch(() => setRuns([]));
+    void ipc.shadowReport(meta.id).then(setShadowLines).catch(() => setShadowLines([]));
   }, [meta]);
+
+  // LT-521: the shadow flag is a project setting, so it is on for every run of the project until turned off.
+  useEffect(() => {
+    if (!meta) return;
+    void ipc.getSettings().then((s) => setShadow(s.collectorShadow === 'true')).catch(() => setShadow(false));
+  }, [meta]);
+
+  const toggleShadow = (on: boolean) => {
+    setShadow(on);
+    void ipc.setSetting('collectorShadow', on ? 'true' : null).catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e)));
+  };
 
   useEffect(() => {
     refreshRuns();
@@ -187,6 +201,7 @@ export function CollectionPanel() {
         )}
         <label className="cv-check"><input type="checkbox" checked={lightOnly} onChange={(e) => setLightOnly(e.target.checked)} /> {t('collect.lightOnly')}</label>
         <label className="cv-check"><input type="checkbox" checked={keepDiagnostic} onChange={(e) => setKeepDiagnostic(e.target.checked)} /> {t('collect.keepDiagnostic')}</label>
+        <label className="cv-check"><input type="checkbox" checked={shadow} onChange={(e) => toggleShadow(e.target.checked)} /> {t('collect.shadow')}</label>
         <button type="button" className="cv-btn" disabled={busy || !targets.trim()} onClick={() => start(true)}>{t('collect.preview')}</button>
         <button type="button" className="cv-btn cv-btn-start" disabled={busy || !targets.trim()} onClick={() => start(false)}>{busy ? t('collect.running') : t('collect.start')}</button>
         {busy && <button type="button" className="cv-btn" onClick={() => void ipc.cancelCollection()}>{t('collect.stop')}</button>}
@@ -213,6 +228,22 @@ export function CollectionPanel() {
             <option value="">—</option>
             {runs.map((r) => <option key={r.id} value={r.id}>{new Date(r.startedMs).toLocaleString()} · {r.source} · {r.status}{r.planOnly ? ' · plan' : ''} · {r.devices}</option>)}
           </select>
+        )}
+      </section>
+      <section data-region="collect-shadow">
+        <h3>{t('collect.shadowReport')}</h3>
+        <p className="cv-help">{t('collect.shadowHelp')}</p>
+        {shadowLines.length === 0 ? <p className="cv-help">{t('collect.shadowNone')}</p> : (
+          <table className="cv-tr-table">
+            <thead><tr><th>{t('collect.os')}</th><th>{t('collect.step')}</th><th>{t('collect.compared')}</th><th>{t('collect.mismatches')}</th><th>{t('collect.errors')}</th><th>{t('collect.firstDifference')}</th></tr></thead>
+            <tbody>
+              {shadowLines.map((l) => (
+                <tr key={`${l.os}-${l.cmd}`} className={l.mismatches + l.errors > 0 ? 'is-warning' : ''}>
+                  <td>{l.os}</td><td className="cv-mono">{l.cmd}</td><td>{l.compared}</td><td>{l.mismatches}</td><td>{l.errors}</td><td className="cv-mono">{l.lastDetail ?? ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </section>
       {detail && (
@@ -268,7 +299,7 @@ export function CollectionPanel() {
             <section data-region="collect-log">
               <h3>{t('collect.log')}</h3>
               <table className="cv-tr-table">
-                <thead><tr><th>{t('collect.step')}</th><th>{t('collect.context')}</th><th>{t('collect.status')}</th><th>{t('collect.rows')}</th><th>{t('collect.duration')}</th><th>{t('collect.verified')}</th><th>{t('collect.raw')}</th></tr></thead>
+                <thead><tr><th>{t('collect.step')}</th><th>{t('collect.context')}</th><th>{t('collect.status')}</th><th>{t('collect.rows')}</th><th>{t('collect.duration')}</th><th>{t('collect.verified')}</th><th>{t('collect.shadowColumn')}</th><th>{t('collect.raw')}</th></tr></thead>
                 <tbody>
                   {log.map((l) => (
                     <tr key={`${l.deviceId}-${l.seq}`} className={l.status === 'ok' ? '' : 'is-warning'}>
@@ -278,6 +309,7 @@ export function CollectionPanel() {
                       <td>{l.rows}</td>
                       <td>{l.durationMs} ms</td>
                       <td>{l.verified ?? ''}</td>
+                      <td title={l.shadowDetail ?? undefined} className={l.shadow === 'mismatch' || l.shadow === 'error' ? 'is-warning' : ''}>{l.shadow ?? (l.engine === 'rust' ? 'rust' : '')}</td>
                       <td>{l.rawRef ? <button type="button" className="cv-btn cv-btn-small" onClick={() => showRaw(l)}>{t('collect.showRaw')}</button> : t('collect.noRaw')}</td>
                     </tr>
                   ))}

@@ -429,3 +429,86 @@ summary`). EOS, Junos and PAN-OS have structured output for everything.
 ## Acceptance for P1 (the spec's, made concrete)
 
 Fixture tests pass for every P1 platform; a lab run with `collector = sidecar` over the FortiGate, FortiSwitch, Nexus, Catalyst, CX 6200F and 2930M populates device, interface, ip_address, neighbor, mac_table, arp, vlan, lag, stp, vrf, route, routing_neighbor, fhrp, policy_route, fw_zone, fw_policy, nat_rule (FortiGate), tunnel (if any), ha_pair (stack/FortiLink), endpoint, collection_run and command_log; the plan preview is shown before the run; offline import of the same captures produces the same rows; nothing that could change a device is ever sent (tested on both sides).
+
+---
+
+# P2 plan — topology builder, proposed 2026-09-29, awaiting approval
+
+Nothing below is built. The spec's P2: "Topology builder + reconciliation +
+UI. Accept: lab topology reproduced; LAG/stack collapse; inferred links
+flagged with evidence." It reads the discovery tables a P1 collection
+fills (schema 6/7) and writes `link` and `l3_adjacency`, which the spec
+lists and P1 left empty.
+
+## The one decision to make first
+
+Coreview already draws a topology: the crawl's `CrawlResult` goes through
+`src/lib/topology.ts` (`buildTopology`, identity by name/address/MAC,
+stacks, LAG labels) into the review screen and "add to diagram". P2 can
+either
+
+- **(recommended) build the graph in Rust from the tables**
+  (`crates/coreview-topology`, pure, tested with cargo) — matching,
+  confidence, evidence, LAG/stack/pair collapse, inferred links — write it
+  to `d_link` / `d_l3_adjacency`, and hand the page a `CrawlResult`-shaped
+  view of it, so the existing review screen, drawing, layout and diffing
+  are reused and there is one drawing path; or
+- extend `topology.ts` to read the new tables directly, which keeps the
+  logic on the page but duplicates identity rules the Rust side needs
+  anyway for the P3 path builder.
+
+The first keeps the path builder (P3) and the topology on the same graph
+in Rust; the second is less code now and more later.
+
+## Layout
+
+```
+crates/coreview-topology/          pure: tables in, graph out; no SQLite, no Tauri
+  src/ifname.rs                    interface normalisation: Gi1/0/1 ↔ GigabitEthernet1/0/1,
+                                   NX-OS Eth1/1, EOS Et1, Junos ge-0/0/0(.0), AOS-S A1 / 1/A1,
+                                   FortiOS port1/x1, PAN ethernet1/1; LLDP port-id as name, MAC or ifIndex
+  src/identity.rs                  one device per serial / base MAC, never per IP; the
+                                   neighbour-to-device match order: chassis-id ∈ MACs →
+                                   mgmt IP ∈ addresses → normalised sysname; else placeholder
+  src/links.rs                     bidirectional merge; confidence 1.0 / 0.7 / 0.6 / 0.4;
+                                   evidence rows (which table, which command, which run)
+  src/collapse.rs                  LAG → one logical link with members (mismatch flagged);
+                                   stack / VSS / SVL / VC → one node; vPC / MLAG / VSX → two
+                                   nodes, a peer-link and a pair marker; dual-homed LAGs to both
+  src/inferred.rs                  MAC-table edges for devices without LLDP/CDP (ASA/FTD,
+                                   unmanaged); many MACs on one edge port → "unknown switch";
+                                   one MAC on an access port → endpoint leaf
+  src/l3.rs                        shared subnets (not /32, not management) confirmed by
+                                   routing neighbours; FHRP VIP ownership
+  src/overlay.rs                   VXLAN VTEP peers and IPsec/GRE/DMVPN as overlay edges with
+                                   their underlay
+  tests/                           scenarios built from the vendored ntc fixtures' rows
+src-tauri/src/topology_cmd.rs      build for a run, write d_link / d_l3_adjacency, return the view
+src/components/…                   the review screen fed from a collection run; toggles:
+                                   LAG/stack collapse, VRF/VLAN filter, overlay layer,
+                                   confidence styling, placeholders
+e2e/topology.mjs                   the toggles and the evidence drawer, stubbed backend
+```
+
+## Tests
+
+- Unit: every normalisation pair above, both directions; each identity
+  rule, including two devices sharing an IP and one device answering on
+  three.
+- Scenario: small networks assembled from the vendored fixtures' real
+  rows (a 2960 stack, a Nexus vPC pair, a FortiGate with FortiLink, an
+  ASA seen only through a switch's MAC table), each with the expected
+  graph written out by hand.
+- Offline: `import_captures` over the operator's captured folder, then
+  the builder — the "lab topology reproduced" check, repeatable without
+  the lab.
+- Page: `e2e/topology.mjs`.
+
+## Acceptance, made concrete
+
+A collection over the lab (or its captures imported) draws every device
+once whatever address it was reached on; every CDP/LLDP adjacency as one
+link with both ports; the 2960 stack as one node with its members; a
+LAG as one link listing its members; the ASA or any device without
+LLDP placed by MAC evidence and drawn as inferred (dashed, 0.6) with the
+evidence one click away; nothing inferred drawn as if it were seen.

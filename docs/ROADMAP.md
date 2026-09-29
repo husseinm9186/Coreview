@@ -125,18 +125,42 @@ match python.org's published values), adds `Lib\site-packages` to its
 --require-hashes`, checked here: all ten resolve, four native `.pyd`),
 copies the package, and smoke-tests `python.exe -m coreview_sidecar
 --version` from the folder. `sign.ps1` signs every `.exe`/`.dll`/`.pyd`
-under it with the certificate the existing signing action imports
-(counter-signing python.org's own signatures with `/as`), verifies each,
-and fails on any it could not sign; unsigned with a notice when no
-certificate is configured. `tauri.sidecar.conf.json` adds the folder as a
+under it that its publisher has not already signed (python.org's own
+Authenticode signatures on python.exe, its DLLs and stdlib modules are
+kept — trusted everywhere, unlike a self-signed certificate) with the
+certificate the existing signing action imports, then checks the signer
+is that certificate, and fails on any it could not sign; unsigned with a
+notice when no certificate is configured. **First CI run (92796a7):** the
+layout step passed; signing failed — the first version demanded that
+Windows *trust* each signature, which a self-signed certificate never
+gets on a runner. Rewritten (883a2a1) to check the signer instead, with
+every failure an annotation, since the job log needs admin rights. `tauri.sidecar.conf.json` adds the folder as a
 resource for the Windows bundle only, so every other build stays as it
 was. The sidecar is spawned with a cleared environment plus only what
 Python needs on Windows (`SYSTEMROOT` above all — without it sockets
 fail with 10106). The notices now carry CPython's and every wheel's
 licence text (`sidecar/licenses/`), and name **paramiko as LGPL-2.1**,
 used unmodified and replaceable in place, with its source address.
-**Not yet:** a green Windows run, the VirusTotal step (none exists in
-the workflow yet), and Azure Trusted Signing in place of the PFX.
+**Second CI run (883a2a1): green.** The Windows bundle laid the sidecar
+("35 PE files"), signed it ("31 by their publisher (kept), 4 by
+Coreview's certificate" — the four wheels' native modules), and packed it
+into the NSIS installer. **Added since:** a VirusTotal step after the
+build (`.github/actions/virustotal/scan.ps1`: upload, wait, fail on any
+malicious or suspicious verdict, SHA-256 into `SHA256SUMS.txt` beside the
+installer) — skipped with a notice until a `VIRUSTOTAL_API_KEY` secret is
+set. **Not yet:** a fresh Windows install running a collection with no
+Python on the machine (the operator's test of this build), the VirusTotal
+key, an SBOM (`cargo auditable` / `pip-audit`), and Azure Trusted Signing
+in place of the PFX.
+
+### LT-527 — P2: the topology builder — proposed 2026-09-29, awaiting approval
+**Source:** the spec's P2 ("Topology builder + reconciliation + UI.
+Accept: lab topology reproduced; LAG/stack collapse; inferred links
+flagged with evidence"), third in the operator's order after LT-519 and
+LT-520. The plan is in `docs/DISCOVERY-SPEC.md` under "P2 plan", with
+one decision for him first: build the graph in Rust and feed the
+existing review/drawing path (recommended), or extend the page's
+`topology.ts`. **Nothing is built until he approves.**
 
 ### LT-525 — The six upstream ntc fixtures the Rust engine does not yet match — 2026-09-29
 **Source:** LT-520's run over ntc-templates' whole suite: 1889 of 1895.
@@ -165,6 +189,25 @@ that differed; a per-OS table of mismatch counts in the run view; a
 catalog gains `parser_engine: rust` when its count is zero across the
 vendored fixtures and the operator's own runs; when all twenty carry it
 the sidecar is not spawned and Phase 4 begins.
+**Status 2026-09-29 — the machinery is built and run; the flips wait on
+evidence.** `collectorShadow` is a project setting (the flag), ticked on
+the Collect tab. With it on, `coreview_collect::run::settle` parses every
+`textfsm:` reply the sidecar parsed with LT-520's engine as well,
+compares the rows, and records `match`, `mismatch` (with the first field
+that differs) or `error` — in `command_log` (schema 7: `shadow`,
+`shadow_detail`, `engine`), in the live and offline-import paths alike.
+`shadow_report` counts per (OS, command) across every run of the
+project, shown on the Collect tab. A catalog carrying `parser_engine:
+rust` is parsed in Rust with the sidecar only carrying the session, and
+is not shadowed. Tested against the fake sidecar (one reply agreeing, one
+made to disagree, a flipped catalog whose sidecar rows are wrong and not
+kept), in the database (the report's counts), and on the page. **The
+fixture half of "zero mismatches" is already met for every catalog**: both
+engines pass the same 519 pairs. **What is left:** the operator's own
+runs with shadow on, then each OS flipped by setting `parser_engine: rust`
+in its catalog once its report shows zero; the "sidecar not spawned when
+all twenty are flipped" step belongs with Phase 4, because a flipped OS
+still needs the sidecar's SSH session — only the parsing has moved.
 
 ### LT-507 — Discovery / topology / path engine: the catalog-driven collector, in four phases — approved 2026-09-29, P1 in progress
 **Source:** the operator's specification of 2026-09-29 ("CoreView
@@ -458,6 +501,16 @@ pulled into Phase 1.*
   Q-010.
 
 ## Done
+
+### LT-526 — **bug** A new install's database had no collection tables — 2026-09-29, fixed the same day
+**Found** while adding schema 7: `apply_migrations` stamps a brand-new
+database with the current version and runs no steps, and LT-515 put the
+collection tables only in the schema-6 step — so a fresh install would
+have failed its first collection with "no such table". A database that
+migrated from 5 (the operator's) was fine. **Reproduced first** (D-020):
+a test opening a new database file found no `collection_runs`. Fixed by
+creating the collection tables and the shadow columns with the base
+schema as well (both idempotent); the test passes and so do the other 191.
 
 ### LT-520 — Phase 2: a TextFSM interpreter in Rust, passing every vendored fixture — 2026-09-29, done the same day
 **Source:** the operator, 2026-09-29, on accepting P1: "Rust TextFSM
