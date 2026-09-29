@@ -239,7 +239,7 @@ async fn a_live_check_asks_the_device_about_one_destination() {
     let auth = Auth { username: "reader".into(), password: "correct-horse-fixture".into(), enable: None, private_key: None };
     let vars: std::collections::BTreeMap<String, String> =
         [("dst", "203.0.113.5"), ("src", "192.0.2.10"), ("vrf", "default"), ("nh", "198.51.100.2")].iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
-    let run = live::ask(&mut sidecar, ios, &target, &auth, &RunOptions::default(), &vars).await;
+    let run = live::ask(&mut sidecar, ios, &target, &auth, &RunOptions::default(), &vars, None).await;
     assert_eq!(run.failure, None, "{:?}", run.log);
     let by = |cmd: &str| run.answers.iter().find(|a| a.command == cmd).unwrap_or_else(|| panic!("{cmd}: {:?}", run.answers.iter().map(|a| (&a.command, &a.status)).collect::<Vec<_>>()));
     let route = by("show ip route 203.0.113.5");

@@ -1237,6 +1237,14 @@ choice below is said in the result where it applies, not only here.
 - **A local /32 is an owned address.** IOS `L` and NX-OS `local` routes say
   which addresses a device owns even where the address table was not read.
   NX-OS `am` (hosts learned by ARP) is not one.
+- **Routing domains (P4.2).** A VRF's next hop not reachable in it is
+  followed into another VRF only when this one imports a route-target that
+  one exports (LT-544). A BGP route in a VRF with its next hop in the global
+  table is an MPLS L3VPN hop, continued at the remote PE in the VRF that
+  exports a matching route-target (LT-545). A FortiGate VDOM or an ASA
+  security context is a routing domain and is kept apart like a VRF of its
+  name; a PAN-OS vsys is not (LT-547). A link-local next hop names no
+  device and is resolved on its link, never by its address (LT-546).
 - **Live mode asks only the catalog's `live_path` commands**, filled from
   the modeled hop, through the same guard as every collection command
   (LT-522), with one login per device per check, never cycled. A command

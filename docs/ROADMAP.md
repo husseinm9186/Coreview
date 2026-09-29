@@ -573,37 +573,9 @@ pulled into Phase 1.*
 - **LT-269** — CI matrix: Windows 10/11, macOS 12+, Ubuntu 22.04/24.04. Cost:
   Q-010.
 
-### LT-538 — P3's remainder: route-target leaking, MPLS L3VPN, IPv6, contexts in live mode, ASA access lists — 2026-09-29
-**Source:** the spec's path-builder steps 6 and 7, which P3 (LT-531) built
-only in part, and what LT-535 does not do yet. Following an imported route
-back to the VRF it was exported from by its route-targets; an MPLS L3VPN
-hop whose BGP next hop is a remote PE reached over the IGP/LSP; IPv6
-(the model reads IPv4 only, and a trace to an IPv6 address is refused
-with that reason); a live
-check on a FortiGate VDOM, an ASA context or a PAN-OS vsys, which today
-runs in the session's default scope; and an ASA's access lists with their
-`access-group` bindings and interface security levels, which its catalog
-does not collect yet, so every ASA verdict is undetermined (LT-539). Each
-needs rows the lab collection will show; none is guessed meanwhile.
-**Split 2026-09-29** into LT-540 (ASA access lists), LT-544–LT-547; kept
-here under its ID, closed when those are.
-
-
 ### P4 — set by the operator 2026-09-29, in this order
 "start P4 without a separate plan round; write the plan into the spec and
 I'll review at your first checkpoint." Overlay edges go with the run diff.
-
-### LT-544 — P4.2 Route-target VRF leaking in the path builder — 2026-09-29
-From LT-538: follow an imported route back to the VRF that exports it.
-
-### LT-545 — P4.2 MPLS L3VPN in the path builder — 2026-09-29
-From LT-538: a BGP next hop that is a remote PE, reached over the IGP/LSP.
-
-### LT-546 — P4.2 IPv6 paths — 2026-09-29
-From LT-538: the model reads IPv4 only and refuses an IPv6 trace by name.
-
-### LT-547 — P4.2 Live checks inside a VDOM, context or vsys — 2026-09-29
-From LT-538: a live check today runs in the session's default scope.
 
 ### LT-548 — P4.3 Exports: topology and path results as JSON, CSV and markdown — 2026-09-29
 The path already exports from Path-Trace (LT-536); the P2 topology does not.
@@ -623,6 +595,64 @@ by hand, window always visible, only while the app is open, never a
 service) apply.
 
 ## Done
+
+### LT-547 — P4.2 Live checks inside a VDOM, context or vsys — 2026-09-29, done the same day
+From LT-538: a live check today runs in the session's default scope.
+**Shipped:** rows read inside a FortiGate VDOM or an ASA security context
+now say so (`_context`), and their routing rows are kept apart as a VRF of
+that name — a VDOM is a routing domain of its own (D-061); a vsys is not.
+A live check on a hop in such a table enters the context with the catalog's
+own commands before asking, and leaves it after. **Run:** a unit test of
+the tagging rule, and a live check through the fake sidecar whose switch
+comes before its first command and is undone after. Earlier runs, stored
+before the tag, keep their VDOMs merged.
+
+### LT-546 — P4.2 IPv6 paths — 2026-09-29, done the same day
+From LT-538: the model reads IPv4 only and refuses an IPv6 trace by name.
+**Shipped:** the path builder's prefixes and addresses are family-neutral
+(`Prefix`, IPv4 or IPv6 in a `u128`; never matched across families). A
+link-local next hop (`fe80::/10`, the usual IPv6 one) names no device, so it
+is kept out of the address index and resolved on its link: this device's
+neighbour-table entry to a MAC, else the device cabled to that interface.
+Replies are read for IPv6 addresses too, and a live check does not send an
+IPv4 command about an IPv6 destination, nor the reverse. **Run:** prefix
+tests, and an end-to-end scenario from IOS `show ipv6 route` and `show ipv6
+neighbors` in IOS's own layout through the real templates, resolving the
+next hop both ways and dropping an IPv6 destination no table holds.
+
+### LT-545 — P4.2 MPLS L3VPN in the path builder — 2026-09-29, done the same day
+From LT-538: a BGP next hop that is a remote PE, reached over the IGP/LSP.
+**Shipped:** a BGP route in a VRF whose next hop sits in the global table
+(said by the route, or found there when the VRF has no way to it) is an
+MPLS L3VPN hop: an overlay whose underlay is walked to the remote PE, and
+the walk goes on at that PE in the VRF that exports a route-target this one
+imports — whatever its name — else one of the same name, else it stops and
+says why. **Run:** a scenario across PE1, P1 and PE2 into a differently
+named VRF.
+
+### LT-544 — P4.2 Route-target VRF leaking in the path builder — 2026-09-29, done the same day
+From LT-538: follow an imported route back to the VRF that exports it.
+**Shipped:** each VRF's imported and exported route-targets are read from the
+`vrf` table; a route whose next hop is not reachable in its own VRF is
+resolved in a VRF that exports a route-target this one imports, and the hop
+says which and by what. Without such an import nothing is assumed. **Run:**
+a scenario with a shared-services VRF, and the same without the import.
+
+### LT-538 — P3's remainder: route-target leaking, MPLS L3VPN, IPv6, contexts in live mode, ASA access lists — 2026-09-29, closed the same day
+**Source:** the spec's path-builder steps 6 and 7, which P3 (LT-531) built
+only in part, and what LT-535 does not do yet. Following an imported route
+back to the VRF it was exported from by its route-targets; an MPLS L3VPN
+hop whose BGP next hop is a remote PE reached over the IGP/LSP; IPv6
+(the model reads IPv4 only, and a trace to an IPv6 address is refused
+with that reason); a live
+check on a FortiGate VDOM, an ASA context or a PAN-OS vsys, which today
+runs in the session's default scope; and an ASA's access lists with their
+`access-group` bindings and interface security levels, which its catalog
+does not collect yet, so every ASA verdict is undetermined (LT-539). Each
+needs rows the lab collection will show; none is guessed meanwhile.
+**Split 2026-09-29** into LT-540 (ASA access lists), LT-544–LT-547; kept
+here under its ID, closed when those are.
+**Closed:** every part is built — LT-540, LT-544, LT-545, LT-546, LT-547.
 
 ### LT-543 — P4.1 Overlay edges drawn in the diagram (VXLAN, IPsec, GRE) — 2026-09-29, done the same day
 LT-527 lists overlays on the Collect tab but the diagram has no overlay

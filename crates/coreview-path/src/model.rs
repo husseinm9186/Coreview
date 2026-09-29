@@ -6,68 +6,120 @@
 //! walk can say "not collected" rather than "no route" (D-050).
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use coreview_topology::identity::name_key;
 use coreview_topology::ifname::{key, mac};
 use coreview_topology::{DeviceIn, Graph, LinkKind, NodeKind, Row};
 
-/// An IPv4 prefix.
+/// A prefix, IPv4 or IPv6 (LT-546), its bits held in a `u128`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Net4 {
-    pub addr: u32,
+pub struct Prefix {
+    pub v6: bool,
+    pub addr: u128,
     pub len: u8,
 }
 
-impl Net4 {
-    pub fn new(ip: Ipv4Addr, len: u8) -> Net4 {
-        let len = len.min(32);
-        Net4 { addr: u32::from(ip) & mask(len), len }
+fn bits(ip: IpAddr) -> (bool, u128) {
+    match ip {
+        IpAddr::V4(a) => (false, u128::from(u32::from(a))),
+        IpAddr::V6(a) => (true, u128::from(a)),
+    }
+}
+
+fn width(v6: bool) -> u8 {
+    if v6 {
+        128
+    } else {
+        32
+    }
+}
+
+/// The mask of a prefix length in its family's width.
+pub fn mask(len: u8, v6: bool) -> u128 {
+    let w = width(v6);
+    let len = len.min(w);
+    let all = if v6 { u128::MAX } else { u128::from(u32::MAX) };
+    if len == 0 {
+        0
+    } else {
+        (all << (w - len)) & all
+    }
+}
+
+impl Prefix {
+    pub fn new(ip: IpAddr, len: u8) -> Prefix {
+        let (v6, b) = bits(ip);
+        let len = len.min(width(v6));
+        Prefix { v6, addr: b & mask(len, v6), len }
     }
 
     /// `192.0.2.0/24`, `192.0.2.0/255.255.255.0`, `192.0.2.0 255.255.255.0`,
-    /// or a bare address as a /32.
-    pub fn parse(s: &str) -> Option<Net4> {
+    /// `2001:db8::/32`, or a bare address as a host prefix.
+    pub fn parse(s: &str) -> Option<Prefix> {
         let s = s.trim();
         let (ip, len) = match s.split_once(['/', ' ']) {
             Some((a, l)) => (a.trim(), Some(l.trim())),
             None => (s, None),
         };
-        let ip: Ipv4Addr = ip.parse().ok()?;
+        let ip: IpAddr = ip.parse().ok()?;
+        let w = width(ip.is_ipv6());
         let len = match len {
-            None => 32,
-            Some(l) => l.parse::<u8>().ok().filter(|l| *l <= 32).or_else(|| mask_len(l))?,
+            None => w,
+            Some(l) => l.parse::<u8>().ok().filter(|l| *l <= w).or_else(|| if ip.is_ipv4() { mask_len(l) } else { None })?,
         };
-        Some(Net4::new(ip, len))
+        Some(Prefix::new(ip, len))
     }
 
-    pub fn contains(&self, ip: Ipv4Addr) -> bool {
-        u32::from(ip) & mask(self.len) == self.addr
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        let (v6, b) = bits(ip);
+        v6 == self.v6 && b & mask(self.len, v6) == self.addr
     }
 
     pub fn is_default(&self) -> bool {
         self.len == 0
     }
+
+    /// One address, not a subnet: a /32 or a /128.
+    pub fn is_host(&self) -> bool {
+        self.len == width(self.v6)
+    }
+
+    /// The prefix's first address.
+    pub fn ip(&self) -> IpAddr {
+        if self.v6 {
+            IpAddr::V6(Ipv6Addr::from(self.addr))
+        } else {
+            IpAddr::V4(Ipv4Addr::from(self.addr as u32))
+        }
+    }
 }
 
-impl std::fmt::Display for Net4 {
+impl std::fmt::Display for Prefix {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}", Ipv4Addr::from(self.addr), self.len)
+        write!(f, "{}/{}", self.ip(), self.len)
     }
 }
 
-pub fn mask(len: u8) -> u32 {
-    if len == 0 {
-        0
-    } else {
-        u32::MAX << (32 - u32::from(len.min(32)))
+/// An IPv6 link-local address (`fe80::/10`) — or an IPv4 one (`169.254/16`).
+pub fn link_local(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V6(a) => (a.segments()[0] & 0xffc0) == 0xfe80,
+        IpAddr::V4(a) => a.is_link_local(),
     }
 }
 
+/// A dotted IPv4 mask as a prefix length.
 pub fn mask_len(m: &str) -> Option<u8> {
     let m: Ipv4Addr = m.trim().parse().ok()?;
     let bits = u32::from(m);
     (bits.leading_ones() + bits.trailing_zeros() == 32).then(|| bits.leading_ones() as u8)
+}
+
+/// Whether two addresses are of one family and `a <= x <= z`.
+pub fn in_range(x: IpAddr, a: IpAddr, z: IpAddr) -> bool {
+    let ((fx, bx), (fa, ba), (fz, bz)) = (bits(x), bits(a), bits(z));
+    fx == fa && fa == fz && ba <= bx && bx <= bz
 }
 
 /// One VRF's name as the walk keys it: the global table under every
@@ -83,21 +135,22 @@ pub fn vrf_name(v: Option<&str>) -> String {
 
 #[derive(Debug, Clone)]
 pub struct Addr {
-    pub ip: Ipv4Addr,
+    pub ip: IpAddr,
     pub len: Option<u8>,
     pub iface: Option<String>,
     pub vrf: String,
 }
 
 impl Addr {
-    pub fn subnet(&self) -> Option<Net4> {
-        self.len.filter(|l| *l < 32).map(|l| Net4::new(self.ip, l))
+    pub fn subnet(&self) -> Option<Prefix> {
+        let w = if self.ip.is_ipv6() { 128 } else { 32 };
+        self.len.filter(|l| *l < w).map(|l| Prefix::new(self.ip, l))
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NextHop {
-    pub ip: Option<Ipv4Addr>,
+    pub ip: Option<IpAddr>,
     pub iface: Option<String>,
     /// NX-OS's `203.0.113.4%default`: the next hop is resolved in that table.
     pub vrf: Option<String>,
@@ -106,7 +159,7 @@ pub struct NextHop {
 #[derive(Debug, Clone)]
 pub struct RouteEntry {
     pub vrf: String,
-    pub net: Net4,
+    pub net: Prefix,
     /// The device's own word for it, as printed.
     pub proto: String,
     pub ad: Option<u32>,
@@ -143,7 +196,7 @@ pub fn proto_word(raw: &str) -> String {
 
 #[derive(Debug, Clone)]
 pub struct ArpEntry {
-    pub ip: Ipv4Addr,
+    pub ip: IpAddr,
     pub mac: String,
     pub iface: Option<String>,
     pub vrf: String,
@@ -161,7 +214,7 @@ pub struct Fhrp {
     pub proto: String,
     pub group: Option<String>,
     pub iface: Option<String>,
-    pub vip: Ipv4Addr,
+    pub vip: IpAddr,
     pub state: String,
 }
 
@@ -182,7 +235,7 @@ pub struct PolicyRoute {
     pub dst: Option<String>,
     pub proto: Option<String>,
     pub port: Option<String>,
-    pub next_hop: Option<Ipv4Addr>,
+    pub next_hop: Option<IpAddr>,
     pub out_if: Option<String>,
     pub vrf: Option<String>,
     pub command: String,
@@ -232,8 +285,8 @@ impl FwPolicy {
 pub struct Tunnel {
     pub name: String,
     pub kind: Option<String>,
-    pub local_ip: Option<Ipv4Addr>,
-    pub remote_ip: Option<Ipv4Addr>,
+    pub local_ip: Option<IpAddr>,
+    pub remote_ip: Option<IpAddr>,
 }
 
 /// One collected box: every collection of it merged.
@@ -265,6 +318,8 @@ pub struct Box_ {
     pub bindings: Vec<Binding>,
     /// LT-540: a zone's security level (ASA `nameif`), 0–100.
     pub security: BTreeMap<String, u8>,
+    /// LT-544: each VRF's route-targets, (imported, exported).
+    pub vrf_rts: BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)>,
     /// LT-541: where the firewall policy came from, when not the device's
     /// own CLI — `fmc` for an FTD whose rules its FMC gave.
     pub policy_from: Option<String>,
@@ -283,26 +338,42 @@ pub struct Binding {
 }
 
 impl Box_ {
-    pub fn owns(&self, ip: Ipv4Addr) -> bool {
+    /// LT-544: the other VRFs this one imports from, and the route-target
+    /// that joins them — a VRF whose exports meet this one's imports.
+    pub fn leaks_into(&self, vrf: &str) -> Vec<(String, String)> {
+        let Some((imports, _)) = self.vrf_rts.get(vrf) else { return Vec::new() };
+        let mut out = Vec::new();
+        for (other, (_, exports)) in &self.vrf_rts {
+            if other == vrf {
+                continue;
+            }
+            if let Some(rt) = exports.iter().find(|x| imports.contains(*x)) {
+                out.push((other.clone(), rt.clone()));
+            }
+        }
+        out
+    }
+
+    pub fn owns(&self, ip: IpAddr) -> bool {
         self.addrs.iter().any(|a| a.ip == ip)
     }
 
-    pub fn addr_of(&self, ip: Ipv4Addr) -> Option<&Addr> {
+    pub fn addr_of(&self, ip: IpAddr) -> Option<&Addr> {
         self.addrs.iter().find(|a| a.ip == ip)
     }
 
     /// The interface address on the subnet holding `ip`.
-    pub fn addr_on_subnet(&self, ip: Ipv4Addr) -> Option<&Addr> {
+    pub fn addr_on_subnet(&self, ip: IpAddr) -> Option<&Addr> {
         self.addrs.iter().filter(|a| a.subnet().map(|n| n.contains(ip)).unwrap_or(false)).max_by_key(|a| a.len)
     }
 
     /// An address of this box on an interface, for a source address.
-    pub fn address_on(&self, iface: &str) -> Option<Ipv4Addr> {
+    pub fn address_on(&self, iface: &str) -> Option<IpAddr> {
         let k = key(iface);
         self.addrs.iter().find(|a| a.iface.as_deref().map(key).as_deref() == Some(k.as_str())).map(|a| a.ip)
     }
 
-    pub fn arp_for(&self, ip: Ipv4Addr) -> Option<&ArpEntry> {
+    pub fn arp_for(&self, ip: IpAddr) -> Option<&ArpEntry> {
         self.arp.iter().find(|a| a.ip == ip)
     }
 
@@ -353,15 +424,15 @@ pub struct Cable {
 pub struct Net {
     pub boxes: Vec<Box_>,
     pub cables: Vec<Cable>,
-    pub by_ip: BTreeMap<Ipv4Addr, usize>,
+    pub by_ip: BTreeMap<IpAddr, usize>,
     pub by_mac: BTreeMap<String, usize>,
     pub by_node: BTreeMap<String, usize>,
     /// Names of neighbours nobody collected, by their advertised address.
-    pub strangers: BTreeMap<Ipv4Addr, String>,
+    pub strangers: BTreeMap<IpAddr, String>,
     pub node_names: BTreeMap<String, String>,
 }
 
-fn ip(s: &str) -> Option<Ipv4Addr> {
+fn ip(s: &str) -> Option<IpAddr> {
     s.trim().split(['/', '%']).next()?.trim().parse().ok()
 }
 
@@ -425,7 +496,9 @@ impl Net {
                 read_device(d, &mut b);
             }
             let idx = net.boxes.len();
-            for a in &b.addrs {
+            // A link-local address is on every router's every link; it names
+            // no device and is resolved on the link it is on (LT-546).
+            for a in b.addrs.iter().filter(|a| !link_local(a.ip)) {
                 net.by_ip.entry(a.ip).or_insert(idx);
             }
             if let Some(h) = ip(&b.host) {
@@ -464,7 +537,7 @@ impl Net {
 
     pub fn find_box(&self, name_or_ip: &str) -> Option<usize> {
         let t = name_or_ip.trim();
-        if let Some(a) = ip(t).filter(|_| t.parse::<Ipv4Addr>().is_ok()) {
+        if let Some(a) = ip(t).filter(|_| t.parse::<IpAddr>().is_ok()) {
             return self.by_ip.get(&a).copied();
         }
         let k = name_key(t);
@@ -504,6 +577,9 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
         for i in r.list("interfaces") {
             iface_vrf.insert(key(&i), vrf_name(Some(&name)));
         }
+        let rts = b.vrf_rts.entry(vrf_name(Some(&name))).or_default();
+        rts.0.extend(r.list("rt_import"));
+        rts.1.extend(r.list("rt_export"));
     }
     for r in d.rows("interface") {
         if let (Some(n), Some(m)) = (r.get("name"), r.get("mac").and_then(mac)) {
@@ -529,11 +605,11 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
     let owned: Vec<Addr> = b
         .routes
         .iter()
-        .filter(|r| r.net.len == 32 && proto_word(&r.proto) == "local")
+        .filter(|r| r.net.is_host() && proto_word(&r.proto) == "local")
         .filter_map(|r| {
-            let ip = Ipv4Addr::from(r.net.addr);
+            let ip = r.net.ip();
             let iface = r.next_hops.iter().find_map(|h| h.iface.clone());
-            let len = b.routes.iter().filter(|c| c.vrf == r.vrf && proto_word(&c.proto) == "connected" && c.net.len < 32 && c.net.contains(ip)).map(|c| c.net.len).max();
+            let len = b.routes.iter().filter(|c| c.vrf == r.vrf && proto_word(&c.proto) == "connected" && !c.net.is_host() && c.net.contains(ip)).map(|c| c.net.len).max();
             (!b.addrs.iter().any(|a| a.ip == ip && a.vrf == r.vrf)).then(|| Addr { ip, len, iface, vrf: r.vrf.clone() })
         })
         .collect();
@@ -646,9 +722,9 @@ fn read_routes(d: &DeviceIn, b: &mut Box_) {
         let Some(p) = r.get("prefix") else { continue };
         let (net, len) = coreview_topology::identity::split_prefix(p, r.get("mask"));
         let Some(net_ip) = ip(&net) else { continue };
-        let Some(len) = len.or_else(|| (net_ip == Ipv4Addr::UNSPECIFIED).then_some(0)) else { continue };
+        let Some(len) = len.or_else(|| net_ip.is_unspecified().then_some(0)) else { continue };
         let vrf = vrf_name(r.get("vrf"));
-        let net = Net4::new(net_ip, len);
+        let net = Prefix::new(net_ip, len);
         let proto = r.get("proto").unwrap_or("").to_string();
         let hops_raw = r.list("next_hop");
         // IOS's template keeps a next hop's own table apart: `NEXTHOP_VRF`.
@@ -782,13 +858,22 @@ mod tests {
 
     #[test]
     fn prefixes_in_every_spelling() {
-        assert_eq!(Net4::parse("192.0.2.0/24").unwrap().to_string(), "192.0.2.0/24");
-        assert_eq!(Net4::parse("192.0.2.9/255.255.255.0").unwrap().to_string(), "192.0.2.0/24");
-        assert_eq!(Net4::parse("192.0.2.9 255.255.255.0").unwrap().to_string(), "192.0.2.0/24");
-        assert_eq!(Net4::parse("192.0.2.9").unwrap().to_string(), "192.0.2.9/32");
-        assert!(Net4::parse("0.0.0.0/0").unwrap().contains("203.0.113.1".parse().unwrap()));
-        assert!(!Net4::parse("192.0.2.0/25").unwrap().contains("192.0.2.200".parse().unwrap()));
-        assert_eq!(Net4::parse("not an address"), None);
+        assert_eq!(Prefix::parse("192.0.2.0/24").unwrap().to_string(), "192.0.2.0/24");
+        assert_eq!(Prefix::parse("192.0.2.9/255.255.255.0").unwrap().to_string(), "192.0.2.0/24");
+        assert_eq!(Prefix::parse("192.0.2.9 255.255.255.0").unwrap().to_string(), "192.0.2.0/24");
+        assert_eq!(Prefix::parse("192.0.2.9").unwrap().to_string(), "192.0.2.9/32");
+        // LT-546: IPv6, and never across families.
+        let v6 = Prefix::parse("2001:db8:1::/48").unwrap();
+        assert_eq!(v6.to_string(), "2001:db8:1::/48");
+        assert!(v6.contains("2001:db8:1:2::10".parse().unwrap()));
+        assert!(!v6.contains("2001:db8:2::10".parse().unwrap()));
+        assert!(Prefix::parse("::/0").unwrap().contains("2001:db8::1".parse().unwrap()));
+        assert!(!Prefix::parse("0.0.0.0/0").unwrap().contains("2001:db8::1".parse().unwrap()));
+        assert!(!Prefix::parse("::/0").unwrap().contains("192.0.2.1".parse().unwrap()));
+        assert!(Prefix::parse("2001:db8::1").unwrap().is_host());
+        assert!(Prefix::parse("0.0.0.0/0").unwrap().contains("203.0.113.1".parse().unwrap()));
+        assert!(!Prefix::parse("192.0.2.0/25").unwrap().contains("192.0.2.200".parse().unwrap()));
+        assert_eq!(Prefix::parse("not an address"), None);
     }
 
     #[test]

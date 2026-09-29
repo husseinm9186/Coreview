@@ -12,7 +12,7 @@
 //! the links say which switches and ports carry it.
 
 use std::collections::BTreeSet;
-use std::net::Ipv4Addr;
+use std::net::IpAddr;
 
 use coreview_topology::ifname::key;
 use serde::{Deserialize, Serialize};
@@ -223,8 +223,8 @@ struct At {
     b: usize,
     vrf: String,
     in_if: Option<String>,
-    src: Ipv4Addr,
-    dst: Ipv4Addr,
+    src: IpAddr,
+    dst: IpAddr,
     ttl: u8,
     seen: Vec<(usize, String)>,
 }
@@ -235,11 +235,14 @@ enum Toward {
     /// Onto an attached subnet: the destination itself.
     Attached,
     /// To this next hop.
-    NextHop(Ipv4Addr),
+    NextHop(IpAddr),
     /// Into a tunnel.
     Tunnel(crate::model::Tunnel),
     /// Nowhere: a null route.
     Null,
+    /// LT-545: across an MPLS L3VPN, to the remote PE whose address the
+    /// VRF's BGP route names, over the global table.
+    Vpn(IpAddr),
 }
 
 #[derive(Clone)]
@@ -253,7 +256,7 @@ struct Choice {
     nh_vrf: Option<String>,
 }
 
-fn matched_of(r: &RouteEntry, nh: Option<Ipv4Addr>) -> Matched {
+fn matched_of(r: &RouteEntry, nh: Option<IpAddr>) -> Matched {
     Matched { prefix: r.net.to_string(), protocol: r.proto.clone(), kind: proto_word(&r.proto), distance: r.ad, metric: r.metric, next_hop: nh.map(|a| a.to_string()), command: r.command.clone() }
 }
 
@@ -263,7 +266,7 @@ fn is_null(iface: &str) -> bool {
 }
 
 /// Routes in a VRF that hold an address, longest first, then by distance and metric.
-fn candidates<'a>(b: &'a Box_, vrf: &str, ip: Ipv4Addr) -> Vec<&'a RouteEntry> {
+fn candidates<'a>(b: &'a Box_, vrf: &str, ip: IpAddr) -> Vec<&'a RouteEntry> {
     let mut v: Vec<&RouteEntry> = b.routes.iter().filter(|r| r.vrf == vrf && r.net.contains(ip)).collect();
     v.sort_by(|x, y| y.net.len.cmp(&x.net.len).then(x.ad.unwrap_or(u32::MAX).cmp(&y.ad.unwrap_or(u32::MAX))).then(x.metric.unwrap_or(u32::MAX).cmp(&y.metric.unwrap_or(u32::MAX))));
     v
@@ -271,8 +274,8 @@ fn candidates<'a>(b: &'a Box_, vrf: &str, ip: Ipv4Addr) -> Vec<&'a RouteEntry> {
 
 /// The interface an attached next hop is reached by: a connected route, else
 /// an interface address on its subnet.
-fn attached_iface(b: &Box_, vrf: &str, ip: Ipv4Addr) -> Option<String> {
-    if let Some(r) = candidates(b, vrf, ip).into_iter().find(|r| r.is_connected() && r.net.len < 32) {
+fn attached_iface(b: &Box_, vrf: &str, ip: IpAddr) -> Option<String> {
+    if let Some(r) = candidates(b, vrf, ip).into_iter().find(|r| r.is_connected() && !r.net.is_host()) {
         if let Some(i) = r.next_hops.iter().find_map(|h| h.iface.clone()) {
             return Some(i);
         }
@@ -283,9 +286,9 @@ fn attached_iface(b: &Box_, vrf: &str, ip: Ipv4Addr) -> Option<String> {
 /// A next hop that is not attached, looked up again until one is (depth 3).
 /// Returns every immediate (next hop, interface, lookups) it resolves to.
 /// An immediate next hop, the interface it is reached by, and the lookups it took.
-type Resolved = (Ipv4Addr, Option<String>, Vec<Matched>);
+type Resolved = (IpAddr, Option<String>, Vec<Matched>);
 
-fn resolve(b: &Box_, vrf: &str, ip: Ipv4Addr, depth: usize, via: Vec<Matched>) -> Result<Vec<Resolved>, String> {
+fn resolve(b: &Box_, vrf: &str, ip: IpAddr, depth: usize, via: Vec<Matched>) -> Result<Vec<Resolved>, String> {
     if let Some(i) = attached_iface(b, vrf, ip) {
         return Ok(vec![(ip, Some(i), via)]);
     }
@@ -325,7 +328,7 @@ impl Ctx<'_> {
     }
 
     /// Policy routes first (the spec's step 2).
-    fn pbr(&self, b: &Box_, at: &At, dst: Ipv4Addr, notes: &mut Vec<String>) -> Option<Vec<Choice>> {
+    fn pbr(&self, b: &Box_, at: &At, dst: IpAddr, notes: &mut Vec<String>) -> Option<Vec<Choice>> {
         for p in &b.pbr {
             if let (Some(want), Some(have)) = (&p.in_if, &at.in_if) {
                 if key(want) != key(have) && !want.eq_ignore_ascii_case("any") {
@@ -382,7 +385,7 @@ impl Ctx<'_> {
     }
 
     /// The table: the longest prefix whose next hops are not all down.
-    fn lookup(&self, b_idx: usize, vrf: &str, dst: Ipv4Addr, notes: &mut Vec<String>) -> Result<Vec<Choice>, Ending> {
+    fn lookup(&self, b_idx: usize, vrf: &str, dst: IpAddr, notes: &mut Vec<String>) -> Result<Vec<Choice>, Ending> {
         let b = &self.net.boxes[b_idx];
         if !b.has_table("route") {
             return Err(Ending::Insufficient { at: Some(b.name.clone()), reason: format!("No routing table was collected from {}.", b.name) });
@@ -406,6 +409,10 @@ impl Ctx<'_> {
                         let toward = b.is_tunnel_iface(i).cloned().map(Toward::Tunnel).unwrap_or(Toward::Attached);
                         choices.push(Choice { decision: decision_of(r), matched: Some(matched_of(r, None)), via: vec![], out_if: Some(i.clone()), toward, nh_vrf: None });
                     }
+                    (Some(nh), None) if vrf != "default" && lookup_vrf == "default" && proto_word(&r.proto) == "bgp" => {
+                        // LT-545: the route itself says its next hop is in the global table.
+                        choices.push(Choice { decision: decision_of(r), matched: Some(matched_of(r, Some(nh))), via: vec![], out_if: None, toward: Toward::Vpn(nh), nh_vrf: Some("default".into()) });
+                    }
                     (Some(nh), iface) => {
                         let resolved = match iface {
                             Some(i) => Ok(vec![(nh, Some(i.clone()), vec![])]),
@@ -421,7 +428,21 @@ impl Ctx<'_> {
                                     choices.push(Choice { decision: decision_of(r), matched: Some(matched_of(r, Some(nh))), via, out_if, toward, nh_vrf: nh_vrf.clone() });
                                 }
                             }
-                            Err(why) => return Err(Ending::Insufficient { at: Some(b.name.clone()), reason: format!("{}: {why}.", r.net) }),
+                            Err(why) => {
+                                // LT-544: a VRF that exports a route-target this one imports.
+                                let leaked = b.leaks_into(&lookup_vrf).into_iter().find_map(|(other, rt)| resolve(b, &other, nh, 0, vec![]).ok().map(|l| (other, rt, l)));
+                                if let Some((other, rt, list)) = leaked {
+                                    notes.push(format!("{} leaks into {} from VRF {other} by route-target {rt}; {nh} is resolved there.", r.net, vrf_label(&lookup_vrf)));
+                                    for (imm, out_if, via) in list {
+                                        choices.push(Choice { decision: decision_of(r), matched: Some(matched_of(r, Some(nh))), via, out_if, toward: Toward::NextHop(imm), nh_vrf: Some(other.clone()) });
+                                    }
+                                } else if vrf != "default" && proto_word(&r.proto) == "bgp" && resolve(b, "default", nh, 0, vec![]).is_ok() {
+                                    // LT-545: a VPN route whose next hop is a PE in the global table.
+                                    choices.push(Choice { decision: decision_of(r), matched: Some(matched_of(r, Some(nh))), via: vec![], out_if: None, toward: Toward::Vpn(nh), nh_vrf: Some("default".into()) });
+                                } else {
+                                    return Err(Ending::Insufficient { at: Some(b.name.clone()), reason: format!("{}: {why}.", r.net) });
+                                }
+                            }
                         }
                     }
                     (None, None) if r.is_connected() => choices.push(Choice { decision: Decision::Connected, matched: Some(matched_of(r, None)), via: vec![], out_if: None, toward: Toward::Attached, nh_vrf: None }),
@@ -436,7 +457,7 @@ impl Ctx<'_> {
             choices.retain(|c| {
                 let link_down = c.out_if.as_deref().map(|i| self.down_links.iter().any(|(d, p)| *d == b_idx && p == &key(i))).unwrap_or(false);
                 let dev_down = match &c.toward {
-                    Toward::NextHop(nh) => self.device_of(b_idx, &c.nh_vrf.clone().unwrap_or_else(|| vrf.to_string()), *nh).map(|t| self.down.contains(&t)).unwrap_or(false),
+                    Toward::NextHop(nh) => self.device_of(b_idx, &c.nh_vrf.clone().unwrap_or_else(|| vrf.to_string()), *nh, c.out_if.as_deref()).map(|t| self.down.contains(&t)).unwrap_or(false),
                     _ => false,
                 };
                 !(link_down || dev_down)
@@ -458,13 +479,24 @@ impl Ctx<'_> {
 
     /// The collected device a next hop is: its address, an FHRP address's
     /// active owner, or this device's ARP entry and the MAC.
-    fn device_of(&self, from: usize, vrf: &str, nh: Ipv4Addr) -> Option<usize> {
-        self.devices_of(from, vrf, nh).0.into_iter().next()
+    fn device_of(&self, from: usize, vrf: &str, nh: IpAddr, out_if: Option<&str>) -> Option<usize> {
+        self.devices_of(from, vrf, nh, out_if).0.into_iter().next()
     }
 
-    fn devices_of(&self, from: usize, vrf: &str, nh: Ipv4Addr) -> (Vec<usize>, Option<String>, Option<String>) {
+    fn devices_of(&self, from: usize, vrf: &str, nh: IpAddr, out_if: Option<&str>) -> (Vec<usize>, Option<String>, Option<String>) {
         let net = self.net;
         let arp_mac = net.boxes[from].arp.iter().find(|a| a.ip == nh && (a.vrf == vrf || a.vrf == "default")).map(|a| a.mac.clone());
+        // LT-546: a link-local next hop names no device; the link it is on does —
+        // this device's neighbour entry for it, else the cable out of that interface.
+        if crate::model::link_local(nh) {
+            if let Some(&b) = arp_mac.as_ref().and_then(|m| net.by_mac.get(m)) {
+                return (vec![b], arp_mac.clone(), Some("its MAC, from the neighbour table".into()));
+            }
+            if let Some(b) = out_if.and_then(|i| net.across(from, i)).and_then(|(node, _)| net.by_node.get(&node).copied()) {
+                return (vec![b], arp_mac, Some(format!("the device cabled to {}", out_if.unwrap_or(""))));
+            }
+            return (vec![], arp_mac, None);
+        }
         if let Some(&b) = net.by_ip.get(&nh) {
             // An address that is also an FHRP VIP belongs to whoever is active.
             let active: Vec<usize> = fhrp_owners(net, nh, true);
@@ -747,6 +779,37 @@ impl Ctx<'_> {
                     hs.push(h);
                     self.paths.push(Path { hops: hs, ending: Ending::Delivered { device: None, endpoint } });
                 }
+                Toward::Vpn(pe) => {
+                    let underlay = self.underlay(at.b, pe);
+                    h.overlay = Some(Overlay { tunnel: "MPLS L3VPN".into(), kind: Some("mpls".into()), local: None, remote: pe.to_string(), underlay });
+                    h.next_hop = Some(pe.to_string());
+                    match net.by_ip.get(&pe).copied().filter(|x| !self.down.contains(x)) {
+                        Some(far) => {
+                            h.next_device = Some(net.boxes[far].name.clone());
+                            // The remote PE's VRF: one exporting a route-target this VRF imports, else one of the same name.
+                            let imports = b.vrf_rts.get(&at.vrf).map(|x| x.0.clone()).unwrap_or_default();
+                            let fb = &net.boxes[far];
+                            let by_rt = fb.vrf_rts.iter().find(|(_, (_, ex))| ex.iter().any(|rt| imports.contains(rt))).map(|(v, _)| v.clone());
+                            let by_name = fb.routes.iter().any(|r| r.vrf == at.vrf).then(|| at.vrf.clone());
+                            let mut hs = hops.clone();
+                            match by_rt.or(by_name) {
+                                Some(v) => {
+                                    hs.push(h);
+                                    self.step(next_at(far, None, v, &seen), hs);
+                                }
+                                None => {
+                                    hs.push(h);
+                                    self.paths.push(Path { hops: hs, ending: Ending::Insufficient { at: Some(net.boxes[far].name.clone()), reason: format!("{} is the PE for {}, and no VRF there was collected with a route-target {} imports.", net.boxes[far].name, vrf_label(&at.vrf), vrf_label(&at.vrf)) } });
+                                }
+                            }
+                        }
+                        None => {
+                            let mut hs = hops.clone();
+                            hs.push(h);
+                            self.paths.push(Path { hops: hs, ending: Ending::Unmanaged { at: name.clone(), next_hop: pe.to_string(), mac: None, name: net.strangers.get(&pe).cloned() } });
+                        }
+                    }
+                }
                 Toward::Tunnel(t) => {
                     let Some(remote) = t.remote_ip else {
                         let mut hs = hops.clone();
@@ -776,7 +839,7 @@ impl Ctx<'_> {
                 Toward::NextHop(nh) => {
                     let lookup_vrf = c.nh_vrf.clone().unwrap_or_else(|| at.vrf.clone());
                     h.next_hop = Some(nh.to_string());
-                    let (targets, mac, how) = self.devices_of(at.b, &lookup_vrf, nh);
+                    let (targets, mac, how) = self.devices_of(at.b, &lookup_vrf, nh, c.out_if.as_deref());
                     h.next_hop_mac = mac.clone();
                     if let Some(how) = &how {
                         h.notes.push(format!("{nh} is {how}."));
@@ -814,9 +877,9 @@ impl Ctx<'_> {
 
     /// The devices a tunnel's packets cross to reach its far end, in the
     /// global table — the first path only, and never another tunnel.
-    fn underlay(&self, from: usize, remote: Ipv4Addr) -> Vec<String> {
+    fn underlay(&self, from: usize, remote: IpAddr) -> Vec<String> {
         let mut sub = Ctx { net: self.net, return_of: None, proto: None, port: None, down: self.down.clone(), down_links: self.down_links.clone(), paths: vec![], warnings: Default::default(), truncated: false };
-        let src = self.net.boxes[from].addrs.first().map(|a| a.ip).unwrap_or(Ipv4Addr::UNSPECIFIED);
+        let src = self.net.boxes[from].addrs.first().map(|a| a.ip).unwrap_or(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
         sub.step(At { b: from, vrf: "default".into(), in_if: None, src, dst: remote, ttl: 16, seen: vec![] }, vec![]);
         sub.paths.first().map(|p| p.hops.iter().map(|h| h.device.clone()).collect()).unwrap_or_default()
     }
@@ -863,7 +926,7 @@ fn trim_l2(steps: Vec<L2Step>, out_if: Option<&str>) -> Vec<L2Step> {
     steps
 }
 
-fn fhrp_owners(net: &Net, vip: Ipv4Addr, active_only: bool) -> Vec<usize> {
+fn fhrp_owners(net: &Net, vip: IpAddr, active_only: bool) -> Vec<usize> {
     net.boxes.iter().enumerate().filter(|(_, b)| b.fhrp.iter().any(|f| f.vip == vip && (!active_only || f.active()))).map(|(i, _)| i).collect()
 }
 
@@ -873,7 +936,7 @@ struct Start {
     b: usize,
     vrf: String,
     in_if: Option<String>,
-    src: Ipv4Addr,
+    src: IpAddr,
 }
 
 /// Step 1: where the walk begins, and from what address.
@@ -882,18 +945,18 @@ fn locate(ctx: &Ctx, from: &str, vrf: Option<&str>) -> Result<(Vec<Start>, Sourc
     let want_vrf = vrf.map(|v| crate::model::vrf_name(Some(v)));
     if let Some(b) = net.find_box(from) {
         let bx = &net.boxes[b];
-        let given: Option<Ipv4Addr> = from.trim().parse().ok();
-        let src = given.or_else(|| bx.host.parse().ok()).or_else(|| bx.addrs.first().map(|a| a.ip)).unwrap_or(Ipv4Addr::UNSPECIFIED);
+        let given: Option<IpAddr> = from.trim().parse().ok();
+        let src = given.or_else(|| bx.host.parse().ok()).or_else(|| bx.addrs.first().map(|a| a.ip)).unwrap_or(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
         let vrf = want_vrf.clone().or_else(|| given.and_then(|g| bx.addr_of(g)).map(|a| a.vrf.clone())).unwrap_or_else(|| "default".into());
         return Ok((vec![Start { b, vrf, in_if: None, src }], Source { starts: vec![bx.name.clone()], endpoint: None, how: format!("{} is a collected device.", bx.name) }));
     }
-    let Ok(src) = from.trim().parse::<Ipv4Addr>() else {
-        return Err(format!("\"{}\" is neither a collected device nor an IPv4 address.", from.trim()));
+    let Ok(src) = from.trim().parse::<IpAddr>() else {
+        return Err(format!("\"{}\" is neither a collected device nor an IP address.", from.trim()));
     };
     // Gateways: the devices whose routing table has the source's subnet as attached.
     let mut gws: Vec<(usize, String, Option<String>)> = Vec::new();
     for (i, b) in net.boxes.iter().enumerate() {
-        for r in b.routes.iter().filter(|r| r.is_connected() && r.net.len < 32 && r.net.contains(src)) {
+        for r in b.routes.iter().filter(|r| r.is_connected() && !r.net.is_host() && r.net.contains(src)) {
             if want_vrf.as_ref().map(|v| v != &r.vrf).unwrap_or(false) {
                 continue;
             }
@@ -909,7 +972,7 @@ fn locate(ctx: &Ctx, from: &str, vrf: Option<&str>) -> Result<(Vec<Start>, Sourc
     let src_mac = net.boxes.iter().find_map(|b| b.arp_for(src).map(|a| a.mac.clone()));
     let mut how = String::new();
     // FHRP: the active router for the subnet's virtual address.
-    let subnet_vips: Vec<Ipv4Addr> = gws.iter().flat_map(|(i, _, _)| net.boxes[*i].fhrp.iter().filter(|f| net.boxes[*i].addr_on_subnet(src).and_then(|a| a.subnet()).map(|n| n.contains(f.vip)).unwrap_or(false)).map(|f| f.vip)).collect();
+    let subnet_vips: Vec<IpAddr> = gws.iter().flat_map(|(i, _, _)| net.boxes[*i].fhrp.iter().filter(|f| net.boxes[*i].addr_on_subnet(src).and_then(|a| a.subnet()).map(|n| n.contains(f.vip)).unwrap_or(false)).map(|f| f.vip)).collect();
     if !subnet_vips.is_empty() {
         let active: Vec<(usize, String, Option<String>)> = gws.iter().filter(|(i, _, _)| net.boxes[*i].fhrp.iter().any(|f| subnet_vips.contains(&f.vip) && f.active())).cloned().collect();
         if !active.is_empty() {
@@ -946,14 +1009,14 @@ fn locate(ctx: &Ctx, from: &str, vrf: Option<&str>) -> Result<(Vec<Start>, Sourc
 
 /// Trace one direction.
 pub fn trace(net: &Net, req: &Request) -> Trace {
-    let to: Ipv4Addr = match req.to.trim().parse() {
+    let to: IpAddr = match req.to.trim().parse() {
         Ok(a) => a,
         Err(_) => match net.find_box(&req.to) {
             Some(b) => match net.boxes[b].host.parse().ok().or_else(|| net.boxes[b].addrs.first().map(|a| a.ip)) {
                 Some(a) => a,
                 None => return Trace::refused(req, None, format!("{} has no address to trace to.", net.boxes[b].name)),
             },
-            None => return Trace::refused(req, None, format!("\"{}\" is neither an IPv4 address nor a collected device.", req.to.trim())),
+            None => return Trace::refused(req, None, format!("\"{}\" is neither an IP address nor a collected device.", req.to.trim())),
         },
     };
     let mut ctx = Ctx {
@@ -1029,6 +1092,6 @@ mod tests {
 
     #[test]
     fn a_net_prints_as_a_prefix() {
-        assert_eq!(crate::model::Net4::new("192.0.2.77".parse().unwrap(), 24).to_string(), "192.0.2.0/24");
+        assert_eq!(crate::model::Prefix::new("192.0.2.77".parse().unwrap(), 24).to_string(), "192.0.2.0/24");
     }
 }

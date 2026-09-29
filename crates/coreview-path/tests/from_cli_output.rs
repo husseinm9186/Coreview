@@ -253,3 +253,85 @@ fn an_ftd_is_decided_by_its_fmc_rules_not_its_compiled_list() {
     let f = coreview_path::trace_run(&devices, &tcp("203.0.113.99", "203.0.113.20", 22)).forward;
     assert!(matches!(&f.paths[0].ending, Ending::Denied { policy: Some(p), .. } if p == "default action (2)"), "{:?}", f.paths[0].ending);
 }
+
+// ------------------------------------------------------------------ IPv6
+
+const V6_CODES: &str = "Codes: C - Connected, L - Local, S - Static, U - Per-user Static route
+       B - BGP, R - RIP, H - NHRP, D - EIGRP, EX - EIGRP external
+       O - OSPF Intra, OI - OSPF Inter, OE1 - OSPF ext 1, OE2 - OSPF ext 2
+";
+
+fn v6_router(name: &str, route: &str, nd: &str, extra: Vec<(&str, Vec<Row>)>) -> DeviceIn {
+    let mut t: BTreeMap<String, Vec<Row>> = BTreeMap::new();
+    t.insert("device".into(), vec![Row { command: "show_version".into(), columns: [("hostname".to_string(), name.to_string()), ("serial".to_string(), format!("FAKE{name}"))].into(), extra: Default::default() }]);
+    t.insert("route".into(), rows("cisco_ios_show_ipv6_route", "show_ipv6_route", "route", &format!("IPv6 Routing Table - default - 5 entries\n{V6_CODES}{route}")));
+    if !nd.is_empty() {
+        t.insert("arp".into(), rows("cisco_ios_show_ipv6_neighbors", "show_ipv6_neighbors", "arp", &format!("IPv6 Address                              Age Link-layer Addr State Interface\n{nd}")));
+    }
+    for (k, v) in extra {
+        t.entry(k.into()).or_default().extend(v);
+    }
+    DeviceIn { device_id: name.to_ascii_lowercase(), host: String::new(), os: Some("cisco_ios".into()), role: Some("router".into()), prompt: format!("{name}#"), version_text: String::new(), tables: t }
+}
+
+fn hand(command: &str, cols: &[(&str, &str)]) -> Row {
+    Row { command: command.into(), columns: cols.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), extra: Default::default() }
+}
+
+/// LT-546. Reconstructed in IOS's own layout (the vendored fixture's), not
+/// captured; documentation prefixes (2001:db8::/32).
+fn v6_pair(with_nd: bool) -> Vec<DeviceIn> {
+    let a_routes = "C   2001:DB8:A::/64 [0/0]
+     via GigabitEthernet0/0, directly connected
+L   2001:DB8:A::1/128 [0/0]
+     via GigabitEthernet0/0, receive
+C   2001:DB8:FF::/64 [0/0]
+     via GigabitEthernet0/1, directly connected
+L   2001:DB8:FF::1/128 [0/0]
+     via GigabitEthernet0/1, receive
+S   2001:DB8:B::/64 [1/0]
+     via FE80::2, GigabitEthernet0/1
+";
+    let b_routes = "C   2001:DB8:FF::/64 [0/0]
+     via GigabitEthernet0/0, directly connected
+L   2001:DB8:FF::2/128 [0/0]
+     via GigabitEthernet0/0, receive
+C   2001:DB8:B::/64 [0/0]
+     via GigabitEthernet0/1, directly connected
+L   2001:DB8:B::1/128 [0/0]
+     via GigabitEthernet0/1, receive
+";
+    let a_nd = if with_nd { "FE80::2                                     0 0000.0000.b601  REACH Gi0/1\n" } else { "" };
+    let cable = |local: &str, name: &str, port: &str| hand("show_cdp_neighbors_detail", &[("local_if", local), ("rem_sysname", name), ("rem_port_id", port), ("proto", "cdp")]);
+    let a_extra = if with_nd { vec![] } else { vec![("neighbor", vec![cable("GigabitEthernet0/1", "R6B", "GigabitEthernet0/0")])] };
+    let b_extra = vec![
+        ("interface", vec![hand("show_interfaces", &[("name", "GigabitEthernet0/0"), ("mac", "0000.0000.b601")])]),
+        ("neighbor", if with_nd { vec![] } else { vec![cable("GigabitEthernet0/0", "R6A", "GigabitEthernet0/1")] }),
+    ];
+    vec![
+        v6_router("R6A", a_routes, a_nd, a_extra),
+        v6_router("R6B", b_routes, "2001:DB8:B::10                              0 0000.0000.b610  REACH Gi0/1\n", b_extra),
+    ]
+}
+
+#[test]
+fn an_ipv6_path_through_a_link_local_next_hop_by_the_neighbour_table_or_the_cable() {
+    for with_nd in [true, false] {
+        let out = coreview_path::trace_run(&v6_pair(with_nd), &Request { from: "2001:db8:a::10".into(), to: "2001:db8:b::10".into(), ..Default::default() });
+        let f = &out.forward;
+        assert_eq!(f.source.as_ref().unwrap().starts, vec!["R6A"], "{f:#?}");
+        let p = &f.paths[0];
+        assert_eq!(p.hops.iter().map(|h| h.device.as_str()).collect::<Vec<_>>(), vec!["R6A", "R6B"], "{p:#?}");
+        let h = &p.hops[0];
+        assert_eq!(h.matched.as_ref().unwrap().prefix, "2001:db8:b::/64");
+        assert_eq!(h.next_hop.as_deref(), Some("fe80::2"));
+        assert_eq!(h.out_interface.as_deref(), Some("GigabitEthernet0/1"));
+        let how = if with_nd { "neighbour table" } else { "cabled to GigabitEthernet0/1" };
+        assert!(h.notes.iter().any(|n| n.contains(how)), "{:?}", h.notes);
+        assert_eq!(p.hops[1].next_hop_mac.as_deref(), Some("00000000b610"));
+        assert!(matches!(p.ending, Ending::Delivered { .. }));
+    }
+    // An IPv6 destination no table holds is dropped where the table ends, not guessed.
+    let f = coreview_path::trace_run(&v6_pair(true), &Request { from: "R6A".into(), to: "2001:db8:c::1".into(), ..Default::default() }).forward;
+    assert!(matches!(&f.paths[0].ending, Ending::Dropped { at, .. } if at == "R6A"), "{:?}", f.paths[0].ending);
+}

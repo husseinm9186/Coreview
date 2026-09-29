@@ -79,6 +79,18 @@ pub fn fill(c: &Command, vars: &BTreeMap<String, String>) -> Result<String, Stri
         return Err("answered only over the device's API, which a live check does not use yet".into());
     }
     let names = placeholders(&c.cmd);
+    // LT-546: an IPv4 command is not asked about an IPv6 destination, nor the reverse.
+    if let Some(dst) = vars.get("dst").and_then(|d| d.parse::<std::net::IpAddr>().ok()) {
+        let words: Vec<&str> = lower.split_whitespace().collect();
+        let says_v6 = words.iter().any(|w| w.starts_with("ipv6") || *w == "inet6.0" || w.ends_with(".inet6.0"));
+        let says_v4 = words.contains(&"ip");
+        if dst.is_ipv6() && says_v4 && !says_v6 {
+            return Err("an IPv4 command, and the destination is IPv6".into());
+        }
+        if dst.is_ipv4() && says_v6 {
+            return Err("an IPv6 command, and the destination is IPv4".into());
+        }
+    }
     let vrf = vars.get("vrf").map(String::as_str).unwrap_or("default");
     let in_vrf = vrf != "default";
     let names_vrf = names.iter().any(|n| n == "vrf" || n == "ri");
@@ -126,8 +138,10 @@ fn verified_word(c: &Command) -> String {
 }
 
 /// Ask one device. One login, as for a collection (never cycled); the OS is
-/// known from the collection, so there is no fingerprint pass.
-pub async fn ask(sidecar: &mut Sidecar, catalog: &Catalog, target: &Target, auth: &Auth, options: &RunOptions, vars: &BTreeMap<String, String>) -> LiveRun {
+/// known from the collection, so there is no fingerprint pass. `context` is
+/// the VDOM, security context or vsys to ask inside (LT-547), entered the
+/// way the collection enters it, with the catalog's own commands.
+pub async fn ask(sidecar: &mut Sidecar, catalog: &Catalog, target: &Target, auth: &Auth, options: &RunOptions, vars: &BTreeMap<String, String>, context: Option<(String, String)>) -> LiveRun {
     let mut run = LiveRun { host: target.host.clone(), ..Default::default() };
     let mut planned: Vec<(Step, String)> = Vec::new();
     for c in &catalog.live_path {
@@ -158,6 +172,22 @@ pub async fn ask(sidecar: &mut Sidecar, catalog: &Catalog, target: &Target, auth
         run.log.push(opened.error.clone().unwrap_or_default());
         return run;
     }
+    if let Some((kind, name)) = &context {
+        match sidecar.switch(&session, kind, Some(name)).await {
+            Ok(r) if r.status == "ok" => run.log.push(format!("asked inside {kind} {name}")),
+            Ok(r) => {
+                run.failure = Some("context".into());
+                run.log.push(format!("could not enter {kind} {name}: {}", r.error.unwrap_or_default()));
+                let _ = sidecar.close(&session).await;
+                return run;
+            }
+            Err(e) => {
+                run.failure = Some("sidecar".into());
+                run.log.push(e.to_string());
+                return run;
+            }
+        }
+    }
     for (step, verified) in planned {
         let also: Vec<String> = catalog.live_path.iter().find(|c| c.id == step.id).map(|c| c.also.clone()).unwrap_or_default();
         let parser = sidecar_parser(&step, catalog, options);
@@ -172,6 +202,9 @@ pub async fn ask(sidecar: &mut Sidecar, catalog: &Catalog, target: &Target, auth
         let mut outcome: CommandOutcome = reply.into();
         settle(&mut outcome, &step, catalog, &also, options);
         run.answers.push(LiveAnswer { id: step.id.clone(), command: step.cmd.clone(), status: outcome.status.clone(), rows: outcome.rows, raw: scrub(&outcome.raw), reason: outcome.error, verified });
+    }
+    if let Some((kind, _)) = &context {
+        let _ = sidecar.switch(&session, kind, None).await;
     }
     let _ = sidecar.close(&session).await;
     run
@@ -206,6 +239,16 @@ mod tests {
         assert!(fill(&cmd("c", "show ip route vrf {vrf} {dst}"), &g).is_err());
         // PAN-OS's virtual router is named even when it is the default one.
         assert_eq!(fill(&cmd("d", "test routing fib-lookup virtual-router {vr} ip {dst}"), &vars(&[("dst", "203.0.113.5"), ("vr", "default")])).unwrap(), "test routing fib-lookup virtual-router default ip 203.0.113.5");
+    }
+
+    #[test]
+    fn an_ipv6_hop_is_not_asked_ipv4_commands_nor_the_reverse() {
+        let v6 = vars(&[("dst", "2001:db8:b::10"), ("vrf", "default")]);
+        assert!(fill(&cmd("a", "show ip route {dst}"), &v6).unwrap_err().contains("IPv6"));
+        assert_eq!(fill(&cmd("b", "show ipv6 route {dst}"), &v6).unwrap(), "show ipv6 route 2001:db8:b::10");
+        assert_eq!(fill(&cmd("c", "get router info routing-table details {dst}"), &v6).unwrap(), "get router info routing-table details 2001:db8:b::10");
+        let v4 = vars(&[("dst", "203.0.113.5"), ("vrf", "default")]);
+        assert!(fill(&cmd("d", "show ipv6 route {dst}"), &v4).is_err());
     }
 
     #[test]

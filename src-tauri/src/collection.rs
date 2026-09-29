@@ -202,6 +202,50 @@ fn device_id_of(host: &str) -> String {
 
 /// Write one device's run: the device, its command log and its rows; raw
 /// replies to the diagnostic folder when there is one, redacted.
+/// A row read inside a context. A VRF's routes carry its name. LT-547: a
+/// FortiGate VDOM or an ASA security context is a routing domain of its own,
+/// so its routing rows are kept apart as a VRF of that name too, and every
+/// row remembers where it was read, so a live check asks inside the same one.
+fn tag_context(kind: &str, name: &str, n: &mut coreview_collect::tables::Normalised) {
+    let routed = n.table == "route" || n.table == "arp" || n.table == "routing_neighbor" || n.table == "ip_address";
+    if kind == "vrf" && !n.columns.contains_key("vrf") && routed {
+        n.columns.insert("vrf".into(), name.to_string());
+    }
+    if kind != "vrf" && kind != "instance" {
+        n.extra.insert("_context".into(), serde_json::json!(format!("{kind}:{name}")));
+        if (kind == "vdom" || kind == "context") && !n.columns.contains_key("vrf") && routed {
+            n.columns.insert("vrf".into(), name.to_string());
+        }
+    }
+}
+
+#[cfg(test)]
+mod context_tests {
+    use super::tag_context;
+    use coreview_collect::tables::normalise;
+    use serde_json::json;
+
+    #[test]
+    fn a_vdoms_routes_are_a_vrf_of_its_name_and_every_row_says_where_it_was_read() {
+        let mut route = normalise("route", &json!({"network": "0.0.0.0/0", "nexthop_ip": "192.0.2.254"}));
+        tag_context("vdom", "dmz", &mut route);
+        assert_eq!(route.columns.get("vrf").map(String::as_str), Some("dmz"));
+        assert_eq!(route.extra["_context"], "vdom:dmz");
+        let mut zone = normalise("fw_zone", &json!({"name": "lan"}));
+        tag_context("vdom", "dmz", &mut zone);
+        assert!(!zone.columns.contains_key("vrf"));
+        assert_eq!(zone.extra["_context"], "vdom:dmz");
+        // A vsys is not a routing domain: PAN-OS routes by virtual router.
+        let mut pan = normalise("route", &json!({"destination": "0.0.0.0/0"}));
+        tag_context("vsys", "vsys2", &mut pan);
+        assert!(!pan.columns.contains_key("vrf"));
+        // A VRF's own name is kept where the row already has one.
+        let mut vrf = normalise("route", &json!({"network": "0.0.0.0/0", "vrf": "BLUE"}));
+        tag_context("vrf", "RED", &mut vrf);
+        assert_eq!(vrf.columns.get("vrf").map(String::as_str), Some("BLUE"));
+    }
+}
+
 fn persist_device(state: &AppState, run_id: &str, run: &DeviceRun, diagnostic: Option<&Path>, secrets: &[String]) -> CmdResult<usize> {
     let device_id = device_id_of(&run.host);
     let conn = state.db.lock().map_err(db_err)?;
@@ -296,9 +340,7 @@ fn persist_device(state: &AppState, run_id: &str, run: &DeviceRun, diagnostic: O
             for n in normalise_all(&r.step.feeds, &rows) {
                 let mut n = n;
                 if let Some((kind, name)) = &r.step.context {
-                    if kind == "vrf" && !n.columns.contains_key("vrf") && (n.table == "route" || n.table == "arp" || n.table == "routing_neighbor" || n.table == "ip_address") {
-                        n.columns.insert("vrf".into(), name.clone());
-                    }
+                    tag_context(kind, name, &mut n);
                 }
                 if n.table == "neighbor" && !n.columns.contains_key("proto") {
                     let proto = if r.step.cmd.contains("cdp") { "cdp" } else if r.step.cmd.contains("lldp") { "lldp" } else { "api" };
@@ -925,6 +967,11 @@ pub async fn collection_live(app: AppHandle, state: State<'_, AppState>, input: 
     state.limiter.allow(crate::ratelimit::Job::LivePath)?;
     check_path_request(&input.request)?;
     let net = path_model(&state, input.run_id.trim())?;
+    // LT-547: each device's VDOMs or contexts, as its collection found them.
+    let contexts: std::collections::BTreeMap<String, (String, Vec<String>)> = {
+        let conn = state.db.lock().map_err(db_err)?;
+        cdb::list_devices(&conn, input.run_id.trim()).map_err(db_err)?.into_iter().filter_map(|d| d.context_kind.map(|k| (d.host, (k, d.contexts)))).collect()
+    };
     let outcome = coreview_path::run(&net, &coreview_path::Request { traceroute: None, no_reverse: true, ..input.request.clone() });
     let which = input.path.unwrap_or(0);
     let path = outcome.forward.paths.get(which).ok_or("That path is not in the trace.")?.clone();
@@ -960,8 +1007,14 @@ pub async fn collection_live(app: AppHandle, state: State<'_, AppState>, input: 
         };
         let known_host_key = host_keys.lock().ok().and_then(|k| k.known(&host_s, input.port));
         let target = Target { host: host_s.clone(), port: input.port, os_hint: Some(os_s.clone()), role_override: None, known_host_key };
-        let vars = live_vars(hop, &os_s, &input.request);
-        let mut run = coreview_collect::live::ask(&mut sidecar, catalog, &target, &auth, &options, &vars).await;
+        let mut vars = live_vars(hop, &os_s, &input.request);
+        // A hop in a VDOM or context is asked inside it, where its table is the default one.
+        let context = contexts.get(&host_s).filter(|(k, list)| (k == "vdom" || k == "context") && list.contains(&hop.vrf)).map(|(k, _)| (k.clone(), hop.vrf.clone()));
+        if context.is_some() {
+            vars.insert("vrf".into(), "default".into());
+            vars.insert("vr".into(), "default".into());
+        }
+        let mut run = coreview_collect::live::ask(&mut sidecar, catalog, &target, &auth, &options, &vars, context).await;
         if let (true, Some(key)) = (run.host_key_first_seen, run.host_key.clone()) {
             if let Ok(mut k) = host_keys.lock() {
                 k.remember(&host_s, input.port, &key);

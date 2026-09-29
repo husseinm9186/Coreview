@@ -829,3 +829,130 @@ fn the_pages_fixture_is_what_the_builder_writes() {
     assert_eq!(std::fs::read_to_string(&path).unwrap(), json, "rerun with UPDATE_PATH_FIXTURE=1 and check the page's types");
     assert_eq!(std::fs::read_to_string(&path2).unwrap(), json2, "rerun with UPDATE_PATH_FIXTURE=1 and check the page's types");
 }
+
+// ------------------------------------------------------- VRFs and L3VPN
+
+fn vrf_row(name: &str, imports: &str, exports: &str, interfaces: &str) -> Row {
+    row("show_vrf_detail", &[("name", name), ("rt_import", imports), ("rt_export", exports), ("interfaces", interfaces)])
+}
+
+fn vroute(vrf: &str, prefix: &str, len: &str, proto: &str, nh: &str, iface: &str) -> Row {
+    let mut cols = vec![("vrf", vrf), ("prefix", prefix), ("mask", len), ("proto", proto)];
+    if !nh.is_empty() {
+        cols.push(("next_hop", nh));
+    }
+    if !iface.is_empty() {
+        cols.push(("interface", iface));
+    }
+    row("show_ip_route_vrf", &cols)
+}
+
+/// LT-544: VRF A's route to a service names a next hop only reachable in
+/// VRF SHARED; A imports what SHARED exports, so it is resolved there.
+#[test]
+fn a_next_hop_in_another_vrf_is_followed_by_its_route_target() {
+    let r = device(
+        "RV1",
+        "192.0.2.201",
+        "cisco_ios",
+        "router",
+        "FAKERV10001",
+        vec![
+            ("vrf", vec![vrf_row("A", "65000:1, 65000:99", "65000:1", "Gi0/1"), vrf_row("SHARED", "65000:99", "65000:99", "Gi0/3")]),
+            ("ip_address", vec![row("x", &[("interface", "Gi0/1"), ("ip", "10.1.1.1"), ("prefixlen", "24")]), row("x", &[("interface", "Gi0/3"), ("ip", "10.6.0.2"), ("prefixlen", "24")])]),
+            (
+                "route",
+                vec![
+                    vroute("A", "10.1.1.0", "24", "C", "", "Gi0/1"),
+                    vroute("A", "10.5.0.0", "16", "S", "10.6.0.1", ""),
+                    vroute("SHARED", "10.6.0.0", "24", "C", "", "Gi0/3"),
+                ],
+            ),
+            ("arp", vec![row("show_ip_arp_vrf", &[("vrf", "SHARED"), ("ip", "10.6.0.1"), ("mac", "0000.0000.0601"), ("interface", "Gi0/3")])]),
+        ],
+    );
+    let svc = device(
+        "SVC",
+        "10.6.0.1",
+        "cisco_ios",
+        "router",
+        "FAKESVC0001",
+        vec![
+            ("ip_address", vec![row("x", &[("interface", "Gi0/0"), ("ip", "10.6.0.1"), ("prefixlen", "24")]), row("x", &[("interface", "Gi0/1"), ("ip", "10.5.0.1"), ("prefixlen", "16")])]),
+            ("route", vec![route("10.6.0.0", "24", "C", "", "Gi0/0"), route("10.5.0.0", "16", "C", "", "Gi0/1")]),
+        ],
+    );
+    let f = run(&[r, svc], &Request { from: "10.1.1.50".into(), to: "10.5.0.9".into(), vrf: Some("A".into()), ..Default::default() }).forward;
+    let p = &f.paths[0];
+    assert_eq!(routers(p), vec!["RV1", "SVC"], "{p:#?}");
+    let h = &p.hops[0];
+    assert_eq!((h.vrf.as_str(), h.out_interface.as_deref(), h.next_hop.as_deref()), ("A", Some("Gi0/3"), Some("10.6.0.1")));
+    assert!(h.notes.iter().any(|n| n.contains("from VRF SHARED by route-target 65000:99")), "{:?}", h.notes);
+    assert!(matches!(p.ending, Ending::Delivered { .. }));
+    // Without the import, nothing is assumed.
+    let no_leak = vec![device("RV1", "192.0.2.201", "cisco_ios", "router", "FAKERV10001", vec![
+        ("vrf", vec![vrf_row("A", "65000:1", "65000:1", "Gi0/1"), vrf_row("SHARED", "65000:99", "65000:99", "Gi0/3")]),
+        ("route", vec![vroute("A", "10.1.1.0", "24", "C", "", "Gi0/1"), vroute("A", "10.5.0.0", "16", "S", "10.6.0.1", ""), vroute("SHARED", "10.6.0.0", "24", "C", "", "Gi0/3")]),
+    ])];
+    let f = run(&no_leak, &Request { from: "10.1.1.50".into(), to: "10.5.0.9".into(), vrf: Some("A".into()), ..Default::default() }).forward;
+    assert!(matches!(&f.paths[0].ending, Ending::Insufficient { at: Some(at), .. } if at == "RV1"), "{:?}", f.paths[0].ending);
+}
+
+/// LT-545: a customer VRF across an MPLS core. PE1's VPN route names PE2's
+/// loopback in the global table; the underlay crosses P1; at PE2 the walk
+/// goes on in the VRF that exports what PE1's imports.
+#[test]
+fn a_vpn_route_crosses_the_core_to_the_remote_pe_and_its_vrf() {
+    let pe1 = device(
+        "PE1",
+        "10.255.0.1",
+        "cisco_ios",
+        "router",
+        "FAKEPE10001",
+        vec![
+            ("vrf", vec![vrf_row("CUST", "65000:10", "65000:10", "Gi0/1")]),
+            ("ip_address", vec![row("x", &[("interface", "Loopback0"), ("ip", "10.255.0.1"), ("prefixlen", "32")]), row("x", &[("interface", "Gi0/0"), ("ip", "192.0.2.1"), ("prefixlen", "30")]), row("x", &[("interface", "Gi0/1"), ("ip", "10.1.0.1"), ("prefixlen", "16")])]),
+            (
+                "route",
+                vec![
+                    route("192.0.2.0", "30", "C", "", "Gi0/0"),
+                    route("10.255.0.2", "32", "O", "192.0.2.2", "Gi0/0"),
+                    vroute("CUST", "10.1.0.0", "16", "C", "", "Gi0/1"),
+                    vroute("CUST", "10.2.0.0", "16", "B", "10.255.0.2", ""),
+                ],
+            ),
+        ],
+    );
+    let p1 = device(
+        "P1",
+        "192.0.2.2",
+        "cisco_ios",
+        "router",
+        "FAKEP100001",
+        vec![
+            ("ip_address", vec![row("x", &[("interface", "Gi0/0"), ("ip", "192.0.2.2"), ("prefixlen", "30")]), row("x", &[("interface", "Gi0/1"), ("ip", "192.0.2.5"), ("prefixlen", "30")])]),
+            ("route", vec![route("192.0.2.0", "30", "C", "", "Gi0/0"), route("192.0.2.4", "30", "C", "", "Gi0/1"), route("10.255.0.2", "32", "O", "192.0.2.6", "Gi0/1")]),
+        ],
+    );
+    let pe2 = device(
+        "PE2",
+        "10.255.0.2",
+        "cisco_ios",
+        "router",
+        "FAKEPE20001",
+        vec![
+            ("vrf", vec![vrf_row("CUSTOMER-B", "65000:10", "65000:10", "Gi0/2")]),
+            ("ip_address", vec![row("x", &[("interface", "Loopback0"), ("ip", "10.255.0.2"), ("prefixlen", "32")]), row("x", &[("interface", "Gi0/1"), ("ip", "192.0.2.6"), ("prefixlen", "30")]), row("x", &[("interface", "Gi0/2"), ("ip", "10.2.0.1"), ("prefixlen", "16")])]),
+            ("route", vec![route("192.0.2.4", "30", "C", "", "Gi0/1"), route("10.255.0.2", "32", "C", "", "Loopback0"), vroute("CUSTOMER-B", "10.2.0.0", "16", "C", "", "Gi0/2")]),
+            ("arp", vec![row("show_ip_arp_vrf", &[("vrf", "CUSTOMER-B"), ("ip", "10.2.0.20"), ("mac", "0000.0000.0220"), ("interface", "Gi0/2")])]),
+        ],
+    );
+    let f = run(&[pe1, p1, pe2], &Request { from: "10.1.0.10".into(), to: "10.2.0.20".into(), vrf: Some("CUST".into()), ..Default::default() }).forward;
+    let p = &f.paths[0];
+    assert_eq!(routers(p), vec!["PE1", "PE2"], "{p:#?}");
+    let o = p.hops[0].overlay.as_ref().expect("the VPN hop");
+    assert_eq!((o.tunnel.as_str(), o.remote.as_str()), ("MPLS L3VPN", "10.255.0.2"));
+    assert_eq!(o.underlay, vec!["PE1", "P1", "PE2"]);
+    assert_eq!(p.hops[1].vrf, "CUSTOMER-B", "the remote VRF found by route-target, whatever its name");
+    assert!(matches!(p.ending, Ending::Delivered { .. }));
+}

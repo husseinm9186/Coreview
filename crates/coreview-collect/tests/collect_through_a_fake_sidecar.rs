@@ -123,6 +123,31 @@ async fn a_fortigate_with_vdoms_runs_its_vdom_commands_inside_each_one() {
     sidecar.quit().await;
 }
 
+/// LT-547: a live check on a hop in a VDOM is asked inside that VDOM — the
+/// switch comes before the first command, and the session goes back after.
+#[tokio::test]
+async fn a_live_check_asks_inside_the_hops_vdom() {
+    let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+    let fortios = catalogs.iter().find(|c| c.os == "fortios").unwrap();
+    let script = json!({"get router info routing-table details 203.0.113.5": {"status": "ok", "raw": "Routing table for VRF=0\nRouting entry for 203.0.113.0/24\n  Known via \"static\", distance 10, metric 0, best\n  * vrf 0 192.0.2.254, via port1\n", "rows": []}});
+    let loc = fake_location(&script, r#"["root","dmz"]"#);
+    let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
+    let target = Target { host: "192.0.2.1".into(), port: 22, os_hint: Some("fortios".into()), role_override: None, known_host_key: None };
+    let vars: std::collections::BTreeMap<String, String> = [("dst", "203.0.113.5"), ("src", "192.0.2.10"), ("vrf", "default")].iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+    let _ = sidecar.drain_events();
+    let run = coreview_collect::live::ask(&mut sidecar, fortios, &target, &auth(), &RunOptions::default(), &vars, Some(("vdom".into(), "dmz".into()))).await;
+    assert_eq!(run.failure, None, "{:?}", run.log);
+    assert!(run.log.iter().any(|l| l == "asked inside vdom dmz"), "{:?}", run.log);
+    let ops: Vec<String> = sidecar.drain_events().iter().filter_map(|e| e.extra.get("msg").and_then(|m| m.as_str()).map(str::to_string)).collect();
+    let first_switch = ops.iter().position(|o| o == "switch").expect("a switch");
+    let first_run = ops.iter().position(|o| o == "run").expect("a run");
+    assert!(first_switch < first_run, "{ops:?}");
+    assert_eq!(ops.iter().filter(|o| *o == "switch").count(), 2, "in, then back out: {ops:?}");
+    let answer = run.answers.iter().find(|a| a.command == "get router info routing-table details 203.0.113.5").unwrap();
+    assert!(answer.raw.contains("192.0.2.254"));
+    sidecar.quit().await;
+}
+
 #[tokio::test]
 async fn a_wrong_password_ends_the_run_at_once_with_no_second_try() {
     let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();

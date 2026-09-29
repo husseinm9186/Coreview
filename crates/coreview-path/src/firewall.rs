@@ -11,12 +11,12 @@
 //! the tables do not resolve is neither a match nor a miss: the verdict is
 //! then undetermined, naming the object (D-050) — never a guessed allow.
 
-use std::net::Ipv4Addr;
+use std::net::IpAddr;
 
 use coreview_topology::ifname::key;
 use serde::Serialize;
 
-use crate::model::{Box_, FwPolicy, NatRule, Net4};
+use crate::model::{Box_, FwPolicy, NatRule, Prefix};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -63,25 +63,24 @@ fn is_any(s: &str) -> bool {
 
 /// One address item: `any`, an address, a prefix (`/24` or a mask), `host
 /// a.b.c.d`, a range `a-b`. `None` when it is a name the tables do not define.
-fn addr_item(item: &str, ip: Ipv4Addr) -> Option<bool> {
+fn addr_item(item: &str, ip: IpAddr) -> Option<bool> {
     let t = item.trim();
     if is_any(t) {
         return Some(true);
     }
     let t = t.strip_prefix("host ").unwrap_or(t).trim();
     if let Some((a, z)) = t.split_once('-') {
-        if let (Ok(a), Ok(z)) = (a.trim().parse::<Ipv4Addr>(), z.trim().parse::<Ipv4Addr>()) {
-            let v = u32::from(ip);
-            return Some(u32::from(a) <= v && v <= u32::from(z));
+        if let (Ok(a), Ok(z)) = (a.trim().parse::<IpAddr>(), z.trim().parse::<IpAddr>()) {
+            return Some(crate::model::in_range(ip, a, z));
         }
     }
-    Net4::parse(t).map(|n| n.contains(ip))
+    Prefix::parse(t).map(|n| n.contains(ip))
 }
 
 /// A rule's address list against an address. `names` are objects known to
 /// stand for this address here — a FortiOS VIP applied on arrival is written
 /// by its name in the policy that allows it.
-pub fn addr_match(list: &[String], ip: Ipv4Addr, names: &[String]) -> Tri {
+pub fn addr_match(list: &[String], ip: IpAddr, names: &[String]) -> Tri {
     if list.is_empty() {
         return Tri::Yes;
     }
@@ -349,8 +348,8 @@ fn allows(action: &str) -> bool {
 pub struct Flow<'a> {
     pub zones_in: &'a [String],
     pub zones_out: &'a [String],
-    pub src: Ipv4Addr,
-    pub dst: Ipv4Addr,
+    pub src: IpAddr,
+    pub dst: IpAddr,
     pub proto: Option<u8>,
     pub port: Option<u16>,
     /// Objects that stand for the destination here (an applied VIP).
@@ -546,14 +545,14 @@ fn nat_kind_is_src(r: &NatRule) -> bool {
 }
 
 /// One address a translation writes: a single address (or a one-address range).
-fn single(s: &str) -> Option<Ipv4Addr> {
+fn single(s: &str) -> Option<IpAddr> {
     let t = s.trim();
     if let Some((a, z)) = t.split_once('-') {
-        let (a, z) = (a.trim().parse::<Ipv4Addr>().ok()?, z.trim().parse::<Ipv4Addr>().ok()?);
+        let (a, z) = (a.trim().parse::<IpAddr>().ok()?, z.trim().parse::<IpAddr>().ok()?);
         return (a == z).then_some(a);
     }
-    let n = Net4::parse(t)?;
-    (n.len == 32).then(|| Ipv4Addr::from(n.addr))
+    let n = Prefix::parse(t)?;
+    n.is_host().then(|| n.ip())
 }
 
 fn zone_ok(field: &Option<String>, zones: &[String]) -> Tri {
@@ -569,7 +568,7 @@ fn list(s: &Option<String>) -> Vec<String> {
 
 /// Destination NAT on arrival. `Err` is a rule that may apply and cannot be
 /// decided, for the hop's notes.
-pub fn dnat(b: &Box_, zones_in: &[String], zones_out: Option<&[String]>, src: Ipv4Addr, dst: Ipv4Addr, proto: Option<u8>, port: Option<u16>) -> Result<Option<Rewrite>, String> {
+pub fn dnat(b: &Box_, zones_in: &[String], zones_out: Option<&[String]>, src: IpAddr, dst: IpAddr, proto: Option<u8>, port: Option<u16>) -> Result<Option<Rewrite>, String> {
     for r in &b.nat {
         // A static rule written the source way round (ASA `static (inside,outside) real mapped`)
         // is also the destination rule for traffic to the mapped address.
@@ -605,7 +604,7 @@ pub fn dnat(b: &Box_, zones_in: &[String], zones_out: Option<&[String]>, src: Ip
 
 /// Source NAT on the way out. `egress_ip` is the address of the interface
 /// it leaves by, which "interface" translation uses.
-pub fn snat(b: &Box_, flow: &Flow, egress_ip: Option<Ipv4Addr>) -> Result<Option<Rewrite>, String> {
+pub fn snat(b: &Box_, flow: &Flow, egress_ip: Option<IpAddr>) -> Result<Option<Rewrite>, String> {
     let Flow { zones_in, zones_out, src, dst, proto, port, .. } = *flow;
     for r in &b.nat {
         if !nat_kind_is_src(r) || (r.kind.contains("static") && r.orig_dst.is_some()) {
@@ -653,7 +652,7 @@ fn rule_name(r: &NatRule) -> String {
 mod tests {
     use super::*;
 
-    fn a(s: &str) -> Ipv4Addr {
+    fn a(s: &str) -> IpAddr {
         s.parse().unwrap()
     }
 

@@ -1,7 +1,7 @@
 //! A trace against something else (LT-533, LT-534): the same flow's way
 //! back, and a traceroute taken from the source device.
 
-use std::net::Ipv4Addr;
+use std::net::IpAddr;
 
 use serde::Serialize;
 
@@ -93,7 +93,7 @@ pub fn verify(net: &Net, forward: &Trace, hops: &[Option<String>]) -> Option<Ver
         .iter()
         .map(|h| {
             let addr = h.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty() && s != "*");
-            let dev = addr.as_deref().and_then(|a| a.parse::<Ipv4Addr>().ok()).and_then(|a| net.by_ip.get(&a)).map(|&i| net.boxes[i].name.clone());
+            let dev = addr.as_deref().and_then(|a| a.parse::<IpAddr>().ok()).and_then(|a| net.by_ip.get(&a)).map(|&i| net.boxes[i].name.clone());
             (addr, dev)
         })
         .collect();
@@ -151,7 +151,7 @@ fn back_from(forward: &Trace) -> Option<String> {
 /// The address the way back is addressed to: the source as it left.
 fn back_to(forward: &Trace, req: &Request) -> String {
     let src = forward.paths.iter().find_map(|p| p.hops.first().map(|h| h.src.clone()));
-    match req.from.trim().parse::<Ipv4Addr>() {
+    match req.from.trim().parse::<IpAddr>() {
         Ok(_) => req.from.trim().to_string(),
         Err(_) => src.unwrap_or_else(|| req.from.clone()),
     }
@@ -194,13 +194,16 @@ pub struct LiveCheck {
     pub detail: String,
 }
 
-fn addresses_in(text: &str) -> Vec<Ipv4Addr> {
-    text.split(|c: char| !(c.is_ascii_digit() || c == '.')).filter_map(|t| t.trim_matches('.').parse().ok()).collect()
+/// Every address in a piece of text, IPv4 or IPv6 (LT-546).
+fn addresses_in(text: &str) -> Vec<IpAddr> {
+    text.split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | '(' | ')' | '[' | ']' | '='))
+        .filter_map(|t| t.trim_matches(|c: char| c == '.' || c == ':').split(['%', '/']).next().and_then(|x| x.parse().ok()))
+        .collect()
 }
 
 /// The addresses a routing answer names as where it sends traffic: after
 /// `via`, `addr`, `nexthop`, `gateway`, or a `*` descriptor line.
-fn stated_next_hops(raw: &str) -> Vec<Ipv4Addr> {
+fn stated_next_hops(raw: &str) -> Vec<IpAddr> {
     let mut out = Vec::new();
     for line in raw.lines() {
         let l = line.trim().to_ascii_lowercase();
@@ -226,7 +229,7 @@ pub fn live_check(hop: &crate::walk::Hop, answers: &[LiveEvidence]) -> LiveCheck
     if answered.is_empty() {
         return LiveCheck { agrees: None, detail: "The device answered none of the live commands.".into() };
     }
-    let nh: Option<Ipv4Addr> = hop.next_hop.as_deref().and_then(|s| s.parse().ok());
+    let nh: Option<IpAddr> = hop.next_hop.as_deref().and_then(|s| s.parse().ok());
     let out_key = hop.out_interface.as_deref().map(coreview_topology::ifname::key);
     for a in &answered {
         let routing = ["route", "cef", "fib", "hash"].iter().any(|w| a.command.to_ascii_lowercase().contains(w));
@@ -234,7 +237,7 @@ pub fn live_check(hop: &crate::walk::Hop, answers: &[LiveEvidence]) -> LiveCheck
             continue;
         }
         // Rows first: the template read the device's own table.
-        let row_hops: Vec<Ipv4Addr> = a.next_hops.iter().filter_map(|h| h.split(['%', '/']).next().and_then(|x| x.trim().parse().ok())).collect();
+        let row_hops: Vec<IpAddr> = a.next_hops.iter().filter_map(|h| h.split(['%', '/']).next().and_then(|x| x.trim().parse().ok())).collect();
         if let Some(nh) = nh {
             if row_hops.contains(&nh) {
                 return LiveCheck { agrees: Some(true), detail: format!("{} lists {nh}, the modeled next hop.", a.command) };
