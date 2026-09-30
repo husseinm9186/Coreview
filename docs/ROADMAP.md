@@ -91,6 +91,51 @@ assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
 
+### LT-558 — The lab run: FortiGate, FortiSwitch and Catalyst collected by Coreview itself — 2026-09-29
+**Source:** the operator, 2026-09-29: "you should be able to run the lab you
+have the access and passwords", naming the FortiGate (192.168.14.1), the
+FortiSwitch (192.168.14.203) and a Cisco switch (192.168.14.7) "and many
+other devices on the network". What it is for: the acceptance LT-527 (lab
+topology reproduced), LT-531 (modeled path matches traceroute) and LT-532
+(verdicts correct) have waited on; the shadow comparison per OS (LT-521) the
+operator was to send; and the first real answers for the readers and
+templates marked `docs`. **Rules:** the login is used from the environment
+and never written to a file or a commit (D-006, LT-137); what the devices
+answer stays outside the repository (D-027) — a fixture made from it is
+reduced to invented names and documentation addresses first. Read-only, as
+every collection (LT-522, LT-556, LT-557). No OS is flipped from what this
+finds (LT-521) — the results go to the operator.
+
+### LT-559 — The EVE-NG lab: Aruba, Nexus, IOS-XE, IOS-XR, ASA, FMC and the rest — 2026-09-29
+**Source:** the same message: "I will turn on the Eve-NG lab so you can
+validate the other devices like aruba, cisco Nexus, IOS XE and XR, asa,
+fmc, etc". Waits on the lab being on; then the same run and rules as LT-558
+per platform, the FMC through LT-541's collector.
+
+### LT-563 — **bug** FortiOS and FortiSwitchOS 7.6 `get system status` was unread: no hostname, serial or MAC — 2026-09-29
+**Found by the lab run.** 7.6 prints lines the ntc template does not know
+(`AV AI/ML Model`, `IPS-MLDB`, `OT-*`), and the template's catch-all stops
+the whole reply; both engines refused it, so both boxes had no identity and
+the FortiSwitch could not be matched to the LLDP neighbour the Catalyst
+names. **Fix:** a Coreview reader of the `Key: value` lines, written against
+the lab's own replies; its fixtures keep their layout with every value
+invented (D-027).
+
+### LT-564 — **bug** The FortiGate 7.6 routing table was unread — 2026-09-29
+**Found by the lab run.** `Routing table for VRF=0` and the trailing
+`[1/0]` after the interface stop ntc's template in both engines. **Fix:** a
+Coreview reader written against the lab's reply, invented values in its
+fixtures.
+
+### LT-565 — **bug** A FortiSwitch was collected as a FortiGate — 2026-09-29
+**Found by the lab run.** The `fortios` fingerprint matches FortiSwitch too,
+so a FortiSwitch got FortiGate commands: its LLDP table, MAC table and
+interfaces were never asked for, and its FortiSwitchOS routing table and
+interface list refused FortiOS's templates. **Fix:** a `fortiswitch`
+catalog with Coreview readers for `get switch lldp neighbors-summary`,
+`diagnose switch mac-address list`, `get system interface physical` and its
+routing table, written against the lab's replies.
+
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
 confirmed by the operator on accepting P1 (2026-09-29): "embeddable
@@ -783,51 +828,6 @@ existing diff writers. **Run:** a scenario test of two runs of one network
 (renamed and re-addressed, a cable gone, an OSPF peer dropped, a route
 added, one device gone and one new; the same run against itself is empty),
 and six checks in `e2e/collection.mjs`.
-
-### LT-558 — The lab run: FortiGate, FortiSwitch and Catalyst collected by Coreview itself — 2026-09-29
-**Source:** the operator, 2026-09-29: "you should be able to run the lab you
-have the access and passwords", naming the FortiGate (192.168.14.1), the
-FortiSwitch (192.168.14.203) and a Cisco switch (192.168.14.7) "and many
-other devices on the network". What it is for: the acceptance LT-527 (lab
-topology reproduced), LT-531 (modeled path matches traceroute) and LT-532
-(verdicts correct) have waited on; the shadow comparison per OS (LT-521) the
-operator was to send; and the first real answers for the readers and
-templates marked `docs`. **Rules:** the login is used from the environment
-and never written to a file or a commit (D-006, LT-137); what the devices
-answer stays outside the repository (D-027) — a fixture made from it is
-reduced to invented names and documentation addresses first. Read-only, as
-every collection (LT-522, LT-556, LT-557). No OS is flipped from what this
-finds (LT-521) — the results go to the operator.
-
-### LT-559 — The EVE-NG lab: Aruba, Nexus, IOS-XE, IOS-XR, ASA, FMC and the rest — 2026-09-29
-**Source:** the same message: "I will turn on the Eve-NG lab so you can
-validate the other devices like aruba, cisco Nexus, IOS XE and XR, asa,
-fmc, etc". Waits on the lab being on; then the same run and rules as LT-558
-per platform, the FMC through LT-541's collector.
-
-### LT-563 — **bug** FortiOS and FortiSwitchOS 7.6 `get system status` was unread: no hostname, serial or MAC — 2026-09-29
-**Found by the lab run.** 7.6 prints lines the ntc template does not know
-(`AV AI/ML Model`, `IPS-MLDB`, `OT-*`), and the template's catch-all stops
-the whole reply; both engines refused it, so both boxes had no identity and
-the FortiSwitch could not be matched to the LLDP neighbour the Catalyst
-names. **Fix:** a Coreview reader of the `Key: value` lines, written against
-the lab's own replies; its fixtures keep their layout with every value
-invented (D-027).
-
-### LT-564 — **bug** The FortiGate 7.6 routing table was unread — 2026-09-29
-**Found by the lab run.** `Routing table for VRF=0` and the trailing
-`[1/0]` after the interface stop ntc's template in both engines. **Fix:** a
-Coreview reader written against the lab's reply, invented values in its
-fixtures.
-
-### LT-565 — **bug** A FortiSwitch was collected as a FortiGate — 2026-09-29
-**Found by the lab run.** The `fortios` fingerprint matches FortiSwitch too,
-so a FortiSwitch got FortiGate commands: its LLDP table, MAC table and
-interfaces were never asked for, and its FortiSwitchOS routing table and
-interface list refused FortiOS's templates. **Fix:** a `fortiswitch`
-catalog with Coreview readers for `get switch lldp neighbors-summary`,
-`diagnose switch mac-address list`, `get system interface physical` and its
-routing table, written against the lab's replies.
 
 ### LT-541 — FTD access policy through the FMC API — 2026-09-29, done the same day
 **Source:** the same message: "FTD equivalents via FMC API". An FTD's rules
@@ -13201,5 +13201,4 @@ Measured 2026-08-30: 400 devices open in ~2s, drag at ~15fps, pan at ~8fps;
 120 devices at 33 and 18. The cost is ~60 DOM elements per device.
 `onlyRenderVisibleElements` was tried and rejected (D-010). Not worth doing
 until someone actually has a diagram that large.
-
 

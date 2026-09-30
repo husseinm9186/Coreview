@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use coreview_catalog::Catalog;
 use coreview_collect::run::{collect_device, DeviceRun, RunEvent, RunOptions, RunSink, Target};
 use coreview_collect::sidecar::{Auth, Sidecar, SidecarLocation};
-use coreview_collect::tables::{normalise_all, rows_from_json, rows_from_xml};
+use coreview_collect::tables::normalise_all;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
@@ -191,20 +191,10 @@ fn load_catalogs(app: &AppHandle) -> CmdResult<Vec<Catalog>> {
 
 /// The rows a step's answer yields for the tables: TextFSM rows as they
 /// are, a structured answer flattened first.
-fn rows_of(parser: &str, outcome: &coreview_collect::run::CommandOutcome) -> Vec<Value> {
-    match parser {
-        "json" => outcome.rows.first().and_then(|r| r.get("json")).map(rows_from_json).unwrap_or_else(|| outcome.rows.clone()),
-        "xml" => outcome.rows.first().and_then(|r| r.get("xml")).and_then(Value::as_str).and_then(|x| rows_from_xml(x).ok()).unwrap_or_else(|| outcome.rows.clone()),
-        _ => outcome.rows.clone(),
-    }
-}
-
 fn device_id_of(host: &str) -> String {
     format!("dev-{}", host.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect::<String>())
 }
 
-/// Write one device's run: the device, its command log and its rows; raw
-/// replies to the diagnostic folder when there is one, redacted.
 /// LT-549: SNMP stands in only when SSH could not open a session — a wrong
 /// login, a timeout, a refused connection. A changed host key is not one:
 /// that is a refusal to talk to the box, not a reason to talk to it another
@@ -289,50 +279,8 @@ mod snmp_fallback_tests {
     }
 }
 
-/// A row read inside a context. A VRF's routes carry its name. LT-547: a
-/// FortiGate VDOM or an ASA security context is a routing domain of its own,
-/// so its routing rows are kept apart as a VRF of that name too, and every
-/// row remembers where it was read, so a live check asks inside the same one.
-fn tag_context(kind: &str, name: &str, n: &mut coreview_collect::tables::Normalised) {
-    let routed = n.table == "route" || n.table == "arp" || n.table == "routing_neighbor" || n.table == "ip_address";
-    if kind == "vrf" && !n.columns.contains_key("vrf") && routed {
-        n.columns.insert("vrf".into(), name.to_string());
-    }
-    if kind != "vrf" && kind != "instance" {
-        n.extra.insert("_context".into(), serde_json::json!(format!("{kind}:{name}")));
-        if (kind == "vdom" || kind == "context") && !n.columns.contains_key("vrf") && routed {
-            n.columns.insert("vrf".into(), name.to_string());
-        }
-    }
-}
-
-#[cfg(test)]
-mod context_tests {
-    use super::tag_context;
-    use coreview_collect::tables::normalise;
-    use serde_json::json;
-
-    #[test]
-    fn a_vdoms_routes_are_a_vrf_of_its_name_and_every_row_says_where_it_was_read() {
-        let mut route = normalise("route", &json!({"network": "0.0.0.0/0", "nexthop_ip": "192.0.2.254"}));
-        tag_context("vdom", "dmz", &mut route);
-        assert_eq!(route.columns.get("vrf").map(String::as_str), Some("dmz"));
-        assert_eq!(route.extra["_context"], "vdom:dmz");
-        let mut zone = normalise("fw_zone", &json!({"name": "lan"}));
-        tag_context("vdom", "dmz", &mut zone);
-        assert!(!zone.columns.contains_key("vrf"));
-        assert_eq!(zone.extra["_context"], "vdom:dmz");
-        // A vsys is not a routing domain: PAN-OS routes by virtual router.
-        let mut pan = normalise("route", &json!({"destination": "0.0.0.0/0"}));
-        tag_context("vsys", "vsys2", &mut pan);
-        assert!(!pan.columns.contains_key("vrf"));
-        // A VRF's own name is kept where the row already has one.
-        let mut vrf = normalise("route", &json!({"network": "0.0.0.0/0", "vrf": "BLUE"}));
-        tag_context("vrf", "RED", &mut vrf);
-        assert_eq!(vrf.columns.get("vrf").map(String::as_str), Some("BLUE"));
-    }
-}
-
+/// Write one device's run: the device, its command log and its rows; raw
+/// replies to the diagnostic folder when there is one, redacted.
 fn persist_device(state: &AppState, run_id: &str, run: &DeviceRun, diagnostic: Option<&Path>, secrets: &[String]) -> CmdResult<usize> {
     let device_id = device_id_of(&run.host);
     let conn = state.db.lock().map_err(db_err)?;
@@ -400,7 +348,7 @@ fn persist_device(state: &AppState, run_id: &str, run: &DeviceRun, diagnostic: O
         seq += 1;
         commands += 1;
         let raw_ref = keep(seq, &r.step.cmd, &r.outcome.raw);
-        let rows = if r.outcome.status == "ok" { rows_of(&r.step.parser, &r.outcome) } else { Vec::new() };
+        let rows = if r.outcome.status == "ok" { coreview_collect::tables::rows_of(&r.step.parser, &r.outcome) } else { Vec::new() };
         let e = cdb::LogEntry {
             device_id: device_id.clone(),
             seq,
@@ -423,26 +371,8 @@ fn persist_device(state: &AppState, run_id: &str, run: &DeviceRun, diagnostic: O
             engine: r.outcome.engine.clone(),
         };
         cdb::write_log(&conn, run_id, &device_id, seq, &e).map_err(db_err)?;
-        if !rows.is_empty() {
-            for n in normalise_all(&r.step.feeds, &rows) {
-                let mut n = n;
-                if let Some((kind, name)) = &r.step.context {
-                    tag_context(kind, name, &mut n);
-                }
-                if n.table == "neighbor" && !n.columns.contains_key("proto") {
-                    let proto = if r.step.cmd.contains("cdp") { "cdp" } else if r.step.cmd.contains("lldp") { "lldp" } else { "api" };
-                    n.columns.insert("proto".into(), proto.into());
-                }
-                if (n.table == "routing_neighbor" || n.table == "fhrp") && !n.columns.contains_key("proto") {
-                    for p in ["ospf", "eigrp", "bgp", "isis", "rip", "standby", "hsrp", "vrrp", "glbp", "ldp"] {
-                        if r.step.cmd.contains(p) {
-                            n.columns.insert("proto".into(), if p == "standby" { "hsrp".into() } else { p.into() });
-                            break;
-                        }
-                    }
-                }
-                cdb::write_row(&conn, run_id, &device_id, &r.step.id, &n).map_err(db_err)?;
-            }
+        for n in coreview_collect::tables::rows_for_step(&r.step, &rows) {
+            cdb::write_row(&conn, run_id, &device_id, &r.step.id, &n).map_err(db_err)?;
         }
     }
     Ok(commands)

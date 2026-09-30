@@ -358,6 +358,61 @@ pub fn normalise_all(feeds: &[String], rows: &[Value]) -> Vec<Normalised> {
     out
 }
 
+/// The rows a reply gives, from where the parser left them: a structured
+/// reply (`json`, `xml`) arrives as one wrapped document and is unwrapped
+/// here; everything else is rows already.
+pub fn rows_of(parser: &str, outcome: &crate::run::CommandOutcome) -> Vec<Value> {
+    match parser {
+        "json" => outcome.rows.first().and_then(|r| r.get("json")).map(rows_from_json).unwrap_or_else(|| outcome.rows.clone()),
+        "xml" => outcome.rows.first().and_then(|r| r.get("xml")).and_then(Value::as_str).and_then(|x| rows_from_xml(x).ok()).unwrap_or_else(|| outcome.rows.clone()),
+        _ => outcome.rows.clone(),
+    }
+}
+
+/// A row read inside a context. A VRF's routes carry its name. LT-547: a
+/// FortiGate VDOM or an ASA security context is a routing domain of its own,
+/// so its routing rows are kept apart as a VRF of that name too, and every
+/// row remembers where it was read, so a live check asks inside the same one.
+pub fn tag_context(kind: &str, name: &str, n: &mut Normalised) {
+    let routed = n.table == "route" || n.table == "arp" || n.table == "routing_neighbor" || n.table == "ip_address";
+    if kind == "vrf" && !n.columns.contains_key("vrf") && routed {
+        n.columns.insert("vrf".into(), name.to_string());
+    }
+    if kind != "vrf" && kind != "instance" {
+        n.extra.insert("_context".into(), serde_json::json!(format!("{kind}:{name}")));
+        if (kind == "vdom" || kind == "context") && !n.columns.contains_key("vrf") && routed {
+            n.columns.insert("vrf".into(), name.to_string());
+        }
+    }
+}
+
+/// One step's rows as the collection stores them: normalised into every
+/// table the step feeds, tagged with the context it ran in, and a
+/// neighbour or routing row given the protocol its command names. The app
+/// and the lab harness (LT-558) both store through this.
+pub fn rows_for_step(step: &coreview_catalog::Step, rows: &[Value]) -> Vec<Normalised> {
+    let mut out = Vec::new();
+    for mut n in normalise_all(&step.feeds, rows) {
+        if let Some((kind, name)) = &step.context {
+            tag_context(kind, name, &mut n);
+        }
+        if n.table == "neighbor" && !n.columns.contains_key("proto") {
+            let proto = if step.cmd.contains("cdp") { "cdp" } else if step.cmd.contains("lldp") { "lldp" } else { "api" };
+            n.columns.insert("proto".into(), proto.into());
+        }
+        if (n.table == "routing_neighbor" || n.table == "fhrp") && !n.columns.contains_key("proto") {
+            for p in ["ospf", "eigrp", "bgp", "isis", "rip", "standby", "hsrp", "vrrp", "glbp", "ldp"] {
+                if step.cmd.contains(p) {
+                    n.columns.insert("proto".into(), if p == "standby" { "hsrp".into() } else { p.into() });
+                    break;
+                }
+            }
+        }
+        out.push(n);
+    }
+    out
+}
+
 // ------------------------------------------------------------ structured
 
 /// Rows out of a platform's own JSON. NX-OS wraps tables as
@@ -628,6 +683,26 @@ mod tests {
         assert_eq!((rt.columns["prefix"].as_str(), rt.columns["next_hop"].as_str(), rt.columns["interface"].as_str()), ("0.0.0.0/0", "192.0.2.1", "Ethernet0"));
         let ne = normalise("arp", &json!({"IPAddress": "192.0.2.1", "LinkLayerAddress": "00-00-00-00-00-06", "InterfaceAlias": "Ethernet0", "State": 2}));
         assert_eq!((ne.columns["ip"].as_str(), ne.columns["mac"].as_str()), ("192.0.2.1", "00-00-00-00-00-06"));
+    }
+
+    #[test]
+    fn a_vdoms_routes_are_a_vrf_of_its_name_and_every_row_says_where_it_was_read() {
+        let mut route = normalise("route", &json!({"network": "0.0.0.0/0", "nexthop_ip": "192.0.2.254"}));
+        tag_context("vdom", "dmz", &mut route);
+        assert_eq!(route.columns.get("vrf").map(String::as_str), Some("dmz"));
+        assert_eq!(route.extra["_context"], "vdom:dmz");
+        let mut zone = normalise("fw_zone", &json!({"name": "lan"}));
+        tag_context("vdom", "dmz", &mut zone);
+        assert!(!zone.columns.contains_key("vrf"));
+        assert_eq!(zone.extra["_context"], "vdom:dmz");
+        // A vsys is not a routing domain: PAN-OS routes by virtual router.
+        let mut pan = normalise("route", &json!({"destination": "0.0.0.0/0"}));
+        tag_context("vsys", "vsys2", &mut pan);
+        assert!(!pan.columns.contains_key("vrf"));
+        // A VRF's own name is kept where the row already has one.
+        let mut vrf = normalise("route", &json!({"network": "0.0.0.0/0", "vrf": "BLUE"}));
+        tag_context("vrf", "RED", &mut vrf);
+        assert_eq!(vrf.columns.get("vrf").map(String::as_str), Some("BLUE"));
     }
 
     /// LT-537: PAN-OS says `disabled: yes` of a rule that is off. Stored as

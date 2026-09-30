@@ -1144,6 +1144,7 @@ dependencies = [
  "coreview-topology",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

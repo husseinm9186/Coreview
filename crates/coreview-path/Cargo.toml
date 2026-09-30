@@ -18,3 +18,5 @@ serde_json = "1"
 # The end-to-end test: raw CLI output → the vendored templates → the table normaliser → the walk.
 coreview-catalog = { path = "../coreview-catalog" }
 coreview-collect = { path = "../coreview-collect" }
+# LT-558: the lab harness (examples/lab_run.rs) runs the real collector.
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
