@@ -182,3 +182,31 @@ firing silently.
 **Answered 2026-09-29:** "keep D-023. No scheduled re-discovery — the app
 never touches a device unless I press Collect. Drop LT-551." LT-551 is in
 Declined.
+
+### Q-020 — FortiOS paging is turned off by a configuration change
+Raised 2026-09-29 by the lab run (LT-558). To read a FortiGate or
+FortiSwitch without `--More--`, the session reads `get system console`, and
+if the output mode is not `standard` it sends `config system console` / `set
+output standard` / `end`, and puts the original back on close — the way
+netmiko and scrapli both do it. That is a write to the device's
+configuration, however brief and however restored, from a tool whose every
+collection is otherwise read-only (LT-522, LT-556, LT-557). If the session
+dies between the two, the console is left at `standard`. The allowlist
+passes it only because the steps are the session's own, not collection
+commands. **What would unblock it:** the operator's ruling — keep it (and
+say so in D-060's read-only wording), or never change it: read with the
+pager on and answer each `--More--` with a space, as the terminal does
+(slower, and a different code path per OS), or refuse a FortiGate whose
+console is not already `standard` and say how to set it.
+
+### Q-021 — A FortiGate's firewall policy over SSH, or only through its API
+Raised 2026-09-29 by the lab run. The FortiOS catalog reads policies, VIPs,
+address objects, zones, IPsec and SD-WAN only through the REST API
+(`parser: api`), so a FortiGate collected over SSH alone has no policy, and
+every verdict through it is "Undetermined" — LT-532's acceptance cannot be
+met on the lab without one or the other. **What would unblock it:** either
+a read-only REST API token for the lab FortiGate (an API admin with a
+read-only profile, stored in the vault as an `api` credential, LT-518), or
+the operator's go-ahead for a Coreview reader of `show firewall policy`
+and its objects over SSH — which needs the lab's reply captured first
+(CLAUDE.md: parsers are written against real output).

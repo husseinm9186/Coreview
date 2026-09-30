@@ -105,6 +105,15 @@ answer stays outside the repository (D-027) — a fixture made from it is
 reduced to invented names and documentation addresses first. Read-only, as
 every collection (LT-522, LT-556, LT-557). No OS is flipped from what this
 finds (LT-521) — the results go to the operator.
+**Where it stands, 2026-09-29.** Three runs; the third collected all three
+boxes (FortiGate 14 commands, FortiSwitch 6, Catalyst 32). Eleven bugs found
+and fixed with a failing test each, LT-560–LT-570 (LT-569 short of drawing the box).
+`lab_run --replay` rereads a run's stored replies through today's code, and
+the fixes after run 3 were checked that way — not yet by a fresh run: after
+run 3 this session's permission settings blocked logging in to the lab. Open:
+LT-571 (policy, Q-021), Q-020 (paging), the FortiGate's drawing (LT-569),
+the shadow report and the traceroute comparison for LT-531, which want a
+fresh run.
 
 ### LT-559 — The EVE-NG lab: Aruba, Nexus, IOS-XE, IOS-XR, ASA, FMC and the rest — 2026-09-29
 **Source:** the same message: "I will turn on the Eve-NG lab so you can
@@ -112,11 +121,12 @@ validate the other devices like aruba, cisco Nexus, IOS XE and XR, asa,
 fmc, etc". Waits on the lab being on; then the same run and rules as LT-558
 per platform, the FMC through LT-541's collector.
 
-
-
-
-
-
+### LT-571 — A FortiGate's firewall policy when there is no API token — 2026-09-29
+**Found by the lab run.** Policies, VIPs, addresses, zones, IPsec and SD-WAN
+are read only through FortiOS's REST API, so a FortiGate collected over SSH
+alone has none, and every verdict through it is "Undetermined" (LT-532).
+**Blocked on Q-021:** a read-only API token for the lab FortiGate, or the
+operator's go-ahead and a capture for a reader over SSH.
 
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
@@ -13263,4 +13273,5 @@ Measured 2026-08-30: 400 devices open in ~2s, drag at ~15fps, pan at ~8fps;
 120 devices at 33 and 18. The cost is ~60 DOM elements per device.
 `onlyRenderVisibleElements` was tried and rejected (D-010). Not worth doing
 until someone actually has a diagram that large.
+
 
