@@ -296,6 +296,14 @@ check("the result lists what is wrong", JSON.stringify(findings) === JSON.string
   check("a heading sorts its column", (await rowsOf())[0].includes("Gi0/5"), JSON.stringify(await rowsOf()));
   await attached.locator(".cv-th-sort", { hasText: "Port" }).click();
   check("and again the other way", (await rowsOf())[0].includes("Gi0/6"), JSON.stringify(await rowsOf()));
+  // LT-592: open, they are listed and not added; ticked, they are added.
+  const addNow = async () => page.locator("button").filter({ hasText: /to diagram$/ }).last().innerText();
+  check("opening the list does not add them", !/\+ 2/.test(await addNow()), await addNow());
+  await attached.locator('[data-field="add-attached"] input').check();
+  await page.waitForTimeout(150);
+  check("the tick adds them", /\+ 2 to diagram/.test(await addNow()), await addNow());
+  await attached.locator('[data-field="add-attached"] input').uncheck();
+  await page.waitForTimeout(150);
   // Closed again, so nothing below draws them.
   await attached.locator("summary").click();
   await page.waitForTimeout(150);

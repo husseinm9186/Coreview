@@ -282,6 +282,8 @@ export function CrawlPanel({
   // asked for. A flat /24 can hold two hundred, and drawing them all buries
   // the topology the diagram exists to show.
   const [showAttached, setShowAttached] = useState(false);
+  // LT-592: looking at the devices seen on switch ports is not choosing them.
+  const [addAttached, setAddAttached] = useState(false);
   const [attachedVendor, setAttachedVendor] = useState('');
   const [attachedSubnet, setAttachedSubnet] = useState('');
   const [attachedPort, setAttachedPort] = useState('');
@@ -733,8 +735,8 @@ export function CrawlPanel({
 
     const topo = buildTopology(result, meta.id, {
       origin: { x: 80, y: bottom + 80 },
-      attached: showAttached ? chosenAttached : [],
-      inferred: showAttached ? inferred : [],
+      attached: addAttached ? chosenAttached : [],
+      inferred: addAttached ? inferred : [],
       // A second crawl updates the diagram rather than drawing another copy
       // of the network beside it, so re-running discovery is something you can
       // do weekly instead of once. Scoped to the active page (LT-094).
@@ -1328,7 +1330,7 @@ export function CrawlPanel({
             <button type="button" className="cv-btn cv-btn-small cv-btn-start"
               onClick={build} disabled={!picked.length}>
               Add {picked.length}
-              {showAttached && chosenAttached.length > 0 ? ` + ${chosenAttached.length}` : ''} to diagram
+              {addAttached && chosenAttached.length > 0 ? ` + ${chosenAttached.length}` : ''} to diagram
             </button>
             <button type="button" className="cv-btn cv-btn-small" onClick={backUp}
               disabled={!backupable.length}
@@ -1438,9 +1440,14 @@ export function CrawlPanel({
             — see below.
           </p>
 
+          <label className="cv-check" data-field="add-attached">
+            <input type="checkbox" checked={addAttached} onChange={(e) => setAddAttached(e.target.checked)} />
+            {t('discover.addAttached')}
+          </label>
+
           <p className="cv-help">
-            <strong>{chosenAttached.length}</strong> of {attachedTotal} match. They will be added
-            with the devices ticked above, each hanging off the port it was learned on.
+            <strong>{chosenAttached.length}</strong> of {attachedTotal} match.{' '}
+            {addAttached ? t('discover.attachedAdded') : t('discover.attachedNotAdded')}
             {/* LT-339: and one place each. A device learned by three switches
                 is drawn under the one that sees it on the quietest port. */}
           </p>

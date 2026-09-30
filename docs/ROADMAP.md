@@ -161,15 +161,6 @@ one device, and the next device is collected with a fresh one, in under
 20 s), and the Discover panel says "last answered: <command>". Stays here
 until the stall on the operator's machine is found.
 
-
-### LT-592 — **bug** "Add to diagram" always added every device seen on a switch port — reported 2026-09-30
-**Source:** the same report: the classic crawler "doesn't give me the
-option to only add the infrastructure or the ones i selected it wants to
-add all devices + whats seen … it wants to add 7+37". The 37 devices seen
-on switch ports (IoT, phones) are filtered by maker, subnet and port, but
-cannot be left out as a whole. **Fix:** a tick, "Also add the devices seen
-on switch ports", beside the button; unticked, only the devices ticked in
-the table are added.
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
 confirmed by the operator on accepting P1 (2026-09-29): "embeddable
@@ -657,6 +648,16 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-592 — **bug** "Add to diagram" always added every device seen on a switch port — reported 2026-09-30, fixed the same day
+**Source:** the same report: the classic crawler "doesn't give me the
+option to only add the infrastructure or the ones i selected it wants to
+add all devices + whats seen … it wants to add 7+37". The 37 devices seen
+on switch ports (IoT, phones) are filtered by maker, subnet and port, but
+cannot be left out as a whole. **Fix:** a tick, "Also add the devices seen
+on switch ports", beside the button; unticked, only the devices ticked in
+the table are added.
+**Run:** `e2e/crawling.mjs` — opening the list leaves the count at the ticked devices, the tick adds them; `e2e/join.mjs` ticks it where it adds them; `endtoend.mjs` and `discover.mjs` unchanged and passing.
 
 ### LT-591 — **bug** A console window opened beside the app while the collector ran — reported 2026-09-30, fixed the same day
 **Source:** the first screenshot: an empty console titled

@@ -188,6 +188,9 @@ const attachedToggle = page.locator(".cv-attached summary").first();
 if (await attachedToggle.count()) {
   await attachedToggle.click();
   await page.waitForTimeout(400);
+  // LT-592: opening the list is looking; the tick is choosing.
+  await page.locator('[data-field="add-attached"] input').first().check();
+  await page.waitForTimeout(200);
 }
 
 const addToDiagram = page.locator("button").filter({ hasText: /^Add .* to diagram$/ }).last();
