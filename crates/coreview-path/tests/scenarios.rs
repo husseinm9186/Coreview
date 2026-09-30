@@ -956,3 +956,54 @@ fn a_vpn_route_crosses_the_core_to_the_remote_pe_and_its_vrf() {
     assert_eq!(p.hops[1].vrf, "CUSTOMER-B", "the remote VRF found by route-target, whatever its name");
     assert!(matches!(p.ending, Ending::Delivered { .. }));
 }
+
+// ------------------------------------------- management addresses (LT-570)
+
+/// The lab's shape: a FortiGate is the LAN's gateway; two switches carry the
+/// LAN and each has a management address in it. One has a default route to
+/// the FortiGate, the other only its connected subnet. The endpoint's MAC
+/// is learned on an edge port of the second.
+#[test]
+fn a_switch_with_only_a_management_address_in_the_subnet_is_not_its_gateway() {
+    let devices = vec![
+        device(
+            "FGT1",
+            "192.0.2.1",
+            "fortios",
+            "firewall",
+            "FAKEFGT0002",
+            vec![
+                ("ip_address", vec![addr("internal", "192.0.2.1", "24"), addr("wan2", "203.0.113.2", "24"), addr("vlan20", "198.51.100.1", "24")]),
+                ("route", vec![route("0.0.0.0", "0", "S", "203.0.113.1", "wan2"), route("192.0.2.0", "24", "C", "", "internal"), route("203.0.113.0", "24", "C", "", "wan2"), route("198.51.100.0", "24", "C", "", "vlan20")]),
+                ("arp", vec![arp("192.0.2.50", "0000.0000.0050", "internal")]),
+            ],
+        ),
+        device(
+            "SW1",
+            "192.0.2.7",
+            "cisco_ios",
+            "switch",
+            "FAKESW0007",
+            vec![
+                ("ip_address", vec![addr("Vlan1", "192.0.2.7", "24")]),
+                // IOS lists IPv6 multicast as a local route to Null0 whether or not IPv6 is in use.
+                ("route", vec![route("0.0.0.0", "0", "S", "192.0.2.1", ""), route("192.0.2.0", "24", "C", "", "Vlan1"), route("FF00::", "8", "L", "", "Null0")]),
+            ],
+        ),
+        device(
+            "FSW1",
+            "192.0.2.203",
+            "fortiswitch",
+            "switch",
+            "FAKEFSW0203",
+            vec![
+                ("ip_address", vec![addr("internal", "192.0.2.203", "24")]),
+                ("route", vec![route("192.0.2.0", "24", "C", "", "internal")]),
+                ("mac_table", vec![mac("1", "0000.0000.0050", "port13")]),
+            ],
+        ),
+    ];
+    let f = run(&devices, &req("192.0.2.50", "198.51.100.9")).forward;
+    assert_eq!(f.source.as_ref().map(|s| s.starts.clone()), Some(vec!["FGT1".to_string()]), "{:?}", f.source);
+    assert_eq!(routers(&f.paths[0]), vec!["FGT1"], "{:?}", f.paths);
+}

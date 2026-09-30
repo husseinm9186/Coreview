@@ -969,6 +969,23 @@ fn locate(ctx: &Ctx, from: &str, vrf: Option<&str>) -> Result<(Vec<Start>, Sourc
     if gws.is_empty() {
         return Err(format!("No collected device has {src}'s subnet as attached, so where it enters the network is not known."));
     }
+    // LT-570: a box whose only attached subnet is the source's — a switch's
+    // management address — can carry the packet nowhere else. It is a host
+    // on the subnet, not its gateway, while another candidate routes more.
+    // Counted in the source's family, and not the Null0 routes IOS lists for
+    // IPv6 multicast whether or not IPv6 is in use.
+    let routes_more = |i: usize| {
+        let nets: std::collections::BTreeSet<String> = net.boxes[i]
+            .routes
+            .iter()
+            .filter(|r| r.is_connected() && !r.net.is_host() && r.net.v6 == src.is_ipv6() && !r.next_hops.iter().any(|h| h.iface.as_deref().is_some_and(is_null)))
+            .map(|r| r.net.to_string())
+            .collect();
+        nets.len() > 1
+    };
+    if gws.iter().any(|(i, _, _)| routes_more(*i)) {
+        gws.retain(|(i, _, _)| routes_more(*i));
+    }
     let src_mac = net.boxes.iter().find_map(|b| b.arp_for(src).map(|a| a.mac.clone()));
     let mut how = String::new();
     // FHRP: the active router for the subnet's virtual address.

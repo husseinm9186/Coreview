@@ -116,6 +116,8 @@ per platform, the FMC through LT-541's collector.
 
 
 
+
+
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
 confirmed by the operator on accepting P1 (2026-09-29): "embeddable
@@ -603,6 +605,18 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-570 — **bug** A switch's management address made it the first router of a path — 2026-09-29, fixed the same day
+**Found by the lab run.** Tracing from an endpoint on the lab's LAN began
+at the FortiSwitch and stopped there, "no route": the switch's management
+address is in the endpoint's subnet, so it counted as a gateway beside the
+FortiGate, and it won the tie as the one that learns the endpoint's MAC on
+an edge port. A box whose only attached subnet is the source's cannot carry
+the packet anywhere else — it is a host on that subnet, not its gateway.
+**Fix:** such a box is set aside when another candidate routes for more
+than that one subnet; if every candidate is like it, all are kept as
+before.
+**Run:** a scenario test of the lab's shape (failed, passes now), extended when the replay showed IOS's IPv6 `FF00::/8 via Null0` line counting as a second subnet — the count is now in the source's family and leaves Null0 out. On the lab replay, traces from the LAN start at the FortiGate and leave by its WAN.
 
 ### LT-569 — **bug** A collected device with no MAC of its own was never placed — 2026-09-29, fixed the same day
 **Found by the lab run.** The FortiGate gives no MAC for its interfaces
