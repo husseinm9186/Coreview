@@ -164,13 +164,6 @@ waited out the device in progress, however long. **Fix:** Stop ends the
 device in progress at once and kills its sidecar; the run finishes
 cancelled with what it had.
 
-### LT-591 — **bug** A console window opened beside the app while the collector ran — reported 2026-09-30
-**Source:** the first screenshot: an empty console titled
-`C:\Program Files\Coreview\sidecar…` beside the app. The sidecar's
-Python is a console program, and Windows gives a console program started
-from a windowed one a window of its own unless told not to. **Fix:** it is
-started with no window (`CREATE_NO_WINDOW`).
-
 ### LT-592 — **bug** "Add to diagram" always added every device seen on a switch port — reported 2026-09-30
 **Source:** the same report: the classic crawler "doesn't give me the
 option to only add the infrastructure or the ones i selected it wants to
@@ -666,6 +659,14 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-591 — **bug** A console window opened beside the app while the collector ran — reported 2026-09-30, fixed the same day
+**Source:** the first screenshot: an empty console titled
+`C:\Program Files\Coreview\sidecar…` beside the app. The sidecar's
+Python is a console program, and Windows gives a console program started
+from a windowed one a window of its own unless told not to. **Fix:** it is
+started with no window (`CREATE_NO_WINDOW`).
+**Run:** compiled here only for Linux, where the line is left out; the same call already hides `ping.exe`'s and `tracert.exe`'s windows. CI's Windows build compiles it; the operator's next run shows whether the window is gone.
 
 ### LT-590 — **bug** A collection's header read "undefined · Collecting…" — reported 2026-09-30, fixed the same day
 **Source:** the first screenshot of the same report. The header names a

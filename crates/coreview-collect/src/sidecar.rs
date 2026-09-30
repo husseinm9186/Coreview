@@ -117,7 +117,12 @@ impl Sidecar {
     /// answer within ten seconds — a wrong interpreter path shows up here,
     /// not on the first device.
     pub async fn spawn(location: &SidecarLocation) -> Result<Sidecar, SidecarError> {
-        let mut child = Command::new(&location.python)
+        let mut command = Command::new(&location.python);
+        // LT-591: the interpreter is a console program; started from a windowed
+        // app, Windows gives it a console window of its own unless told not to.
+        #[cfg(windows)]
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        let mut child = command
             .arg("-m")
             .arg("coreview_sidecar")
             .current_dir(&location.cwd)
