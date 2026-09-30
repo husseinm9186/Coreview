@@ -649,6 +649,17 @@ I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
 
+### LT-593 — **bug** The Windows build ran a command called "m" — reported 2026-09-30, fixed the same day
+**Source:** the operator, 2026-09-30, pasting the Windows bundle's log:
+"'m' is not recognized as an internal or external command". The SBOM
+runner `scripts/sbom/cargo-auditable-runner.cmd` is checked out with Unix
+line endings (`.gitattributes`: `* text=auto eol=lf`) and has non-ASCII
+text in its `rem` lines; `cmd.exe` misreads such a file and ran a fragment
+of one. The build went on, so this time nothing was lost — the next line
+it misreads could be the one that matters. **Fix:** batch files are checked
+out with CRLF and kept ASCII, and a test holds both.
+**Run:** `src/lib/batchFiles.test.ts` failed on the runner's `…` and passes; `.gitattributes` checks out `*.cmd` and `*.bat` with CRLF (`git ls-files --eol`: `w/crlf`). CI's Windows build runs it next.
+
 ### LT-592 — **bug** "Add to diagram" always added every device seen on a switch port — reported 2026-09-30, fixed the same day
 **Source:** the same report: the classic crawler "doesn't give me the
 option to only add the infrastructure or the ones i selected it wants to

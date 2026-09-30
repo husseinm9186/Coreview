@@ -16,3 +16,8 @@
 # Vendored ntc-templates data stays byte-identical to upstream: TextFSM fixtures
 # are matched as captured, so no line-ending normalisation (LT-509).
 resources/templates/** -text
+
+# LT-593: cmd.exe misreads a batch file with Unix line endings — the
+# Windows build once ran a command called "m", a piece of a `rem` line.
+*.cmd text eol=crlf
+*.bat text eol=crlf
