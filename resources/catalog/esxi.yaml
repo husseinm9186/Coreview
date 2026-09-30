@@ -30,7 +30,7 @@ session:
   default_privilege: exec
   failed_when_contains:
     - "Error:"
-    - "not found"
+    - ": not found"
   on_close:
     - exit
 role_hint:

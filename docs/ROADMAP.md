@@ -602,6 +602,15 @@ I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
 
+### LT-568 — **bug** A command a FortiGate did not know was stored as answered — 2026-09-29, fixed the same day
+**Found by the lab run.** `diagnose ip address list` answers `Unknown
+action 0` on 7.6 and came back `ok`. The catalogs' `failed_when_contains`
+lists were never given to the session — it used only Scrapli's own, and the
+FortiOS driver's has neither `Unknown action` nor `command parse error`.
+**Fix:** the sidecar passes the catalog's list to each command; FortiOS and
+FortiSwitchOS name their refusals.
+**Run:** a sidecar test with FortiOS's reply (failed, passes now); the sidecar's 603 tests. ESXi's own "not found" narrowed to busybox's ": not found" in the same change, since the list now takes effect.
+
 ### LT-567 — **bug** The FortiGate 7.6 `get system ha status` was unread — 2026-09-29, fixed the same day
 **Found by the lab run.** 7.6 writes `Group Name:` and `Group ID:` where
 earlier releases wrote `Group:`, and ntc's template ends in an error on the

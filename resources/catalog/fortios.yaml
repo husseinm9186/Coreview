@@ -23,6 +23,9 @@ fingerprint:
 session:
   source: scrapli_community scrapli_community.fortinet.fortios.sync_driver.FortinetFortiOSDriver
   prompt_pattern: "[\\w_-]+ (\\([\\w-]+\\) )?[$#]"
+  failed_when_contains:
+    - "Unknown action"
+    - "command parse error"
   on_close:
     - exit
   banner:

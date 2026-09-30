@@ -319,6 +319,11 @@ class Session:
         r = self.conn.send_command(cmd, timeout_ops=timeout)
         return r.result
 
+    def _failed_when(self) -> list[str]:
+        """Scrapli's refusals for the platform and the catalog's own (LT-568)."""
+        ours = [m for m in self.spec.get("failed_when_contains") or [] if m]
+        return list(dict.fromkeys(list(getattr(self.conn, "failed_when_contains", None) or []) + ours))
+
     def run(self, cmd: str, timeout_ms: int) -> tuple[str, str, int]:
         """(status, raw, duration_ms) for one collection command."""
         v = verdict(cmd)
@@ -326,7 +331,7 @@ class Session:
             raise SessionError("refused", v)
         started = time.monotonic()
         try:
-            r = self.conn.send_command(cmd, timeout_ops=max(1, timeout_ms) / 1000)
+            r = self.conn.send_command(cmd, timeout_ops=max(1, timeout_ms) / 1000, failed_when_contains=self._failed_when())
         except ScrapliTimeout:
             return "timeout", "", int((time.monotonic() - started) * 1000)
         except (ScrapliConnectionError, OSError) as e:

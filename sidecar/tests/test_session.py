@@ -32,3 +32,24 @@ def test_the_fingerprint_session_turns_the_pager_off_first():
     s.conn.send_command = lambda cmd, **kw: (sent.append(cmd), R())[1]
     s.open()
     assert sent and sent[0] == "terminal length 0", sent
+
+
+def test_a_refusal_the_catalog_names_is_not_stored_as_answered():
+    # LT-568: FortiOS 7.6 answers `diagnose ip address list` with "Unknown action 0",
+    # which scrapli's FortiOS driver does not list; the catalog's list was never passed on.
+    spec = {"failed_when_contains": ["Unknown action", "command parse error"]}
+    s = Session("t", "192.0.2.1", 22, "fortios", AUTH, spec, TIMEOUTS, lambda *a, **k: None)
+
+    class R:
+        def __init__(self, result, markers):
+            self.result = result
+            self.failed = any(m in result for m in markers)
+
+    def send(cmd, **kw):
+        # What scrapli does: the markers passed, or the driver's own when none are.
+        markers = kw.get("failed_when_contains")
+        return R("Unknown action 0\n", s.conn.failed_when_contains if markers is None else markers)
+
+    s.conn.send_command = send
+    status, _, _ = s.run("diagnose ip address list", 5000)
+    assert status == "unsupported"
