@@ -96,8 +96,13 @@ export const backupInput = (input: object) => {
 };
 
 /** `CollectionInput` in `src-tauri/src/collection.rs` (LT-514). */
-export const collectionInput = (o: object) =>
-  pickAll(o, ['projectId', 'targets', 'port', 'osHint', 'roleOverride', 'planOnly', 'lightOnly', 'credentialId', 'keepDiagnostic', 'connectTimeoutSecs', 'authTimeoutSecs', 'apiCredentialId', 'fmcHost', 'snmpCredentialId']);
+export const collectionInput = (o: object) => {
+  const i = o as Obj;
+  const out = pickAll(i, ['projectId', 'targets', 'port', 'osHint', 'roleOverride', 'planOnly', 'lightOnly', 'credentialId', 'keepDiagnostic', 'connectTimeoutSecs', 'authTimeoutSecs', 'apiCredentialId', 'fmcHost', 'snmpCredentialId', 'follow']);
+  // LT-576: how far to follow neighbours.
+  if (i.follow && typeof i.follow === 'object') out.follow = pickAll(i.follow, ['maxHops', 'maxDevices', 'subnetLimit']);
+  return out;
+};
 
 /** `ViewOptions` in `coreview-topology/src/crawl_view.rs` (LT-527). */
 export const topologyViewOptions = (o: object) => pickAll(o, ['collapseBundles', 'collapseStacks', 'placeholders', 'minConfidence', 'vlan', 'vrf']);

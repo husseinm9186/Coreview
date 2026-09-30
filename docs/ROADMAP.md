@@ -131,23 +131,6 @@ page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
 a layout run on an existing page — so the same input can be laid out again
 in a test.
 
-### LT-576 — The new collector's work does not reach "Discover devices" or the diagram — 2026-09-29
-**Source:** the operator, 2026-09-29: "built a lot and added a lot but i
-don't see any enhancements whats going on?" Two reasons, from his own
-diagnostics. His Collect runs (16:09–16:15 CDT) were on an installer built
-before LT-560, so every FortiGate and FortiSwitch session failed to open —
-five of seven runs empty; today's code collects all three lab boxes in 15 s.
-And the catalog-driven collector, readers, topology builder and path
-builder (LT-507) are reached only from the Collect tab; "Discover devices"
-still runs the older crawler, which sends Cisco commands to a FortiSwitch,
-and it is that crawler's result the diagram is drawn from. **Ruled 2026-09-30:** "yes go ahead" — move them now (D-062).
-**Acceptance:** "Discover devices" collects from its seeds with the
-catalog-driven collector and follows CDP/LLDP neighbours within its hop,
-device and subnet limits; its result is the P2 topology, handed to the same
-review screen the crawl's result goes to, and from there to the diagram.
-The older crawler stays selectable on the panel until the new one covers
-what it does; it is not deleted.
-
 ### LT-577 — Tracert from a device shows each hop as it arrives, and keeps them on a timeout — 2026-09-30
 **Source:** the fix proposed under LT-574 and approved with "yes go ahead"
 (2026-09-30). **Acceptance:** while a device traces, the tab shows the hops
@@ -738,6 +721,24 @@ API collector always used 443. **Fix:** a saved API login carries the HTTPS
 port (the vault form asks for it; blank is 443), and the collector calls
 `host:port`, pinning the certificate against that port.
 **Run:** a FortiGate collected through `collect_for` against a local TLS server on a non-443 port — failed with the port ignored, passes; the lab's FortiGate answered on 13443 (43 interfaces, 39 policies, 150 addresses).
+
+### LT-576 — The new collector's work does not reach "Discover devices" or the diagram — 2026-09-29, done 2026-09-30
+**Source:** the operator, 2026-09-29: "built a lot and added a lot but i
+don't see any enhancements whats going on?" Two reasons, from his own
+diagnostics. His Collect runs (16:09–16:15 CDT) were on an installer built
+before LT-560, so every FortiGate and FortiSwitch session failed to open —
+five of seven runs empty; today's code collects all three lab boxes in 15 s.
+And the catalog-driven collector, readers, topology builder and path
+builder (LT-507) are reached only from the Collect tab; "Discover devices"
+still runs the older crawler, which sends Cisco commands to a FortiSwitch,
+and it is that crawler's result the diagram is drawn from. **Ruled 2026-09-30:** "yes go ahead" — move them now (D-062).
+**Acceptance:** "Discover devices" collects from its seeds with the
+catalog-driven collector and follows CDP/LLDP neighbours within its hop,
+device and subnet limits; its result is the P2 topology, handed to the same
+review screen the crawl's result goes to, and from there to the diagram.
+The older crawler stays selectable on the panel until the new one covers
+what it does; it is not deleted.
+**Run:** `coreview-collect::follow` with five tests (hops, limits, subnets, a device's other addresses, neighbours found by ARP and routers by next hop); against the lab through `lab_run --follow 2` from the Catalyst alone, which found the FortiGate by its default route and the FortiSwitch by its chassis MAC in the Catalyst's ARP, and drew the FortiSwitch–Catalyst link at 1.0; `e2e/crawling.mjs` (the collector the default, its run started with the panel's limits, its progress, the topology handed to the table) and `e2e/endtoend.mjs` with the classic crawler chosen. **What shipped differs:** a range seed (`198.51.100.0/30`) is refused by the collector with a pointer to Ping sweep or the classic crawler — it visits one device at a time. The app's own command was not run against the lab; the crate code it calls was.
 
 ### LT-571 — A FortiGate's firewall policy when there is no API token — 2026-09-29, done 2026-09-30
 **Found by the lab run.** Policies, VIPs, addresses, zones, IPsec and SD-WAN

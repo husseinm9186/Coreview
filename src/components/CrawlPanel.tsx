@@ -257,6 +257,10 @@ export function CrawlPanel({
   const [snmpRows, setSnmpRows] = useState<SnmpRow[]>([blankSnmpRow()]);
 
   const [running, setRunning] = useState(false);
+  // LT-576 (D-062): the catalog-driven collector, following neighbours, by
+  // default; the older crawler stays a choice until the new one covers it.
+  const [engine, setEngine] = useState<'collector' | 'classic'>('collector');
+  const collectionRun = useRef<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [pushMessage, setPushMessage] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -355,6 +359,43 @@ export function CrawlPanel({
   }, [restored, seed, subnets, port, maxHops, credentialId, snmpOpen, snmpRows]);
 
   const seenKeys = useRef<Set<string>>(new Set());
+
+  // LT-576: the collector's progress, and its topology when the run ends.
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    void ipc.onCollectionEvent((e) => {
+      // Only the run this panel started: the Collect tab starts its own.
+      if (e.kind === 'started') {
+        if (collectionRun.current === 'pending') collectionRun.current = e.runId;
+        return;
+      }
+      if (!collectionRun.current || e.runId !== collectionRun.current) return;
+      if (e.kind === 'device') setStatus(t('discover.collecting', { host: e.host }));
+      if (e.kind === 'deviceDone' && e.failure) setLiveFailed((n) => n + 1);
+      if (e.kind === 'failed') {
+        setRunning(false);
+        collectionRun.current = null;
+        setProblem(e.error);
+      }
+      if (e.kind === 'finished') {
+        const runId = e.runId;
+        collectionRun.current = null;
+        void ipc
+          .collectionTopology(runId, { collapseBundles: true, collapseStacks: true, placeholders: true, minConfidence: 0 })
+          .then((topo) => {
+            const built = { devices: topo.devices, notVisited: topo.notVisited };
+            seenKeys.current = new Set();
+            setRows(resultRows(built, seenKeys.current));
+            setFailures([]);
+            setResult(built);
+            setStatus(t('discover.collected', { devices: t('plural.device', { count: e.devices }), failed: e.failed, run: runId }));
+          })
+          .catch((err: unknown) => setProblem(err instanceof Error ? err.message : String(err)))
+          .finally(() => setRunning(false));
+      }
+    }).then((f) => { off = f; });
+    return () => off?.();
+  }, []);
 
   // LT-527: a topology built from a collection run opens here, in the same
   // table and review a crawl fills — the way saved SNMP walks are read.
@@ -488,6 +529,36 @@ export function CrawlPanel({
     setResult(null);
     setRunning(true);
     seedRef.current = seed.trim();
+    if (engine === 'collector') {
+      const projectId = useStore.getState().meta?.id;
+      if (!projectId) {
+        setRunning(false);
+        setProblem(t('discover.needProject'));
+        return;
+      }
+      collectionRun.current = 'pending';
+      try {
+        const runId = await ipc.startCollection(
+          {
+            projectId,
+            targets: seed.trim(),
+            port,
+            planOnly: false,
+            lightOnly: false,
+            credentialId: credentialId ?? undefined,
+            keepDiagnostic: supportCapture,
+            follow: { maxHops, maxDevices: 500, subnetLimit: subnets.join(', ') || undefined },
+          },
+          credentialId ? undefined : { username, password, enablePassword: enablePassword || undefined },
+        );
+        if (collectionRun.current === 'pending') collectionRun.current = runId;
+      } catch (err) {
+        collectionRun.current = null;
+        setRunning(false);
+        setProblem(err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
     try {
       await ipc.startCrawl(
         {
@@ -956,8 +1027,16 @@ export function CrawlPanel({
       </div>
 
       <div className="cv-discover-run">
+        <label className="cv-field cv-field-narrow" title={t('discover.engineHelp')}>
+          <span>{t('discover.engine')}</span>
+          <select className="cv-input" data-field="discover-engine" value={engine} disabled={running}
+            onChange={(e) => setEngine(e.target.value as 'collector' | 'classic')}>
+            <option value="collector">{t('discover.engineCollector')}</option>
+            <option value="classic">{t('discover.engineClassic')}</option>
+          </select>
+        </label>
         {running ? (
-          <button type="button" className="cv-btn cv-btn-stop" onClick={() => void ipc.cancelCrawl()}>
+          <button type="button" className="cv-btn cv-btn-stop" onClick={() => void (engine === 'collector' ? ipc.cancelCollection() : ipc.cancelCrawl())}>
             Stop
           </button>
         ) : (

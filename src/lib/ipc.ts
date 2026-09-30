@@ -453,6 +453,8 @@ export type CollectionInput = {
   fmcHost?: string;
   /** LT-549: a saved SNMP login, used only where SSH could not open a session. */
   snmpCredentialId?: string;
+  /** LT-576: follow CDP/LLDP neighbours from the targets, as Discover devices does. */
+  follow?: { maxHops: number; maxDevices: number; subnetLimit?: string };
 };
 
 export type CollectionRunSummary = {

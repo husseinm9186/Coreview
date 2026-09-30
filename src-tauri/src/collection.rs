@@ -54,6 +54,20 @@ pub struct CollectionInput {
     /// LT-549: a saved SNMP login, used only for a device whose SSH session
     /// could not be opened.
     pub snmp_credential_id: Option<String>,
+    /// LT-576: follow CDP/LLDP neighbours from the targets, as "Discover
+    /// devices" does. Absent, only the targets are collected.
+    pub follow: Option<FollowInput>,
+}
+
+/// LT-576: how far a collection follows neighbours from its seeds.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FollowInput {
+    pub max_hops: u32,
+    pub max_devices: usize,
+    /// `192.0.2.0/24`, several separated by commas: only neighbours inside
+    /// one of them are followed.
+    pub subnet_limit: Option<String>,
 }
 
 /// One event on `coreview://collection`.
@@ -396,6 +410,11 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
     if targets.len() > 500 {
         return Err("A collection takes at most 500 devices at a time.".into());
     }
+    // LT-576: the collector visits one device at a time, so a range would be
+    // hundreds of timeouts in a row.
+    if let Some(range) = targets.iter().find(|t| t.contains('/')) {
+        return Err(format!("{range} is a range; the collector takes device addresses. Sweep the range first (Ping sweep), or choose the classic crawler."));
+    }
     let project_id = input.project_id.trim().to_string();
     if project_id.is_empty() {
         return Err("A collection belongs to a project; open one first.".into());
@@ -461,6 +480,16 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
         engine: Some(rust_engine(&app)?),
         shadow: shadow_on(&state, &project_id),
     };
+    // LT-576: following neighbours, when asked; otherwise the targets alone.
+    let following = input.follow.is_some();
+    let limits = match &input.follow {
+        Some(f) => coreview_collect::follow::Limits {
+            max_hops: f.max_hops.min(16),
+            max_devices: f.max_devices.clamp(1, 500),
+            subnets: f.subnet_limit.as_deref().unwrap_or("").split([',', ';', ' ', '\n']).map(str::trim).filter(|s| !s.is_empty()).map(coreview_collect::follow::parse_subnet).collect::<Result<Vec<_>, _>>()?,
+        },
+        None => coreview_collect::follow::Limits { max_hops: 0, max_devices: targets.len(), subnets: Vec::new() },
+    };
     let port = input.port;
     let os_hint = input.os_hint.clone().filter(|s| !s.trim().is_empty());
     let role_override = input.role_override.clone().filter(|s| !s.trim().is_empty());
@@ -483,14 +512,16 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
         };
         let mut devices = 0usize;
         let mut failed = 0usize;
-        let total = targets.len() as u64;
         let mut cancelled = false;
-        for (i, host) in targets.iter().enumerate() {
+        let mut frontier = coreview_collect::follow::Frontier::new(&targets, limits);
+        while let Some((host, hop)) = frontier.next_device() {
+            let host = &host;
             if token.is_cancelled() {
                 cancelled = true;
                 break;
             }
-            progress.set(format!("Collecting {host}"), i as u64, Some(total));
+            let total = (devices + 1 + frontier.waiting()) as u64;
+            progress.set(format!("Collecting {host}"), devices as u64, Some(total));
             let device_id = device_id_of(host);
             let _ = app2.emit("coreview://collection", &CollectionEvent::Device { run_id: run_id2.clone(), device_id: device_id.clone(), host: host.clone(), phase: "connecting".into() });
             let sink = Emit { app: app2.clone(), run_id: run_id2.clone(), device_id: device_id.clone() };
@@ -519,6 +550,10 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
                 run.log.push(format!("host key seen for the first time and now remembered: {key}"));
             }
             let commands = persist_device(&state_arc, &run_id2, &run, diagnostic.as_deref(), &secrets).unwrap_or(0);
+            if following {
+                let (own, neighbours) = coreview_collect::follow::addresses_of_run(&run);
+                frontier.learn(hop, &own, &neighbours);
+            }
             devices += 1;
             if run.failure.is_some() {
                 failed += 1;
@@ -533,7 +568,7 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
         if let Ok(conn) = state_arc.db.lock() {
             let _ = cdb::finish_run(&conn, &run_id2, if cancelled { "cancelled" } else { "finished" });
         }
-        progress.set("Finished", total, Some(total));
+        progress.set("Finished", devices as u64, Some(devices as u64));
         let _ = app2.emit("coreview://collection", &CollectionEvent::Finished { run_id: run_id2, devices, failed, cancelled });
     });
     Ok(run_id)

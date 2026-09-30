@@ -1257,3 +1257,19 @@ choice below is said in the result where it applies, not only here.
 connection (it reported the reply to an allowed flow as denied, which is
 what the first fixture showed); reading a policy verdict as "allow" when
 an object is unresolved; a live mode that sends free-form commands.
+
+### D-062 — "Discover devices" runs on the catalog-driven collector — 2026-09-30
+**Decision:** the Discover devices panel collects with the catalog-driven
+collector (D-060, LT-507) by default and follows CDP/LLDP neighbours hop by
+hop within the panel's limits; its result is P2's topology (LT-527), handed
+to the review screen and the diagram as the Collect tab's already is. The
+older crawler (`coreview-discover::crawl`) stays behind a choice on the
+panel until the new path covers what it does.
+**Rejected:** waiting for LT-507's later phases before the main workflow
+changes; deleting the older crawler now.
+**Why:** the operator, 2026-09-30, on being told the new work was reachable
+only from the Collect tab: "yes go ahead". Every improvement since D-060 —
+readers, topology, paths — was invisible in the workflow he uses, and the
+older crawler sends Cisco commands to a FortiSwitch. Keeping it selectable
+costs nothing and leaves a way back while the new path meets the rest of
+his estate (LT-559).

@@ -12,5 +12,10 @@
   "authTimeoutSecs": 20,
   "apiCredentialId": "cred-api",
   "fmcHost": "192.0.2.5",
-  "snmpCredentialId": "cred-snmp"
+  "snmpCredentialId": "cred-snmp",
+  "follow": {
+    "maxHops": 3,
+    "maxDevices": 50,
+    "subnetLimit": "192.0.2.0/24"
+  }
 }

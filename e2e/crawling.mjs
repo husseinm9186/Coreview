@@ -95,6 +95,11 @@ await page.addInitScript(({ p }) => {
       if (cmd === "load_project") return Promise.resolve({ meta, document_version: p.documentVersion, document: p.document });
       if (cmd === "get_settings") return Promise.resolve({});
       if (cmd === "start_crawl") return Promise.resolve(null);
+      // LT-576: the collector path.
+      if (cmd === "start_collection") return Promise.resolve("col-9");
+      if (cmd === "collection_topology") return Promise.resolve({ crawlRunId: "topo-col-9", notVisited: [], graph: { nodes: [], links: [], l3: [], overlays: [], endpoints: [], findings: [] }, devices: [
+        { hostname: "SW-COLLECTED", address: "192.0.2.10", addresses: [{ ip: "192.0.2.10", interface: null, isManagement: true }], probeTarget: "192.0.2.10", class: "switch", platform: null, serial: null, version: null, neighbors: [], hops: 0, reachedBy: "ssh", attached: [], portChannels: [], defaultNextHop: null, stack: null, routes: [], dnsName: null, evidence: {} },
+      ] });
       if (cmd === "vault_status") return Promise.resolve({ exists: true, unlocked: true, credentials: 2, minimumPassphrase: 12 });
       if (cmd === "list_credentials") return Promise.resolve([
         { id: "cred-core", label: "Core login", kind: "ssh", username: "reader", detail: "", hasSecondSecret: false },
@@ -176,7 +181,7 @@ await page.waitForTimeout(400);
 const dry = panel.locator(".cv-dry-run");
 check("a dry run shows the plan", (await dry.count()) === 1);
 const newCalls = await page.evaluate((n) => window.__calls.slice(n).map((c) => c.cmd), callsBefore);
-check("and sends nothing: no crawl, sweep or lookup is asked for", newCalls.every((c) => ["list_credentials", "save_project", "list_projects"].includes(c)), JSON.stringify(newCalls));
+check("and sends nothing: no crawl, sweep or lookup is asked for", newCalls.every((c) => ["list_credentials", "save_project", "list_projects", "list_project_folders"].includes(c)), JSON.stringify(newCalls));
 const seedLines = await dry.locator("li[data-kind]").allTextContents();
 check("each seed says what would happen to it", seedLines.length === 3 && /192\.0\.2\.10 — would be dialled with Core login \(192\.0\.2\.0\/25\), then Core login \(if a neighbour reports FortiSwitch\), then reader \(typed above\)/.test(seedLines[0]) &&
   /198\.51\.100\.0\/30 — 2 of 2 addresses/.test(seedLines[2]), JSON.stringify(seedLines));
@@ -211,6 +216,9 @@ check("saving under a name already used replaces that profile", names === "Branc
 await panel.locator("button", { hasText: /^Delete profile$/ }).click();
 check("and a profile can be deleted", await page.evaluate(() => window.__cvStore.getState().doc.crawlProfiles.length) === 1);
 
+// LT-576: the classic crawler, chosen; the collector is the default.
+check("the collector is the engine by default (D-062)", (await panel.locator('[data-field="discover-engine"]').inputValue()) === "collector");
+await panel.locator('[data-field="discover-engine"]').selectOption("classic");
 await panel.locator("button", { hasText: /^Discover$/ }).click();
 await page.waitForTimeout(400);
 const started = await lastCall("start_crawl");
@@ -358,6 +366,33 @@ const rows = await section.locator("table").first().locator("tbody tr").allTextC
 check("a trunk shows its native VLAN and an access port its VLAN", rows[0].includes("trunk (native 1)") && rows[2].includes("10") && rows[2].includes("desk 12"),
   JSON.stringify(rows));
 check("with trunk VLANs compressed", (await section.locator("td[title]").first().getAttribute("title")) === "Trunk VLANs 1,10-12");
+
+// ------------------------------------------------ LT-576 the collector path
+await page.locator("button", { hasText: "Discover devices" }).first().click();
+await page.waitForTimeout(300);
+await page.evaluate(() => window.__cvEmit("coreview://crawl", { kind: "finished", reached: 0, failed: 0, cancelled: false }));
+await page.waitForTimeout(200);
+await panel.locator('[data-field="discover-engine"]').selectOption("collector");
+await panel.locator("label", { hasText: "Seed devices" }).locator("input").first().fill("192.0.2.10");
+await panel.locator("button", { hasText: /^Discover$/ }).click();
+await page.waitForTimeout(400);
+const collected = await lastCall("start_collection");
+check("the collector starts from the seed and follows neighbours within the panel's limits",
+  collected?.input?.targets === "192.0.2.10" && collected?.input?.follow?.maxHops >= 1 && collected?.input?.follow?.maxDevices === 500 && !collected?.input?.planOnly,
+  JSON.stringify(collected?.input));
+check("and no crawl is started beside it", (await page.evaluate(() => window.__calls.filter((c) => c.cmd === "start_crawl").length)) === 1);
+await page.evaluate(() => {
+  window.__cvEmit("coreview://collection", { kind: "started", runId: "col-9", targets: 1 });
+  window.__cvEmit("coreview://collection", { kind: "device", runId: "col-9", deviceId: "dev-192-0-2-10", host: "192.0.2.10", phase: "connecting" });
+});
+await page.waitForTimeout(200);
+check("its progress is shown", /Collecting 192\.0\.2\.10/.test(await panel.textContent()));
+await page.evaluate(() => window.__cvEmit("coreview://collection", { kind: "finished", runId: "col-9", devices: 1, failed: 0, cancelled: false }));
+await page.waitForTimeout(500);
+const topo = await lastCall("collection_topology");
+check("when it finishes, the topology of that run is built", topo?.runId === "col-9", JSON.stringify(topo));
+check("and what it found fills the table the review reads", (await panel.locator("tr", { hasText: "SW-COLLECTED" }).count()) >= 1);
+check("with a status naming the run", /Collected 1 device, 0 failed — collection run col-9/.test(await panel.textContent()));
 
 await browser.close();
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);

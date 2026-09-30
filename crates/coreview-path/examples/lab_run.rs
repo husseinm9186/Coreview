@@ -6,7 +6,12 @@
 //!
 //!     COREVIEW_LAB_PASSWORD=… cargo run -p coreview-path --example lab_run -- \
 //!         --user reader --out /somewhere/outside/the/repo 192.0.2.1 192.0.2.2 … \
-//!         [--trace 192.0.2.50 203.0.113.9 [--port-flow tcp/443]]…
+//!         [--trace 192.0.2.50 203.0.113.9 [--flow tcp/443]]… \
+//!         [--follow <hops> [--subnet 192.0.2.0/24]] [--api-user <name>]
+//!
+//! `--follow` collects the hosts as seeds and follows their CDP/LLDP
+//! neighbours as "Discover devices" does (LT-576). `--api-user` adds the
+//! REST side for FortiOS and AOS-CX, its key from COREVIEW_LAB_API_KEY.
 //!
 //! `--replay <dir>` in place of the hosts reads an earlier run's stored
 //! replies again through today's readers and templates — no device is
@@ -63,7 +68,7 @@ async fn main() {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--user" | "--out" | "--replay" => i += 2,
+            "--user" | "--out" | "--replay" | "--follow" | "--subnet" | "--api-user" => i += 2,
             "--trace" => {
                 let flow = (args.get(i + 3).map(String::as_str) == Some("--flow")).then(|| args.get(i + 4).cloned()).flatten();
                 traces.push((args[i + 1].clone(), args[i + 2].clone(), flow.clone()));
@@ -81,13 +86,22 @@ async fn main() {
     let templates = repo().join("resources/templates/ntc");
     let devices = match replay {
         Some(dir) => replayed(&dir, &catalogs, &RunOptions { engine: Some(Arc::new(Engine::new(&templates))), ..RunOptions::default() }),
-        None => collected(&hosts, &user, &out, &catalogs, &templates).await,
+        None => {
+            let limits = coreview_collect::follow::Limits {
+                max_hops: arg("--follow").and_then(|h| h.parse().ok()).unwrap_or(0),
+                max_devices: if arg("--follow").is_some() { 50 } else { hosts.len() },
+                subnets: arg("--subnet").map(|s| coreview_collect::follow::parse_subnet(&s).expect("--subnet")).into_iter().collect(),
+            };
+            collected(&hosts, &user, &out, &catalogs, &templates, limits, arg("--follow").is_some(), arg("--api-user")).await
+        }
     };
     report(&devices, &out, &traces);
 }
 
 /// Each host collected now, its replies and summary written under `out`.
-async fn collected(hosts: &[String], user: &str, out: &std::path::Path, catalogs: &[Catalog], templates: &std::path::Path) -> Vec<DeviceIn> {
+// A lab harness's knobs, passed flat.
+#[allow(clippy::too_many_arguments)]
+async fn collected(hosts: &[String], user: &str, out: &std::path::Path, catalogs: &[Catalog], templates: &std::path::Path, limits: coreview_collect::follow::Limits, following: bool, api_user: Option<String>) -> Vec<DeviceIn> {
     let password = std::env::var("COREVIEW_LAB_PASSWORD").unwrap_or_else(|_| {
         eprintln!("COREVIEW_LAB_PASSWORD is not set");
         std::process::exit(2);
@@ -98,16 +112,34 @@ async fn collected(hosts: &[String], user: &str, out: &std::path::Path, catalogs
     let location = SidecarLocation { python: venv, cwd: repo().join("sidecar"), templates_dir: templates.clone() };
     let options = RunOptions { engine: Some(Arc::new(Engine::new(&templates))), shadow: true, connect_ms: 10_000, auth_ms: 30_000, ..RunOptions::default() };
     let auth = Auth { username: user, password: password.clone(), enable: None, private_key: None };
-    let mask = |s: &str| scrub(s).replace(&password, "********");
+    let api = api_user.map(|username| coreview_collect::api::ApiLogin {
+        username,
+        secret: std::env::var("COREVIEW_LAB_API_KEY").unwrap_or_else(|_| {
+            eprintln!("--api-user needs COREVIEW_LAB_API_KEY");
+            std::process::exit(2);
+        }),
+        port: std::env::var("COREVIEW_LAB_API_PORT").ok().and_then(|p| p.parse().ok()),
+    });
+    let api_secret = api.as_ref().map(|a| a.secret.clone()).unwrap_or_else(|| password.clone());
+    let mask = |s: &str| scrub(s).replace(&password, "********").replace(&api_secret, "********");
+    let mut frontier = coreview_collect::follow::Frontier::new(hosts, limits);
 
     let mut devices: Vec<DeviceIn> = Vec::new();
     let mut shadow: BTreeMap<String, (usize, usize, Vec<String>)> = BTreeMap::new();
-    for host in hosts {
+    while let Some((host, hop)) = frontier.next_device() {
+        let host = &host;
         let mut sidecar = Sidecar::spawn(&location).await.expect("the sidecar starts");
         let started = std::time::Instant::now();
         let target = Target { host: host.clone(), port: 22, os_hint: None, role_override: None, known_host_key: None };
-        let run = collect_device(&mut sidecar, catalogs, &target, &auth, &options, &Quiet).await;
+        let mut run = collect_device(&mut sidecar, catalogs, &target, &auth, &options, &Quiet).await;
         sidecar.quit().await;
+        if let Some(login) = &api {
+            coreview_collect::api::collect_for(&mut run, catalogs, login, None, |_: &str, _: u16| None, &Quiet).await;
+        }
+        if following {
+            let (own, neighbours) = coreview_collect::follow::addresses_of_run(&run);
+            frontier.learn(hop, &own, &neighbours);
+        }
         let dir = out.join(slug(host));
         std::fs::create_dir_all(&dir).unwrap();
         let mut steps = Vec::new();
@@ -150,6 +182,9 @@ async fn collected(hosts: &[String], user: &str, out: &std::path::Path, catalogs
         if run.failure.is_none() || run.os.is_some() {
             devices.push(DeviceIn { device_id: slug(host), host: host.clone(), os: run.os.clone(), role: run.role.clone(), prompt: run.prompt.clone(), version_text: run.version_text.clone(), tables });
         }
+    }
+    for (host, why) in &frontier.not_followed {
+        println!("  not followed: {host} — {why}");
     }
     let shadow_rows: Vec<_> = shadow.iter().map(|(k, (m, x, d))| json!({"os_command": k, "match": m, "mismatch": x, "details": d})).collect();
     std::fs::write(out.join("shadow.json"), serde_json::to_string_pretty(&shadow_rows).unwrap()).unwrap();
