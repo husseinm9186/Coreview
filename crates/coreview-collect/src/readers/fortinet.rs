@@ -211,6 +211,47 @@ pub fn interface_physical(raw: &str) -> Vec<Value> {
     out
 }
 
+/// FortiOS `get system interface` (LT-566): a `== [ name ]` line, then one
+/// line of `key: value` fields separated by runs of spaces. 7.6 stops ntc's
+/// template at the first of them; without it a FortiGate has no logical
+/// interface — no hard-switch, no VLAN, and no address it was reached on.
+pub fn system_interface(raw: &str) -> Vec<Value> {
+    let mut out = Vec::new();
+    for line in raw.lines() {
+        let t = line.trim();
+        if !t.starts_with("name:") {
+            continue;
+        }
+        let mut m = Map::new();
+        for field in t.split("  ").map(str::trim).filter(|f| !f.is_empty()) {
+            let Some((k, v)) = field.split_once(':') else { continue };
+            let v = v.trim();
+            match k.trim() {
+                "name" => {
+                    m.insert("interface".into(), json!(v));
+                }
+                "status" if !v.is_empty() => {
+                    m.insert("status".into(), json!(v));
+                }
+                "ip" => {
+                    let mut w = v.split_whitespace();
+                    if let (Some(a), Some(mask)) = (w.next(), w.next()) {
+                        if a != "0.0.0.0" {
+                            m.insert("ip_address".into(), json!(a));
+                            m.insert("netmask".into(), json!(mask));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if m.contains_key("interface") {
+            out.push(Value::Object(m));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,6 +371,30 @@ MAC: 00:00:00:00:0a:02\tVLAN: 1 Port: port13(port-id 13)
         assert_eq!(interface_physical(ifs), vec![
             json!({"interface": "internal", "ip_address": "192.0.2.203", "netmask": "255.255.255.0", "oper_status": "up"}),
             json!({"interface": "mgmt", "oper_status": "down"}),
+        ]);
+    }
+
+    #[test]
+    fn fortigate_7_6_interfaces_keep_the_logical_ones() {
+        // The lab's layout: one line of fields per interface, runs of spaces between.
+        let raw = "== [ wan1 ]
+name: wan1   mode: dhcp    ip: 0.0.0.0 0.0.0.0   status: down    netbios-forward: disable    type: physical   netflow-sampler: disable    sflow-sampler: disable    src-check: enable    trunk: disable    wccp: disable    drop-fragment: disable    mtu-override: disable
+== [ internal1 ]
+name: internal1   status: up    type: physical   trunk: disable
+== [ internal ]
+name: internal   mode: static    ip: 192.0.2.1 255.255.255.0   status: up    netbios-forward: disable    type: hard-switch   netflow-sampler: disable    sflow-sampler: disable    src-check: enable    trunk: disable    wccp: disable    drop-fragment: disable    mtu-override: disable
+== [ vlan20 ]
+name: vlan20   mode: static    ip: 198.51.100.1 255.255.255.0   status: up    netbios-forward: disable    type: vlan   netflow-sampler: disable    sflow-sampler: disable    src-check: enable    trunk: disable    switch-controller-feature: none    wccp: disable    drop-fragment: disable    mtu-override: disable
+== [ a ]
+name: a   status:
+";
+        let rows = crate::readers::read("fortios_interfaces", raw).expect("a reader for FortiOS 7.6 interfaces");
+        assert_eq!(rows, vec![
+            json!({"interface": "wan1", "status": "down"}),
+            json!({"interface": "internal1", "status": "up"}),
+            json!({"interface": "internal", "ip_address": "192.0.2.1", "netmask": "255.255.255.0", "status": "up"}),
+            json!({"interface": "vlan20", "ip_address": "198.51.100.1", "netmask": "255.255.255.0", "status": "up"}),
+            json!({"interface": "a"}),
         ]);
     }
 }

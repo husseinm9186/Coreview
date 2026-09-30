@@ -22,13 +22,14 @@ pub fn read(name: &str, raw: &str) -> Result<Vec<Value>, String> {
         "fortiswitch_lldp_summary" => Ok(fortinet::lldp_neighbors_summary(raw)),
         "fortiswitch_mac_list" => Ok(fortinet::mac_address_list(raw)),
         "fortiswitch_interfaces" => Ok(fortinet::interface_physical(raw)),
+        "fortios_interfaces" => Ok(fortinet::system_interface(raw)),
         other => Err(format!("no Coreview reader is called {other:?}")),
     }
 }
 
 /// Whether a reader of that name exists, for the catalog's own checks.
 pub fn exists(name: &str) -> bool {
-    matches!(name, "asa_access_list" | "asa_access_group" | "asa_nameif" | "linux_ip_addr" | "linux_lldp" | "fortios_system_status" | "fortios_routing_table" | "fortiswitch_lldp_summary" | "fortiswitch_mac_list" | "fortiswitch_interfaces")
+    matches!(name, "asa_access_list" | "asa_access_group" | "asa_nameif" | "linux_ip_addr" | "linux_lldp" | "fortios_system_status" | "fortios_routing_table" | "fortiswitch_lldp_summary" | "fortiswitch_mac_list" | "fortiswitch_interfaces" | "fortios_interfaces")
 }
 
 #[cfg(test)]

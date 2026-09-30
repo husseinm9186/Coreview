@@ -112,6 +112,7 @@ validate the other devices like aruba, cisco Nexus, IOS XE and XR, asa,
 fmc, etc". Waits on the lab being on; then the same run and rules as LT-558
 per platform, the FMC through LT-541's collector.
 
+
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
 confirmed by the operator on accepting P1 (2026-09-29): "embeddable
@@ -599,6 +600,18 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-566 — **bug** The FortiGate 7.6 `get system interface` was unread: every logical interface lost, the management address with them — 2026-09-29, fixed the same day
+**Found by the lab run.** 7.6 prints each interface as one `== [ name ]`
+line followed by one line of `key: value` fields, and ntc's template stops
+at the first (`State Error raised`) in both engines — so shadow called it a
+match. Only `get system interface physical` was left, which lists the
+physical ports: the hard-switch holding the address the FortiGate was
+collected on, and all twenty-one VLAN interfaces, were not on the node, and
+nothing could match it to the address the switches' ARP tables have for it.
+**Fix:** a Coreview reader of that layout, written against the lab's reply,
+invented values in its fixture.
+**Run:** a test on the 7.6 layout (failed with no reader, passes now); on the lab's reply, 43 interfaces, 20 with an address, the hard-switch among them with the address the FortiGate was collected on.
 
 ### LT-565 — **bug** A FortiSwitch was collected as a FortiGate — 2026-09-29, fixed the same day
 **Found by the lab run.** The `fortios` fingerprint matches FortiSwitch too,

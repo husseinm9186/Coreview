@@ -267,7 +267,7 @@ commands:
     cmd: get system interface
     gate: always
     foreach: vdom
-    parser: textfsm:fortinet_get_system_interface
+    parser: reader:fortios_interfaces
     api: /api/v2/monitor/system/interface
     feeds:
       - interface
@@ -275,7 +275,7 @@ commands:
     weight: light
     timeout: 30
     verified: lab
-    evidence: ntc-templates tests (7 captures)
+    evidence: Coreview fortios reader, met a FortiGate 60F on FortiOS 7.6.7 in the operator's lab (LT-558, LT-566)
   - id: show_system_zone
     cmd: show system zone
     gate: always
