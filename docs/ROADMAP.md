@@ -113,6 +113,7 @@ fmc, etc". Waits on the lab being on; then the same run and rules as LT-558
 per platform, the FMC through LT-541's collector.
 
 
+
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
 confirmed by the operator on accepting P1 (2026-09-29): "embeddable
@@ -600,6 +601,16 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-567 — **bug** The FortiGate 7.6 `get system ha status` was unread — 2026-09-29, fixed the same day
+**Found by the lab run.** 7.6 writes `Group Name:` and `Group ID:` where
+earlier releases wrote `Group:`, and ntc's template ends in an error on the
+first line it does not know (`in-Start`). A standalone box lost nothing by
+it; a cluster would lose its member serials, which are what make two
+FortiGates one node. **Fix:** a Coreview reader: nothing for a standalone
+box, one row per member (name, role, serial) for a cluster. The standalone
+form is the lab's; the cluster lines are ntc's own captured fixtures.
+**Run:** a test on the lab's standalone reply and on a 7.6-shaped cluster (failed with no reader, passes now). Not yet met a real cluster.
 
 ### LT-566 — **bug** The FortiGate 7.6 `get system interface` was unread: every logical interface lost, the management address with them — 2026-09-29, fixed the same day
 **Found by the lab run.** 7.6 prints each interface as one `== [ name ]`

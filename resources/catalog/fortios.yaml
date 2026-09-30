@@ -166,14 +166,14 @@ commands:
     cmd: get system ha status
     gate: always
     context: global
-    parser: textfsm:fortinet_get_system_ha_status
+    parser: reader:fortios_ha_status
     api: /api/v2/monitor/system/ha-peer
     feeds:
       - ha_pair
     weight: light
     timeout: 30
     verified: lab
-    evidence: ntc-templates tests (7 captures)
+    evidence: Coreview fortios reader; standalone met a FortiGate 60F on FortiOS 7.6.7 in the operator's lab, cluster member lines from ntc-templates' captured fixtures (LT-558, LT-567)
   - id: get_system_performance_status
     cmd: get system performance status
     gate: always

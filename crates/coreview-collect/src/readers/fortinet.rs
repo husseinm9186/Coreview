@@ -252,6 +252,52 @@ pub fn system_interface(raw: &str) -> Vec<Value> {
     out
 }
 
+/// FortiOS `get system ha status` (LT-567): nothing for a standalone box;
+/// for a cluster, one row per member from its `Primary : name, serial, …`
+/// lines. 7.6 writes `Group Name:` where earlier releases wrote `Group:`,
+/// which ntc's template refuses. The standalone reply is the lab's; the
+/// member lines are the forms in ntc's own captured fixtures — with a name
+/// (`Primary : fw-a, FG…, HA cluster index = 1`) and, in the second
+/// listing some releases print, without (`Primary: FG…, HA operating index`).
+pub fn ha_status(raw: &str) -> Vec<Value> {
+    let mode = raw.lines().find_map(|l| l.strip_prefix("Mode:")).map(str::trim).unwrap_or("");
+    if mode.is_empty() || mode.eq_ignore_ascii_case("standalone") {
+        return Vec::new();
+    }
+    let mut out: Vec<Map<String, Value>> = Vec::new();
+    for line in raw.lines() {
+        let Some((role, rest)) = line.split_once(':') else { continue };
+        let role = role.trim();
+        if !matches!(role, "Primary" | "Secondary" | "Master" | "Slave") {
+            continue;
+        }
+        let parts: Vec<&str> = rest.split(',').map(str::trim).collect();
+        let (name, serial) = match parts.as_slice() {
+            [name, serial, _index] => (Some(*name), *serial),
+            [serial, _index] => (None, *serial),
+            _ => continue,
+        };
+        if serial.is_empty() || serial.contains(' ') {
+            continue;
+        }
+        if let Some(m) = out.iter_mut().find(|m| m.get("serial").and_then(Value::as_str) == Some(serial)) {
+            if let Some(n) = name {
+                m.entry("member").or_insert_with(|| json!(n));
+            }
+            continue;
+        }
+        let mut m = Map::new();
+        m.insert("mode".into(), json!(mode));
+        if let Some(n) = name {
+            m.insert("member".into(), json!(n));
+        }
+        m.insert("role".into(), json!(role.to_ascii_lowercase()));
+        m.insert("serial".into(), json!(serial));
+        out.push(m);
+    }
+    out.into_iter().map(Value::Object).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -395,6 +441,48 @@ name: a   status:
             json!({"interface": "internal", "ip_address": "192.0.2.1", "netmask": "255.255.255.0", "status": "up"}),
             json!({"interface": "vlan20", "ip_address": "198.51.100.1", "netmask": "255.255.255.0", "status": "up"}),
             json!({"interface": "a"}),
+        ]);
+    }
+
+    #[test]
+    fn fortigate_7_6_ha_status_standalone_and_clustered() {
+        // The lab's standalone reply: `Group Name:` and `Group ID:` are 7.6's.
+        let standalone = "HA Health Status: OK
+Model: FortiGate-60F
+Mode: Standalone
+Group Name:
+Group ID: 0
+Debug: 0
+Cluster Uptime: 0 days 0h:0m:0s
+Cluster state change time: N/A
+ses_pickup: disable
+override: disable
+System Usage stats:
+HBDEV stats:
+number of member: 0
+number of vcluster: 0
+";
+        assert_eq!(crate::readers::read("fortios_ha_status", standalone).expect("a reader for FortiOS 7.6 HA status"), Vec::<Value>::new());
+        // A cluster in 7.6's shape; the member lines as ntc's fixtures print them.
+        let cluster = "HA Health Status: OK
+Model: FortiGate-60F
+Mode: HA A-P
+Group Name: LAB-HA
+Group ID: 7
+Debug: 0
+Cluster Uptime: 3 days 1:31:39
+ses_pickup: enable, ses_pickup_delay=disable
+override: disable
+Primary     : LAB-FW-A       , FGTFAKE0000001, HA cluster index = 1
+Secondary   : LAB-FW-B       , FGTFAKE0000002, HA cluster index = 0
+number of vcluster: 1
+vcluster 1: work 169.254.0.1
+Primary: FGTFAKE0000001, HA operating index = 0
+Secondary: FGTFAKE0000002, HA operating index = 1
+";
+        assert_eq!(crate::readers::read("fortios_ha_status", cluster).unwrap(), vec![
+            json!({"mode": "HA A-P", "member": "LAB-FW-A", "role": "primary", "serial": "FGTFAKE0000001"}),
+            json!({"mode": "HA A-P", "member": "LAB-FW-B", "role": "secondary", "serial": "FGTFAKE0000002"}),
         ]);
     }
 }
