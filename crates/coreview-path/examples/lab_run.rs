@@ -195,9 +195,18 @@ async fn collected(hosts: &[String], user: &str, out: &std::path::Path, catalogs
 /// catalog by its command, templates through the Rust engine.
 fn replayed(dir: &std::path::Path, catalogs: &[Catalog], options: &RunOptions) -> Vec<DeviceIn> {
     let mut devices = Vec::new();
-    let mut hosts: Vec<PathBuf> = std::fs::read_dir(dir).expect("the run's folder").filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.join("summary.json").exists()).collect();
+    let mut hosts: Vec<PathBuf> = std::fs::read_dir(dir).expect("the run's folder").filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_dir()).collect();
     hosts.sort();
     for h in hosts {
+        if !h.join("summary.json").exists() {
+            // The app's own diagnostic (`collection-<stamp>/<host>/NNN-<command>.txt`):
+            // no summary, so the OS is read off the fingerprint probe's reply and
+            // each file matched to its command by name, as the app's import does.
+            if let Some(d) = from_app_diagnostic(&h, catalogs, options) {
+                devices.push(d);
+            }
+            continue;
+        }
         let summary: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(h.join("summary.json")).unwrap()).unwrap();
         let host = summary["host"].as_str().unwrap_or_default().to_string();
         let Some(os) = summary["os"].as_str() else { continue };
@@ -229,9 +238,54 @@ fn replayed(dir: &std::path::Path, catalogs: &[Catalog], options: &RunOptions) -
     devices
 }
 
+/// One host folder of the app's diagnostic, read through today's code.
+fn from_app_diagnostic(h: &std::path::Path, catalogs: &[Catalog], options: &RunOptions) -> Option<DeviceIn> {
+    let host = h.file_name()?.to_string_lossy().to_string();
+    let mut files: Vec<(String, PathBuf)> = std::fs::read_dir(h).ok()?.flatten().map(|e| e.path()).filter(|p| p.extension().and_then(|x| x.to_str()) == Some("txt")).map(|p| {
+        let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let name = match stem.split_once('-') {
+            Some((n, rest)) if n.chars().all(|c| c.is_ascii_digit()) => rest.to_string(),
+            _ => stem,
+        };
+        (slug(&name), p)
+    }).collect();
+    files.sort();
+    let read = |p: &PathBuf| std::fs::read_to_string(p).unwrap_or_default();
+    let (os, version_text) = catalogs.iter().filter_map(|c| c.fingerprint.as_ref()).find_map(|f| {
+        let (_, p) = files.iter().find(|(s, _)| *s == slug(&f.probe))?;
+        let text = read(p);
+        coreview_collect::fingerprint::identify(catalogs, &f.probe, &text).map(|id| (id.os, text))
+    })?;
+    let catalog = catalogs.iter().find(|c| c.os == os)?;
+    let mut rust = catalog.clone();
+    rust.parser_engine = Some("rust".into());
+    let mut tables: BTreeMap<String, Vec<Row>> = BTreeMap::new();
+    let mut read_rows = 0;
+    let mut used = 0;
+    for c in catalog.commands.iter().filter(|c| !c.cmd.contains('{') && c.parser != "api") {
+        for (_, p) in files.iter().filter(|(s, _)| *s == slug(&c.cmd)) {
+            used += 1;
+            let step = Step { id: c.id.clone(), cmd: c.cmd.clone(), gate: c.gate.clone(), because: Vec::new(), parser: c.parser.clone(), feeds: c.feeds.clone(), weight: c.weight(), timeout: c.timeout(), verified: c.verified, context: None, scope: None };
+            let mut outcome = CommandOutcome { status: "ok".into(), raw: read(p), ..Default::default() };
+            settle(&mut outcome, &step, &rust, &c.also, options);
+            let rows = if outcome.status == "ok" { rows_of(&step.parser, &outcome) } else { Vec::new() };
+            read_rows += rows.len();
+            for n in rows_for_step(&step, &rows) {
+                tables.entry(n.table.clone()).or_default().push(Row { command: step.id.clone(), columns: n.columns, extra: n.extra });
+            }
+        }
+    }
+    println!("{host}: os={os} files={} read={used} rows={read_rows} (app diagnostic)", files.len());
+    Some(DeviceIn { device_id: slug(&host), host, os: Some(os), role: None, prompt: String::new(), version_text, tables })
+}
+
 /// The graph and the traces, printed and written under `out`.
 fn report(devices: &[DeviceIn], out: &std::path::Path, traces: &[(String, String, Option<String>)]) {
     let graph = coreview_topology::build(devices);
+    // What the app hands the review screen from the same graph (LT-576).
+    let started = std::time::Instant::now();
+    let view = coreview_topology::crawl_view::view_with(&graph, &Default::default());
+    println!("crawl view: {} devices, {} not visited, in {} ms", view.devices.len(), view.not_visited.len(), started.elapsed().as_millis());
     std::fs::write(out.join("graph.json"), serde_json::to_string_pretty(&graph).unwrap()).unwrap();
     println!("\ngraph: {} nodes, {} links ({} both ends), {} l3, {} overlays, {} endpoints, {} findings",
         graph.nodes.len(), graph.links.len(), graph.links.iter().filter(|l| l.both_directions).count(),

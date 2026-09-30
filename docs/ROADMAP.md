@@ -139,6 +139,33 @@ page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
 a layout run on an existing page — so the same input can be laid out again
 in a test.
 
+### LT-596 — The collector reads a FortiGate's wireless controller: its FortiAPs — 2026-09-30
+**Source:** the operator's collection diagnostic of 2026-09-30, studied
+beside his classic crawl of the same network: the classic crawl listed
+three FortiAPs "described by its controller" (`get wireless-controller
+wtp-status`); the FortiOS catalog never asks, so the collector's result has
+none. D-062 keeps the classic crawler until the collector covers what it
+does; this is part of that. **Acceptance:** the FortiOS catalog reads the
+managed FortiAPs and each is a node linked to the FortiGate, with the
+classic crawler's reader (met on this hardware) behind it.
+
+### LT-597 — Hosts known only from a firewall's ARP table are shown behind its interface — 2026-09-30
+**Source:** the same study. The classic crawl's 37 "seen on switch ports"
+include the IoT and Wi-Fi devices behind the FortiGate's `IoT` and
+`HOME-WIFI` interfaces, known only from its ARP table (31 entries); the
+collector's topology places devices only from switch MAC tables, and a
+FortiGate has none, so they are missing. **Acceptance:** an ARP entry on a
+collected router or firewall's interface whose MAC no switch places becomes
+an endpoint on that interface, with its address, MAC and maker; the list's
+tick (LT-592) still decides whether they are drawn.
+
+### LT-598 — "Discover devices" can use the project's API login — 2026-09-30
+**Source:** the same study: the collector's result for the FortiGate has no
+firewall policy, because Discover sends no API login (the Collect tab does).
+**Acceptance:** Discover uses the project's saved API login when one is
+chosen for it, so the FortiGate's policy is read over its API as on the
+Collect tab.
+
 ### LT-588 — **bug** Discover with the collector "never finishes": one stuck device held the run for minutes and then ended it — reported 2026-09-30
 **Source:** the operator, 2026-09-30, with screenshots, testing the
 collector on "Discover devices": "it never finishes". The header stood at
@@ -13403,6 +13430,14 @@ internal COREVIEW-FGT-Root-CA cannot and never will.
 ---
 
 ## Icebox
+
+### LT-599 — Commands a device does not have are not asked again — 2026-09-30
+**Source:** the same study. On the lab, five FortiOS `diagnose` commands
+answer "Unknown action 0" to the read-only login, and a 2960CX refuses
+`show switch`, `show module`, `show redundancy`, `show stackwise-virtual`
+and `show device-tracking database`; the FortiGate's `get system status`
+is read twice (fingerprint, then plan). Each costs a round trip on every
+run. Harmless; kept for when collection time matters.
 
 ### LT-586 — FortiOS per-policy source NAT shown on the path — 2026-09-30
 Noted during LT-571: a FortiOS policy with `nat: enable` translates the
