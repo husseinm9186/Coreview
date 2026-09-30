@@ -53,7 +53,8 @@ async fn main() {
         port,
         connect_timeout: Duration::from_secs(10),
         auth_timeout: Duration::from_secs(90),
-        command_timeout: Duration::from_secs(45),
+        // CV_TIMEOUT: seconds per command; a traceroute wants minutes (LT-574).
+        command_timeout: Duration::from_secs(std::env::var("CV_TIMEOUT").ok().and_then(|t| t.parse().ok()).unwrap_or(45)),
         login_transcript: None,
         support_capture: None,
         max_output_bytes: coreview_discover::ssh::DEFAULT_MAX_OUTPUT_BYTES,
@@ -74,7 +75,10 @@ async fn main() {
     println!("prompt: {:?}\n", device.prompt.text);
 
     for command in commands {
-        match device.run(&command).await {
+        let started = std::time::Instant::now();
+        let result = device.run(&command).await;
+        println!("({command}: {} ms)", started.elapsed().as_millis());
+        match result {
             Ok(out) => {
                 let trimmed = out.trim();
                 if rejected(trimmed) {

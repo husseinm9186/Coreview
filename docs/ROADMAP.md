@@ -130,8 +130,17 @@ timeout discards every hop the device had already printed. From this
 machine, behind the same FortiGate, the path answers at hop 10 in two
 seconds, so the time is on the switch — IOS waits 9 s per silent hop and
 looks up a name for every hop — and cannot be confirmed without a login
-this session was not permitted. **Needs:** how long it stayed, and whether
-anything appeared after; or the debug log of a run.
+this session was not permitted. **Reproduced 2026-09-29 with the
+operator's permission** (`try_commands` now takes `CV_TIMEOUT` and times
+each command): the Catalyst's `traceroute 8.8.8.8` is correct and takes
+100 s for ten hops — about 18 s for two silent hops, the rest a name lookup
+per hop (`ip domain-lookup` with no name server). This IOS (15.2(7)E)
+takes nothing after the address, so `numeric`, `timeout` and `probe` cannot
+shorten it without the interactive dialogue or a configuration change. So
+the trace works; what fails is the tab: nothing moves for up to three
+minutes, and a trace that passes 180 s loses every hop it had printed.
+**Proposed fix:** hops shown as the device prints them, with the time so
+far, and a timeout that keeps what arrived.
 
 ### LT-575 — **bug** The diagram is "all over the place" — reported 2026-09-29, not yet reproduced
 **Source:** the operator, 2026-09-29, with a screenshot: "also the diagram
@@ -142,6 +151,19 @@ access switches not beneath what they hang from. **Needs:** which way the
 page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
 a layout run on an existing page — so the same input can be laid out again
 in a test.
+
+### LT-576 — The new collector's work does not reach "Discover devices" or the diagram — 2026-09-29
+**Source:** the operator, 2026-09-29: "built a lot and added a lot but i
+don't see any enhancements whats going on?" Two reasons, from his own
+diagnostics. His Collect runs (16:09–16:15 CDT) were on an installer built
+before LT-560, so every FortiGate and FortiSwitch session failed to open —
+five of seven runs empty; today's code collects all three lab boxes in 15 s.
+And the catalog-driven collector, readers, topology builder and path
+builder (LT-507) are reached only from the Collect tab; "Discover devices"
+still runs the older crawler, which sends Cisco commands to a FortiSwitch,
+and it is that crawler's result the diagram is drawn from. **Needs the
+operator's ruling:** whether "Discover devices" and the diagram move onto
+the new collector now, ahead of LT-507's later phases.
 
 ### LT-571 — A FortiGate's firewall policy when there is no API token — 2026-09-29
 **Found by the lab run.** Policies, VIPs, addresses, zones, IPsec and SD-WAN
