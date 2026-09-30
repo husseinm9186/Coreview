@@ -112,30 +112,6 @@ validate the other devices like aruba, cisco Nexus, IOS XE and XR, asa,
 fmc, etc". Waits on the lab being on; then the same run and rules as LT-558
 per platform, the FMC through LT-541's collector.
 
-### LT-563 — **bug** FortiOS and FortiSwitchOS 7.6 `get system status` was unread: no hostname, serial or MAC — 2026-09-29
-**Found by the lab run.** 7.6 prints lines the ntc template does not know
-(`AV AI/ML Model`, `IPS-MLDB`, `OT-*`), and the template's catch-all stops
-the whole reply; both engines refused it, so both boxes had no identity and
-the FortiSwitch could not be matched to the LLDP neighbour the Catalyst
-names. **Fix:** a Coreview reader of the `Key: value` lines, written against
-the lab's own replies; its fixtures keep their layout with every value
-invented (D-027).
-
-### LT-564 — **bug** The FortiGate 7.6 routing table was unread — 2026-09-29
-**Found by the lab run.** `Routing table for VRF=0` and the trailing
-`[1/0]` after the interface stop ntc's template in both engines. **Fix:** a
-Coreview reader written against the lab's reply, invented values in its
-fixtures.
-
-### LT-565 — **bug** A FortiSwitch was collected as a FortiGate — 2026-09-29
-**Found by the lab run.** The `fortios` fingerprint matches FortiSwitch too,
-so a FortiSwitch got FortiGate commands: its LLDP table, MAC table and
-interfaces were never asked for, and its FortiSwitchOS routing table and
-interface list refused FortiOS's templates. **Fix:** a `fortiswitch`
-catalog with Coreview readers for `get switch lldp neighbors-summary`,
-`diagnose switch mac-address list`, `get system interface physical` and its
-routing table, written against the lab's replies.
-
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
 confirmed by the operator on accepting P1 (2026-09-29): "embeddable
@@ -623,6 +599,33 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-565 — **bug** A FortiSwitch was collected as a FortiGate — 2026-09-29, fixed the same day
+**Found by the lab run.** The `fortios` fingerprint matches FortiSwitch too,
+so a FortiSwitch got FortiGate commands: its LLDP table, MAC table and
+interfaces were never asked for, and its FortiSwitchOS routing table and
+interface list refused FortiOS's templates. **Fix:** a `fortiswitch`
+catalog with Coreview readers for `get switch lldp neighbors-summary`,
+`diagnose switch mac-address list`, `get system interface physical` and its
+routing table, written against the lab's replies.
+**Run:** in lab run 3 the FortiSwitch was fingerprinted as `fortiswitch` and all six of its commands answered; its readers' tests pass.
+
+### LT-564 — **bug** The FortiGate 7.6 routing table was unread — 2026-09-29, fixed the same day
+**Found by the lab run.** `Routing table for VRF=0` and the trailing
+`[1/0]` after the interface stop ntc's template in both engines. **Fix:** a
+Coreview reader written against the lab's reply, invented values in its
+fixtures.
+**Run:** the reader's tests; on the lab's reply, 15 routes, the default through the WAN among them.
+
+### LT-563 — **bug** FortiOS and FortiSwitchOS 7.6 `get system status` was unread: no hostname, serial or MAC — 2026-09-29, fixed the same day
+**Found by the lab run.** 7.6 prints lines the ntc template does not know
+(`AV AI/ML Model`, `IPS-MLDB`, `OT-*`), and the template's catch-all stops
+the whole reply; both engines refused it, so both boxes had no identity and
+the FortiSwitch could not be matched to the LLDP neighbour the Catalyst
+names. **Fix:** a Coreview reader of the `Key: value` lines, written against
+the lab's own replies; its fixtures keep their layout with every value
+invented (D-027).
+**Run:** `cargo test -p coreview-collect readers`; replayed against the lab's own replies (`lab_run --replay`), both boxes have hostname, serial and model, the FortiSwitch its base MAC, and the FortiSwitch is the node the Catalyst's LLDP names — one link, both ends, 1.0.
 
 ### LT-561 — **bug** The fingerprint session left the pager on, and a Catalyst closed the connection at `--More--` — 2026-09-29, fixed the same day
 **Found by the lab run (LT-558).** The pass that recognises a device opens a

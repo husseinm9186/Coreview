@@ -18,7 +18,8 @@ ntc_platform: fortinet
 phase: 1
 fingerprint:
   probe: get system status
-  match_regex: "Version: Forti(Gate|Switch|Wifi)"
+  # LT-565: a FortiSwitch has its own catalog.
+  match_regex: "Version: Forti(Gate|Wifi)"
 session:
   source: scrapli_community scrapli_community.fortinet.fortios.sync_driver.FortinetFortiOSDriver
   prompt_pattern: "[\\w_-]+ (\\([\\w-]+\\) )?[$#]"
@@ -152,14 +153,14 @@ commands:
     cmd: get system status
     gate: always
     context: global
-    parser: textfsm:fortinet_get_system_status
+    parser: reader:fortios_system_status
     api: /api/v2/monitor/system/status
     feeds:
       - device
     weight: light
     timeout: 30
     verified: lab
-    evidence: ntc-templates tests (8 captures); Coreview fortios reader
+    evidence: Coreview fortios reader, met a FortiGate 60F on FortiOS 7.6.7 in the operator's lab, where ntc's template refused 7.6's new lines (LT-558, LT-563)
     coreview_reader: true
   - id: get_system_ha_status
     cmd: get system ha status
@@ -587,14 +588,14 @@ commands:
     cmd: get router info routing-table all
     gate: always
     foreach: vdom
-    parser: textfsm:fortinet_get_router_info_routing-table_all
+    parser: reader:fortios_routing_table
     api: /api/v2/monitor/router/ipv4
     feeds:
       - route
     weight: heavy
     timeout: 120
     verified: lab
-    evidence: ntc-templates tests (1 captures); Coreview fortios reader
+    evidence: Coreview fortios reader, met a FortiGate 60F on FortiOS 7.6.7 in the operator's lab, where ntc's template refused the reply (LT-558, LT-564)
     coreview_reader: true
   - id: get_router_info_routing_table_database
     cmd: get router info routing-table database

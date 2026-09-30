@@ -95,7 +95,8 @@ mod tests {
     fn the_other_probes() {
         let c = catalogs();
         assert_eq!(identify(&c, "get system status", "Version: FortiGate-60F v7.2.8,build1639,240208 (GA.M)").unwrap().os, "fortios");
-        assert_eq!(identify(&c, "get system status", "Version: FortiSwitch-124E v7.2.5").unwrap().os, "fortios");
+        // LT-565: a FortiSwitch is its own OS, not a FortiGate.
+        assert_eq!(identify(&c, "get system status", "Version: FortiSwitch-124E v7.2.5").unwrap().os, "fortiswitch");
         assert_eq!(identify(&c, "show system info", "hostname: fw1\nmodel: PA-440\nsw-version: 10.2.4").unwrap().os, "panos");
         assert_eq!(identify(&c, "show sysinfo", "Product Name..................................... Cisco Controller").unwrap().os, "cisco_wlc_aireos");
         assert_eq!(identify(&c, "show system", " Status and Counters - General System Information\n\n  Software revision  : WC.16.11.0012").unwrap().os, "aoss");

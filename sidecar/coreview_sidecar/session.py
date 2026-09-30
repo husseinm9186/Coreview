@@ -31,6 +31,8 @@ PLATFORMS = {
     "arista_eos": "arista_eos",
     "juniper_junos": "juniper_junos",
     "fortios": "fortinet_fortios",
+    # LT-565: FortiSwitchOS shares FortiOS's shell.
+    "fortiswitch": "fortinet_fortios",
     "panos": "paloalto_panos",
     "aoscx": "aruba_aoscx",
     "aoss": None,
