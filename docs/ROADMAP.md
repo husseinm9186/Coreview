@@ -649,6 +649,16 @@ I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
 
+### LT-594 — A FortiOS backup reads `show full-configuration` — 2026-09-30, done the same day
+**Source:** the operator, 2026-09-30: "fortigate [its prompt] $ sh
+full-configuration — it will show you all the configura[tion]". LT-572 used
+`show`, the settings that differ from the defaults. On the lab FortiGate
+through the read-only login, `show full-configuration` returned 62,287
+lines (1.9 MB) in 26 s against `show`'s 30,086 lines in 34 s — within the
+300 s a backup allows (LT-587). **Acceptance:** a FortiGate or FortiSwitch
+running-configuration backup is `show full-configuration`.
+**Run:** `backup_a_fake_device.rs` failed on the command sent (`show`) and passes; on the lab FortiGate through the read-only login, 62,287 lines in 26 s. The app's own backup was not run against it.
+
 ### LT-593 — **bug** The Windows build ran a command called "m" — reported 2026-09-30, fixed the same day
 **Source:** the operator, 2026-09-30, pasting the Windows bundle's log:
 "'m' is not recognized as an internal or external command". The SBOM

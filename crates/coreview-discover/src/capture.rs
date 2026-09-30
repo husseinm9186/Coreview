@@ -474,9 +474,10 @@ async fn back_up_one(
     let mut saved = Vec::new();
     let mut problems = Vec::new();
     for kind in &options.kinds {
-        // LT-572: FortiOS's configuration is `show`, and it has only the one.
+        // LT-572: FortiOS has no running-config, and only the one
+        // configuration; LT-594: read whole, defaults included.
         let command = match (fortios, kind) {
-            (true, BackupKind::Running) => "show",
+            (true, BackupKind::Running) => "show full-configuration",
             (true, BackupKind::Startup) => {
                 problems.push(format!("{}: FortiOS keeps one configuration; the running one is the backup", kind.slug()));
                 continue;

@@ -545,9 +545,10 @@ async fn show_commands_still_run_on_a_device_stuck_in_user_mode() {
 
 /// LT-572, LT-573: a FortiGate logged in with a read-only profile (`$`) and
 /// a FortiSwitch as super_admin (`#`). FortiOS has no `show running-config`
-/// and no `enable`; its configuration is `show`.
+/// and no `enable`; its configuration is read whole with `show
+/// full-configuration` (LT-594).
 #[tokio::test]
-async fn a_fortios_configuration_is_read_with_show_whichever_prompt_it_draws() {
+async fn a_fortios_configuration_is_read_whole_whichever_prompt_it_draws() {
     for (name, mark) in [("LAB-FGT", '$'), ("LAB-FSW", '#')] {
         let (port, received) = start_device(name, false, Some(mark)).await;
         let root = temp_root(&format!("fortios-{name}"));
@@ -569,6 +570,8 @@ async fn a_fortios_configuration_is_read_with_show_whichever_prompt_it_draws() {
         assert!(!text.contains(&format!("{name} {mark}")), "a prompt reached the file:\n{text}");
         let sent = received.lock().unwrap().clone();
         assert!(!sent.iter().any(|c| c == "enable" || c == "show running-config" || c == "show startup-config"), "{name}: FortiOS was sent {sent:?}");
+        // LT-594: the whole configuration, defaults included.
+        assert!(sent.iter().any(|c| c == "show full-configuration"), "{name}: {sent:?}");
         // One configuration on FortiOS: the startup backup says so rather than failing.
         assert!(run.failed.iter().all(|f| f.reason.contains("one configuration")), "{name}: {:?}", run.failed);
         std::fs::remove_dir_all(&root).ok();
