@@ -1008,6 +1008,9 @@ pub async fn start_backup(
         kinds,
         ssh: SshOptions {
             port: input.port,
+            // LT-587: a FortiGate 60F's `show` took 34 s in the lab; a larger
+            // configuration would pass the default 60.
+            command_timeout: std::time::Duration::from_secs(300),
             ..SshOptions::default()
         },
         second_factor: input.second_factor,

@@ -105,7 +105,15 @@ answer stays outside the repository (D-027) — a fixture made from it is
 reduced to invented names and documentation addresses first. Read-only, as
 every collection (LT-522, LT-556, LT-557). No OS is flipped from what this
 finds (LT-521) — the results go to the operator.
-**Where it stands, 2026-09-29.** Three runs; the third collected all three
+**2026-09-30:** with the operator's permission and API key, fresh runs:
+from the Catalyst alone the collector follows to the FortiGate (default
+route) and the FortiSwitch (chassis MAC in ARP); the FortiGate's policy is
+read over its API (13443) and decides the LAN's traffic — HTTPS and SSH
+allowed by `Default`, QUIC denied by `block-youtube`; the modelled first
+hops (FortiGate, then its WAN next hop) agree with the Catalyst's real
+traceroute. Twelve more bugs fixed (LT-572–LT-585). Still for the operator:
+the shadow report per OS and his own acceptance of LT-527/531/532.
+**Where it stood, 2026-09-29.** Three runs; the third collected all three
 boxes (FortiGate 14 commands, FortiSwitch 6, Catalyst 32). Eleven bugs found
 and fixed with a failing test each, LT-560–LT-570 (LT-569 short of drawing the box).
 `lab_run --replay` rereads a run's stored replies through today's code, and
@@ -618,6 +626,17 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-587 — A large FortiGate configuration could outlast the backup's time limit — 2026-09-30, done the same day
+**Found checking LT-572/573 on the lab:** the lab FortiGate 60F's `show`
+through the read-only login returned its whole configuration — 30,086
+lines, 783 KB — in 34 s, and a backup allowed any one command 60 s in all.
+A FortiGate with a larger configuration would have failed as a timeout.
+**Done:** a backup allows 300 s per command. **Run:** the lab's `show` on
+both Fortinet boxes through the same SSH session a backup uses (FortiGate
+at `$`, FortiSwitch at `#`): each returned a configuration starting
+`#config-version=`, which is what LT-572/573 now ask for. The backup
+command itself was not run against them from the app.
 
 ### LT-585 — **bug** A rule naming a MAC address object could never be decided — 2026-09-30, fixed the same day
 **Found by the lab run:** past LT-584, the LAN's HTTPS stopped at a rule
