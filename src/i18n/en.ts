@@ -655,6 +655,7 @@ export const en = {
   'crawl.diagnostic.logOnly': 'The debug log for the last run is in',
   'crawl.support.openFolder': 'Open folder',
   'jobs.kind.iconScan': 'Icon library',
+  'jobs.kind.collect': 'Collection',
   'jobs.count': '{done} of {total}',
   'jobs.elapsedSeconds': { one: '{count} s', other: '{count} s' },
   'jobs.elapsedMinutes': { one: '{count} min', other: '{count} min' },

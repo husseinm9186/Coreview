@@ -1,5 +1,6 @@
+import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
-import { applyJob, jobCount, jobLine } from './jobs';
+import { applyJob, jobCount, jobLine, jobName } from './jobs';
 import type { JobSnapshot } from './ipc';
 
 const snap = (over: Partial<JobSnapshot>): JobSnapshot => ({
@@ -35,5 +36,16 @@ describe('the running jobs (LT-432)', () => {
     expect(meraki).toBe('Meraki · Backing up Branch · 1 of 4 · 3 s');
     const scan = jobLine(snap({ kind: 'icon-scan', phase: 'Converting EMF/WMF', done: 40, total: 120, startedMs: 0 }), 3_000);
     expect(scan).toBe('Icon library · Converting EMF/WMF · 40 of 120 · 3 s');
+  });
+
+  // LT-590: the collector's header read "undefined · Collecting…".
+  it('names a collection, and every kind the backend runs', () => {
+    const line = jobLine(snap({ kind: 'collect', phase: 'Collecting 192.0.2.1', done: 1, total: 6, startedMs: 0 }), 6_000);
+    expect(line).toBe('Collection · Collecting 192.0.2.1 · 1 of 6 · 6 s');
+    const rust = readFileSync('src-tauri/src/jobs.rs', 'utf8');
+    const body = /pub enum Kind \{([\s\S]*?)\n\}/.exec(rust)?.[1] ?? '';
+    const kinds = [...body.matchAll(/^\s{4}([A-Z]\w*),/gm)].map((m) => (m[1] ?? '').replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase());
+    expect(kinds.length).toBeGreaterThan(5);
+    for (const k of kinds) expect(jobName(k as JobSnapshot['kind']), k).toBeTruthy();
   });
 });

@@ -139,6 +139,46 @@ page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
 a layout run on an existing page — so the same input can be laid out again
 in a test.
 
+### LT-588 — **bug** Discover with the collector "never finishes": one stuck device held the run for minutes and then ended it — reported 2026-09-30
+**Source:** the operator, 2026-09-30, with screenshots, testing the
+collector on "Discover devices": "it never finishes". The header stood at
+"Collecting <the FortiGate's address> · 1 of 6" — the Catalyst done, the FortiGate in
+progress, four waiting. What the code does when a command stalls: the
+sidecar request waits its limit plus 15 s (135 s for a heavy command), the
+session's close then waits 45 s on a sidecar still busy with the stuck
+command, and the device's failure `sidecar` ends the **whole run** — the
+devices still waiting are never collected. Why the FortiGate stalls on the
+operator's Windows machine and not from Linux (5–35 s in four lab runs) is
+not known yet. **Fix:** a device whose sidecar stops answering is ended at
+once — no close sent to a sidecar that cannot answer it — the sidecar is
+killed and a fresh one started, and the run goes on to the next device;
+the Discover panel names the last command a device answered, so a stall
+says where. **Needs from the operator:** the run's diagnostic folder, to
+find the command that stalls.
+
+
+### LT-589 — **bug** Stop did not stop a collector run — reported 2026-09-30
+**Source:** the same report: "the discover stop doesn't work I have to
+switch screens". Cancellation was checked only between devices, so Stop
+waited out the device in progress, however long. **Fix:** Stop ends the
+device in progress at once and kills its sidecar; the run finishes
+cancelled with what it had.
+
+### LT-591 — **bug** A console window opened beside the app while the collector ran — reported 2026-09-30
+**Source:** the first screenshot: an empty console titled
+`C:\Program Files\Coreview\sidecar…` beside the app. The sidecar's
+Python is a console program, and Windows gives a console program started
+from a windowed one a window of its own unless told not to. **Fix:** it is
+started with no window (`CREATE_NO_WINDOW`).
+
+### LT-592 — **bug** "Add to diagram" always added every device seen on a switch port — reported 2026-09-30
+**Source:** the same report: the classic crawler "doesn't give me the
+option to only add the infrastructure or the ones i selected it wants to
+add all devices + whats seen … it wants to add 7+37". The 37 devices seen
+on switch ports (IoT, phones) are filtered by maker, subnet and port, but
+cannot be left out as a whole. **Fix:** a tick, "Also add the devices seen
+on switch ports", beside the button; unticked, only the devices ticked in
+the table are added.
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
 confirmed by the operator on accepting P1 (2026-09-29): "embeddable
@@ -626,6 +666,12 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-590 — **bug** A collection's header read "undefined · Collecting…" — reported 2026-09-30, fixed the same day
+**Source:** the first screenshot of the same report. The header names a
+running job by its kind, and the interface did not know the collector's
+kind (`collect`).
+**Run:** `jobs.test.ts` — the collection's line, and every job kind `jobs.rs` declares has a name (the test reads the enum, so the next kind cannot drift the same way).
 
 ### LT-587 — A large FortiGate configuration could outlast the backup's time limit — 2026-09-30, done the same day
 **Found checking LT-572/573 on the lab:** the lab FortiGate 60F's `show`

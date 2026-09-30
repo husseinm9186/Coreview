@@ -30,6 +30,9 @@ export function jobName(kind: JobKind): string {
       return t('jobs.kind.meraki');
     case 'icon-scan':
       return t('jobs.kind.iconScan');
+    // LT-590: the catalog-driven collection.
+    case 'collect':
+      return t('jobs.kind.collect');
   }
 }
 
