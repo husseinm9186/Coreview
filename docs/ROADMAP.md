@@ -121,6 +121,28 @@ validate the other devices like aruba, cisco Nexus, IOS XE and XR, asa,
 fmc, etc". Waits on the lab being on; then the same run and rules as LT-558
 per platform, the FMC through LT-541's collector.
 
+### LT-574 — **bug** Tracert from a device sat at "Tracing…" — reported 2026-09-29, not yet reproduced
+**Source:** the operator, 2026-09-29, with a screenshot: "traceroute is not
+working" — Tracert from the Catalyst to 8.8.8.8 with the project's SSH
+login, the button at "Tracing…". The panel clears that on any answer or
+error, so the wait is in `traceroute_from_device`: it allows 180 s, and a
+timeout discards every hop the device had already printed. From this
+machine, behind the same FortiGate, the path answers at hop 10 in two
+seconds, so the time is on the switch — IOS waits 9 s per silent hop and
+looks up a name for every hop — and cannot be confirmed without a login
+this session was not permitted. **Needs:** how long it stayed, and whether
+anything appeared after; or the debug log of a run.
+
+### LT-575 — **bug** The diagram is "all over the place" — reported 2026-09-29, not yet reproduced
+**Source:** the operator, 2026-09-29, with a screenshot: "also the diagram
+is all over the place". The page shows the lab's devices with links
+crossing the whole page: a firewall at the top edge with a fan of long
+curves to endpoints far below, a row of unlinked devices across the left,
+access switches not beneath what they hang from. **Needs:** which way the
+page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
+a layout run on an existing page — so the same input can be laid out again
+in a test.
+
 ### LT-571 — A FortiGate's firewall policy when there is no API token — 2026-09-29
 **Found by the lab run.** Policies, VIPs, addresses, zones, IPsec and SD-WAN
 are read only through FortiOS's REST API, so a FortiGate collected over SSH
@@ -615,6 +637,33 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-573 — **bug** A FortiGate backup with a read-only account gave up as "user mode" — reported 2026-09-29, fixed the same day
+**Source:** the same report: "[the FortiGate] — the device stayed in user
+mode; a configuration cannot be read without enable". The account logs in
+at FortiOS's `$` prompt, which is a non-super-admin, not user mode: FortiOS
+has no `enable` to escalate with, and a read-only profile may read the
+configuration it is allowed to see. The backup stopped before asking.
+**Fix:** at a FortiOS prompt no `enable` is sent and the configuration is
+read whatever the mark; what comes back is still judged by the checks every
+backup passes. Not yet met a FortiGate's read-only `show` — the operator's
+next backup is what earns it.
+**Run:** the same test with a fake FortiGate at `$` failed with "the device stayed in user mode" — the reported message — and now files its configuration without `enable` being sent. Whether a real read-only profile's `show` holds the whole configuration is for the operator's next backup to say.
+
+### LT-572 — **bug** A FortiGate or FortiSwitch backup asked for `show running-config`, which FortiOS does not have — reported 2026-09-29, fixed the same day
+**Source:** the operator, 2026-09-29, with a screenshot: "backup doens't
+work on fortiswitch and fortigate". The FortiSwitch's backup failed with
+"running-config: the device returned only 2 line(s), which is not a
+configuration". The crawl's own support capture shows why: FortiOS and
+FortiSwitchOS answer an unknown command with `command parse error before
+'…'` / `Command fail. Return code -61`, and a backup sends every device
+`show running-config`. FortiOS's configuration is `show`. The rejection was
+also not recognised as one, so the message blamed the length. **Fix:** a
+FortiOS prompt (`host # `, `host $ `, `host (vdom) # ` — a space before
+the mark, which no other platform draws) is backed up with `show`; FortiOS
+has one configuration, so a startup backup says so instead of guessing; the
+refusal is named as a refusal.
+**Run:** a fake FortiSwitch over real SSH (`#`, FortiOS's refusal for anything else): its backup failed before with the reported message, and now files `show`'s configuration; nothing FortiOS lacks is sent. A unit test tells FortiOS prompts from six others'. Not yet a real device's backup — the operator's next one.
 
 ### LT-570 — **bug** A switch's management address made it the first router of a path — 2026-09-29, fixed the same day
 **Found by the lab run.** Tracing from an endpoint on the lab's LAN began

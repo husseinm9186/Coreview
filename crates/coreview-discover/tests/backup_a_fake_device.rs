@@ -40,6 +40,21 @@ struct FakeSwitch {
     enabled: Arc<std::sync::Mutex<bool>>,
     /// Every line the device received, in order (LT-149).
     received: Arc<std::sync::Mutex<Vec<String>>>,
+    /// LT-572, LT-573: a FortiGate or FortiSwitch, drawing `host # ` for a
+    /// super_admin or `host $ ` for a read-only profile, with FortiOS's
+    /// refusal for anything it does not have.
+    fortios: Option<char>,
+}
+
+/// A FortiOS configuration as `show` prints it: the version header, then
+/// `config` blocks. Invented values (D-027).
+fn fortios_config(hostname: &str) -> String {
+    let mut c = String::from("#config-version=FGT60F-7.6.7-FW-build3704-260601:opmode=0:vdom=0:user=reader\r\n#conf_file_ver=1\r\n#buildno=3704\r\n#global_vdom=1\r\n");
+    c.push_str(&format!("config system global\r\n    set hostname \"{hostname}\"\r\n    set timezone \"US/Central\"\r\nend\r\n"));
+    for i in 1..=4 {
+        c.push_str(&format!("config system interface\r\n    edit \"internal{i}\"\r\n        set vdom \"root\"\r\n        set type physical\r\n    next\r\nend\r\n"));
+    }
+    c
 }
 
 impl server::Handler for FakeSwitch {
@@ -84,6 +99,10 @@ impl server::Handler for FakeSwitch {
     ) -> Result<(), Self::Error> {
         // User mode draws '>', enable mode draws '#'. That difference is the
         // whole reason `enable` exists.
+        if let Some(mark) = self.fortios {
+            session.data(channel, format!("\r\n{} {mark} ", self.hostname).into_bytes())?;
+            return Ok(());
+        }
         let mark = if self.stuck_in_user_mode { '>' } else { '#' };
         session.data(channel, format!("\r\n{}{mark}", self.hostname).into_bytes())?;
         Ok(())
@@ -99,6 +118,18 @@ impl server::Handler for FakeSwitch {
         let command = line.trim();
         if !command.is_empty() {
             self.received.lock().unwrap().push(command.to_string());
+        }
+        if let Some(mark) = self.fortios {
+            // FortiOS has no `enable`, no `terminal length`, no running-config:
+            // its configuration is `show`, for a read-only profile too.
+            let body = match command {
+                "" => String::new(),
+                "show" | "show full-configuration" => fortios_config(&self.hostname),
+                "get system status" => format!("Version: FortiGate-60F v7.6.7,build3704,260601 (GA.M)\r\nHostname: {}\r\n", self.hostname),
+                other => format!("command parse error before '{}'\r\nCommand fail. Return code -61\r\n", other.split_whitespace().last().unwrap_or(other)),
+            };
+            session.data(channel, format!("{command}\r\n{body}{} {mark} ", self.hostname).into_bytes())?;
+            return Ok(());
         }
         let is_enabled = *self.enabled.lock().unwrap() || !self.stuck_in_user_mode;
 
@@ -137,6 +168,14 @@ async fn start_with_log(
     hostname: &str,
     stuck_in_user_mode: bool,
 ) -> (u16, Arc<std::sync::Mutex<Vec<String>>>) {
+    start_device(hostname, stuck_in_user_mode, None).await
+}
+
+async fn start_device(
+    hostname: &str,
+    stuck_in_user_mode: bool,
+    fortios: Option<char>,
+) -> (u16, Arc<std::sync::Mutex<Vec<String>>>) {
     let received = Arc::new(std::sync::Mutex::new(Vec::new()));
     let key = russh::keys::PrivateKey::random(&mut rand::rng(), russh::keys::Algorithm::Ed25519).unwrap();
     let config = Arc::new(server::Config {
@@ -152,6 +191,7 @@ async fn start_with_log(
         stuck_in_user_mode,
         enabled: Arc::new(std::sync::Mutex::new(false)),
         received: Arc::clone(&received),
+        fortios,
     };
     tokio::spawn(async move {
         while let Ok((stream, _)) = listener.accept().await {
@@ -501,4 +541,36 @@ async fn show_commands_still_run_on_a_device_stuck_in_user_mode() {
     // And no running-config was invented out of an error message.
     assert!(!run.saved.iter().any(|s| s.path.contains("running-config")));
     std::fs::remove_dir_all(&root).ok();
+}
+
+/// LT-572, LT-573: a FortiGate logged in with a read-only profile (`$`) and
+/// a FortiSwitch as super_admin (`#`). FortiOS has no `show running-config`
+/// and no `enable`; its configuration is `show`.
+#[tokio::test]
+async fn a_fortios_configuration_is_read_with_show_whichever_prompt_it_draws() {
+    for (name, mark) in [("LAB-FGT", '$'), ("LAB-FSW", '#')] {
+        let (port, received) = start_device(name, false, Some(mark)).await;
+        let root = temp_root(&format!("fortios-{name}"));
+        let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+        let (tx, _rx) = mpsc::channel(128);
+        let run = run_backups(
+            vec![BackupTarget { address: "127.0.0.1".into(), name: name.into(), commands: Vec::new(), site: String::new() }],
+            creds("correct-horse"),
+            options(root.clone(), port, vec![BackupKind::Running, BackupKind::Startup]),
+            store,
+            "20260929-120000".into(),
+            tx,
+            CancellationToken::new(),
+        )
+        .await;
+        assert_eq!(run.saved.len(), 1, "{name} at {mark}: {:?}", run.failed);
+        let text = std::fs::read_to_string(&run.saved[0].path).unwrap();
+        assert!(text.starts_with("#config-version=") && text.contains("edit \"internal4\""), "{name}: {text}");
+        assert!(!text.contains(&format!("{name} {mark}")), "a prompt reached the file:\n{text}");
+        let sent = received.lock().unwrap().clone();
+        assert!(!sent.iter().any(|c| c == "enable" || c == "show running-config" || c == "show startup-config"), "{name}: FortiOS was sent {sent:?}");
+        // One configuration on FortiOS: the startup backup says so rather than failing.
+        assert!(run.failed.iter().all(|f| f.reason.contains("one configuration")), "{name}: {:?}", run.failed);
+        std::fs::remove_dir_all(&root).ok();
+    }
 }

@@ -58,8 +58,9 @@ pub fn prompt_from_line(line: &str) -> Option<Prompt> {
     let (head, enabled) = match line.chars().last()? {
         '#' => (&line[..line.len() - 1], true),
         // `$` is FortiOS for "logged in, but not as super_admin". It is a real
-        // prompt: the device is ready and will answer. Treated as unprivileged
-        // so a config backup still reports honestly that it cannot escalate.
+        // prompt: the device is ready and will answer. Marked unprivileged;
+        // FortiOS has no `enable`, and a backup reads what the profile allows
+        // (LT-573, `is_fortios_prompt`).
         '>' | '$' => (&line[..line.len() - 1], false),
         _ => return None,
     };
@@ -91,6 +92,14 @@ pub fn prompt_from_line(line: &str) -> Option<Prompt> {
         hostname: base.to_string(),
         enabled,
     })
+}
+
+/// Whether a prompt is FortiOS's or FortiSwitchOS's (LT-572): `host # `,
+/// `host $ `, `host (vdom) # ` — a space before the mark, which no other
+/// platform's prompt has. FortiOS has no `enable` and no running-config.
+pub fn is_fortios_prompt(prompt: &Prompt) -> bool {
+    let t = prompt.text.trim_end();
+    (t.ends_with(" #") || t.ends_with(" $")) && !t.contains('@')
 }
 
 /// The prompt on a rendered screen, if the device has drawn one (LT-383).
@@ -437,6 +446,8 @@ pub fn command_was_rejected(output: &str) -> Option<String> {
             || t.contains("Incomplete command")
             || t.contains("Permission denied")
             || t.contains("Authorization failed")
+            // LT-572: FortiOS and FortiSwitchOS, met on the operator's lab.
+            || lower.starts_with("command parse error")
             || lower.contains("unknown command")
             || lower.contains("unrecognized command")
             || lower.contains("invalid syntax")
@@ -534,6 +545,17 @@ mod tests {
         assert_eq!(p.hostname, "Lab_BranchOffice01");
         // Not super_admin, so a backup must not claim it can escalate.
         assert!(!p.enabled);
+    }
+
+    #[test]
+    fn a_fortios_prompt_is_told_from_the_others() {
+        for fortios in ["Lab_BranchOffice01 $ ", "FSW-224E # ", "FGT-60F (root) # "] {
+            assert!(is_fortios_prompt(&find_prompt(fortios).unwrap()), "{fortios}");
+        }
+        for other in ["CORE-SW-01#", "EDGE-RTR>", "ubnt@edge-1:~$", "admin@core-ex1# ", "HP-2530# "] {
+            assert!(!is_fortios_prompt(&find_prompt(other).unwrap()), "{other}");
+        }
+        assert!(command_was_rejected("command parse error before 'running-config'\nCommand fail. Return code -61").is_some());
     }
 
     #[test]

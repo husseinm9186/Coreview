@@ -438,11 +438,15 @@ async fn back_up_one(
     };
 
     // A configuration cannot be read from user mode. Escalating first turns a
-    // file full of "% Invalid input" into an honest failure.
-    let enabled = device
-        .enable(credentials.enable_password.as_ref())
-        .await
-        .unwrap_or(false);
+    // file full of "% Invalid input" into an honest failure. FortiOS has no
+    // `enable`: its `$` is a read-only profile, which may read what it is
+    // allowed to see, and what comes back is judged like any capture (LT-573).
+    let fortios = crate::cli::is_fortios_prompt(&device.prompt);
+    let enabled = fortios
+        || device
+            .enable(credentials.enable_password.as_ref())
+            .await
+            .unwrap_or(false);
 
     // LT-149: the commands this device gets, if any were asked for.
     let show = options.show.as_ref().and_then(|plan| {
@@ -470,7 +474,18 @@ async fn back_up_one(
     let mut saved = Vec::new();
     let mut problems = Vec::new();
     for kind in &options.kinds {
-        let Some(command) = kind.command() else { continue };
+        // LT-572: FortiOS's configuration is `show`, and it has only the one.
+        let command = match (fortios, kind) {
+            (true, BackupKind::Running) => "show",
+            (true, BackupKind::Startup) => {
+                problems.push(format!("{}: FortiOS keeps one configuration; the running one is the backup", kind.slug()));
+                continue;
+            }
+            _ => match kind.command() {
+                Some(c) => c,
+                None => continue,
+            },
+        };
         if !enabled {
             problems.push(format!(
                 "{}: the device stayed in user mode; a configuration cannot be read without enable",
