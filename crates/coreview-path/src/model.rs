@@ -448,6 +448,25 @@ pub fn items(r: &Row, c: &str) -> Vec<String> {
     v.split([',', ';', '\n']).map(|s| s.trim().trim_matches(['"', '\'']).to_string()).filter(|s| !s.is_empty()).collect()
 }
 
+/// LT-583: a FortiOS rule on internet-service entries in place of addresses
+/// (`internet-service-src enable` and its `…-name`, `…-group`, `…-custom`
+/// lists) — each entry as `isdb:<name>`, which the firewall decides.
+fn internet_service(r: &Row, field: &str) -> Option<Vec<String>> {
+    let on = r.extra.get(field).and_then(|v| v.as_str()).is_some_and(|v| v.eq_ignore_ascii_case("enable"));
+    if !on {
+        return None;
+    }
+    let mut out = Vec::new();
+    for suffix in ["name", "group", "custom", "custom_group", "fortiguard"] {
+        for v in r.extra.get(&format!("{field}_{suffix}")).and_then(|v| v.as_array()).into_iter().flatten() {
+            if let Some(n) = v.get("name").and_then(|n| n.as_str()).or_else(|| v.as_str()) {
+                out.push(format!("isdb:{n}"));
+            }
+        }
+    }
+    Some(if out.is_empty() { vec!["isdb:(unnamed)".into()] } else { out })
+}
+
 /// An `enabled` column: absent means on.
 fn enabled(v: Option<&str>) -> bool {
     let Some(v) = v else { return true };
@@ -687,8 +706,8 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
             name: opt(r, "name"),
             src_zones: items(r, "src_zones"),
             dst_zones: items(r, "dst_zones"),
-            src_addr: items(r, "src_addr"),
-            dst_addr: items(r, "dst_addr"),
+            src_addr: internet_service(r, "internet_service_src").unwrap_or_else(|| items(r, "src_addr")),
+            dst_addr: internet_service(r, "internet_service").unwrap_or_else(|| items(r, "dst_addr")),
             services: items(r, "services"),
             action: opt(r, "action").unwrap_or_default(),
             enabled: enabled(r.get("enabled")),
@@ -800,6 +819,12 @@ fn object_item(r: &Row, service: bool) -> Option<String> {
 fn read_objects(d: &DeviceIn, b: &mut Box_) {
     for r in d.rows("fw_object") {
         let Some(name) = opt(r, "name") else { continue };
+        // LT-581: a FortiOS group lists its members in one row.
+        let members = items(r, "member");
+        if members.len() > 1 {
+            b.objects.entry(name).or_default().extend(members);
+            continue;
+        }
         let service = r.command.contains("service");
         if let Some(item) = object_item(r, service) {
             b.objects.entry(name).or_default().push(item);

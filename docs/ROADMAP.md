@@ -121,6 +121,39 @@ validate the other devices like aruba, cisco Nexus, IOS XE and XR, asa,
 fmc, etc". Waits on the lab being on; then the same run and rules as LT-558
 per platform, the FMC through LT-541's collector.
 
+### LT-575 — **bug** The diagram is "all over the place" — reported 2026-09-29, not yet reproduced
+**Source:** the operator, 2026-09-29, with a screenshot: "also the diagram
+is all over the place". The page shows the lab's devices with links
+crossing the whole page: a firewall at the top edge with a fan of long
+curves to endpoints far below, a row of unlinked devices across the left,
+access switches not beneath what they hang from. **Needs:** which way the
+page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
+a layout run on an existing page — so the same input can be laid out again
+in a test.
+
+### LT-576 — The new collector's work does not reach "Discover devices" or the diagram — 2026-09-29
+**Source:** the operator, 2026-09-29: "built a lot and added a lot but i
+don't see any enhancements whats going on?" Two reasons, from his own
+diagnostics. His Collect runs (16:09–16:15 CDT) were on an installer built
+before LT-560, so every FortiGate and FortiSwitch session failed to open —
+five of seven runs empty; today's code collects all three lab boxes in 15 s.
+And the catalog-driven collector, readers, topology builder and path
+builder (LT-507) are reached only from the Collect tab; "Discover devices"
+still runs the older crawler, which sends Cisco commands to a FortiSwitch,
+and it is that crawler's result the diagram is drawn from. **Ruled 2026-09-30:** "yes go ahead" — move them now (D-062).
+**Acceptance:** "Discover devices" collects from its seeds with the
+catalog-driven collector and follows CDP/LLDP neighbours within its hop,
+device and subnet limits; its result is the P2 topology, handed to the same
+review screen the crawl's result goes to, and from there to the diagram.
+The older crawler stays selectable on the panel until the new one covers
+what it does; it is not deleted.
+
+### LT-577 — Tracert from a device shows each hop as it arrives, and keeps them on a timeout — 2026-09-30
+**Source:** the fix proposed under LT-574 and approved with "yes go ahead"
+(2026-09-30). **Acceptance:** while a device traces, the tab shows the hops
+printed so far and the time taken; a trace that reaches its limit shows
+what arrived and says it stopped, instead of discarding it.
+
 ### LT-574 — **bug** Tracert from a device sat at "Tracing…" — reported 2026-09-29, not yet reproduced
 **Source:** the operator, 2026-09-29, with a screenshot: "traceroute is not
 working" — Tracert from the Catalyst to 8.8.8.8 with the project's SSH
@@ -141,36 +174,6 @@ the trace works; what fails is the tab: nothing moves for up to three
 minutes, and a trace that passes 180 s loses every hop it had printed.
 **Proposed fix:** hops shown as the device prints them, with the time so
 far, and a timeout that keeps what arrived.
-
-### LT-575 — **bug** The diagram is "all over the place" — reported 2026-09-29, not yet reproduced
-**Source:** the operator, 2026-09-29, with a screenshot: "also the diagram
-is all over the place". The page shows the lab's devices with links
-crossing the whole page: a firewall at the top edge with a fan of long
-curves to endpoints far below, a row of unlinked devices across the left,
-access switches not beneath what they hang from. **Needs:** which way the
-page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
-a layout run on an existing page — so the same input can be laid out again
-in a test.
-
-### LT-576 — The new collector's work does not reach "Discover devices" or the diagram — 2026-09-29
-**Source:** the operator, 2026-09-29: "built a lot and added a lot but i
-don't see any enhancements whats going on?" Two reasons, from his own
-diagnostics. His Collect runs (16:09–16:15 CDT) were on an installer built
-before LT-560, so every FortiGate and FortiSwitch session failed to open —
-five of seven runs empty; today's code collects all three lab boxes in 15 s.
-And the catalog-driven collector, readers, topology builder and path
-builder (LT-507) are reached only from the Collect tab; "Discover devices"
-still runs the older crawler, which sends Cisco commands to a FortiSwitch,
-and it is that crawler's result the diagram is drawn from. **Needs the
-operator's ruling:** whether "Discover devices" and the diagram move onto
-the new collector now, ahead of LT-507's later phases.
-
-### LT-571 — A FortiGate's firewall policy when there is no API token — 2026-09-29
-**Found by the lab run.** Policies, VIPs, addresses, zones, IPsec and SD-WAN
-are read only through FortiOS's REST API, so a FortiGate collected over SSH
-alone has none, and every verdict through it is "Undetermined" (LT-532).
-**Blocked on Q-021:** a read-only API token for the lab FortiGate, or the
-operator's go-ahead and a capture for a reader over SSH.
 
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
@@ -659,6 +662,94 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-585 — **bug** A rule naming a MAC address object could never be decided — 2026-09-30, fixed the same day
+**Found by the lab run:** past LT-584, the LAN's HTTPS stopped at a rule
+whose sources are MAC address objects (`type: mac`, `macaddr: [...]`) — a
+list the builder read as nothing it knew. The firewall knows the source's
+MAC from its own ARP table. **Fix:** MAC objects are read as MACs (a single
+MAC or a range); a rule's MAC source is decided against the MAC the
+firewall's ARP has for the source address, and is unknown only when it has
+none.
+**Run:** a path test: the host whose MAC is in the object is denied by that rule, another is not; on the lab HTTPS and SSH from the LAN are allowed by `Default (25)`.
+
+### LT-584 — **bug** A rule naming an FQDN address could never be decided — 2026-09-30, fixed the same day
+**Found by the lab run:** with LT-580–583 fixed, HTTPS from the LAN stopped
+at a rule naming `EMS_Public`, an FQDN address; the builder had no address
+for it, so the rule — and every rule after it — was "not known". The
+FortiGate resolves its FQDN addresses itself. **Fix:** the collector reads
+them from `/api/v2/monitor/firewall/address-fqdns` — the list, then each by
+name (`?mkey=`), which is the form the lab's 7.6.7 answered with addresses —
+and each becomes that object's addresses as the FortiGate had them at the
+time of the run. Coreview does no lookup of its own.
+**Run:** a path test that was "Undetermined" without the FortiGate's resolution and decides with it; on the lab the rule naming `EMS_Public` is decided.
+
+### LT-583 — **bug** A rule on internet-service sources matched every source — 2026-09-30, fixed the same day
+**Found by the lab run:** the lab's `Out_Deny_ISDB` names FortiGuard
+internet-service entries (scanners, Tor exits, botnet servers) as its
+sources and no source address; an empty list is "any", so it would deny
+the whole LAN. Likewise for internet-service destinations. **Fix:** such a
+rule's sources (or destinations) are those entries: a private address is
+never in one; a public one is unknown, since the database is FortiGuard's
+and not collected. FortiOS's predefined `QUIC` (UDP 443) is added with the
+other predefined services the lab's rules use.
+**Run:** as LT-580: `Out_Deny_ISDB` does not match a LAN host; QUIC is denied by `block-youtube` on the lab.
+
+### LT-582 — **bug** A FortiGate's SD-WAN zone was not known to hold its members — 2026-09-30, fixed the same day
+**Found by the lab run:** the lab's internet policies go to
+`virtual-wan-link`, the SD-WAN zone holding wan2, while the route leaves by
+wan2. `/cmdb/system/sdwan` fed `tunnel`, and no zone said which interfaces
+it holds. **Fix:** its members are the zone's interfaces (`fw_zone`).
+**Run:** as LT-580: `Default` decides a flow leaving by wan2 through `virtual-wan-link`.
+
+### LT-581 — **bug** FortiOS address objects and groups were read as firewall policies — 2026-09-30, fixed the same day
+**Found by the lab run:** `/cmdb/firewall/address` and `/addrgrp` fed
+`fw_policy`, so 150 addresses and 17 groups became rules with no action,
+and the first to match decided — the lab's trace was "Denied" by an
+address object. **Fix:** they feed `fw_object`; a group's members are each
+an item; an address the builder cannot resolve (geography, FQDN, MAC) stays
+unknown, as any unresolved object does.
+**Run:** as LT-580.
+
+### LT-580 — **bug** FortiOS REST lists were read as JSON text: no FortiGate policy could match by name — 2026-09-30, fixed the same day
+**Found by the lab run** with the API: a policy's `srcintf`, `srcaddr`,
+`service` and a group's `member` are lists of `{"name": …}`, and each was
+stored as the JSON of those objects, so no name in them ever matched an
+interface, zone, object or service. **Fix:** a list of named objects is
+stored as its names.
+**Run:** a table test and `coreview-path/tests/fortigate_over_rest.rs`, which failed "Denied by internal" before.
+
+### LT-579 — **bug** A FortiGate's managed FortiSwitch became part of the FortiGate — 2026-09-30, fixed the same day
+**Found by the lab run** once the API answered: the FortiGate's
+`/monitor/switch-controller/managed-switch/status` fed its own `device` and
+`ha_pair` tables, so the FortiSwitch's serial became one of the
+FortiGate's, and the topology folded the collected FortiSwitch into the
+FortiGate's node — its port24 drawn as the FortiGate's. A managed switch is
+another box. **Fix:** the endpoint feeds `neighbor`: a switch connected over
+FortiLink is a neighbour on the FortiGate's FortiLink interface; one that
+is authorised but not connected (the lab's is `Idle`) gives nothing.
+**Run:** the rows stored through the catalog's feeds — failed with `device` and `ha_pair`, passes; the lab run shows the FortiSwitch as its own node again, its link to the Catalyst at 1.0.
+
+### LT-578 — **bug** A device's REST API off port 443 could not be reached — 2026-09-30, fixed the same day
+**Found by the lab run** with the operator's API key: every FortiOS REST
+call timed out. The lab FortiGate serves its admin HTTPS on 13443
+(`admin-sport`, read over SSH), as many do when SSL-VPN holds 443, and the
+API collector always used 443. **Fix:** a saved API login carries the HTTPS
+port (the vault form asks for it; blank is 443), and the collector calls
+`host:port`, pinning the certificate against that port.
+**Run:** a FortiGate collected through `collect_for` against a local TLS server on a non-443 port — failed with the port ignored, passes; the lab's FortiGate answered on 13443 (43 interfaces, 39 policies, 150 addresses).
+
+### LT-571 — A FortiGate's firewall policy when there is no API token — 2026-09-29, done 2026-09-30
+**Found by the lab run.** Policies, VIPs, addresses, zones, IPsec and SD-WAN
+are read only through FortiOS's REST API, so a FortiGate collected over SSH
+alone has none, and every verdict through it is "Undetermined" (LT-532).
+**Blocked on Q-021:** a read-only API token for the lab FortiGate, or the
+operator's go-ahead and a capture for a reader over SSH. **Unblocked
+2026-09-30:** the operator gave the lab FortiGate's REST API user and key.
+The key is used only from the environment in the lab harness and through
+the vault in the app — never written to a file, a fixture or a commit
+(D-006, LT-137).
+**What shipped:** the operator gave an API token; with LT-578–LT-585 the lab FortiGate's policy is read and decides the LAN's traffic. A reader over SSH without a token (Q-021's other choice) was not built. Not modelled yet: FortiOS's per-policy source NAT (`nat: enable`) is not shown as a translation on the hop.
 
 ### LT-573 — **bug** A FortiGate backup with a read-only account gave up as "user mode" — reported 2026-09-29, fixed the same day
 **Source:** the same report: "[the FortiGate] — the device stayed in user
@@ -13199,6 +13290,11 @@ internal COREVIEW-FGT-Root-CA cannot and never will.
 ---
 
 ## Icebox
+
+### LT-586 — FortiOS per-policy source NAT shown on the path — 2026-09-30
+Noted during LT-571: a FortiOS policy with `nat: enable` translates the
+source to the egress interface's address (or its IP pool), and the path's
+hop does not show that translation yet. The lab's `Default` policy is one.
 
 ### A hypervisor's VMs and containers as a table — 2026-09-29
 Mentioned by LT-550: Proxmox `qm list` / `pct list` and ESXi's VM list are

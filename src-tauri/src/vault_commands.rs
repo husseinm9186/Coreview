@@ -219,7 +219,8 @@ pub struct SaveCredential {
     pub secret: String,
     /// Enable password, or SNMPv3 privacy password.
     pub second_secret: Option<String>,
-    /// SNMPv3 algorithm words, for example "sha|aes 256".
+    /// SNMPv3 algorithm words, for example "sha|aes 256"; for an API login,
+    /// its HTTPS port (LT-578).
     pub detail: Option<String>,
 }
 
@@ -524,7 +525,9 @@ pub fn api_credentials(state: &AppState, id: &str) -> CmdResult<coreview_collect
     if stored.kind != "api" {
         return Err("That saved credential is not an API login.".into());
     }
-    Ok(coreview_collect::api::ApiLogin { username: stored.username, secret: open_secret(key, &stored.secret)? })
+    // LT-578: an API login's `detail` is its HTTPS port; blank is 443.
+    let port = stored.detail.trim().parse::<u16>().ok().filter(|p| *p != 0);
+    Ok(coreview_collect::api::ApiLogin { username: stored.username, secret: open_secret(key, &stored.secret)?, port })
 }
 
 /// LT-264: notes that a saved credential was offered to `target`, in the local

@@ -54,6 +54,8 @@ export function VaultSettings() {
   const [username, setUsername] = useState('');
   const [secret, setSecret] = useState('');
   const [secondSecret, setSecondSecret] = useState('');
+  // LT-578: an API login's HTTPS port, kept as its `detail`; blank is 443.
+  const [apiPort, setApiPort] = useState('');
 
   const refresh = () => {
     void ipc.vaultStatus().then(setStatus).catch(() => setStatus(null));
@@ -109,6 +111,7 @@ export function VaultSettings() {
           username: username.trim(),
           secret,
           secondSecret: secondSecret || undefined,
+          detail: kind === 'api' && apiPort.trim() ? apiPort.trim() : undefined,
         })
         .then(() => {
           setAdding(false);
@@ -116,6 +119,7 @@ export function VaultSettings() {
           setUsername('');
           setSecret('');
           setSecondSecret('');
+          setApiPort('');
         }),
       'Saved.',
     );
@@ -228,6 +232,13 @@ export function VaultSettings() {
                 <input className="cv-input" type="password" value={secret} autoComplete="off"
                   onChange={(e) => setSecret(e.target.value)} />
               </label>
+              {kind === 'api' && (
+                <label className="cv-field cv-field-narrow">
+                  <span>{t('vaultSettings.apiPort')}</span>
+                  <input className="cv-input" inputMode="numeric" value={apiPort} placeholder="443" autoComplete="off"
+                    data-field="api-port" onChange={(e) => setApiPort(e.target.value.replace(/[^0-9]/g, '').slice(0, 5))} />
+                </label>
+              )}
               {kind !== 'meraki' && kind !== 'api' && (
                 <label className="cv-field cv-field-narrow">
                   <span>{kind === 'snmp' ? 'Privacy password' : 'Enable password'}</span>
@@ -236,7 +247,7 @@ export function VaultSettings() {
                 </label>
               )}
               <button type="button" className="cv-btn cv-btn-start" onClick={save}
-                disabled={!label.trim() || !secret}>
+                disabled={!label.trim() || !secret || (kind === 'api' && apiPort !== '' && (Number(apiPort) < 1 || Number(apiPort) > 65535))}>
                 Save
               </button>
             </div>

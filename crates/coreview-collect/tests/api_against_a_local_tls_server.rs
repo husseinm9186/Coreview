@@ -18,7 +18,7 @@ const TOKEN: &str = "fake-token-not-a-secret";
 const DOMAIN: &str = "d-fake-domain";
 
 fn login() -> ApiLogin {
-    ApiLogin { username: "reader".into(), secret: "not-a-real-password".into() }
+    ApiLogin { username: "reader".into(), secret: "not-a-real-password".into(), port: None }
 }
 
 struct Server {
@@ -182,7 +182,7 @@ async fn an_ftds_policy_is_read_from_its_fmc_and_a_changed_certificate_is_refuse
     let missing = run_fmc(&host, &login(), PinPolicy::Pinned(fp), &["192.0.2.99".to_string()]).await;
     assert_eq!(missing.failure.as_deref(), Some("not_found"));
     // A wrong password is an auth failure, not a transport one.
-    let wrong = run_fmc(&host, &ApiLogin { username: "reader".into(), secret: "wrong-password-fixture".into() }, PinPolicy::TrustOnFirstUse, &names).await;
+    let wrong = run_fmc(&host, &ApiLogin { username: "reader".into(), secret: "wrong-password-fixture".into(), port: None }, PinPolicy::TrustOnFirstUse, &names).await;
     assert_eq!(wrong.failure.as_deref(), Some("auth"), "{:?}", wrong.log);
 }
 
@@ -191,7 +191,7 @@ async fn a_fortigates_catalog_api_commands_run_over_rest_with_its_token() {
     let s = start("fortigate").await;
     let catalogs = coreview_catalog::load_dir(&std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../resources/catalog")).unwrap();
     let fortios = catalogs.iter().find(|c| c.os == "fortios").unwrap();
-    let token = ApiLogin { username: String::new(), secret: "not-a-real-password".into() };
+    let token = ApiLogin { username: String::new(), secret: "not-a-real-password".into(), port: None };
     let run = run_device(fortios, &format!("127.0.0.1:{}", s.port), &token, PinPolicy::TrustOnFirstUse).await;
     assert_eq!(run.failure, None, "{:?}", run.log);
     assert!(run.fingerprint.is_some());
@@ -240,4 +240,20 @@ async fn a_collected_ftd_gets_its_fmc_policy_as_steps_and_its_certificate_rememb
     let mut ios = DeviceRun { host: "192.0.2.1".into(), os: Some("cisco_ios".into()), ..Default::default() };
     assert_eq!(collect_for(&mut ios, &catalogs, &login(), Some(&fmc), |_, _| None, &Quiet).await, None);
     assert!(ios.results.is_empty());
+}
+
+/// LT-578: a FortiGate collected over SSH whose admin HTTPS is not on 443 —
+/// the lab's is on 13443. The saved login names the port, and the REST side
+/// is reached there and pinned against it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_fortigate_whose_api_is_not_on_443_is_reached_on_the_port_its_login_names() {
+    use coreview_collect::api::collect_for;
+    use coreview_collect::run::{DeviceRun, Quiet};
+    let s = start("fortigate-port").await;
+    let catalogs = coreview_catalog::load_dir(&std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../resources/catalog")).unwrap();
+    let mut run = DeviceRun { host: "127.0.0.1".into(), os: Some("fortios".into()), ..Default::default() };
+    let token = ApiLogin { username: "api-user".into(), secret: "not-a-real-password".into(), port: Some(s.port) };
+    let first = collect_for(&mut run, &catalogs, &token, None, |_, _| None, &Quiet).await.expect("reached, and a first sight to remember");
+    assert_eq!((first.host.as_str(), first.port), ("tls:127.0.0.1", s.port));
+    assert!(run.results.iter().any(|r| r.step.cmd == "/api/v2/cmdb/system/zone" && r.outcome.status == "ok"), "{:?}", run.log);
 }

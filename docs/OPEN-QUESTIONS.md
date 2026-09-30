@@ -199,7 +199,7 @@ pager on and answer each `--More--` with a space, as the terminal does
 (slower, and a different code path per OS), or refuse a FortiGate whose
 console is not already `standard` and say how to set it.
 
-### Q-021 — A FortiGate's firewall policy over SSH, or only through its API
+### Q-021 — A FortiGate's firewall policy over SSH, or only through its API — **answered 2026-09-30**
 Raised 2026-09-29 by the lab run. The FortiOS catalog reads policies, VIPs,
 address objects, zones, IPsec and SD-WAN only through the REST API
 (`parser: api`), so a FortiGate collected over SSH alone has no policy, and
@@ -210,3 +210,7 @@ read-only profile, stored in the vault as an `api` credential, LT-518), or
 the operator's go-ahead for a Coreview reader of `show firewall policy`
 and its objects over SSH — which needs the lab's reply captured first
 (CLAUDE.md: parsers are written against real output).
+
+**Answered 2026-09-30:** the operator gave the lab FortiGate's REST API
+user and key (its admin HTTPS is on 13443). The policy is read through the
+API (LT-571, LT-578–LT-585); no SSH reader was built.

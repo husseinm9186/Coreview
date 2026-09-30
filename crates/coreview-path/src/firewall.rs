@@ -61,12 +61,50 @@ fn is_any(s: &str) -> bool {
     matches!(s.trim().to_ascii_lowercase().as_str(), "any" | "all" | "any4" | "0.0.0.0/0" | "0.0.0.0 0.0.0.0" | "*" | "any-ipv4")
 }
 
+/// A MAC as twelve lower-case hex digits.
+fn mac_hex(m: &str) -> String {
+    m.chars().filter(|c| c.is_ascii_hexdigit()).collect::<String>().to_ascii_lowercase()
+}
+
+/// Whether `src` is the MAC `item` or inside its `from-to` range.
+fn mac_in(src: &str, item: &str) -> bool {
+    let src = mac_hex(src);
+    match item.split_once('-') {
+        Some((a, z)) => {
+            let n = |x: &str| u64::from_str_radix(&mac_hex(x), 16).ok();
+            matches!((n(&src), n(a), n(z)), (Some(s), Some(a), Some(z)) if a <= s && s <= z)
+        }
+        None => mac_hex(item) == src,
+    }
+}
+
+/// Not routable on the internet, so in no internet-service entry: RFC 1918,
+/// shared (100.64/10), loopback, link-local, the documentation ranges
+/// (RFC 5737); IPv6 unique-local, link-local and documentation (2001:db8::/32).
+fn is_private(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(a) => {
+            let o = a.octets();
+            a.is_private() || a.is_loopback() || a.is_link_local() || (o[0] == 100 && (o[1] & 0xc0) == 64) || matches!((o[0], o[1], o[2]), (192, 0, 2) | (198, 51, 100) | (203, 0, 113))
+        }
+        IpAddr::V6(a) => {
+            let s = a.segments();
+            a.is_loopback() || (s[0] & 0xfe00) == 0xfc00 || (s[0] & 0xffc0) == 0xfe80 || (s[0] == 0x2001 && s[1] == 0x0db8)
+        }
+    }
+}
+
 /// One address item: `any`, an address, a prefix (`/24` or a mask), `host
 /// a.b.c.d`, a range `a-b`. `None` when it is a name the tables do not define.
 fn addr_item(item: &str, ip: IpAddr) -> Option<bool> {
     let t = item.trim();
     if is_any(t) {
         return Some(true);
+    }
+    // LT-583: FortiGuard's internet-service entries are public ranges; a
+    // private address is in none of them, a public one cannot be told.
+    if t.starts_with("isdb:") {
+        return if is_private(ip) { Some(false) } else { None };
     }
     let t = t.strip_prefix("host ").unwrap_or(t).trim();
     if let Some((a, z)) = t.split_once('-') {
@@ -89,6 +127,17 @@ pub fn addr_match(list: &[String], ip: IpAddr, names: &[String]) -> Tri {
         if names.iter().any(|n| n.eq_ignore_ascii_case(item.trim())) {
             return Tri::Yes;
         }
+        // LT-585: a MAC or MAC range, against the source's MAC when it is known.
+        if let Some(m) = item.trim().strip_prefix("mac:") {
+            match names.iter().find_map(|n| n.strip_prefix("mac:")) {
+                Some(src) if mac_in(src, m) => return Tri::Yes,
+                Some(_) => {}
+                None => {
+                    unknown.get_or_insert_with(|| format!("mac:{m}"));
+                }
+            }
+            continue;
+        }
         match addr_item(item, ip) {
             Some(true) => return Tri::Yes,
             Some(false) => {}
@@ -98,6 +147,8 @@ pub fn addr_match(list: &[String], ip: IpAddr, names: &[String]) -> Tri {
         }
     }
     match unknown {
+        Some(name) if name.starts_with("mac:") => Tri::Unknown(format!("the rule names the MAC {}, and the firewall's ARP has no MAC for {ip}", &name[4..])),
+        Some(name) if name.starts_with("isdb:") => Tri::Unknown(format!("the internet-service entry \"{}\" is FortiGuard's, and its addresses are not collected", &name[5..])),
         Some(name) => Tri::Unknown(format!("the address object \"{name}\" is not in the collected tables")),
         None => Tri::No,
     }
@@ -115,6 +166,8 @@ fn predefined(name: &str) -> Option<&'static [(u8, u16, u16)]> {
         "all_icmp" | "ping" | "icmp" | "echo" => &[(ICMP, 0, 0)],
         "http" | "www" | "service-http" => &[(TCP, 80, 80), (TCP, 8080, 8080)],
         "https" | "service-https" => &[(TCP, 443, 443)],
+        // LT-583: FortiOS's predefined QUIC.
+        "quic" => &[(UDP, 443, 443)],
         "ssh" => &[(TCP, 22, 22)],
         "telnet" => &[(TCP, 23, 23)],
         "dns" | "domain" => &[(TCP, 53, 53), (UDP, 53, 53)],
@@ -374,6 +427,8 @@ pub fn verdict(b: &Box_, k: Kind, flow: &Flow) -> FwVerdict {
     if k == Kind::Asa && b.has_table("fw_binding") {
         return asa_verdict(b, flow, out);
     }
+    // LT-585: the source's MAC, as this firewall's ARP has it, for MAC objects.
+    let src_names: Vec<String> = b.arp_for(flow.src).map(|a| vec![format!("mac:{}", mac_hex(&a.mac))]).unwrap_or_default();
     for p in b.fw.iter().filter(|p| p.enabled) {
         // An ASA access list applies where `access-group` binds it. A rule
         // with no interface recorded could apply to either direction.
@@ -385,7 +440,7 @@ pub fn verdict(b: &Box_, k: Kind, flow: &Flow) -> FwVerdict {
         let m = bound_here
             .and(zone_match(&p.src_zones, flow.zones_in))
             .and(zone_match(&p.dst_zones, flow.zones_out))
-            .and(addr_match(&p.src_addr, flow.src, &[]))
+            .and(addr_match(&p.src_addr, flow.src, &src_names))
             .and(addr_match(&p.dst_addr, flow.dst, flow.dst_names))
             .and(svc_match(&p.services, flow.proto, flow.port));
         match m {

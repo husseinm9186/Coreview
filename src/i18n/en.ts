@@ -273,6 +273,7 @@ export const en = {
   'vaultSettings.apiLogin': 'Device or FMC API login',
   'vaultSettings.apiUser': 'Username (blank for a token)',
   'vaultSettings.apiSecret': 'Password or token',
+  'vaultSettings.apiPort': 'HTTPS port (blank for 443)',
   'vaultSettings.theKeyThatOpens': 'The key that opens the vault — never the passphrase — is kept by Windows Credential Manager, the macOS Keychain or the Secret Service, and the vault opens by itself when Coreview starts. Anyone who can use this computer\'s account can then use the saved credentials.',
   'vaultSettings.coreSwitches': 'Core switches',
   'vaultSettings.savedCredentials': 'Saved credentials',

@@ -309,8 +309,9 @@ commands:
     foreach: vdom
     parser: api
     api: /api/v2/cmdb/firewall/address
+    # LT-581: objects the policies name, not policies.
     feeds:
-      - fw_policy
+      - fw_object
     weight: light
     timeout: 30
     verified: docs
@@ -321,12 +322,27 @@ commands:
     foreach: vdom
     parser: api
     api: /api/v2/cmdb/firewall/addrgrp
+    # LT-581: groups of the objects above.
     feeds:
-      - fw_policy
+      - fw_object
     weight: light
     timeout: 30
     verified: docs
     evidence: structured output (REST /api/v2/cmdb/firewall/addrgrp); field mapping from documentation
+  - id: monitor_firewall_address_fqdns
+    cmd: diagnose firewall fqdn list
+    gate: always
+    foreach: vdom
+    parser: api
+    api: /api/v2/monitor/firewall/address-fqdns
+    # LT-584: what each FQDN address resolved to on the FortiGate itself.
+    feeds:
+      - fw_object
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: Coreview fortios reader (REST), met the lab's FortiGate 60F on FortiOS 7.6.7 — the list, then `?mkey=<name>` for each object's addresses (LT-584)
+    coreview_reader: true
   - id: show_firewall_vip
     cmd: show firewall vip
     gate: always
@@ -402,8 +418,9 @@ commands:
     gate: cap.sdwan
     parser: api
     api: /api/v2/cmdb/system/sdwan
+    # LT-582: the SD-WAN zone and the interfaces it holds.
     feeds:
-      - tunnel
+      - fw_zone
     weight: light
     timeout: 30
     verified: docs
@@ -445,13 +462,14 @@ commands:
     gate: cap.fortilink
     parser: api
     api: /api/v2/monitor/switch-controller/managed-switch/status
+    # LT-579: managed switches are other boxes — a FortiLink neighbour while
+    # connected, never the FortiGate's own identity.
     feeds:
-      - ha_pair
-      - device
+      - neighbor
     weight: light
     timeout: 30
     verified: lab
-    evidence: Coreview fortios reader, met the operator's hardware
+    evidence: Coreview fortios reader, met the operator's hardware; the REST reply's fields met the lab's FortiGate 60F on 7.6.7 with an idle managed switch (LT-579)
     coreview_reader: true
   - id: api_v2_monitor_system_status
     cmd: /api/v2/monitor/system/status

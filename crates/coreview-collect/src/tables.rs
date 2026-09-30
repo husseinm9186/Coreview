@@ -234,7 +234,9 @@ fn scalar(v: &Value) -> String {
         Value::String(s) => s.clone(),
         Value::Bool(b) => b.to_string(),
         Value::Number(n) => n.to_string(),
-        Value::Array(a) => a.iter().map(scalar).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(", "),
+        // LT-580: FortiOS (and AOS-CX) lists are `[{"name": …, "q_origin_key": …}]`;
+        // each such object stands for its name.
+        Value::Array(a) => a.iter().map(|x| x.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| scalar(x))).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(", "),
         Value::Object(_) => v.to_string(),
     }
 }
@@ -599,6 +601,13 @@ mod tests {
 
     /// LT-552: an ASA `show nat` row, as ntc's template writes it (the
     /// fixture's second rule), must land in the NAT columns.
+    #[test]
+    fn a_list_of_named_objects_is_its_names() {
+        let n = normalise("fw_policy", &json!({"policyid": 25, "name": "Default", "srcintf": [{"name": "internal", "q_origin_key": "internal"}, {"name": "Printers", "q_origin_key": "Printers"}], "srcaddr": [{"name": "Printers address", "q_origin_key": "Printers address"}]}));
+        assert_eq!(n.columns.get("src_zones").map(String::as_str), Some("internal, Printers"));
+        assert_eq!(n.columns.get("src_addr").map(String::as_str), Some("Printers address"));
+    }
+
     #[test]
     fn an_asa_nat_row_lands_in_the_nat_columns() {
         let n = normalise("nat_rule", &json!({"nat_section_number": "1", "line_number": "2", "source_interface": "any", "destination_interface": "outside", "source_type": "dynamic", "source_real": "test1", "source_mapped": "test2", "destination_real": "test3", "destination_mapped": "test4", "inactive": "inactive"}));

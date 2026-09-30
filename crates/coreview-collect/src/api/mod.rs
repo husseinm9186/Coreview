@@ -92,6 +92,17 @@ pub fn rows_from_api_json(body: &Value) -> Vec<Value> {
 pub struct ApiLogin {
     pub username: String,
     pub secret: String,
+    /// LT-578: the HTTPS port, where it is not 443 — a FortiGate's
+    /// `admin-sport` is often moved when SSL-VPN holds 443.
+    pub port: Option<u16>,
+}
+
+/// LT-578: where a device's own REST API is, as the client and the pin want it.
+pub fn api_host_for(host: &str, port: Option<u16>) -> String {
+    match port {
+        Some(p) if p != 443 && !host.contains(':') => format!("{host}:{p}"),
+        _ => host.to_string(),
+    }
 }
 
 impl std::fmt::Debug for ApiLogin {
@@ -188,7 +199,13 @@ pub async fn run_device(catalog: &coreview_catalog::Catalog, host: &str, login: 
         "fortios" => {
             for c in commands {
                 let path = c.api.clone().unwrap_or_default();
-                match fortios::get(&client, &login.secret, &path, None).await {
+                // LT-584: the FQDN list names the objects; each is asked by name for its addresses.
+                let got = if path.ends_with("/monitor/firewall/address-fqdns") {
+                    fqdn_addresses(&client, &login.secret, &path).await
+                } else {
+                    fortios::get(&client, &login.secret, &path, None).await
+                };
+                match got {
                     Ok(o) => run.results.push(ApiResult { id: c.id.clone(), cmd: path, feeds: c.feeds.clone(), outcome: o }),
                     Err(e) => {
                         run.fail(e);
@@ -274,6 +291,24 @@ pub fn pin_id(host: &str) -> (String, u16) {
     }
 }
 
+/// LT-584: every FQDN address's addresses, one GET per object.
+async fn fqdn_addresses(client: &ApiClient, token: &str, path: &str) -> Result<ApiOutcome, ApiError> {
+    let list = fortios::get(client, token, path, None).await?;
+    if list.status != "ok" {
+        return Ok(list);
+    }
+    let body: serde_json::Value = serde_json::from_str(&list.raw).unwrap_or_default();
+    let mut out = ApiOutcome { status: "ok".into(), raw: list.raw.clone(), duration_ms: list.duration_ms, ..Default::default() };
+    for name in fortios::fqdn_names(&body) {
+        let one = fortios::get(client, token, &format!("{path}?mkey={}", fortios::query_value(&name)), None).await?;
+        out.duration_ms += one.duration_ms;
+        out.rows.extend(one.rows);
+        out.raw.push('\n');
+        out.raw.push_str(&one.raw);
+    }
+    Ok(out)
+}
+
 /// LT-518 / LT-541: after a device's SSH collection, its REST side — the
 /// device's own API (FortiOS, AOS-CX), or for an FTD the FMC that manages
 /// it — appended to the run as steps, so its rows are stored like any
@@ -287,7 +322,7 @@ pub async fn collect_for(run: &mut crate::run::DeviceRun, catalogs: &[coreview_c
     let target: Option<String> = if is_ftd {
         fmc_host.map(str::to_string)
     } else if matches!(os.as_str(), "fortios" | "aoscx") {
-        Some(run.host.clone())
+        Some(api_host_for(&run.host, login.port))
     } else {
         None
     };
