@@ -649,6 +649,22 @@ I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
 
+### LT-595 — **bug** Discover with the collector ran and then showed nothing: its events reached the interface as `run_id` — reported 2026-09-30, fixed the same day
+**Source:** the operator, 2026-09-30, with screenshots: "I see it
+collecting and moving but it doesn't stop and the status disappear and no
+output it looks finished but no output and no status and nothing after".
+The run went on to "4 of 7" and its header cleared — the job ended — while
+the panel still offered Stop and showed nothing. `CollectionEvent` renamed
+its variants to camelCase (`rename_all`) but not the fields inside them
+(that is `rename_all_fields`), so every event carried `run_id`,
+`device_id`, `step_id`, `duration_ms`; the panel reads `runId`, took every
+event for another run's, and never saw `finished` — so no topology, no
+table, and Stop stayed. The Collect tab read the same fields. The browser
+tests' stub sent camelCase, and nothing checked what Rust really sends.
+**Fix:** the fields are camelCase too, and a Rust test fails if any
+collection event carries a snake_case key.
+**Run:** a Rust test serialising every collection event: it failed on `"run_id"` and passes. The operator's diagnostic of the same run shows it completed — all three devices, 62 replies in about 22 s — so this, not a stall, is what he saw; the earlier "never finishes" (LT-588) was very likely the same.
+
 ### LT-594 — A FortiOS backup reads `show full-configuration` — 2026-09-30, done the same day
 **Source:** the operator, 2026-09-30: "fortigate [its prompt] $ sh
 full-configuration — it will show you all the configura[tion]". LT-572 used

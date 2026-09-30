@@ -70,9 +70,11 @@ pub struct FollowInput {
     pub subnet_limit: Option<String>,
 }
 
-/// One event on `coreview://collection`.
+/// One event on `coreview://collection`. LT-595: `rename_all` names the
+/// variants; `rename_all_fields` is what makes `run_id` reach the interface
+/// as the `runId` it reads.
 #[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase", tag = "kind")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
 pub enum CollectionEvent {
     Started { run_id: String, targets: usize },
     Device { run_id: String, device_id: String, host: String, phase: String },
@@ -832,6 +834,29 @@ async fn import_one(sidecar: &mut Sidecar, catalogs: &[Catalog], host: &str, fil
 
 #[cfg(test)]
 mod tests {
+    /// LT-595: what the interface reads is what Rust sends — `runId`,
+    /// `deviceId`, not `run_id`. Every variant, every key.
+    #[test]
+    fn every_collection_event_reaches_the_interface_in_camel_case() {
+        let events = vec![
+            CollectionEvent::Started { run_id: "col-1".into(), targets: 1 },
+            CollectionEvent::Device { run_id: "col-1".into(), device_id: "d".into(), host: "192.0.2.1".into(), phase: "connecting".into() },
+            CollectionEvent::Identified { run_id: "col-1".into(), device_id: "d".into(), os: "cisco_ios".into(), probe: "show version".into() },
+            CollectionEvent::Probe { run_id: "col-1".into(), device_id: "d".into(), id: "p".into(), cmd: "c".into(), status: "ok".into(), flags: vec![] },
+            CollectionEvent::Planned { run_id: "col-1".into(), device_id: "d".into(), steps: 1, skipped: 0 },
+            CollectionEvent::Step { run_id: "col-1".into(), device_id: "d".into(), step_id: "s".into(), cmd: "c".into(), status: "ok".into(), rows: 1, duration_ms: 3, context: None },
+            CollectionEvent::DeviceDone { run_id: "col-1".into(), device_id: "d".into(), host: "192.0.2.1".into(), os: None, failure: None, commands: 1 },
+            CollectionEvent::Finished { run_id: "col-1".into(), devices: 1, failed: 0, cancelled: false },
+            CollectionEvent::Failed { run_id: "col-1".into(), error: "e".into() },
+        ];
+        for e in events {
+            let v = serde_json::to_value(&e).unwrap();
+            let keys: Vec<&String> = v.as_object().unwrap().keys().collect();
+            assert!(keys.iter().all(|k| !k.contains('_')), "{v}");
+            assert_eq!(v["runId"], "col-1", "{v}");
+        }
+    }
+
     use super::*;
 
     #[test]
