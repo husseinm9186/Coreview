@@ -139,13 +139,6 @@ page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
 a layout run on an existing page — so the same input can be laid out again
 in a test.
 
-### LT-598 — "Discover devices" can use the project's API login — 2026-09-30
-**Source:** the same study: the collector's result for the FortiGate has no
-firewall policy, because Discover sends no API login (the Collect tab does).
-**Acceptance:** Discover uses the project's saved API login when one is
-chosen for it, so the FortiGate's policy is read over its API as on the
-Collect tab.
-
 ### LT-588 — **bug** Discover with the collector "never finishes": one stuck device held the run for minutes and then ended it — reported 2026-09-30
 **Source:** the operator, 2026-09-30, with screenshots, testing the
 collector on "Discover devices": "it never finishes". The header stood at
@@ -655,6 +648,14 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-598 — "Discover devices" can use the project's API login — 2026-09-30, done the same day
+**Source:** the same study: the collector's result for the FortiGate has no
+firewall policy, because Discover sends no API login (the Collect tab does).
+**Acceptance:** Discover uses the project's saved API login when one is
+chosen for it, so the FortiGate's policy is read over its API as on the
+Collect tab.
+**Run:** `e2e/crawling.mjs` — the API login chosen on the Discover panel travels with the run; on the lab, the same run with the key reads the FortiGate's policy (34 commands, 620 rows) and HTTPS from the LAN is allowed.
 
 ### LT-597 — Hosts known only from a firewall's ARP table are shown behind its interface — 2026-09-30, done the same day
 **Source:** the same study. The classic crawl's 37 "seen on switch ports"

@@ -104,6 +104,7 @@ await page.addInitScript(({ p }) => {
       if (cmd === "list_credentials") return Promise.resolve([
         { id: "cred-core", label: "Core login", kind: "ssh", username: "reader", detail: "", hasSecondSecret: false },
         { id: "cred-snmp", label: "Read-only SNMP", kind: "snmp", username: "", detail: "", hasSecondSecret: false },
+        { id: "cred-api", label: "Firewall API", kind: "api", username: "", detail: "13443", hasSecondSecret: false },
       ]);
       return Promise.resolve([]);
     },
@@ -382,9 +383,12 @@ await page.evaluate(() => window.__cvEmit("coreview://crawl", { kind: "finished"
 await page.waitForTimeout(200);
 await panel.locator('[data-field="discover-engine"]').selectOption("collector");
 await panel.locator("label", { hasText: "Seed devices" }).locator("input").first().fill("192.0.2.10");
+// LT-598: the REST side, as the Collect tab has it.
+await panel.locator(".cv-discover-run select").filter({ has: page.locator('option[value="cred-api"]') }).selectOption("cred-api");
 await panel.locator("button", { hasText: /^Discover$/ }).click();
 await page.waitForTimeout(400);
 const collected = await lastCall("start_collection");
+check("the API login chosen on the panel travels with the run", collected?.input?.apiCredentialId === "cred-api", JSON.stringify(collected?.input));
 check("the collector starts from the seed and follows neighbours within the panel's limits",
   collected?.input?.targets === "192.0.2.10" && collected?.input?.follow?.maxHops >= 1 && collected?.input?.follow?.maxDevices === 500 && !collected?.input?.planOnly,
   JSON.stringify(collected?.input));

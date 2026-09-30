@@ -262,6 +262,8 @@ export function CrawlPanel({
   const [engine, setEngine] = useState<'collector' | 'classic'>('collector');
   const collectionRun = useRef<string | null>(null);
   const collectionHosts = useRef<Map<string, string>>(new Map());
+  // LT-598: the REST side for a FortiGate or AOS-CX, as the Collect tab has it.
+  const [apiCredentialId, setApiCredentialId] = useState<string | undefined>();
   const [status, setStatus] = useState<string | null>(null);
   const [pushMessage, setPushMessage] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -555,6 +557,7 @@ export function CrawlPanel({
             lightOnly: false,
             credentialId: credentialId ?? undefined,
             keepDiagnostic: supportCapture,
+            apiCredentialId: apiCredentialId || undefined,
             follow: { maxHops, maxDevices: 500, subnetLimit: subnets.join(', ') || undefined },
           },
           credentialId ? undefined : { username, password, enablePassword: enablePassword || undefined },
@@ -1043,6 +1046,9 @@ export function CrawlPanel({
             <option value="classic">{t('discover.engineClassic')}</option>
           </select>
         </label>
+        {engine === 'collector' && (
+          <SavedCredentialSelect kind="api" label={t('collect.apiCredential')} value={apiCredentialId} onChange={setApiCredentialId} />
+        )}
         {running ? (
           <button type="button" className="cv-btn cv-btn-stop" onClick={() => void (engine === 'collector' ? ipc.cancelCollection() : ipc.cancelCrawl())}>
             Stop
