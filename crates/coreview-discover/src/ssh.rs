@@ -333,6 +333,11 @@ pub struct Device {
     /// The prompt this device draws, learned at login and used to know when a
     /// command has finished.
     pub prompt: Prompt,
+    /// LT-577: where each chunk of a command's output goes as it arrives,
+    /// for a caller that shows it live — a traceroute's hops.
+    watch: Option<mpsc::UnboundedSender<String>>,
+    /// LT-577: what a command had printed when it timed out.
+    partial: String,
 }
 
 impl Device {
@@ -463,6 +468,8 @@ impl Device {
                 hostname: String::new(),
                 enabled: false,
             },
+            watch: None,
+            partial: String::new(),
         };
 
         crate::say!(
@@ -613,11 +620,15 @@ impl Device {
         loop {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
             if remaining.is_zero() {
+                self.partial = buffer.clone();
                 return Err(self.timed_out(command, &buffer));
             }
 
             let data = match timeout(remaining, self.channel.wait()).await {
-                Err(_) => return Err(self.timed_out(command, &buffer)),
+                Err(_) => {
+                    self.partial = buffer.clone();
+                    return Err(self.timed_out(command, &buffer));
+                }
                 // The channel closed. Whatever arrived is all there is.
                 Ok(None) => return Ok((buffer, find_prompt_on_screen(&screen))),
                 Ok(Some(msg)) => match msg {
@@ -638,7 +649,11 @@ impl Device {
             if recording {
                 record_login(&self.options.login_transcript, &data);
             }
-            buffer.push_str(&String::from_utf8_lossy(&data));
+            let text = String::from_utf8_lossy(&data);
+            if let (Some(w), false) = (&self.watch, recording) {
+                let _ = w.send(text.to_string());
+            }
+            buffer.push_str(&text);
             // LT-427: bounded in bytes as well as in seconds.
             if buffer.len() > self.options.max_output_bytes {
                 crate::say!(
@@ -696,6 +711,19 @@ impl Device {
                 return Ok((buffer, Some(prompt)));
             }
         }
+    }
+
+    /// LT-577: send each chunk of every later command's output to `tx` as it
+    /// arrives; `None` stops it.
+    pub fn watch(&mut self, tx: Option<mpsc::UnboundedSender<String>>) {
+        self.watch = tx;
+    }
+
+    /// LT-577: what `command` had printed when it last timed out, as text,
+    /// its echo removed — and forgotten once taken.
+    pub fn take_partial(&mut self, command: &str) -> String {
+        let raw = std::mem::take(&mut self.partial);
+        extract_output(&crate::cli::readable(&raw), command)
     }
 
     fn timed_out(&self, command: Option<&str>, buffer: &str) -> SshError {

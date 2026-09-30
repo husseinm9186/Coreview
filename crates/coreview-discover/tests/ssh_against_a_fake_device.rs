@@ -183,6 +183,15 @@ impl server::Handler for FakeDevice {
                 }
                 return Ok(());
             }
+            // LT-577: a traceroute whose later hops are silent — three hops
+            // printed, then nothing and no prompt before the client gives up.
+            "traceroute 198.51.100.9" => {
+                session.data(channel, format!("{command}\r\nType escape sequence to abort.\r\nTracing the route to 198.51.100.9\r\n").into_bytes())?;
+                session.data(channel, b"  1 192.0.2.1 1 msec 0 msec 1 msec\r\n".to_vec())?;
+                session.data(channel, b"  2 203.0.113.1 12 msec 10 msec 11 msec\r\n".to_vec())?;
+                session.data(channel, b"  3  *  *  * \r\n".to_vec())?;
+                return Ok(());
+            }
             _ => "% Invalid input detected at '^' marker.\r\n".into(),
         };
 
@@ -756,4 +765,29 @@ async fn a_real_session_writes_a_useful_log_and_leaks_no_password() {
         !log.contains("Unauthorized access prohibited"),
         "the banner reached the log:\n{log}",
     );
+}
+
+/// LT-577: a command's output is seen while it runs, and what arrived before
+/// a timeout is kept — a traceroute's hops so far, not nothing.
+#[tokio::test]
+async fn output_is_watched_as_it_arrives_and_kept_when_the_command_times_out() {
+    let addr = start_device(AuthStyle::PasswordOnly, "CORE-SW-01").await;
+    let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
+    let mut options = options(port_of(&addr));
+    options.command_timeout = Duration::from_secs(2);
+    let mut device = Device::connect("127.0.0.1", &creds("correct-horse"), options, store, None).await.expect("connect");
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    device.watch(Some(tx));
+    let err = device.run("traceroute 198.51.100.9").await.expect_err("the trace never finishes");
+    assert!(matches!(err, coreview_discover::ssh::SshError::CommandTimeout { .. }), "{err}");
+    let mut seen = String::new();
+    while let Ok(chunk) = rx.try_recv() {
+        seen.push_str(&chunk);
+    }
+    assert!(seen.contains("203.0.113.1"), "watched: {seen:?}");
+    let partial = device.take_partial("traceroute 198.51.100.9");
+    let hops = coreview_discover::trace::parse_traceroute(&partial);
+    assert_eq!(hops.len(), 3, "{partial:?}");
+    assert_eq!(hops[1].address.as_deref(), Some("203.0.113.1"));
+    assert!(!partial.contains("traceroute 198.51.100.9"), "the echo is removed: {partial:?}");
 }

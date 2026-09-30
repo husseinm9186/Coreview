@@ -786,7 +786,13 @@ export type MeasuredTrace = {
   hops: { ttl: number; address: string | null; rttsMs: number[] }[];
   command: string;
   platform: string;
+  /** LT-577: false when the device was still tracing at the time limit. */
+  complete: boolean;
+  elapsedMs: number;
 };
+
+/** LT-577: a device's trace so far, as it prints it. */
+export type TracertProgress = { device: string; target: string; hops: MeasuredTrace['hops']; elapsedMs: number };
 
 /** LT-478: the leg a device hashes a flow onto. */
 export type MeasuredLeg = { nextHop: string; interface: string | null; command: string };
@@ -1460,6 +1466,12 @@ export const ipc = {
   },
   importCaptures(projectId: string, folder: string) {
     return invoke<string>('import_captures', { projectId, folder });
+  },
+  /** LT-577: a device's traceroute hops as they arrive. */
+  async onTracertProgress(handler: (e: TracertProgress) => void): Promise<() => void> {
+    if (!isDesktop) return () => {};
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen('coreview://tracert', (e) => handler(e.payload as TracertProgress));
   },
   async onCollectionEvent(handler: (e: CollectionEvent) => void): Promise<() => void> {
     if (!isDesktop) return () => {};

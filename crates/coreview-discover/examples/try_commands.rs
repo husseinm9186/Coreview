@@ -74,9 +74,30 @@ async fn main() {
     };
     println!("prompt: {:?}\n", device.prompt.text);
 
+    // CV_WATCH=1: each chunk as it arrives, timed, and what a timed-out
+    // command had printed (LT-577).
+    let watching = std::env::var("CV_WATCH").is_ok();
     for command in commands {
         let started = std::time::Instant::now();
+        if watching {
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            device.watch(Some(tx));
+            tokio::spawn(async move {
+                let began = std::time::Instant::now();
+                while let Some(chunk) = rx.recv().await {
+                    for line in chunk.lines().filter(|l| !l.trim().is_empty()) {
+                        println!("    [{:>5.1}s] {}", began.elapsed().as_secs_f32(), line.trim_end());
+                    }
+                }
+            });
+        }
         let result = device.run(&command).await;
+        if watching {
+            device.watch(None);
+            if result.is_err() {
+                println!("    kept at the limit:\n{}", device.take_partial(&command));
+            }
+        }
         println!("({command}: {} ms)", started.elapsed().as_millis());
         match result {
             Ok(out) => {

@@ -29,14 +29,20 @@ const crawl = {
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 await page.addInitScript(({ p, c }) => {
+  const listeners = {}, callbacks = {};
   let next = 1;
   window.__calls = [];
+  // LT-577: events to the page, as the backend emits them.
+  window.__cvEmit = (event, payload) => {
+    const id = listeners[event];
+    if (id && callbacks[id]) callbacks[id]({ event, id, payload });
+  };
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
   window.__TAURI_INTERNALS__ = {
-    transformCallback() { return next++; },
+    transformCallback(cb) { const id = next++; callbacks[id] = cb; return id; },
     invoke(cmd, args = {}) {
       window.__calls.push({ cmd, args });
-      if (cmd === "plugin:event|listen") return Promise.resolve(next++);
+      if (cmd === "plugin:event|listen") { listeners[args.event] = args.handler; return Promise.resolve(next++); }
       const meta = { id: p.meta.id, name: p.meta.name, customer: "", site: "", ticket: "", engineer: "", description: "", created_at: p.meta.createdAt, updated_at: p.meta.updatedAt, archived: false };
       if (cmd === "list_projects") return Promise.resolve([meta]);
       if (cmd === "load_project") return Promise.resolve({ meta, document_version: p.documentVersion, document: p.document });
@@ -50,7 +56,9 @@ await page.addInitScript(({ p, c }) => {
         { hop: 2, probes: [{ host: null, rtt_ms: null }] },
         { hop: 3, probes: [{ host: "198.51.100.7", rtt_ms: 5 }] },
       ] });
-      if (cmd === "traceroute_from_device") return Promise.resolve({ platform: "Cisco IOS / IOS-XE", command: `traceroute ${args.target}`, hops: [
+      // LT-577: a slow device — its answer waits until the page is told to give it.
+      if (cmd === "traceroute_from_device" && args.target === "198.51.100.99") return new Promise((resolve) => { window.__finishTrace = resolve; });
+      if (cmd === "traceroute_from_device") return Promise.resolve({ platform: "Cisco IOS / IOS-XE", command: `traceroute ${args.target}`, complete: true, elapsedMs: 900, hops: [
         { ttl: 1, address: "192.0.2.2", rttsMs: [2, 2] },
         { ttl: 2, address: "198.51.100.7", rttsMs: [6] },
       ] });
@@ -111,6 +119,28 @@ check("a trace from a device runs on the device, by its address, with the chosen
   JSON.stringify(asked) + " rows=" + (await rows().count()));
 check("and says what ran", /ran `traceroute 198\.51\.100\.7`/.test(await panel.textContent()));
 check("naming the hop that answered from CORE", /CORE/.test((await rows().nth(0).allInnerTexts()).join(" ")));
+
+// ------------------------------------------------- LT-577 a slow device
+await panel.locator(".cv-field", { has: page.locator('span:text-is("To")') }).locator("input").fill("198.51.100.99");
+await panel.locator("button", { hasText: "Run tracert" }).click();
+await page.waitForTimeout(1300);
+check("while a device traces, the button counts the seconds", /Tracing… [1-9] s/.test(await panel.textContent()), (await panel.locator("button.cv-btn-start").textContent()));
+check("and says a device's trace can take minutes", (await panel.locator('[data-region="tracert-live"]').count()) === 1);
+await page.evaluate(() => window.__cvEmit("coreview://tracert", { device: "192.0.2.1", target: "198.51.100.99", elapsedMs: 4000, hops: [
+  { ttl: 1, address: "192.0.2.2", rttsMs: [2] },
+  { ttl: 2, address: "203.0.113.1", rttsMs: [11] },
+] }));
+await page.waitForTimeout(300);
+check("the hops appear as the device prints them", (await rows().count()) === 2, "rows=" + (await rows().count()));
+await page.evaluate(() => window.__finishTrace({ platform: "Cisco IOS / IOS-XE", command: "traceroute 198.51.100.99", complete: false, elapsedMs: 180000, hops: [
+  { ttl: 1, address: "192.0.2.2", rttsMs: [2] },
+  { ttl: 2, address: "203.0.113.1", rttsMs: [11] },
+  { ttl: 3, address: null, rttsMs: [] },
+] }));
+await page.waitForTimeout(400);
+check("a trace stopped at the limit keeps its hops and says it was cut short",
+  (await rows().count()) === 3 && /Cut short/.test(await panel.textContent()) && (await panel.locator('[data-region="tracert-live"]').count()) === 0,
+  "rows=" + (await rows().count()));
 
 await browser.close();
 if (failures) {

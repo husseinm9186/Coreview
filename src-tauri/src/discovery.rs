@@ -765,6 +765,19 @@ pub struct MeasuredTrace {
     pub hops: Vec<coreview_discover::trace::TraceHop>,
     pub command: String,
     pub platform: String,
+    /// LT-577: false when the device was still tracing at the time limit.
+    pub complete: bool,
+    pub elapsed_ms: u64,
+}
+
+/// LT-577: a device's trace so far, on `coreview://tracert`.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TracertProgress {
+    pub device: String,
+    pub target: String,
+    pub hops: Vec<coreview_discover::trace::TraceHop>,
+    pub elapsed_ms: u64,
 }
 
 /// Logs in, reads the version banner and hands back the dialect it names.
@@ -803,18 +816,49 @@ pub async fn traceroute_from_device(
         .await
         .map_err(|e| e.to_string())?;
     let (_, dialect) = identify(&mut session).await;
+    // LT-577: the hops as the device prints them, to the Tracert tab, with the time so far.
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    session.watch(Some(tx));
+    let started = std::time::Instant::now();
+    let (app2, from, to) = (app.clone(), device.trim().to_string(), target.to_string());
+    let relay = tokio::spawn(async move {
+        let mut seen = String::new();
+        let mut last = 0usize;
+        while let Some(chunk) = rx.recv().await {
+            seen.push_str(&chunk);
+            let hops = coreview_discover::trace::parse_traceroute(&coreview_discover::cli::readable(&seen));
+            if hops.len() != last {
+                last = hops.len();
+                let _ = app2.emit("coreview://tracert", &TracertProgress { device: from.clone(), target: to.clone(), hops, elapsed_ms: started.elapsed().as_millis() as u64 });
+            }
+        }
+    });
     let outcome = match coreview_discover::trace::traceroute_command(dialect.family(), target) {
-        Some(command) => session.run(&command).await.map_err(|e| e.to_string()).map(|out| (command, out)),
+        Some(command) => match session.run(&command).await {
+            Ok(out) => Ok((command, out, true)),
+            // A trace that reaches its limit keeps what arrived.
+            Err(coreview_discover::ssh::SshError::CommandTimeout { .. }) => {
+                let partial = session.take_partial(&command);
+                Ok((command, partial, false))
+            }
+            Err(e) => Err(e.to_string()),
+        },
         None => Err(format!("{} runs {}, which has no traceroute this can read.", device.trim(), dialect.name())),
     };
+    session.watch(None);
     session.close().await;
+    relay.abort();
     persist_host_keys(&app, &store);
-    let (command, output) = outcome?;
+    let (command, output, complete) = outcome?;
     let hops = coreview_discover::trace::parse_traceroute(&output);
     if hops.is_empty() {
-        return Err(format!("{} did not report a trace: {}", device.trim(), output.lines().last().unwrap_or("").trim()));
+        return Err(if complete {
+            format!("{} did not report a trace: {}", device.trim(), output.lines().last().unwrap_or("").trim())
+        } else {
+            format!("{} printed no hop in {} s.", device.trim(), started.elapsed().as_secs())
+        });
     }
-    Ok(MeasuredTrace { hops, command, platform: dialect.name().to_string() })
+    Ok(MeasuredTrace { hops, command, platform: dialect.name().to_string(), complete, elapsed_ms: started.elapsed().as_millis() as u64 })
 }
 
 /// LT-478: which equal-cost leg a device hashes one flow onto, from the

@@ -82,6 +82,28 @@ export function TracertPanel() {
   const [hadPrevious, setHadPrevious] = useState(false);
   const [ran, setRan] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // LT-577: seconds since the trace began, and whether a device is tracing.
+  const [elapsed, setElapsed] = useState(0);
+  const [fromDevice, setFromDevice] = useState(false);
+
+  useEffect(() => {
+    if (!busy) return;
+    const began = Date.now();
+    setElapsed(0);
+    const tick = window.setInterval(() => setElapsed(Math.floor((Date.now() - began) / 1000)), 1000);
+    return () => window.clearInterval(tick);
+  }, [busy]);
+
+  // LT-577: a device's hops as it prints them.
+  useEffect(() => {
+    if (!busy || !fromDevice) return;
+    let off: (() => void) | undefined;
+    void ipc.onTracertProgress((e) => {
+      setHops(hopsFromDevice(e.hops));
+      setComplete(true);
+    }).then((f) => { off = f; });
+    return () => off?.();
+  }, [busy, fromDevice]);
   const [problem, setProblem] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
@@ -117,6 +139,8 @@ export function TracertPanel() {
     if (!to) return;
     setProblem(null);
     setNote(null);
+    setFromDevice(source !== 'machine');
+    if (source !== 'machine') setHops(null);
     setBusy(true);
     const key = `${source}|${to}`;
     const finish = (got: TracerouteHopDto[], done: boolean, what: string) => {
@@ -135,7 +159,7 @@ export function TracertPanel() {
             const address = addressOf(source);
             if (!credentialId) return Promise.reject(new Error(t('trace.needCredential', { device: source })));
             if (!address) return Promise.reject(new Error(t('trace.noSourceAddress', { device: source })));
-            return ipc.tracerouteFromDevice(address, credentialId, to).then((r) => finish(hopsFromDevice(r.hops), true, t('trace.measured', { platform: r.platform, command: r.command })));
+            return ipc.tracerouteFromDevice(address, credentialId, to).then((r) => finish(hopsFromDevice(r.hops), r.complete, t('trace.measured', { platform: r.platform, command: r.command })));
           })();
     void work.catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e))).finally(() => setBusy(false));
   };
@@ -181,7 +205,7 @@ export function TracertPanel() {
           <SavedCredentialSelect kind="ssh" label={t('trace.credential', { device: source })} value={credentialId} onChange={setCredentialId} />
         )}
         <button type="button" className="cv-btn cv-btn-start" disabled={busy || !target.trim()} onClick={run}>
-          {busy ? t('tracert.running') : t('tracert.run')}
+          {busy ? t('tracert.runningFor', { seconds: elapsed }) : t('tracert.run')}
         </button>
         {hops && (
           <button type="button" className="cv-btn" onClick={createPage}>{t('trace.makePage')}</button>
@@ -189,9 +213,10 @@ export function TracertPanel() {
       </div>
       {problem && <p className="cv-problem">{problem}</p>}
       {!problem && note && <p className="cv-help cv-trace-made">{note}</p>}
+      {busy && fromDevice && <p className="cv-help" data-region="tracert-live">{t('tracert.deviceSlow')}</p>}
       {hops && (
         <>
-          <p className="cv-help">
+          {!busy && <p className="cv-help">
             {ran}
             {' '}
             {!hadPrevious
@@ -199,7 +224,7 @@ export function TracertPanel() {
               : changed.size > 0
                 ? t('tracert.changed', { count: changed.size })
                 : t('tracert.same')}
-          </p>
+          </p>}
           {!complete && <p className="cv-field-hint is-warning">{t('tracert.cutShort')}</p>}
           {hops.length === 0 && <p className="cv-help">{t('traceroutePanel.noHopsCameBack')}</p>}
           {hops.length > 0 && (

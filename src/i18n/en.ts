@@ -919,6 +919,8 @@ export const en = {
   'tracert.thisMachine': 'This machine',
   'tracert.run': 'Run tracert',
   'tracert.running': 'Tracing…',
+  'tracert.runningFor': 'Tracing… {seconds} s',
+  'tracert.deviceSlow': "A device's trace can take minutes: it waits on every silent hop, and many look up a name for each. Hops appear here as the device prints them.",
   'tracert.ranHere': 'Run from this machine.',
   'tracert.first': 'First trace to this target this session.',
   'tracert.changed': { one: 'The path changed at {count} hop since the last trace — marked below.', other: 'The path changed at {count} hops since the last trace — marked below.' },

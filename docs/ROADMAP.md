@@ -131,33 +131,6 @@ page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
 a layout run on an existing page — so the same input can be laid out again
 in a test.
 
-### LT-577 — Tracert from a device shows each hop as it arrives, and keeps them on a timeout — 2026-09-30
-**Source:** the fix proposed under LT-574 and approved with "yes go ahead"
-(2026-09-30). **Acceptance:** while a device traces, the tab shows the hops
-printed so far and the time taken; a trace that reaches its limit shows
-what arrived and says it stopped, instead of discarding it.
-
-### LT-574 — **bug** Tracert from a device sat at "Tracing…" — reported 2026-09-29, not yet reproduced
-**Source:** the operator, 2026-09-29, with a screenshot: "traceroute is not
-working" — Tracert from the Catalyst to 8.8.8.8 with the project's SSH
-login, the button at "Tracing…". The panel clears that on any answer or
-error, so the wait is in `traceroute_from_device`: it allows 180 s, and a
-timeout discards every hop the device had already printed. From this
-machine, behind the same FortiGate, the path answers at hop 10 in two
-seconds, so the time is on the switch — IOS waits 9 s per silent hop and
-looks up a name for every hop — and cannot be confirmed without a login
-this session was not permitted. **Reproduced 2026-09-29 with the
-operator's permission** (`try_commands` now takes `CV_TIMEOUT` and times
-each command): the Catalyst's `traceroute 8.8.8.8` is correct and takes
-100 s for ten hops — about 18 s for two silent hops, the rest a name lookup
-per hop (`ip domain-lookup` with no name server). This IOS (15.2(7)E)
-takes nothing after the address, so `numeric`, `timeout` and `probe` cannot
-shorten it without the interactive dialogue or a configuration change. So
-the trace works; what fails is the tab: nothing moves for up to three
-minutes, and a trace that passes 180 s loses every hop it had printed.
-**Proposed fix:** hops shown as the device prints them, with the time so
-far, and a timeout that keeps what arrived.
-
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
 confirmed by the operator on accepting P1 (2026-09-29): "embeddable
@@ -722,6 +695,13 @@ port (the vault form asks for it; blank is 443), and the collector calls
 `host:port`, pinning the certificate against that port.
 **Run:** a FortiGate collected through `collect_for` against a local TLS server on a non-443 port — failed with the port ignored, passes; the lab's FortiGate answered on 13443 (43 interfaces, 39 policies, 150 addresses).
 
+### LT-577 — Tracert from a device shows each hop as it arrives, and keeps them on a timeout — 2026-09-30, done 2026-09-30
+**Source:** the fix proposed under LT-574 and approved with "yes go ahead"
+(2026-09-30). **Acceptance:** while a device traces, the tab shows the hops
+printed so far and the time taken; a trace that reaches its limit shows
+what arrived and says it stopped, instead of discarding it.
+**Run:** a fake device whose trace stops after three hops: its chunks arrive as they are printed and the three hops survive the timeout (`ssh_against_a_fake_device.rs`); `e2e/tracert.mjs` with a slow device — seconds counted, hops shown as they arrive, a trace stopped at the limit keeps them and says so; and on the lab's Catalyst (`try_commands` with `CV_WATCH`), hops printed one by one, silent probes three seconds apart.
+
 ### LT-576 — The new collector's work does not reach "Discover devices" or the diagram — 2026-09-29, done 2026-09-30
 **Source:** the operator, 2026-09-29: "built a lot and added a lot but i
 don't see any enhancements whats going on?" Two reasons, from his own
@@ -739,6 +719,28 @@ review screen the crawl's result goes to, and from there to the diagram.
 The older crawler stays selectable on the panel until the new one covers
 what it does; it is not deleted.
 **Run:** `coreview-collect::follow` with five tests (hops, limits, subnets, a device's other addresses, neighbours found by ARP and routers by next hop); against the lab through `lab_run --follow 2` from the Catalyst alone, which found the FortiGate by its default route and the FortiSwitch by its chassis MAC in the Catalyst's ARP, and drew the FortiSwitch–Catalyst link at 1.0; `e2e/crawling.mjs` (the collector the default, its run started with the panel's limits, its progress, the topology handed to the table) and `e2e/endtoend.mjs` with the classic crawler chosen. **What shipped differs:** a range seed (`198.51.100.0/30`) is refused by the collector with a pointer to Ping sweep or the classic crawler — it visits one device at a time. The app's own command was not run against the lab; the crate code it calls was.
+
+### LT-574 — **bug** Tracert from a device sat at "Tracing…" — reported 2026-09-29, fixed 2026-09-30 by LT-577
+**Source:** the operator, 2026-09-29, with a screenshot: "traceroute is not
+working" — Tracert from the Catalyst to 8.8.8.8 with the project's SSH
+login, the button at "Tracing…". The panel clears that on any answer or
+error, so the wait is in `traceroute_from_device`: it allows 180 s, and a
+timeout discards every hop the device had already printed. From this
+machine, behind the same FortiGate, the path answers at hop 10 in two
+seconds, so the time is on the switch — IOS waits 9 s per silent hop and
+looks up a name for every hop — and cannot be confirmed without a login
+this session was not permitted. **Reproduced 2026-09-29 with the
+operator's permission** (`try_commands` now takes `CV_TIMEOUT` and times
+each command): the Catalyst's `traceroute 8.8.8.8` is correct and takes
+100 s for ten hops — about 18 s for two silent hops, the rest a name lookup
+per hop (`ip domain-lookup` with no name server). This IOS (15.2(7)E)
+takes nothing after the address, so `numeric`, `timeout` and `probe` cannot
+shorten it without the interactive dialogue or a configuration change. So
+the trace works; what fails is the tab: nothing moves for up to three
+minutes, and a trace that passes 180 s loses every hop it had printed.
+**Proposed fix:** hops shown as the device prints them, with the time so
+far, and a timeout that keeps what arrived.
+**Run:** as LT-577. The switch's own time varies with its name lookups: 100 s at the first run, 18.8 s at a later one.
 
 ### LT-571 — A FortiGate's firewall policy when there is no API token — 2026-09-29, done 2026-09-30
 **Found by the lab run.** Policies, VIPs, addresses, zones, IPsec and SD-WAN
