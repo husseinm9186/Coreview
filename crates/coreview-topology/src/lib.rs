@@ -15,6 +15,7 @@
 //! turns the graph into the crawl result the review screen and the diagram
 //! already draw.
 
+pub mod aps;
 pub mod crawl_view;
 pub mod diff;
 pub mod identity;
@@ -34,6 +35,7 @@ pub fn build(devices: &[DeviceIn]) -> Graph {
     links::neighbor_links(devices, &mut graph, &mut ids);
     links::collapse_bundles(devices, &mut graph, &ids);
     identity::stacks_and_pairs(devices, &mut graph, &ids);
+    aps::access_points(devices, &mut graph, &mut ids);
     identity::macs_from_arp(devices, &mut graph, &mut ids);
     inferred::mac_placements(devices, &mut graph, &mut ids);
     l3::shared_subnets(devices, &mut graph, &ids);

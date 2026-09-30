@@ -139,20 +139,10 @@ page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
 a layout run on an existing page — so the same input can be laid out again
 in a test.
 
-### LT-596 — The collector reads a FortiGate's wireless controller: its FortiAPs — 2026-09-30
-**Source:** the operator's collection diagnostic of 2026-09-30, studied
-beside his classic crawl of the same network: the classic crawl listed
-three FortiAPs "described by its controller" (`get wireless-controller
-wtp-status`); the FortiOS catalog never asks, so the collector's result has
-none. D-062 keeps the classic crawler until the collector covers what it
-does; this is part of that. **Acceptance:** the FortiOS catalog reads the
-managed FortiAPs and each is a node linked to the FortiGate, with the
-classic crawler's reader (met on this hardware) behind it.
-
 ### LT-597 — Hosts known only from a firewall's ARP table are shown behind its interface — 2026-09-30
 **Source:** the same study. The classic crawl's 37 "seen on switch ports"
-include the IoT and Wi-Fi devices behind the FortiGate's `IoT` and
-`HOME-WIFI` interfaces, known only from its ARP table (31 entries); the
+include the IoT and Wi-Fi devices behind the FortiGate's IoT and
+Wi-Fi interfaces, known only from its ARP table (31 entries); the
 collector's topology places devices only from switch MAC tables, and a
 FortiGate has none, so they are missing. **Acceptance:** an ARP entry on a
 collected router or firewall's interface whose MAC no switch places becomes
@@ -675,6 +665,17 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-596 — The collector reads a FortiGate's wireless controller: its FortiAPs — 2026-09-30, done the same day
+**Source:** the operator's collection diagnostic of 2026-09-30, studied
+beside his classic crawl of the same network: the classic crawl listed
+three FortiAPs "described by its controller" (`get wireless-controller
+wtp-status`); the FortiOS catalog never asks, so the collector's result has
+none. D-062 keeps the classic crawler until the collector covers what it
+does; this is part of that. **Acceptance:** the FortiOS catalog reads the
+managed FortiAPs and each is a node linked to the FortiGate, with the
+classic crawler's reader (met on this hardware) behind it.
+**Run:** the reader's test (failed with no reader) on the lab's layout; a topology scenario — an AP a switch's CDP already named is one node, an AP's own LLDP is a cable to that switch port, none is cabled to the controller, and the review classes them as access points; on the lab, the three FortiAPs, two merged with the Catalyst's CDP nodes, the third linked to the uplink switch's port 3 by its own LLDP, as the classic crawl showed.
 
 ### LT-595 — **bug** Discover with the collector ran and then showed nothing: its events reached the interface as `run_id` — reported 2026-09-30, fixed the same day
 **Source:** the operator, 2026-09-30, with screenshots: "I see it

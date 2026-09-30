@@ -11,6 +11,9 @@ publish = false
 
 [dependencies]
 coreview-catalog = { path = "../coreview-catalog" }
+# LT-596: the classic crawler's FortiOS readers that have met hardware
+# (the wireless controller's APs), rather than a second copy of them.
+coreview-discover = { path = "../coreview-discover" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "process", "io-util", "sync", "rt", "rt-multi-thread", "time"] }

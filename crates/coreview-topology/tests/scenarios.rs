@@ -365,3 +365,48 @@ fn a_device_with_no_mac_of_its_own_is_placed_through_the_arp_entry_for_its_addre
     assert_eq!(placed.len(), 1, "{:?}", g.links);
     assert_eq!((placed[0].a.node.as_str(), placed[0].a.port.as_deref()), (sw.as_str(), Some("GigabitEthernet0/1")));
 }
+
+/// LT-596: a FortiGate's managed FortiAPs. One is also named by a switch's
+/// CDP and is one node, not two; one says over its own LLDP which switch
+/// port it is on — a cable; none is cabled to the FortiGate, whose tunnel
+/// to each is control, not a wire.
+#[test]
+fn a_controllers_access_points_are_nodes_with_the_uplinks_they_report() {
+    let sw = device("sw", "192.0.2.7", "cisco_ios", "switch", vec![
+        ("device", vec![row("show_version", &[("hostname", "SW1"), ("serial", "FAKE0000071")])]),
+        ("neighbor", vec![row("show_cdp_neighbors_detail", &[("local_if", "Gi0/8"), ("rem_sysname", "AP-OFFICE"), ("rem_port_id", "Ethernet1"), ("rem_mgmt_ip", "192.0.2.23"), ("rem_platform", "cisco PU431F"), ("proto", "cdp")])]),
+    ]);
+    let ap = |name: &str, ip: &str, mac: &str, sw: &str, port: &str| {
+        let mut cols = vec![("ap_name", name), ("ap_ip", ip), ("ap_mac", mac), ("model", "FP231F"), ("state", "connected")];
+        if !sw.is_empty() {
+            cols.push(("nbr_switch", sw));
+            cols.push(("nbr_port", port));
+        }
+        row("get_wireless_controller_wtp_status", &cols)
+    };
+    let fw = device("fw", "192.0.2.1", "fortios", "firewall", vec![
+        ("device", vec![row("get_system_status", &[("hostname", "FW1"), ("serial", "FGTFAKE0000001")])]),
+        ("ap", vec![
+            ap("AP-OFFICE", "192.0.2.23", "00:00:00:00:00:a0", "", ""),
+            ap("AP-GARAGE", "192.0.2.22", "00:00:00:00:02:68", "LAB-ACC-SW", "Port 3"),
+        ]),
+    ]);
+    let g = build(&[sw, fw]);
+    let named: Vec<&Node> = g.nodes.iter().filter(|n| n.name == "AP-OFFICE").collect();
+    assert_eq!(named.len(), 1, "one node for the AP both the switch and the controller name: {:?}", g.nodes.iter().map(|n| &n.name).collect::<Vec<_>>());
+    assert_eq!(named[0].role.as_deref(), Some("ap"));
+    let garage = node_named(&g, "AP-GARAGE");
+    assert_eq!((garage.role.as_deref(), garage.mgmt_ip.as_deref()), (Some("ap"), Some("192.0.2.22")));
+    let acc = node_named(&g, "LAB-ACC-SW");
+    let up: Vec<&Link> = g.links.iter().filter(|l| [&l.a.node, &l.b.node].contains(&&garage.id)).collect();
+    assert_eq!(up.len(), 1, "{up:?}");
+    let sw_end = if up[0].a.node == acc.id { &up[0].a } else { &up[0].b };
+    assert_eq!((sw_end.node.as_str(), sw_end.port.as_deref()), (acc.id.as_str(), Some("Port 3")));
+    let fw = node_named(&g, "FW1").id.clone();
+    assert!(!g.links.iter().any(|l| [&l.a.node, &l.b.node].contains(&&fw)), "no cable to the controller: {:?}", g.links);
+    // The review sees them as access points.
+    let view = coreview_topology::crawl_view::view(&g);
+    let seen = view.not_visited.iter().find(|n| n.short_name == "AP-GARAGE").expect("the AP in the review");
+    assert_eq!(format!("{:?}", seen.class), "AccessPoint");
+}
+

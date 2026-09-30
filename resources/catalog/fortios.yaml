@@ -228,6 +228,18 @@ commands:
     verified: lab
     evidence: ntc-templates tests (1 captures); Coreview fortios reader
     coreview_reader: true
+  - id: get_wireless_controller_wtp_status
+    cmd: get wireless-controller wtp-status
+    gate: always
+    parser: reader:fortios_wtp_status
+    # LT-596: the FortiAPs this FortiGate manages, and each one's uplink.
+    feeds:
+      - ap
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: Coreview fortios reader (the classic crawler's), met a FortiGate 60F on FortiOS 7.6.7 managing three FortiAPs in the operator's lab (LT-596)
+    coreview_reader: true
   - id: diagnose_ip_address_list
     cmd: diagnose ip address list
     gate: always

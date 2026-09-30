@@ -298,6 +298,49 @@ pub fn ha_status(raw: &str) -> Vec<Value> {
     out.into_iter().map(Value::Object).collect()
 }
 
+/// `get wireless-controller wtp-status` (LT-596): the FortiAPs a FortiGate
+/// manages, read by the classic crawler's reader, which met a FortiGate 60F
+/// on 7.6.7 managing three — one `ap` row each, with what the AP's own LLDP
+/// sees on its wired port.
+pub fn wtp_status(raw: &str) -> Vec<Value> {
+    coreview_discover::fortios::parse_wtp_status(raw)
+        .into_iter()
+        .map(|ap| {
+            let mut m = Map::new();
+            m.insert("ap_name".into(), json!(ap.name));
+            if let Some(v) = ap.address {
+                m.insert("ap_ip".into(), json!(v));
+            }
+            if let Some(v) = ap.mac {
+                m.insert("ap_mac".into(), json!(v));
+            }
+            if let Some(v) = ap.serial {
+                m.insert("serial".into(), json!(v));
+            }
+            if let Some(v) = ap.software_version {
+                m.insert("version".into(), json!(v));
+            }
+            m.insert("state".into(), json!(if ap.connected { "connected" } else { "disconnected" }));
+            if let Some(up) = ap.uplink {
+                m.insert("nbr_switch".into(), json!(up.device_id));
+                if let Some(p) = up.remote_interface {
+                    m.insert("nbr_port".into(), json!(p));
+                }
+                if let Some(p) = up.local_interface {
+                    m.insert("local_port".into(), json!(p));
+                }
+                if let Some(p) = up.platform {
+                    m.insert("nbr_platform".into(), json!(p));
+                }
+                if let Some(c) = up.chassis_id {
+                    m.insert("nbr_chassis".into(), json!(c));
+                }
+            }
+            Value::Object(m)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -484,5 +527,41 @@ Secondary: FGTFAKE0000002, HA operating index = 1
             json!({"mode": "HA A-P", "member": "LAB-FW-A", "role": "primary", "serial": "FGTFAKE0000001"}),
             json!({"mode": "HA A-P", "member": "LAB-FW-B", "role": "secondary", "serial": "FGTFAKE0000002"}),
         ]);
+    }
+
+    #[test]
+    fn a_fortigates_access_points_with_their_uplinks() {
+        // The layout of the lab FortiGate 60F's reply (7.6.7, three APs, two
+        // with an LLDP block); invented names, documentation addresses.
+        let raw = "WTP: LAB-AP-GARAGE  0-192.0.2.22:5246
+    vdom             : root
+    wtp-id           : FP231FFAKE00001
+    name             : LAB-AP-GARAGE
+    software-version : FP231F-v7.4.6-build0771
+    local-ip-addr   : 192.0.2.22
+    board-mac        : 00:00:00:00:02:68
+    connection-state : Connected
+  LLDP               : enabled (total 1)
+    local port       : lan1
+    chassis id       : mac 00:00:00:00:c4:a8
+    sys name         : LAB-ACC-SW
+    sys description  : UBNT-USL8L
+    capability       : Bridge 
+    port id          : Port
+    port description : Port 3
+WTP: LAB-AP-OFFICE  0-192.0.2.23:15246
+    vdom             : root
+    wtp-id           : PU431FFAKE00002
+    name             : LAB-AP-OFFICE
+    software-version : PU431F-v7.0.6-build0159
+    local-ip-addr   : 192.0.2.23
+    board-mac        : 00:00:00:00:00:a0
+    connection-state : Connected
+";
+        let rows = crate::readers::read("fortios_wtp_status", raw).expect("a reader for the wireless controller");
+        assert_eq!(rows.len(), 2, "{rows:#?}");
+        assert_eq!((rows[0]["ap_name"].as_str(), rows[0]["ap_ip"].as_str(), rows[0]["nbr_switch"].as_str(), rows[0]["nbr_port"].as_str()), (Some("LAB-AP-GARAGE"), Some("192.0.2.22"), Some("LAB-ACC-SW"), Some("Port 3")));
+        assert_eq!(rows[1]["state"], "connected");
+        assert!(rows[1].get("nbr_switch").is_none(), "no LLDP block, no uplink");
     }
 }
