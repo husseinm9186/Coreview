@@ -315,3 +315,53 @@ fn a_tunnel_between_two_routers_is_in_the_view_with_its_far_end() {
     let json = serde_json::to_value(hq).unwrap();
     assert_eq!(json["tunnels"][0]["peer"], "BRANCH-R1", "the page reads it at the top of the device, where details are flattened");
 }
+
+/// LT-569: a firewall that names no MAC of its own in anything it answers
+/// and sends no LLDP. The switch's ARP table has its address, and the MAC
+/// that address resolves to is learned on one port — that is where it is.
+#[test]
+fn a_device_with_no_mac_of_its_own_is_placed_through_the_arp_entry_for_its_address() {
+    let sw = device(
+        "sw",
+        "192.0.2.7",
+        "cisco_ios",
+        "switch",
+        vec![
+            ("device", vec![row("show_version", &[("hostname", "SW1"), ("serial", "FAKE0000071")])]),
+            (
+                "arp",
+                vec![
+                    row("show_ip_arp", &[("ip", "192.0.2.1"), ("mac", "0000.0000.0a01"), ("interface", "Vlan1")]),
+                    // An address both collected boxes claim says nothing about either.
+                    row("show_ip_arp", &[("ip", "192.0.2.9"), ("mac", "0000.0000.0a09"), ("interface", "Vlan1")]),
+                ],
+            ),
+            (
+                "mac_table",
+                vec![
+                    row("show_mac_address_table", &[("mac", "0000.0000.0a01"), ("interface", "Gi0/1"), ("vlan", "1"), ("type", "DYNAMIC")]),
+                    row("show_mac_address_table", &[("mac", "0000.0000.0a02"), ("interface", "Gi0/1"), ("vlan", "1"), ("type", "DYNAMIC")]),
+                    row("show_mac_address_table", &[("mac", "0000.0000.0a09"), ("interface", "Gi0/2"), ("vlan", "1"), ("type", "DYNAMIC")]),
+                ],
+            ),
+            ("ip_address", vec![row("show_ip_interface_brief", &[("interface", "Vlan1"), ("ip", "192.0.2.7"), ("prefixlen", "24")]), row("show_ip_interface_brief", &[("interface", "Vlan9"), ("ip", "192.0.2.9"), ("prefixlen", "24")])]),
+        ],
+    );
+    let fw = device(
+        "fw",
+        "192.0.2.1",
+        "fortios",
+        "firewall",
+        vec![
+            ("device", vec![row("get_system_status", &[("hostname", "FW1"), ("serial", "FGTFAKE0000001")])]),
+            ("interface", vec![row("get_system_interface", &[("name", "internal")]), row("get_system_interface", &[("name", "dmz")])]),
+            ("ip_address", vec![row("get_system_interface", &[("interface", "internal"), ("ip", "192.0.2.1"), ("prefixlen", "255.255.255.0")]), row("get_system_interface", &[("interface", "dmz"), ("ip", "192.0.2.9"), ("prefixlen", "255.255.255.0")])]),
+        ],
+    );
+    let g = build(&[sw, fw]);
+    let (sw, fw) = (node_named(&g, "SW1").id.clone(), node_named(&g, "FW1").clone());
+    assert_eq!(fw.macs.iter().collect::<Vec<_>>(), vec!["000000000a01"], "only the address FW1 alone claims gives it a MAC");
+    let placed: Vec<&Link> = g.links.iter().filter(|l| l.kind == LinkKind::InferredMac && l.b.node == fw.id).collect();
+    assert_eq!(placed.len(), 1, "{:?}", g.links);
+    assert_eq!((placed[0].a.node.as_str(), placed[0].a.port.as_deref()), (sw.as_str(), Some("GigabitEthernet0/1")));
+}

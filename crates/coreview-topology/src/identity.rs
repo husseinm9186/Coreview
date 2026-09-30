@@ -185,6 +185,38 @@ pub fn collected_nodes(devices: &[DeviceIn], graph: &mut Graph, ids: &mut Identi
     }
 }
 
+/// A collected device that names no MAC of its own — a FortiGate's
+/// interface replies carry none — takes the MAC a neighbour's ARP table
+/// gives for one of its own addresses (LT-569), so placement can find it.
+/// Only an address no other node claims, and a MAC no other node has.
+pub fn macs_from_arp(devices: &[DeviceIn], graph: &mut Graph, ids: &mut Identities) {
+    let mut claims: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for n in &graph.nodes {
+        for (ip, _, _, _) in &n.addresses {
+            claims.entry(ip.as_str()).or_default().insert(n.id.as_str());
+        }
+    }
+    let mut found: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for d in devices {
+        let seen_by = ids.of_device.get(&d.device_id);
+        for r in d.rows("arp") {
+            let (Some(ip), Some(m)) = (r.get("ip"), r.get("mac").and_then(mac)) else { continue };
+            let Some(owners) = claims.get(ip.trim()) else { continue };
+            let [owner] = owners.iter().collect::<Vec<_>>()[..] else { continue };
+            if Some(&owner.to_string()) == seen_by || ids.by_mac(&m).is_some() {
+                continue;
+            }
+            found.entry(owner.to_string()).or_default().insert(m);
+        }
+    }
+    for (id, macs) in found {
+        let Some(n) = graph.nodes.iter_mut().find(|n| n.id == id && n.kind == NodeKind::Collected && n.macs.is_empty()) else { continue };
+        n.macs = macs;
+        let clone = n.clone();
+        ids.index(&clone);
+    }
+}
+
 /// The routing table's rows as routes: a prefix in CIDR form, its next hops.
 fn routes_of(d: &DeviceIn) -> Vec<NodeRoute> {
     let mut out = Vec::new();

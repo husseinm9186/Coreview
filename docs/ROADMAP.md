@@ -114,6 +114,8 @@ per platform, the FMC through LT-541's collector.
 
 
 
+
+
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
 confirmed by the operator on accepting P1 (2026-09-29): "embeddable
@@ -601,6 +603,16 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-569 — **bug** A collected device with no MAC of its own was never placed — 2026-09-29, fixed the same day
+**Found by the lab run.** The FortiGate gives no MAC for its interfaces
+in any read-only reply the lab has shown, and it sends no LLDP, so MAC
+placement had nothing to look for: it was drawn alone although the Catalyst
+had learned its MAC on one port. **Fix:** when a neighbour's ARP table
+maps one of a collected device's own addresses to a MAC no other node
+claims, that MAC is the device's, and placement finds it as it finds any
+other. An address two collected devices both claim gives nothing.
+**Run:** a scenario test (failed, passes now); replayed on the lab, the FortiGate now carries the MAC the Catalyst's ARP gives its LAN address. **What shipped differs:** it is still not drawn, because the Catalyst port that MAC is learned on already has two LLDP/CDP neighbours nobody collected — placement leaves a linked port to the far side, as it should, and which of the two it sits behind is not knowable from this run.
 
 ### LT-568 — **bug** A command a FortiGate did not know was stored as answered — 2026-09-29, fixed the same day
 **Found by the lab run.** `diagnose ip address list` answers `Unknown
