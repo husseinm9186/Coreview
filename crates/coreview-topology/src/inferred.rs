@@ -160,6 +160,29 @@ pub fn mac_placements(devices: &[DeviceIn], graph: &mut Graph, ids: &mut Identit
         graph.nodes.push(n);
         graph.links.push(l);
     }
+    behind_routers(devices, graph, ids);
+}
+
+/// LT-597: what a router's or firewall's ARP table knows and nothing else has
+/// placed — the hosts of a Wi-Fi or IoT network behind a FortiGate, or seen
+/// by a switch only on a port leading to another switch — hangs off the
+/// interface the router knows it on. A host a switch placed on a port of its
+/// own stays there, and a known box is not an endpoint.
+fn behind_routers(devices: &[DeviceIn], graph: &mut Graph, ids: &Identities) {
+    let mut placed: BTreeSet<String> = graph.endpoints.iter().map(|e| e.mac.clone()).collect();
+    for d in devices {
+        if !matches!(d.role.as_deref(), Some("firewall") | Some("router")) {
+            continue;
+        }
+        let Some(node) = ids.of_device.get(&d.device_id).cloned() else { continue };
+        for r in d.rows("arp") {
+            let (Some(m), Some(iface)) = (r.get("mac").and_then(mac), r.get("interface")) else { continue };
+            if ids.by_mac(&m).is_some() || !placed.insert(m.clone()) {
+                continue;
+            }
+            graph.endpoints.push(Endpoint { switch: node.clone(), port: iface.to_string(), mac: m, ip: r.get("ip").map(str::to_string), vlan: None });
+        }
+    }
 }
 
 fn name(graph: &Graph, id: &str) -> String {

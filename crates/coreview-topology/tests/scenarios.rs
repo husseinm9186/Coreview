@@ -410,3 +410,35 @@ fn a_controllers_access_points_are_nodes_with_the_uplinks_they_report() {
     assert_eq!(format!("{:?}", seen.class), "AccessPoint");
 }
 
+/// LT-597: devices only a firewall's ARP table places — a Wi-Fi or IoT
+/// VLAN behind it — are endpoints on that interface. A host a switch has
+/// placed on a port of its own stays there.
+#[test]
+fn hosts_only_a_firewalls_arp_knows_hang_off_its_interface() {
+    let sw = device("sw", "192.0.2.7", "cisco_ios", "switch", vec![
+        ("device", vec![row("show_version", &[("hostname", "SW1"), ("serial", "FAKE0000071")])]),
+        ("mac_table", vec![row("show_mac_address_table", &[("mac", "0000.0000.0501"), ("interface", "Gi0/5"), ("vlan", "1"), ("type", "DYNAMIC")])]),
+    ]);
+    let fw = device("fw", "192.0.2.1", "fortios", "firewall", vec![
+        ("device", vec![row("get_system_status", &[("hostname", "FW1"), ("serial", "FGTFAKE0000001")])]),
+        ("arp", vec![
+            row("get_system_arp", &[("ip", "198.51.100.5"), ("mac", "00:00:00:00:07:05"), ("interface", "IoT")]),
+            row("get_system_arp", &[("ip", "198.51.100.6"), ("mac", "00:00:00:00:07:06"), ("interface", "IoT")]),
+            // The switch placed this one on a port of its own; it stays there.
+            row("get_system_arp", &[("ip", "192.0.2.51"), ("mac", "00:00:00:00:05:01"), ("interface", "internal")]),
+        ]),
+    ]);
+    let g = build(&[sw, fw]);
+    let fw_id = node_named(&g, "FW1").id.clone();
+    let behind: Vec<&Endpoint> = g.endpoints.iter().filter(|e| e.switch == fw_id).collect();
+    assert_eq!(behind.len(), 2, "{:?}", g.endpoints);
+    assert!(behind.iter().all(|e| e.port == "IoT"), "{behind:?}");
+    assert_eq!(behind.iter().filter_map(|e| e.ip.as_deref()).collect::<Vec<_>>(), vec!["198.51.100.5", "198.51.100.6"]);
+    let on_switch = g.endpoints.iter().find(|e| e.mac == "000000000501").expect("the switch's own");
+    assert_eq!(on_switch.switch, node_named(&g, "SW1").id);
+    // The review lists them under the firewall, with the maker the MAC's prefix names.
+    let view = coreview_topology::crawl_view::view(&g);
+    let fw = view.devices.iter().find(|d| d.hostname == "FW1").unwrap();
+    assert_eq!(fw.attached.len(), 2);
+    assert!(fw.attached.iter().all(|a| a.port == "IoT" && a.vendor.is_some()), "{:?}", fw.attached);
+}

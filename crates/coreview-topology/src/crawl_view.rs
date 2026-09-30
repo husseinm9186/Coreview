@@ -241,7 +241,8 @@ pub fn view_with(graph: &Graph, opts: &ViewOptions) -> CrawlView {
                 mac: e.mac.clone(),
                 port: short(&e.port),
                 address: e.ip.clone(),
-                vendor: None,
+                // LT-597: the maker, from the MAC's registered prefix, as the classic crawl lists it.
+                vendor: coreview_discover::oui::vendor(&e.mac).map(str::to_string),
                 hostname: None,
                 class: None,
                 port_population: population.get(&(e.switch.clone(), e.port.clone())).copied().unwrap_or(1),

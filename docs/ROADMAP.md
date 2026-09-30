@@ -139,16 +139,6 @@ page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
 a layout run on an existing page — so the same input can be laid out again
 in a test.
 
-### LT-597 — Hosts known only from a firewall's ARP table are shown behind its interface — 2026-09-30
-**Source:** the same study. The classic crawl's 37 "seen on switch ports"
-include the IoT and Wi-Fi devices behind the FortiGate's IoT and
-Wi-Fi interfaces, known only from its ARP table (31 entries); the
-collector's topology places devices only from switch MAC tables, and a
-FortiGate has none, so they are missing. **Acceptance:** an ARP entry on a
-collected router or firewall's interface whose MAC no switch places becomes
-an endpoint on that interface, with its address, MAC and maker; the list's
-tick (LT-592) still decides whether they are drawn.
-
 ### LT-598 — "Discover devices" can use the project's API login — 2026-09-30
 **Source:** the same study: the collector's result for the FortiGate has no
 firewall policy, because Discover sends no API login (the Collect tab does).
@@ -665,6 +655,17 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-597 — Hosts known only from a firewall's ARP table are shown behind its interface — 2026-09-30, done the same day
+**Source:** the same study. The classic crawl's 37 "seen on switch ports"
+include the IoT and Wi-Fi devices behind the FortiGate's IoT and
+Wi-Fi interfaces, known only from its ARP table (31 entries); the
+collector's topology places devices only from switch MAC tables, and a
+FortiGate has none, so they are missing. **Acceptance:** an ARP entry on a
+collected router or firewall's interface whose MAC no switch places becomes
+an endpoint on that interface, with its address, MAC and maker; the list's
+tick (LT-592) still decides whether they are drawn.
+**Run:** a topology scenario (failed before): hosts only the firewall's ARP places hang off its `IoT` interface with their maker from the OUI table, a host the switch placed on a port of its own stays there. On the lab, 26–28 devices listed — 12 on the Wi-Fi interface, 6 on the IoT one, the rest on the LAN, a second WLAN, the WAN and the FortiSwitch's ports — against the classic crawl's 37. **What shipped differs:** a MAC a switch learned only on a port toward another switch is not treated as placed, so it hangs off the router's interface, as the classic crawl puts it.
 
 ### LT-596 — The collector reads a FortiGate's wireless controller: its FortiAPs — 2026-09-30, done the same day
 **Source:** the operator's collection diagnostic of 2026-09-30, studied
