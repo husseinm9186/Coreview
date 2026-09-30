@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 use coreview_catalog::Catalog;
-use coreview_collect::run::{collect_device, DeviceRun, RunEvent, RunOptions, RunSink, Target};
+use coreview_collect::run::{DeviceRun, RunEvent, RunOptions, RunSink, Target};
 use coreview_collect::sidecar::{Auth, Sidecar, SidecarLocation};
 use coreview_collect::tables::normalise_all;
 use serde::{Deserialize, Serialize};
@@ -500,7 +500,9 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
         use tauri::Manager;
         let _ticket = ticket;
         let state_arc = app2.state::<AppState>();
-        let mut sidecar = match Sidecar::spawn(&location).await {
+        // LT-588: started here so a wrong interpreter fails the run at once;
+        // after that the slot replaces a sidecar that stops answering.
+        let first = match Sidecar::spawn(&location).await {
             Ok(s) => s,
             Err(e) => {
                 if let Ok(conn) = state_arc.db.lock() {
@@ -510,6 +512,7 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
                 return;
             }
         };
+        let mut slot = coreview_collect::collector::SidecarSlot::started(location, first);
         let mut devices = 0usize;
         let mut failed = 0usize;
         let mut cancelled = false;
@@ -527,7 +530,11 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
             let sink = Emit { app: app2.clone(), run_id: run_id2.clone(), device_id: device_id.clone() };
             let known_host_key = host_keys.lock().ok().and_then(|k| k.known(host, port));
             let target = Target { host: host.clone(), port, os_hint: os_hint.clone(), role_override: role_override.clone(), known_host_key };
-            let mut run = collect_device(&mut sidecar, &catalogs, &target, &auth, &options, &sink).await;
+            // LT-589: Stop ends the device in progress at once.
+            let Some(mut run) = slot.collect(&catalogs, &target, &auth, &options, &sink, &token).await else {
+                cancelled = true;
+                break;
+            };
             if let (Some(snmp), true) = (&snmp_auth, snmp_eligible(&run)) {
                 let read = coreview_discover::snmp_collect::read_for_collection(host, 161, snmp, std::time::Duration::from_secs(5)).await;
                 apply_snmp_fallback(&mut run, read, &sink);
@@ -559,12 +566,9 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
                 failed += 1;
             }
             let _ = app2.emit("coreview://collection", &CollectionEvent::DeviceDone { run_id: run_id2.clone(), device_id, host: host.clone(), os: run.os.clone(), failure: run.failure.clone(), commands });
-            if matches!(run.failure.as_deref(), Some("sidecar")) {
-                // The sidecar is gone; nothing more can be collected this run.
-                break;
-            }
+            // LT-588: a sidecar that stopped answering has been replaced; the run goes on.
         }
-        sidecar.quit().await;
+        slot.quit().await;
         if let Ok(conn) = state_arc.db.lock() {
             let _ = cdb::finish_run(&conn, &run_id2, if cancelled { "cancelled" } else { "finished" });
         }

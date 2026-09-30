@@ -299,3 +299,46 @@ async fn shadow_mode_compares_both_parsers_and_a_flipped_os_parses_in_rust() {
     assert!(inv.shadow.is_none(), "a flipped OS is not shadowed");
     sidecar.quit().await;
 }
+
+/// LT-588: a sidecar that stops answering ends its device at once, is
+/// replaced, and the run goes on — the next device is still collected.
+#[tokio::test]
+async fn a_sidecar_that_dies_on_one_device_is_replaced_and_the_next_device_is_still_collected() {
+    use coreview_collect::collector::SidecarSlot;
+    let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+    let mut script = catalyst_script();
+    script["show cdp neighbors detail"]["crash_once"] = json!(true);
+    let mut slot = SidecarSlot::new(fake_location(&script, "[]"));
+    let never = tokio_util::sync::CancellationToken::new();
+    let target = |h: &str| Target { host: h.into(), port: 22, os_hint: None, role_override: None, known_host_key: None };
+    let started = std::time::Instant::now();
+    let first = slot.collect(&catalogs, &target("192.0.2.10"), &auth(), &RunOptions::default(), &Quiet, &never).await.expect("not cancelled");
+    assert_eq!(first.failure.as_deref(), Some("sidecar"), "{:?}", first.log);
+    assert!(started.elapsed() < std::time::Duration::from_secs(20), "a dead sidecar is not waited on: {:?}", started.elapsed());
+    let second = slot.collect(&catalogs, &target("192.0.2.11"), &auth(), &RunOptions::default(), &Quiet, &never).await.expect("not cancelled");
+    assert_eq!(second.failure, None, "the next device gets a fresh sidecar: {:?}", second.log);
+    assert!(second.results.iter().any(|r| r.step.cmd == "show cdp neighbors detail" && r.outcome.status == "ok"));
+    slot.quit().await;
+}
+
+/// LT-589: Stop ends the device in progress at once, whatever it is waiting on.
+#[tokio::test]
+async fn stop_ends_a_device_stuck_on_a_command_at_once() {
+    use coreview_collect::collector::SidecarSlot;
+    let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+    let mut script = catalyst_script();
+    script["show cdp neighbors detail"]["stall"] = json!(true);
+    let mut slot = SidecarSlot::new(fake_location(&script, "[]"));
+    let stop = tokio_util::sync::CancellationToken::new();
+    let stopper = stop.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+        stopper.cancel();
+    });
+    let started = std::time::Instant::now();
+    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: None, role_override: None, known_host_key: None };
+    let out = slot.collect(&catalogs, &target, &auth(), &RunOptions::default(), &Quiet, &stop).await;
+    assert!(out.is_none(), "a cancelled device reports nothing");
+    assert!(started.elapsed() < std::time::Duration::from_secs(5), "Stop waited {:?}", started.elapsed());
+    slot.quit().await;
+}

@@ -372,7 +372,12 @@ pub async fn collect_device(sidecar: &mut Sidecar, catalogs: &[Catalog], target:
         if let Err(e) = run_steps(sidecar, &session, catalog, &steps, &mut run, &mut ran, sink, options).await {
             run.failure = Some("sidecar".into());
             run.log.push(e.to_string());
-            let _ = sidecar.close(&session).await;
+            // LT-588: a sidecar that timed out is still busy with the stuck
+            // command, and one that closed is gone; asking either to close
+            // the session only waits. The caller replaces it.
+            if !matches!(e, SidecarError::Timeout(_) | SidecarError::Closed) {
+                let _ = sidecar.close(&session).await;
+            }
             return run;
         }
         // Anything that fed the vrf table may have named VRFs we did not know.

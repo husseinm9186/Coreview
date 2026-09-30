@@ -387,6 +387,14 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(200);
 check("its progress is shown", /Collecting 192\.0\.2\.10/.test(await panel.textContent()));
+// LT-588: the last command a device answered, so a stall says where.
+await page.evaluate(() => window.__cvEmit("coreview://collection", { kind: "step", runId: "col-9", deviceId: "dev-192-0-2-10", stepId: "show_version", cmd: "show version", status: "ok", rows: 1, durationMs: 40, context: null }));
+await page.waitForTimeout(200);
+check("and the last command the device answered", /Collecting 192\.0\.2\.10 — last answered: show version/.test(await panel.textContent()));
+// LT-589: Stop is the collector's own.
+await panel.locator("button", { hasText: /^Stop$/ }).click();
+await page.waitForTimeout(200);
+check("Stop asks the collection to stop, not the classic crawl", (await lastCall("cancel_collection")) !== undefined || (await page.evaluate(() => window.__calls.some((c) => c.cmd === "cancel_collection"))));
 await page.evaluate(() => window.__cvEmit("coreview://collection", { kind: "finished", runId: "col-9", devices: 1, failed: 0, cancelled: false }));
 await page.waitForTimeout(500);
 const topo = await lastCall("collection_topology");

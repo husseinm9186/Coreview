@@ -10,6 +10,7 @@
 
 pub mod api;
 pub mod capabilities;
+pub mod collector;
 pub mod fingerprint;
 pub mod follow;
 pub mod live;

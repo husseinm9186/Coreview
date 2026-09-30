@@ -261,6 +261,7 @@ export function CrawlPanel({
   // default; the older crawler stays a choice until the new one covers it.
   const [engine, setEngine] = useState<'collector' | 'classic'>('collector');
   const collectionRun = useRef<string | null>(null);
+  const collectionHosts = useRef<Map<string, string>>(new Map());
   const [status, setStatus] = useState<string | null>(null);
   const [pushMessage, setPushMessage] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -370,7 +371,12 @@ export function CrawlPanel({
         return;
       }
       if (!collectionRun.current || e.runId !== collectionRun.current) return;
-      if (e.kind === 'device') setStatus(t('discover.collecting', { host: e.host }));
+      if (e.kind === 'device') {
+        collectionHosts.current.set(e.deviceId, e.host);
+        setStatus(t('discover.collecting', { host: e.host }));
+      }
+      // LT-588: the last command a device answered, so a stall says where.
+      if (e.kind === 'step') setStatus(t('discover.collectingStep', { host: collectionHosts.current.get(e.deviceId) ?? e.deviceId, cmd: e.cmd }));
       if (e.kind === 'deviceDone' && e.failure) setLiveFailed((n) => n + 1);
       if (e.kind === 'failed') {
         setRunning(false);

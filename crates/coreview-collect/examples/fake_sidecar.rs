@@ -8,6 +8,11 @@
 //! file `{ "<cmd>": {"status": "ok", "raw": "...", "rows": [...]}, ... }`.
 //! A command not in it is `unsupported`. `FAKE_SIDECAR_CONTEXTS` (a JSON
 //! list) is what `open` reports as contexts, with kind `vdom`.
+//!
+//! LT-588/LT-589: an entry with `"stall": true` is never answered — a
+//! command stuck on a device; `"crash_once": true` makes the process exit
+//! the first time it is asked (a marker file beside the script remembers),
+//! and answers it like any entry after that.
 
 use std::io::{BufRead, Write};
 
@@ -43,6 +48,16 @@ fn main() {
             "run" => {
                 let cmd = req["cmd"].as_str().unwrap_or("");
                 sent.push(cmd.to_string());
+                if script.get(cmd).and_then(|e| e.get("stall")).and_then(Value::as_bool) == Some(true) {
+                    std::thread::sleep(std::time::Duration::from_secs(3600));
+                }
+                if script.get(cmd).and_then(|e| e.get("crash_once")).and_then(Value::as_bool) == Some(true) {
+                    let marker = std::path::PathBuf::from(std::env::var("FAKE_SIDECAR_SCRIPT").unwrap_or_default()).with_extension("crashed");
+                    if !marker.exists() {
+                        let _ = std::fs::write(&marker, "");
+                        std::process::exit(3);
+                    }
+                }
                 match script.get(cmd) {
                     Some(entry) => json!({"id": id, "status": entry["status"].as_str().unwrap_or("ok"), "session": session, "cmd": cmd, "rows": entry.get("rows").cloned().unwrap_or(json!([])), "raw": entry["raw"].as_str().unwrap_or(""), "duration_ms": 3, "error": entry.get("error").cloned().unwrap_or(Value::Null)}),
                     None => json!({"id": id, "status": "unsupported", "session": session, "cmd": cmd, "rows": [], "raw": "% Invalid input detected at '^' marker.", "duration_ms": 1, "error": "rejected by device"}),

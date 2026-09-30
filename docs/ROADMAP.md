@@ -154,15 +154,13 @@ once — no close sent to a sidecar that cannot answer it — the sidecar is
 killed and a fresh one started, and the run goes on to the next device;
 the Discover panel names the last command a device answered, so a stall
 says where. **Needs from the operator:** the run's diagnostic folder, to
-find the command that stalls.
+find the command that stalls. **Shipped 2026-09-30, the cause still open:**
+the device ends and the run goes on, the sidecar replaced
+(`coreview-collect::collector::SidecarSlot`; a fake sidecar that dies on
+one device, and the next device is collected with a fresh one, in under
+20 s), and the Discover panel says "last answered: <command>". Stays here
+until the stall on the operator's machine is found.
 
-
-### LT-589 — **bug** Stop did not stop a collector run — reported 2026-09-30
-**Source:** the same report: "the discover stop doesn't work I have to
-switch screens". Cancellation was checked only between devices, so Stop
-waited out the device in progress, however long. **Fix:** Stop ends the
-device in progress at once and kills its sidecar; the run finishes
-cancelled with what it had.
 
 ### LT-592 — **bug** "Add to diagram" always added every device seen on a switch port — reported 2026-09-30
 **Source:** the same report: the classic crawler "doesn't give me the
@@ -673,6 +671,14 @@ started with no window (`CREATE_NO_WINDOW`).
 running job by its kind, and the interface did not know the collector's
 kind (`collect`).
 **Run:** `jobs.test.ts` — the collection's line, and every job kind `jobs.rs` declares has a name (the test reads the enum, so the next kind cannot drift the same way).
+
+### LT-589 — **bug** Stop did not stop a collector run — reported 2026-09-30, fixed the same day
+**Source:** the same report: "the discover stop doesn't work I have to
+switch screens". Cancellation was checked only between devices, so Stop
+waited out the device in progress, however long. **Fix:** Stop ends the
+device in progress at once and kills its sidecar; the run finishes
+cancelled with what it had.
+**Run:** a fake sidecar that never answers one command; Stop 1.5 s in ends the device within 5 s and reports nothing for it (`collect_through_a_fake_sidecar.rs`); `e2e/crawling.mjs`: Stop on the collector asks `cancel_collection`.
 
 ### LT-587 — A large FortiGate configuration could outlast the backup's time limit — 2026-09-30, done the same day
 **Found checking LT-572/573 on the lab:** the lab FortiGate 60F's `show`

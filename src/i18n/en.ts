@@ -279,6 +279,7 @@ export const en = {
   'discover.engineClassic': 'Classic crawler',
   'discover.engineHelp': "The collector reads each device with its own OS's commands and follows CDP/LLDP neighbours, the default route and the ARP table; the classic crawler is the older one, kept while the new one meets the rest of your estate.",
   'discover.collecting': 'Collecting {host}…',
+  'discover.collectingStep': 'Collecting {host} — last answered: {cmd}',
   'discover.collected': 'Collected {devices}, {failed} failed — collection run {run}. It is on the Collect tab too.',
   'discover.needProject': 'The collector keeps its run in a project; open or create one first.',
   'vaultSettings.theKeyThatOpens': 'The key that opens the vault — never the passphrase — is kept by Windows Credential Manager, the macOS Keychain or the Secret Service, and the vault opens by itself when Coreview starts. Anyone who can use this computer\'s account can then use the saved credentials.',
