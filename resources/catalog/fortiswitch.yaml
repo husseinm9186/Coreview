@@ -121,5 +121,42 @@ commands:
   timeout: 30
   verified: lab
   evidence: ntc-templates tests (1 captures); Coreview fortios reader
+# LT-665, 2026-10-01: the L3 and VLAN side, each reader met the lab's
+# FortiSwitch 224E through examples/try_commands (the capture stays off the
+# repository; the fixtures are its layout with invented values).
+- id: get_switch_lldp_neighbors_detail
+  cmd: get switch lldp neighbors-detail
+  gate: always
+  parser: reader:fortiswitch_lldp_detail
+  feeds:
+  - neighbor
+  weight: light
+  timeout: 60
+  verified: lab
+  evidence: Coreview fortiswitch reader, met a FortiSwitch 224E on FortiSwitchOS 7.6.1 in the operator's lab (LT-665) — the management address the summary form lacks
+  coreview_reader: true
+- id: diagnose_switch_vlan_list
+  cmd: diagnose switch vlan list
+  gate: always
+  parser: reader:fortiswitch_vlan_list
+  feeds:
+  - vlan
+  weight: heavy
+  timeout: 120
+  verified: lab
+  evidence: Coreview fortiswitch reader, met a FortiSwitch 224E on FortiSwitchOS 7.6.1 in the operator's lab (LT-665)
+  coreview_reader: true
+- id: show_system_interface
+  cmd: show system interface
+  gate: always
+  parser: reader:fortios_system_interface_config
+  feeds:
+  - ip_address
+  - interface
+  weight: light
+  timeout: 60
+  verified: lab
+  evidence: Coreview fortinet reader, met a FortiSwitch 224E on FortiSwitchOS 7.6.1 in the operator's lab (LT-665) — VLAN interfaces and secondary addresses
+  coreview_reader: true
 live_path: []
 note: 'LT-565: FortiSwitchOS standalone. Its commands and readers met a FortiSwitch 224E in the operator''s lab; a FortiSwitch managed over FortiLink is read through its FortiGate.'

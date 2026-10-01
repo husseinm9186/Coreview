@@ -224,10 +224,18 @@ interface`'s `set vrf N` lines read into the `vrf` table by
 FortiOS says which interfaces a VRF holds), so a VRF route from the
 routing table (`Routing table for VRF=3`) finds its interfaces; the kernel
 FIB is LT-653's. SD-WAN members and health checks already come over the
-REST API; `diagnose sys sdwan service` stays unverified. **Still open:**
-FortiSwitch's L3 side (`get switch trunk`, `get switch stp instance`,
-`diagnose switch vlan list`) — the lab's FortiSwitch is the right source
-for those readers, and that is a capture to take, not documentation.
+REST API; `diagnose sys sdwan service` stays unverified. **And the
+FortiSwitch's L3/VLAN side, from the lab's own 224E through
+`examples/try_commands` (2026-10-01):** `get switch lldp neighbors-detail`
+(a neighbour's management address, which the summary form lacks and the
+crawl follows), `diagnose switch vlan list` (every VLAN's ports, wrapped
+lines read, the switch's own VLANs left out) and `show system interface`
+(VLAN interfaces, secondary addresses) — three readers, `verified: lab`,
+their fixtures the capture's layout with invented values; a test runs
+them on the capture itself when `COREVIEW_LAB_CAPTURE` names it. `get
+switch trunk` answered nothing on the lab box (no trunk configured) and
+`get switch stp instance` only lists instance ids, so neither has a reader
+yet. `get switch interface physical` is not a command.
 
 ### LT-666 — The empty shells filled: Dell OS10, Extreme EXOS, Ruckus ICX, Ubiquiti EdgeOS, VyOS — 2026-09-30
 **Source:** the same message. Four catalogs exist with no commands; the

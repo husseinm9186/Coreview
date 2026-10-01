@@ -419,9 +419,235 @@ pub fn interface_vrfs(raw: &str) -> Vec<Value> {
     out
 }
 
+/// FortiSwitchOS `get switch lldp neighbors-detail`: one block per
+/// neighbour — `Neighbor learned on port port24 by LLDP protocol`, then
+/// `Chassis ID`, `System Name`, `System Description` (its first line is
+/// the platform), `System Capabilities`, `Management IP Address`, `Port
+/// ID: Gi0/9 (ifname)`, `Port description`. The summary form carries no
+/// management address, and the address is what the crawl follows (LT-665).
+pub fn lldp_neighbors_detail(raw: &str) -> Vec<Value> {
+    let mut out = Vec::new();
+    let mut cur: Option<Map<String, Value>> = None;
+    let mut in_descr = false;
+    for line in raw.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("Neighbor learned on port ") {
+            if let Some(m) = cur.take() {
+                out.push(Value::Object(m));
+            }
+            let mut m = Map::new();
+            m.insert("local_interface".into(), json!(rest.split_whitespace().next().unwrap_or("")));
+            cur = Some(m);
+            in_descr = false;
+            continue;
+        }
+        let Some(m) = cur.as_mut() else { continue };
+        if in_descr {
+            if !t.is_empty() && !m.contains_key("platform") {
+                m.insert("platform".into(), json!(t));
+            }
+            if t.is_empty() {
+                in_descr = false;
+            }
+            continue;
+        }
+        let Some((k, v)) = t.split_once(':') else { continue };
+        let (k, v) = (k.trim(), v.trim());
+        match k {
+            "Chassis ID" => {
+                m.insert("chassis_id".into(), json!(v.split_whitespace().next().unwrap_or("")));
+            }
+            "System Name" => {
+                m.insert("neighbor_name".into(), json!(v));
+            }
+            "System Description" => {
+                in_descr = true;
+                if !v.is_empty() {
+                    m.insert("platform".into(), json!(v));
+                    in_descr = false;
+                }
+            }
+            "System Capabilities" => {
+                m.insert("capabilities".into(), json!(v));
+            }
+            "Management IP Address" => {
+                m.insert("management_ip".into(), json!(v));
+            }
+            "Port ID" => {
+                m.insert("neighbor_interface".into(), json!(v.split(" (").next().unwrap_or(v)));
+            }
+            "Port description" => {
+                m.insert("neighbor_port_description".into(), json!(v));
+            }
+            _ => {}
+        }
+    }
+    if let Some(m) = cur.take() {
+        out.push(Value::Object(m));
+    }
+    out
+}
+
+/// FortiSwitchOS `diagnose switch vlan list`: `VlanId  Ports`, each VLAN's
+/// ports wrapping onto indented lines. Every VLAN a trunk carries is a
+/// line, so the reply is long; a VLAN with only the `internal` port is
+/// the switch's own and is left out (LT-665).
+pub fn vlan_list(raw: &str) -> Vec<Value> {
+    let mut out: Vec<(String, Vec<String>)> = Vec::new();
+    let mut seen_header = false;
+    for line in raw.lines() {
+        let t = line.trim_end();
+        if t.trim_start().starts_with("VlanId") {
+            seen_header = true;
+            continue;
+        }
+        if !seen_header || t.trim().is_empty() || t.trim().starts_with('_') {
+            continue;
+        }
+        let w: Vec<&str> = t.split_whitespace().collect();
+        if w[0].chars().all(|c| c.is_ascii_digit()) && t.len() - t.trim_start().len() <= 2 {
+            out.push((w[0].to_string(), w[1..].iter().map(|p| p.to_string()).collect()));
+        } else if let Some(last) = out.last_mut() {
+            last.1.extend(w.iter().map(|p| p.to_string()));
+        }
+    }
+    out.into_iter()
+        .filter(|(_, ports)| ports.iter().any(|p| p != "internal"))
+        .map(|(id, ports)| json!({"vlan_id": id, "ports": ports.iter().filter(|p| *p != "internal").cloned().collect::<Vec<_>>().join(", ")}))
+        .collect()
+}
+
+/// FortiOS / FortiSwitchOS `show system interface`: the configuration's
+/// `config system interface` block. An address row per `set ip a m` (and
+/// per secondary address), an interface row per `edit` with its VLAN id
+/// and parent where it is a VLAN interface (LT-665).
+pub fn system_interface_config(raw: &str) -> Vec<Value> {
+    let mut out = Vec::new();
+    let mut cur: Option<Map<String, Value>> = None;
+    let mut depth = 0usize;
+    let flush = |cur: &mut Option<Map<String, Value>>, out: &mut Vec<Value>| {
+        if let Some(m) = cur.take() {
+            out.push(Value::Object(m));
+        }
+    };
+    for line in raw.lines() {
+        let t = line.trim();
+        if t.starts_with("config ") {
+            depth += 1;
+            continue;
+        }
+        if t == "end" {
+            depth = depth.saturating_sub(1);
+            continue;
+        }
+        if depth == 1 {
+            if let Some(name) = t.strip_prefix("edit ") {
+                flush(&mut cur, &mut out);
+                let mut m = Map::new();
+                m.insert("name".into(), json!(name.trim().trim_matches('"')));
+                cur = Some(m);
+            } else if t == "next" {
+                flush(&mut cur, &mut out);
+            }
+        }
+        let Some(m) = cur.as_mut() else { continue };
+        if let Some(v) = t.strip_prefix("set ip ") {
+            let w: Vec<&str> = v.split_whitespace().collect();
+            if w.len() >= 2 {
+                let key = if depth == 1 { "ip" } else { "secondary_ip" };
+                let val = format!("{} {}", w[0], w[1]);
+                match m.get_mut(key) {
+                    Some(Value::String(s)) if depth > 1 => *s = format!("{s}, {val}"),
+                    _ => {
+                        m.insert(key.into(), json!(val));
+                    }
+                }
+            }
+        } else if let Some(v) = t.strip_prefix("set vlanid ") {
+            m.insert("vlan".into(), json!(v.trim()));
+        } else if let Some(v) = t.strip_prefix("set interface ") {
+            m.insert("parent".into(), json!(v.trim().trim_matches('"')));
+        } else if let Some(v) = t.strip_prefix("set vrf ") {
+            m.insert("vrf".into(), json!(v.trim()));
+        } else if let Some(v) = t.strip_prefix("set type ") {
+            m.insert("type".into(), json!(v.trim()));
+        } else if let Some(v) = t.strip_prefix("set mode ") {
+            m.insert("mode".into(), json!(v.trim()));
+        } else if let Some(v) = t.strip_prefix("set status ") {
+            m.insert("admin".into(), json!(v.trim()));
+        } else if let Some(v) = t.strip_prefix("set vdom ") {
+            m.insert("vdom".into(), json!(v.trim().trim_matches('"')));
+        }
+    }
+    flush(&mut cur, &mut out);
+    // The address row the `ip_address` table reads: `ip` as `a/m` is what
+    // the normaliser's split_prefix takes; FortiOS writes `a m`.
+    for row in &mut out {
+        if let Some(Value::String(ipm)) = row.get("ip").cloned() {
+            if let Some((a, m)) = ipm.split_once(' ') {
+                row["ip"] = json!(a);
+                row["netmask"] = json!(m);
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// LT-665: the lab FortiSwitch's layout with invented values (D-027).
+    #[test]
+    fn lldp_neighbors_detail_carries_the_management_address() {
+        let raw = "Capability codes:\n\tR:Router, B:Bridge, T:Telephone, C:DOCSIS Cable Device\n\tW:WLAN Access Point, P:Repeater, S:Station, O:Other\n\n_______________________________________________________________\nNeighbor learned on port port24 by LLDP protocol\nLast change 116811 seconds ago\nLast packet received 28 seconds ago\n\nChassis ID: 00:00:5e:00:53:80 (mac)\nSystem Name: LAB-ACC-SW.example.test\nSystem Description:\nCisco IOS Software, C2960CX Software (C2960CX-UNIVERSALK9-M), Version 15.2(7)E, RELEASE SOFTWARE (fc3)\nTechnical Support: http://www.cisco.com/techsupport\n\nTime To Live: 120 seconds\nSystem Capabilities: BR\nEnabled Capabilities: BR\nManagement IP Address: 192.0.2.7\nManagement IP Interface Subtype: unknown, Index: 0\n\nPort ID: Gi0/9 (ifname)\nPort description: GigabitEthernet0/9\nIEEE802.1, Port VLAN ID: 1\n\n_______________________________________________________________\nNeighbor learned on port port3 by LLDP protocol\n\nChassis ID: 00:00:5e:00:53:a1 (mac)\nSystem Name: LAB-AP-1\nSystem Description: FortiAP-231F v7.0\nSystem Capabilities: BW\nManagement IP Address: 192.0.2.31\nPort ID: 00:00:5e:00:53:a1 (mac)\n";
+        let rows = lldp_neighbors_detail(raw);
+        assert_eq!(rows.len(), 2, "{rows:#?}");
+        assert_eq!(rows[0], json!({"local_interface": "port24", "chassis_id": "00:00:5e:00:53:80", "neighbor_name": "LAB-ACC-SW.example.test", "platform": "Cisco IOS Software, C2960CX Software (C2960CX-UNIVERSALK9-M), Version 15.2(7)E, RELEASE SOFTWARE (fc3)", "capabilities": "BR", "management_ip": "192.0.2.7", "neighbor_interface": "Gi0/9", "neighbor_port_description": "GigabitEthernet0/9"}));
+        assert_eq!((rows[1]["local_interface"].as_str(), rows[1]["platform"].as_str(), rows[1]["neighbor_interface"].as_str()), (Some("port3"), Some("FortiAP-231F v7.0"), Some("00:00:5e:00:53:a1")));
+    }
+
+    #[test]
+    fn vlan_list_wraps_and_leaves_the_switchs_own_vlans_out() {
+        let raw = "VlanId  Ports\n  ______  ___________________________________________________\n  1       port1 port3 port5 port6 port7 port8 port9 port10 port11 \n          port12 port13 port24 port25 port26 port27 port28 \n          internal \n  2       port1 port3 port24 internal \n  90      internal \n";
+        let rows = vlan_list(raw);
+        assert_eq!(rows, vec![json!({"vlan_id": "1", "ports": "port1, port3, port5, port6, port7, port8, port9, port10, port11, port12, port13, port24, port25, port26, port27, port28"}), json!({"vlan_id": "2", "ports": "port1, port3, port24"})]);
+    }
+
+    #[test]
+    fn system_interface_config_gives_addresses_and_vlan_interfaces() {
+        let raw = "config system interface\n    edit \"mgmt\"\n        set mode dhcp\n        set allowaccess ping https ssh\n        set type physical\n        set secondary-IP enable\n        set snmp-index 31\n        set defaultgw enable\n        config secondaryip\n            edit 1\n                set ip 192.0.2.99 255.255.255.0\n                set allowaccess ping https ssh\n            next\n        end\n    next\n    edit \"internal\"\n        set ip 198.51.100.203 255.255.255.0\n        set allowaccess ping https ssh snmp\n        set type physical\n        set snmp-index 30\n    next\n    edit \"90_lab\"\n        set mode dhcp\n        set snmp-index 33\n        set defaultgw enable\n        set vlanid 90\n        set interface \"internal\"\n    next\nend\n";
+        let rows = system_interface_config(raw);
+        assert_eq!(rows.len(), 3, "{rows:#?}");
+        assert_eq!(rows[0], json!({"name": "mgmt", "mode": "dhcp", "type": "physical", "secondary_ip": "192.0.2.99 255.255.255.0"}));
+        assert_eq!(rows[1], json!({"name": "internal", "ip": "198.51.100.203", "netmask": "255.255.255.0", "type": "physical"}));
+        assert_eq!(rows[2], json!({"name": "90_lab", "mode": "dhcp", "vlan": "90", "parent": "internal"}));
+        use crate::tables::normalise_all;
+        let n = normalise_all(&["ip_address".into(), "interface".into()], &rows);
+        assert_eq!((n[1].columns["interface"].as_str(), n[1].columns["ip"].as_str(), n[1].columns["prefixlen"].as_str()), ("internal", "198.51.100.203", "255.255.255.0"));
+        assert_eq!((n[5].columns["name"].as_str(), n[5].columns["vlan"].as_str()), ("90_lab", "90"));
+    }
+
+    /// The readers against the operator's own capture, when one is named
+    /// (`COREVIEW_LAB_CAPTURE=<try_commands output>`): what earns `lab`.
+    #[test]
+    fn the_fortiswitch_readers_on_a_named_capture() {
+        let Ok(path) = std::env::var("COREVIEW_LAB_CAPTURE") else { return };
+        let text = std::fs::read_to_string(&path).unwrap();
+        let section = |cmd: &str| -> String {
+            let start = text.find(&format!("--- {cmd}\n")).unwrap_or_else(|| panic!("no {cmd} in the capture"));
+            let body = &text[start..];
+            let end = body[4..].find("\n(").map(|i| i + 4).unwrap_or(body.len());
+            body[..end].lines().skip(2).filter_map(|l| l.strip_prefix("    | ")).map(|l| format!("{l}\n")).collect()
+        };
+        let n = lldp_neighbors_detail(&section("get switch lldp neighbors-detail"));
+        assert!(!n.is_empty() && n.iter().all(|r| r.get("management_ip").is_some() && r.get("neighbor_name").is_some()), "{n:#?}");
+        let v = vlan_list(&section("diagnose switch vlan list"));
+        assert!(v.iter().any(|r| r["vlan_id"] == "1"), "{}", v.len());
+        let i = system_interface_config(&section("show system interface"));
+        assert!(i.iter().any(|r| r.get("ip").is_some()) && i.iter().any(|r| r.get("vlan").is_some()), "{i:#?}");
+        eprintln!("capture: {} neighbours, {} vlans, {} interfaces", n.len(), v.len(), i.len());
+    }
 
     /// LT-665: the VRF an interface is in, from the configuration, with
     /// invented names (D-027); the layout is FortiOS's own.
