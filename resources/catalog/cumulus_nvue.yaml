@@ -1,0 +1,112 @@
+# Coreview discovery catalog — NVIDIA Cumulus Linux 5.x, NVUE (cumulus_nvue)
+#
+# LT-649, 2026-10-01: the fourth thing an SN2010 bought lately runs — Cumulus
+# 5, where NCLU's `net show` is gone and `nv show` took its place. Built
+# from NVIDIA's documentation (D-058): identity from `nv show system`, and
+# the Linux underneath — addresses, neighbours over lldpd, the ARP table,
+# the FDB, the kernel's routes — through the same `ip -j` / `bridge -j` /
+# `lldpcli` JSON the hosts and NCLU catalogs send, which Debian answers
+# whatever the management shell. NVUE's own `nv show … -o json` shapes are
+# not read yet: they are nested deeper than the normaliser's names reach,
+# and no capture has shown them. Every entry `verified: docs`.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met the operator's hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — LT-511's list. Never invent a command.
+vendor: NVIDIA
+os: cumulus_nvue
+name: Cumulus Linux 5 (NVUE)
+ntc_platform: linux
+phase: 1
+fingerprint:
+  probe: nv show system
+  match_regex: 'Cumulus Linux'
+session:
+  source: scrapli_community scrapli_community.cumulus.linux.sync_driver (prompt `user@host:vrf:~$`)
+  privilege_levels:
+    exec:
+      pattern: ^\S+@\S+:\S+:\S+\$\s*$
+  default_privilege: exec
+  failed_when_contains:
+    - "command not found"
+    - "Permission denied"
+    - "ERROR:"
+  on_close:
+    - exit
+role_hint:
+  - match: Cumulus Linux
+    role: l3_switch
+role_defaults:
+  l3_switch:
+    - switching
+    - routing
+    - lldp
+caps_probe: []
+commands:
+  - id: nv_show_system
+    cmd: nv show system
+    gate: always
+    parser: reader:cumulus_nv_system
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview cumulus reader; NVIDIA Cumulus Linux 5 documentation `nv show system` (D-058, LT-649)
+    coreview_reader: true
+  - id: ip_j_addr
+    cmd: ip -j addr
+    gate: always
+    parser: reader:linux_ip_addr
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview linux reader (iproute2 JSON, as the hosts catalog) (LT-550, LT-649)
+    coreview_reader: true
+  - id: ip_j_neigh
+    cmd: ip -j neigh
+    gate: always
+    parser: json
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: iproute2 JSON (dst, lladdr, dev, state), as the hosts catalog (LT-550)
+  - id: ip_j_route_show_table_all
+    cmd: ip -j route show table all
+    gate: always
+    parser: json
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: iproute2 JSON — the kernel's table, what the switch forwards by (LT-550, LT-653)
+  - id: bridge_j_fdb_show
+    cmd: bridge -j fdb show
+    gate: always
+    parser: json
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: iproute2 JSON (mac, ifname, vlan, state), as the hosts catalog (LT-550)
+  - id: lldpcli_show_neighbors_f_json
+    cmd: lldpcli show neighbors -f json
+    gate: always
+    parser: reader:linux_lldp
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview linux reader (lldpd JSON, as the hosts catalog); Cumulus runs lldpd (LT-550, LT-649)
+    coreview_reader: true
+live_path: []
+note: 'LT-649: Cumulus 5 / NVUE, from NVIDIA''s documentation (D-058). The routes here are the kernel''s (FRR fills them); `nv show vrf`, bonds and MLAG wait for a capture of their layouts; `nv config show` is not a read verb the allowlist admits, so no configuration is kept.'

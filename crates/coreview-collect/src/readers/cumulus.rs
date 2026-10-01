@@ -53,6 +53,41 @@ pub fn system(raw: &str) -> Vec<Value> {
     vec![Value::Object(m)]
 }
 
+/// Cumulus Linux 5.x, NVUE: `nv show system` — a two-column table under a
+/// header (`operational  applied  pending  description`): `hostname`,
+/// `build  Cumulus Linux 5.5.0`, `uptime`, `timezone`. From NVIDIA's
+/// documentation (D-058); the model and serial are not in it (they come
+/// from `decode-syseeprom`, which the allowlist does not admit).
+pub fn nv_system(raw: &str) -> Vec<Value> {
+    let mut m = Map::new();
+    m.insert("vendor".into(), json!("NVIDIA"));
+    for line in raw.lines() {
+        let w: Vec<&str> = line.split_whitespace().collect();
+        if w.len() < 2 || w[0] == "operational" || is_rule(line) {
+            continue;
+        }
+        let rest = line.trim_start()[w[0].len()..].trim();
+        // The value ends where the description column begins, two or more spaces on.
+        let value = rest.split("  ").next().unwrap_or("").trim();
+        match w[0] {
+            "hostname" => {
+                m.insert("hostname".into(), json!(value));
+            }
+            "build" => {
+                m.insert("os_version".into(), json!(value.trim_start_matches("Cumulus Linux").trim()));
+            }
+            "uptime" => {
+                m.insert("uptime".into(), json!(value));
+            }
+            _ => {}
+        }
+    }
+    if m.len() <= 1 {
+        return Vec::new();
+    }
+    vec![Value::Object(m)]
+}
+
 /// `net show lldp`: `LocalPort  Speed  Mode  RemoteHost  RemotePort` —
 /// a neighbour's name and port, no address or chassis.
 pub fn lldp(raw: &str) -> Vec<Value> {
@@ -172,6 +207,12 @@ mod tests {
     fn identity_comes_off_net_show_system() {
         let raw = "Hostname......... leaf01\nBuild............ Cumulus Linux 4.4.0\nUptime........... 5 days, 3:44:41.690000\n\nModel............ Mlnx X86 MSN2010\nMemory........... 8GB\nDisk............. 14.9GB\nVendor Name...... Mellanox\nPart Number...... MSN2010-CB2F\nBase MAC Address. 00:00:5E:00:53:01\nSerial Number.... MT0000EXAMPLE\nProduct Name..... MSN2010\n";
         assert_eq!(system(raw), vec![json!({"vendor": "NVIDIA", "hostname": "leaf01", "os_version": "4.4.0", "model": "MSN2010", "serial": "MT0000EXAMPLE", "base_mac": "00:00:5e:00:53:01", "uptime": "5 days, 3:44:41.690000"})]);
+    }
+
+    #[test]
+    fn nvue_system_gives_hostname_and_build() {
+        let raw = "          operational          applied  pending  description\n--------  -------------------  -------  -------  ------------------------------\nhostname  leaf01                                 Static hostname for the switch\nbuild     Cumulus Linux 5.5.0                    system build version\nuptime    6 days, 22:03:49                       system uptime\ntimezone  Etc/UTC                                system time zone\n";
+        assert_eq!(nv_system(raw), vec![json!({"vendor": "NVIDIA", "hostname": "leaf01", "os_version": "5.5.0", "uptime": "6 days, 22:03:49"})]);
     }
 
     #[test]

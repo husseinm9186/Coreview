@@ -358,7 +358,7 @@ FortiGate is read over SSH and, with an API login, over REST — policies,
 addresses, FQDN resolutions, managed FortiSwitches and FortiAPs. Catalogs
 exist for Cisco IOS/IOS-XE, NX-OS, IOS-XR, ASA, AireOS, Arista EOS, Junos,
 FortiOS and FortiSwitchOS, PAN-OS, ArubaOS-CX, ArubaOS-Switch, Meraki,
-NVIDIA Onyx, Cumulus Linux (NCLU) and SONiC, HPE Comware, Huawei VRP,
+NVIDIA Onyx, Cumulus Linux (NCLU and NVUE) and SONiC, HPE Comware, Huawei VRP,
 MikroTik, Cisco Small Business (SG/CBS), Cisco SD-WAN (Viptela), ArubaOS
 Mobility controllers, Extreme EXOS, Ruckus ICX, Ubiquiti EdgeOS, VyOS,
 ESXi, Linux hosts and Windows; each says per command whether it

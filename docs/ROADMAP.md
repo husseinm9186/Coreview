@@ -163,14 +163,20 @@ and reads Cumulus Linux and SONiC; it has no reader for Onyx (MLNX-OS).
 **Needs from the operator:** which OS the SN2010s run, their addresses and
 a login. Cumulus or SONiC: the next crawl should reach them. Onyx: a
 dialect from its documentation and his captures (D-058), as LT-466–476 were.
+**The hunt, 2026-10-01** ("find them and add support for them on the next
+build"): from this VM (192.168.14.0/24, behind the FortiGate) the 6200 at
+its 192.168.1.x address is unreachable — the FortiGate passes ICMP and
+nothing else between those subnets — and a ping sweep of the FortiGate's
+netMGMT, 90-LAB, LAB and 192.168.1 subnets found six answering hosts, none
+of them with SSH open to this VM; the FortiGate's own ARP table holds no
+NVIDIA/Mellanox MAC. The SN2010s' addresses therefore stay unknown here;
+the operator confirmed they are not on this network ("as long as it's
+covered I can go validate"), so the next build is his to point at them. What the build does to try: catalogs for all four operating
+systems an SN2010 can run — Onyx (LT-651), Cumulus 4 NCLU and SONiC
+(LT-652), and now **Cumulus 5 NVUE** (`cumulus_nvue.yaml`: `nv show
+system` identity, the Linux JSON commands for the rest) — each
+fingerprinted so whichever answers is read.
 
-### LT-650 — **bug** `e2e/showcommands.mjs` fails at its last step, a fresh page load — 2026-09-30
-**Found by the sweep's full run (LT-603).** After 44 checks pass, the
-harness's final `openBackups()` — a `page.goto` and a click on the project
-list — times out waiting for `.cv-project-open`. It fails the same way on
-the tree before the sweep, so it is not today's work; it has not been run
-in CI (the harnesses are run by hand). Not yet looked into: whether the app
-or the harness's settings stub is at fault.
 
 ### LT-663 — Every Cisco: SMB switches, FTD's CLI, SD-WAN edges, the 9800's wireless tables — 2026-09-30
 **Source:** the operator, 2026-09-30: "make sure crawler engines cover all
@@ -806,6 +812,23 @@ holding the next hop and skips a longer static one. Next.
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-650 — **bug** `e2e/showcommands.mjs` fails at its last step, a fresh page load — 2026-09-30, done 2026-10-01
+**Found by the sweep's full run (LT-603).** After 44 checks pass, the
+harness's final `openBackups()` — a `page.goto` and a click on the project
+list — times out waiting for `.cv-project-open`. It fails the same way on
+the tree before the sweep, so it is not today's work; it has not been run
+in CI (the harnesses are run by hand). Not yet looked into: whether the app
+or the harness's settings stub is at fault.
+**Done 2026-10-01.** Looked into with a debug copy of the harness that
+dumped the page at the failing step: the page was blank — `#root` empty,
+no React error — because Chromium answered every module request with
+`net::ERR_INSUFFICIENT_RESOURCES` on the third full load in one tab; the
+dev server serves the app as ~1000 unbundled modules, and the tab's
+budget was spent. Not the app: a production build is one bundle. The
+harness now opens each reopen in a fresh tab of one context (the stub
+and localStorage live on the context), and `all checks passed` twice in
+a row. **Run:** `node e2e/showcommands.mjs` ×2.
 
 ### LT-671 — **bug** A Junos `parser: xml` command is sent without `| display xml` — 2026-10-01, done the same day
 **Found writing LT-669.** `juniper_junos.yaml`'s session block declares

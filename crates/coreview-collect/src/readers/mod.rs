@@ -67,6 +67,7 @@ pub fn read(name: &str, raw: &str) -> Result<Vec<Value>, String> {
         "cumulus_bonds" => Ok(cumulus::bonds(raw)),
         "cumulus_clag" => Ok(cumulus::clag(raw)),
         "cumulus_vrf" => Ok(cumulus::vrf(raw)),
+        "cumulus_nv_system" => Ok(cumulus::nv_system(raw)),
         "sonic_version" => Ok(sonic::version(raw)),
         "sonic_ip_interfaces" => Ok(sonic::ip_interfaces(raw)),
         "sonic_arp" => Ok(sonic::arp(raw)),

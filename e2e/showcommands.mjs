@@ -55,9 +55,14 @@ const project = {
 };
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1700, height: 1100 } });
+// LT-650: one context, and a fresh tab for every reopen. Chromium refuses
+// the dev server's ~1000 unbundled module requests on the third full load
+// in one tab (net::ERR_INSUFFICIENT_RESOURCES) and the page stays blank;
+// a new tab in the same context keeps localStorage and the stub below.
+const context = await browser.newContext({ viewport: { width: 1700, height: 1100 } });
+let page = await context.newPage();
 
-await page.addInitScript(({ p }) => {
+await context.addInitScript(({ p }) => {
   if (!localStorage.getItem("coreview.projects.v1")) {
     localStorage.setItem("coreview.projects.v1", JSON.stringify({ [p.meta.id]: p }));
   }
@@ -106,9 +111,15 @@ await page.addInitScript(({ p }) => {
   };
 }, { p: project });
 
-page.on("pageerror", (e) => console.log("PAGE EXCEPTION:", String(e).slice(0, 300)));
+const attach = (pg) => pg.on("pageerror", (e) => console.log("PAGE EXCEPTION:", String(e).slice(0, 300)));
+attach(page);
 
 const openBackups = async () => {
+  const fresh = await context.newPage();
+  attach(fresh);
+  const old = page;
+  page = fresh;
+  await old.close();
   await page.goto(URL, { waitUntil: "networkidle" });
   await page.locator(".cv-project-open").first().click();
   await page.waitForTimeout(700);

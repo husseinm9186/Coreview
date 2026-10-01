@@ -63,6 +63,8 @@ PLATFORMS = {
     "huawei_vrp": "huawei_vrp",
     "mikrotik_routeros": "mikrotik_routeros",
     "cumulus": "cumulus_linux",
+    # LT-649: Cumulus 5 (NVUE) has the same bash prompt.
+    "cumulus_nvue": "cumulus_linux",
     "ruckus_icx": "ruckus_fastiron",
     "ubiquiti_edgeos": "vyos_vyos",
     # LT-651: NVIDIA Onyx has no scrapli platform; the catalog's prompt and `enable`.

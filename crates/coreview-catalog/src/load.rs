@@ -214,7 +214,8 @@ mod tests {
             if c.commands.is_empty() {
                 continue; // a phase-2 shell with nothing yet (LT-666)
             }
-            let feeds = |t: &str| c.commands.iter().any(|cmd| cmd.feeds.iter().any(|f| f == t));
+            // A kernel's routes (`fib`) are a Linux box's routing table.
+            let feeds = |t: &str| c.commands.iter().any(|cmd| cmd.feeds.iter().any(|f| f == t || (t == "route" && f == "fib")));
             let roles: BTreeSet<&str> = c.role_hint.iter().map(|r| r.role.as_str()).chain(c.role_defaults.keys().map(String::as_str)).collect();
             let flags: BTreeSet<&str> = c.caps_probe.iter().flat_map(|p| p.flags.keys().map(String::as_str)).chain(c.role_defaults.values().flatten().map(String::as_str)).collect();
             let routes = roles.iter().any(|r| matches!(*r, "router" | "l3_switch" | "firewall")) || flags.contains("routing");
