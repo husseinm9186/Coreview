@@ -44,6 +44,27 @@ pub struct Plan {
 /// Build the plan. Light commands first, heavy last, catalog order within
 /// each. A command whose gate does not hold, whose `foreach` has nothing
 /// to expand over, or that the allowlist refuses is skipped and says why.
+/// LT-671: the suffix an OS wants on a command whose answer is read as
+/// structured output — Junos `| display xml`, EOS and NX-OS `| json` —
+/// from the session's `structured.suffix`, when it declares one.
+pub fn structured_suffix(catalog: &Catalog) -> Option<String> {
+    catalog.session.rest.get("structured")?.get("suffix")?.as_str().map(str::to_string).filter(|s| !s.trim().is_empty())
+}
+
+/// The command as it is sent: a `parser: json` or `xml` command gains the
+/// OS's structured-output suffix unless it already ends with it; every
+/// other command is sent as written.
+pub fn send_as(catalog: &Catalog, parser: &str, cmd: String) -> String {
+    if parser != "json" && parser != "xml" {
+        return cmd;
+    }
+    let Some(suffix) = structured_suffix(catalog) else { return cmd };
+    if cmd.trim_end().ends_with(suffix.trim()) {
+        return cmd;
+    }
+    format!("{}{suffix}", cmd.trim_end())
+}
+
 pub fn plan(catalog: &Catalog, facts: &Facts) -> Plan {
     let mut out = Plan::default();
     let mut ordered: Vec<&Command> = catalog.commands.iter().collect();
@@ -79,7 +100,7 @@ pub fn plan(catalog: &Catalog, facts: &Facts) -> Plan {
         let mut push = |cmd: String, context: Option<(String, String)>| {
             out.steps.push(Step {
                 id: command.id.clone(),
-                cmd,
+                cmd: send_as(catalog, &command.parser, cmd),
                 gate: command.gate.clone(),
                 because: because.clone(),
                 parser: command.parser.clone(),
@@ -146,6 +167,27 @@ commands:
     /// LT-562: a FortiGate with VDOMs off has no VDOM to expand over, and
     /// its per-VDOM commands are still its commands — sent once, as the
     /// device is. A command per VRF with no VRF known is still skipped.
+    /// LT-671: a `parser: xml` or `json` command on an OS whose session
+    /// declares a structured-output suffix is sent with it — Junos `| display
+    /// xml`, EOS and NX-OS `| json` — and no other command is touched.
+    #[test]
+    fn a_structured_command_is_sent_with_its_suffix() {
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../resources/catalog");
+        let catalogs = crate::load::load_dir(&dir).unwrap();
+        let sent = |os: &str, id: &str| -> String {
+            let c = catalogs.iter().find(|c| c.os == os).unwrap();
+            let p = plan(c, &Facts::with_caps(["routing", "switching", "lldp", "vrf", "bgp"]));
+            p.steps.iter().find(|s| s.id == id).unwrap_or_else(|| panic!("{os} {id} not planned: {:?}", p.skipped)).cmd.clone()
+        };
+        assert_eq!(sent("juniper_junos", "show_route"), "show route | display xml");
+        assert_eq!(sent("cisco_nxos", "show_version"), "show version | json");
+        assert_eq!(sent("arista_eos", "show_version"), "show version | json");
+        assert_eq!(sent("cisco_ios", "show_version"), "show version", "a template command is sent as written");
+        let junos = catalogs.iter().find(|c| c.os == "juniper_junos").unwrap();
+        assert_eq!(send_as(junos, "xml", "show configuration security address-book | display xml".into()), "show configuration security address-book | display xml", "a command that already carries it is not doubled");
+        assert_eq!(send_as(junos, "reader:junos_fbf", "show configuration firewall | display xml".into()), "show configuration firewall | display xml", "a reader's command is sent as written");
+    }
+
     #[test]
     fn a_device_without_contexts_runs_its_per_context_commands_once() {
         let catalog = load_str(r#"

@@ -241,6 +241,9 @@ pub struct PolicyRoute {
     pub next_hop: Option<IpAddr>,
     pub out_if: Option<String>,
     pub vrf: Option<String>,
+    /// LT-669: the table the policy sends the packet to be looked up in
+    /// (Junos `then routing-instance`, IOS `set vrf`).
+    pub action_vrf: Option<String>,
     pub command: String,
 }
 
@@ -752,6 +755,7 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
             next_hop: r.get("action_nh").and_then(ip),
             out_if: opt(r, "action_if"),
             vrf: opt(r, "vrf"),
+            action_vrf: opt(r, "action_vrf"),
             command: r.command.clone(),
         });
     }

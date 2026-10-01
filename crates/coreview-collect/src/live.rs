@@ -117,10 +117,11 @@ pub fn fill(c: &Command, vars: &BTreeMap<String, String>) -> Result<String, Stri
     Ok(out)
 }
 
-fn step_of(c: &Command, cmd: String) -> Step {
+fn step_of(catalog: &Catalog, c: &Command, cmd: String) -> Step {
     Step {
         id: c.id.clone(),
-        cmd,
+        // LT-671: a structured command carries the OS's suffix.
+        cmd: coreview_catalog::plan::send_as(catalog, &c.parser, cmd),
         gate: c.gate.clone(),
         because: vec![],
         parser: c.parser.clone(),
@@ -146,7 +147,7 @@ pub async fn ask(sidecar: &mut Sidecar, catalog: &Catalog, target: &Target, auth
     let mut planned: Vec<(Step, String)> = Vec::new();
     for c in &catalog.live_path {
         match fill(c, vars) {
-            Ok(cmd) => planned.push((step_of(c, cmd), verified_word(c))),
+            Ok(cmd) => planned.push((step_of(catalog, c, cmd), verified_word(c))),
             Err(reason) => run.answers.push(LiveAnswer { id: c.id.clone(), command: c.cmd.clone(), status: "skipped".into(), rows: vec![], raw: String::new(), reason: Some(reason), verified: verified_word(c) }),
         }
     }

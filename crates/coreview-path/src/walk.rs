@@ -375,6 +375,20 @@ impl Ctx<'_> {
                 firewall::Tri::Yes => {}
             }
             let matched = Matched { prefix: p.dst.clone().unwrap_or_else(|| "any".into()), protocol: "policy".into(), kind: "pbr".into(), distance: None, metric: None, next_hop: p.next_hop.map(|a| a.to_string()), command: p.command.clone(), table: "policy".into() };
+            // LT-669: a policy that sends the packet to another table is
+            // looked up there — Junos's filter-based forwarding, IOS's
+            // `set vrf`.
+            if let (Some(target), None, None) = (&p.action_vrf, p.next_hop, &p.out_if) {
+                let target = crate::model::vrf_name(Some(target));
+                notes.push(format!("Policy route {} sends the packet to {}'s table, which was used.", label(&p.seq), vrf_label(&target)));
+                return match self.lookup(at.b, &target, dst, notes) {
+                    Ok(choices) => Some(choices.into_iter().map(|c| Choice { decision: Decision::Pbr, nh_vrf: c.nh_vrf.or_else(|| Some(target.clone())), ..c }).collect()),
+                    Err(_) => {
+                        notes.push(format!("{} has no route to {dst} in {}; the routing table was used.", b.name, vrf_label(&target)));
+                        None
+                    }
+                };
+            }
             let choice = match (p.next_hop, &p.out_if) {
                 (Some(nh), out) => {
                     let out_if = out.clone().or_else(|| attached_iface(b, &at.vrf, nh));

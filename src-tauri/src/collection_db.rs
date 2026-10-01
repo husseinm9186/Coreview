@@ -25,7 +25,9 @@ pub const TABLES: &[(&str, &[&str])] = &[
     ("fib", &["vrf", "prefix", "mask", "proto", "ad", "metric", "next_hop", "interface", "label", "adjacency"]),
     ("routing_neighbor", &["vrf", "proto", "neighbor_id", "neighbor_ip", "local_if", "state", "area_or_as", "uptime"]),
     ("fhrp", &["proto", "group", "interface", "vip", "prio", "state", "peer_ip"]),
-    ("policy_route", &["vrf", "seq", "in_if", "src", "dst", "proto", "port", "action_nh", "action_if"]),
+    // LT-669: a policy that sends the packet to another table (Junos's
+    // filter-based forwarding, IOS's `set vrf`).
+    ("policy_route", &["vrf", "seq", "in_if", "src", "dst", "proto", "port", "action_nh", "action_if", "action_vrf"]),
     ("nat_rule", &["seq", "type", "orig_src", "orig_dst", "trans_src", "trans_dst", "in_zone_if", "out_zone_if", "service"]),
     ("fw_zone", &["name", "interfaces"]),
     ("fw_policy", &["seq", "name", "src_zones", "dst_zones", "src_addr", "dst_addr", "services", "action", "enabled"]),

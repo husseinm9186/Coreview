@@ -9,6 +9,7 @@ pub mod cumulus;
 pub mod fortinet;
 pub mod frr;
 pub mod hosts;
+pub mod junos;
 pub mod onyx;
 pub mod sonic;
 pub(crate) mod text;
@@ -82,13 +83,16 @@ pub fn read(name: &str, raw: &str) -> Result<Vec<Value>, String> {
         "fortiswitch_lldp_detail" => Ok(fortinet::lldp_neighbors_detail(raw)),
         "fortiswitch_vlan_list" => Ok(fortinet::vlan_list(raw)),
         "fortios_system_interface_config" => Ok(fortinet::system_interface_config(raw)),
+        // LT-669: Junos configuration as XML.
+        "junos_address_book" => Ok(junos::address_book(raw)),
+        "junos_fbf" => Ok(junos::fbf(raw)),
         other => Err(format!("no Coreview reader is called {other:?}")),
     }
 }
 
 /// Whether a reader of that name exists, for the catalog's own checks.
 pub fn exists(name: &str) -> bool {
-    matches!(name, "asa_access_list" | "asa_access_group" | "asa_nameif" | "linux_ip_addr" | "linux_lldp" | "fortios_system_status" | "fortios_routing_table" | "fortiswitch_lldp_summary" | "fortiswitch_mac_list" | "fortiswitch_interfaces" | "fortios_interfaces" | "fortios_ha_status" | "fortios_wtp_status") || matches!(name, "iosxr_cef" | "asa_asp_routing" | "fortios_kernel_routes" | "fortios_interface_vrfs" | "fortiswitch_lldp_detail" | "fortiswitch_vlan_list" | "fortios_system_interface_config") || (name.starts_with("onyx_") || name.starts_with("frr_") || name.starts_with("cumulus_") || name.starts_with("sonic_")) && read(name, "").is_ok()
+    matches!(name, "asa_access_list" | "asa_access_group" | "asa_nameif" | "linux_ip_addr" | "linux_lldp" | "fortios_system_status" | "fortios_routing_table" | "fortiswitch_lldp_summary" | "fortiswitch_mac_list" | "fortiswitch_interfaces" | "fortios_interfaces" | "fortios_ha_status" | "fortios_wtp_status") || matches!(name, "iosxr_cef" | "asa_asp_routing" | "fortios_kernel_routes" | "fortios_interface_vrfs" | "fortiswitch_lldp_detail" | "fortiswitch_vlan_list" | "fortios_system_interface_config" | "junos_address_book" | "junos_fbf") || (name.starts_with("onyx_") || name.starts_with("frr_") || name.starts_with("cumulus_") || name.starts_with("sonic_")) && read(name, "").is_ok()
 }
 
 #[cfg(test)]

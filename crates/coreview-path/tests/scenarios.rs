@@ -1353,3 +1353,55 @@ fn an_evpn_type5_route_is_labelled_vxlan_not_mpls() {
     assert_eq!(o.underlay, vec!["LEAF1", "SPINE1", "LEAF2"]);
     assert!(matches!(p.ending, Ending::Delivered { .. }), "{p:#?}");
 }
+
+// ------------------------------------------------------------ LT-669: a policy that changes the table
+
+/// R1's filter sends 10.1.0.0/16 to routing instance ISP-B, whose default
+/// route points at R-B; the global default points at R-A. The walk looks
+/// the packet up in ISP-B's table and arrives through R-B.
+#[test]
+fn a_policy_that_sends_the_packet_to_another_table_is_looked_up_there() {
+    let r1 = device(
+        "R1",
+        "10.1.0.1",
+        "juniper_junos",
+        "router",
+        "FAKER10001",
+        vec![
+            ("ip_address", vec![addr("ge-0/0/2.0", "10.1.0.1", "16"), addr("ge-0/0/0.0", "192.0.2.2", "30"), row("x", &[("interface", "ge-0/0/1.0"), ("ip", "198.51.100.2"), ("prefixlen", "30"), ("vrf", "ISP-B")])]),
+            ("route", vec![
+                route("10.1.0.0", "16", "C", "", "ge-0/0/2.0"),
+                route("192.0.2.0", "30", "C", "", "ge-0/0/0.0"),
+                route("0.0.0.0", "0", "S", "192.0.2.1", "ge-0/0/0.0"),
+                vroute("ISP-B", "198.51.100.0", "30", "C", "", "ge-0/0/1.0"),
+                vroute("ISP-B", "0.0.0.0", "0", "S", "198.51.100.1", "ge-0/0/1.0"),
+            ]),
+            ("arp", vec![arp("10.1.0.10", "0000.0000.1010", "ge-0/0/2.0"), arp("192.0.2.1", "0000.0000.0a01", "ge-0/0/0.0"), row("show_arp", &[("ip", "198.51.100.1"), ("mac", "0000.0000.0b01"), ("interface", "ge-0/0/1.0"), ("vrf", "ISP-B")])]),
+            ("policy_route", vec![row("show_configuration_firewall", &[("seq", "FBF to-isp-b"), ("src", "10.1.0.0/16"), ("action_vrf", "ISP-B")])]),
+        ],
+    );
+    let isp = |name: &str, serial: &str, me: &str, net: &str| {
+        device(
+            name,
+            me,
+            "cisco_ios",
+            "router",
+            serial,
+            vec![
+                ("ip_address", vec![addr("Gi0/0", me, "30"), addr("Gi0/1", "203.0.113.1", "24")]),
+                ("route", vec![route(net, "30", "C", "", "Gi0/0"), route("203.0.113.0", "24", "C", "", "Gi0/1")]),
+                ("arp", vec![arp("203.0.113.9", "0000.0000.d009", "Gi0/1")]),
+            ],
+        )
+    };
+    let ra = isp("R-A", "FAKERA00001", "192.0.2.1", "192.0.2.0");
+    let rb = isp("R-B", "FAKERB00001", "198.51.100.1", "198.51.100.0");
+    let out = run(&[r1, ra, rb], &req("10.1.0.10", "203.0.113.9"));
+    let f = &out.forward;
+    assert_eq!(f.paths.len(), 1, "{f:#?}");
+    assert_eq!(routers(&f.paths[0]), vec!["R1", "R-B"], "{f:#?}");
+    let h = &f.paths[0].hops[0];
+    assert_eq!(h.decision, Decision::Pbr);
+    assert!(h.notes.iter().any(|n| n.contains("ISP-B")), "{:?}", h.notes);
+    assert!(matches!(f.paths[0].ending, Ending::Delivered { .. }), "{f:#?}");
+}

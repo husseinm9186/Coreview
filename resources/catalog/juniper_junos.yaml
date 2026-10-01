@@ -551,6 +551,31 @@ commands:
     timeout: 120
     verified: docs
     evidence: structured output (`| display xml`); field mapping from documentation
+  # LT-669: what the operational commands do not carry — read from the
+  # configuration as XML by Coreview's junos readers (D-058). The suffix is
+  # written here because a reader's command is sent as it stands.
+  - id: show_configuration_security_address_book
+    cmd: show configuration security address-book | display xml
+    gate: role.firewall
+    parser: reader:junos_address_book
+    feeds:
+      - fw_object
+    weight: light
+    timeout: 60
+    verified: docs
+    evidence: Coreview junos reader; Junos configuration schema `security address-book` (addresses, DNS names, ranges, address-sets) (D-058, LT-669)
+    coreview_reader: true
+  - id: show_configuration_firewall
+    cmd: show configuration firewall | display xml
+    gate: cap.pbr
+    parser: reader:junos_fbf
+    feeds:
+      - policy_route
+    weight: light
+    timeout: 60
+    verified: docs
+    evidence: Coreview junos reader; Junos configuration schema `firewall family inet filter` terms with `then routing-instance` or `next-ip` (D-058, LT-669)
+    coreview_reader: true
 live_path:
   - id: show_route_dst_table_ri_inet_0
     cmd: show route {dst} table {ri}.inet.0

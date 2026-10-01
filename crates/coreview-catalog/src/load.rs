@@ -244,8 +244,6 @@ mod tests {
         // fails here, and a closed one must be struck from this list.
         let known: BTreeSet<&str> = [
             "cisco_iosxr: nothing feeds policy_route", // ABF (LT-663)
-            "juniper_junos: nothing feeds policy_route", // filter-based forwarding (LT-669)
-            "juniper_junos: nothing feeds fw_object",  // address books (LT-669)
             "panos: nothing feeds fw_zone",            // (LT-670)
             "panos: nothing feeds fw_object",          // (LT-670)
         ]

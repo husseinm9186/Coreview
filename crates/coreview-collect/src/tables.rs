@@ -211,6 +211,7 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("port", &["port", "dport", "destination_port", "service"]),
             ("action_nh", &["action_nh", "next_hop", "nexthop", "gateway", "set_ip_next_hop", "ip_next_hop", "gw"]),
             ("action_if", &["action_if", "output_device", "set_interface", "egress", "outdev", "output"]),
+            ("action_vrf", &["action_vrf", "set_vrf", "routing_instance", "set_global", "target_vrf"]),
             ("vrf", &["vrf", "vrf_name"]),
         ],
         "ha_pair" => &[

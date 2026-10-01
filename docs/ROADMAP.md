@@ -266,6 +266,18 @@ configuration security address-book | display xml`), so an SRX's verdict
 stays Undetermined and a filter steering traffic to another instance is
 not seen. Each needs a command the allowlist admits and a reader or XML
 mapping, built from Juniper's documentation (D-058).
+**Shipped 2026-10-01:** `readers/junos.rs` — `show configuration security
+address-book | display xml` into `fw_object` (prefixes, DNS names, ranges,
+address-sets as member rows) and `show configuration firewall | display
+xml` into `policy_route` (terms with `then routing-instance` or
+`next-ip`); the policy-route table gained `action_vrf`, and the walk looks
+the packet up in that table when a policy names one (the scenario
+`a_policy_that_sends_the_packet_to_another_table_is_looked_up_there`).
+Both holes struck from the matrix. **Still open:** which interfaces apply a
+filter (`show configuration interfaces`) — a term without that is applied
+on every interface, which the hop's note does not yet say; and a device,
+since none has met one (LT-559).
+
 
 ### LT-670 — Every Palo Alto: zones, address and service objects, the virtual router as the VRF — 2026-09-30
 **Found by LT-667's matrix.** PAN-OS feeds neither `fw_zone` (`show
@@ -276,6 +288,13 @@ XML API's `type=config&action=get` on the address and service xpaths, or
 `show running address-object` where it exists). The `vr`/`virtual_router`
 synonym now lands a virtual router in `vrf`; whether `show routing route`'s
 XML names it so is for the lab's Palo Alto (LT-600) to say.
+**2026-10-01:** a probe of the lab's PA-220 for the object and zone
+commands (`show address`, `show running address-object`, `show config
+running xpath …`, `show zone`, …) through `examples/try_commands` got a
+connection and no prompt, twice — the same closed door LT-600 records
+("Invalid user" after the one session that ever logged in). Waits on the
+operator's answer there before any of this can be checked on hardware.
+
 
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
@@ -787,6 +806,28 @@ holding the next hop and skips a longer static one. Next.
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-671 — **bug** A Junos `parser: xml` command is sent without `| display xml` — 2026-10-01, done the same day
+**Found writing LT-669.** `juniper_junos.yaml`'s session block declares
+`structured: suffix: " | display xml"` and every `parser: xml` command is
+written without it, but nothing reads that key — not the catalog's
+`Session` struct, not the plan, not the sidecar — so a Junos router is
+asked `show route` and answers text, which `rows_from_xml` cannot read.
+Every Junos table is empty until this is fixed. The fix: the plan (or the
+run) appends the session's suffix to a `parser: xml` step on an OS that
+declares one, with a test that a Junos step is sent as `show route |
+display xml` and an NX-OS `| json` step is not touched twice. Reproduce
+first: a plan test over the Junos catalog that fails today.
+**Done 2026-10-01.** Reproduced first: a plan over the checked-in Junos
+catalog sent `show route`. `plan::send_as` appends the session's
+`structured.suffix` to a `parser: json`/`xml` step unless the command
+already ends with it, in the plan and in the live path alike. NX-OS and
+EOS declare `| json` the same way and were as unread as Junos. A reader's
+command is sent as written (the Junos readers carry `| display xml`
+themselves). **Run:** `plan::tests::a_structured_command_is_sent_with_its_suffix`
+(Junos `| display xml`, NX-OS and EOS `| json`, IOS untouched, no
+doubling); the catalog and collect crates. Not run: a device — the
+EVE-NG lab (LT-559) is where Junos, NX-OS and EOS first answer.
 
 ### LT-668 — Which ECMP member the hardware picks: the live hash per OS — 2026-09-30, done 2026-10-01
 **Source:** the same message. The walk branches over every ECMP next hop;

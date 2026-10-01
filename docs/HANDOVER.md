@@ -580,6 +580,14 @@ trust the summary below over that file; it is a signpost and it will rot.
   EdgeOS, VyOS — with 46 fixture directories vendored so their template
   entries are `verified: lab`; the spec gained a section per OS, and the
   reconciliation script learned a digit in an OS name (`cisco_s300`).
+  The FortiSwitch's LLDP detail, VLAN list and interface configuration
+  were read from the lab's own 224E (`readers/fortinet.rs`, LT-665); Junos
+  address books and filter-based forwarding from configuration XML
+  (`readers/junos.rs`, a `policy_route.action_vrf` the walk follows,
+  LT-669); and LT-671 found that no `parser: xml`/`json` command ever
+  carried its `| display xml` / `| json` suffix — `plan::send_as` now
+  appends it, which is the first thing to check when a Junos, NX-OS or
+  EOS box answers text where rows were expected.
 
 - **Shipped 2026-09-18, after the mission:** LT-285 the address register (the
   **Addresses** tab; `src/lib/ipam.ts` is the arithmetic, `e2e/ipam.mjs` drives
