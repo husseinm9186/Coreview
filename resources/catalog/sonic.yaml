@@ -1,0 +1,219 @@
+# Coreview discovery catalog — SONiC, community and Enterprise (sonic)
+#
+# LT-652, 2026-09-30: the third OS an SN2010 can run (LT-649). **Built from
+# the SONiC command reference at the operator's instruction (D-058)**; the
+# classic crawler's dialect (coreview-discover sonic.rs, LT-493) was built
+# the same way. SONiC's `show` commands answer from bash on both editions,
+# so the shell is never changed; routing is FRR, read by the frr readers.
+# Every entry is `verified: docs` until a capture.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met the operator's hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — LT-511's list. Never invent a command.
+vendor: SONiC
+os: sonic
+name: SONiC
+ntc_platform: linux
+phase: 1
+fingerprint:
+  probe: show version
+  match_regex: 'SONiC Software Version'
+session:
+  source: generic shell prompt `user@host:~$` (SONiC's show commands run from bash)
+  privilege_levels:
+    exec:
+      pattern: ^\S+@\S+:.*[$#]\s?$
+  default_privilege: exec
+  failed_when_contains:
+    - "command not found"
+    - "Permission denied"
+    - "Error:"
+  on_close:
+    - exit
+role_hint:
+  - match: SONiC Software Version
+    role: l3_switch
+role_defaults:
+  l3_switch:
+    - switching
+    - routing
+    - lldp
+caps_probe: []
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: reader:sonic_version
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview sonic reader; SONiC command reference `show version` (D-058, LT-652)
+    coreview_reader: true
+  - id: show_interfaces_status
+    cmd: show interfaces status
+    gate: always
+    parser: reader:sonic_interfaces_status
+    feeds:
+      - interface
+    weight: light
+    timeout: 60
+    verified: docs
+    evidence: Coreview sonic reader; SONiC command reference `show interfaces status` (D-058, LT-652)
+    coreview_reader: true
+  - id: show_ip_interfaces
+    cmd: show ip interfaces
+    gate: always
+    parser: reader:sonic_ip_interfaces
+    feeds:
+      - ip_address
+      - interface
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview sonic reader; SONiC command reference `show ip interfaces` (D-058, LT-652)
+    coreview_reader: true
+  - id: ip_j_addr
+    cmd: ip -j addr
+    gate: always
+    parser: reader:linux_ip_addr
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview linux reader (iproute2 JSON, as the hosts catalog) — the MAC of every interface (LT-550, LT-652)
+    coreview_reader: true
+  - id: show_arp
+    cmd: show arp
+    gate: always
+    parser: reader:sonic_arp
+    feeds:
+      - arp
+    weight: light
+    timeout: 60
+    verified: docs
+    evidence: Coreview sonic reader; SONiC command reference `show arp` (D-058, LT-652)
+    coreview_reader: true
+  - id: show_mac
+    cmd: show mac
+    gate: always
+    parser: reader:sonic_mac
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview sonic reader; SONiC command reference `show mac` (D-058, LT-652)
+    coreview_reader: true
+  - id: show_interfaces_portchannel
+    cmd: show interfaces portchannel
+    gate: always
+    parser: reader:sonic_portchannel
+    feeds:
+      - lag
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview sonic reader; SONiC command reference `show interfaces portchannel` (D-058, LT-652)
+    coreview_reader: true
+  - id: show_lldp_table
+    cmd: show lldp table
+    gate: always
+    parser: reader:sonic_lldp_table
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview sonic reader; SONiC command reference `show lldp table` (D-058, LT-652)
+    coreview_reader: true
+  - id: show_vrf
+    cmd: show vrf
+    gate: always
+    parser: reader:sonic_vrf
+    feeds:
+      - vrf
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview sonic reader; SONiC command reference `show vrf` (D-058, LT-652)
+    coreview_reader: true
+  - id: show_ip_route_vrf_all
+    cmd: show ip route vrf all
+    gate: always
+    parser: reader:frr_ip_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview frr reader; FRR documentation `show ip route vrf all`, which SONiC's show prints (D-058, LT-652)
+    coreview_reader: true
+  - id: show_ipv6_route_vrf_all
+    cmd: show ipv6 route vrf all
+    gate: always
+    parser: reader:frr_ip_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview frr reader; FRR documentation `show ipv6 route` (D-058, LT-652)
+    coreview_reader: true
+  - id: show_ip_bgp_summary
+    cmd: show ip bgp summary
+    gate: always
+    parser: reader:frr_bgp_summary
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview frr reader; FRR documentation `show ip bgp summary` (D-058, LT-652)
+    coreview_reader: true
+  - id: show_ip_ospf_neighbor
+    cmd: show ip ospf neighbor
+    gate: always
+    parser: reader:frr_ospf_neighbor
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview frr reader; FRR documentation `show ip ospf neighbor` (D-058, LT-652)
+    coreview_reader: true
+  - id: show_runningconfiguration_all
+    cmd: show runningconfiguration all
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+  - id: ip_j_route_show_table_all
+    cmd: ip -j route show table all
+    gate: always
+    parser: json
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: iproute2 JSON — the kernel's table, what the switch forwards by; FRR's is the RIB above (LT-550, LT-653)
+live_path:
+  - id: show_ip_route_vrf_ri_dst
+    cmd: show ip route vrf {ri} {dst}
+    gate: always
+    parser: reader:frr_ip_route
+    feeds:
+      - path_probe
+    verified: docs
+    evidence: Coreview frr reader; FRR `show ip route vrf <name> <ip>` (D-058, LT-652)
+    phase: 3
+note: 'LT-652: built from the SONiC command reference (D-058). `show vlan brief` draws its table in box characters and is not read yet.'

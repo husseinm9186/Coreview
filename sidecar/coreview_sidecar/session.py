@@ -65,6 +65,10 @@ PLATFORMS = {
     "cumulus": "cumulus_linux",
     "ruckus_icx": "ruckus_fastiron",
     "ubiquiti_edgeos": "vyos_vyos",
+    # LT-651: NVIDIA Onyx has no scrapli platform; the catalog's prompt and `enable`.
+    "onyx": None,
+    # LT-652: SONiC's shell is bash; the catalog's prompt.
+    "sonic": None,
 }
 
 # The only shapes a session step may take. A catalog is data Rust controls,

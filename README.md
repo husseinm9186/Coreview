@@ -355,7 +355,12 @@ commands, what each feeds, and whether it is verified on hardware, from
 documentation, or not yet. It follows CDP/LLDP neighbours, the next hop of
 every route and neighbours known only from ARP, within the limits you set; a
 FortiGate is read over SSH and, with an API login, over REST — policies,
-addresses, FQDN resolutions, managed FortiSwitches and FortiAPs. In this
+addresses, FQDN resolutions, managed FortiSwitches and FortiAPs. Catalogs
+exist for Cisco IOS/IOS-XE, NX-OS, IOS-XR, ASA, AireOS, Arista EOS, Junos,
+FortiOS and FortiSwitchOS, PAN-OS, ArubaOS-CX, ArubaOS-Switch, Meraki,
+NVIDIA Onyx, Cumulus Linux (NCLU) and SONiC, HPE Comware, Huawei VRP,
+MikroTik, ESXi, Linux hosts and Windows; each says per command whether it
+is verified on hardware, from documentation, or not yet. In this
 release its SSH session is driven by a bundled Python sidecar (scrapli),
 installed beside the app, which never writes a file and takes a secret only
 on stdin; it is being replaced by Rust. The classic crawler below stays

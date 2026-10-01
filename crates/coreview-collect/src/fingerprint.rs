@@ -91,6 +91,17 @@ mod tests {
         assert!(identify(&c, "show version", "% Invalid input detected at '^' marker.").is_none());
     }
 
+    /// LT-651: an Onyx switch, and the same box when it still called
+    /// itself MLNX-OS, are the `onyx` catalog; nothing else answers
+    /// `Product name:`.
+    #[test]
+    fn an_onyx_switch_is_recognised_under_either_name() {
+        let c = catalogs();
+        assert_eq!(identify(&c, "show version", "Product name:      Onyx\nProduct release:   3.9.3210\nHost ID:           0002C9AABB01\n").unwrap().os, "onyx");
+        assert_eq!(identify(&c, "show version", "Product name:      MLNX-OS\nProduct release:   3.6.4006\n").unwrap().os, "onyx");
+        assert!(identify(&c, "show version", "Cisco IOS XE Software, Version 17.9.4a\n").map(|i| i.os) != Some("onyx".into()));
+    }
+
     #[test]
     fn the_other_probes() {
         let c = catalogs();

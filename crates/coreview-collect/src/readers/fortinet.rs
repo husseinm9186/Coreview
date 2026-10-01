@@ -341,9 +341,73 @@ pub fn wtp_status(raw: &str) -> Vec<Value> {
         .collect()
 }
 
+/// FortiOS `get router info kernel` — the kernel's forwarding table, one
+/// line per entry (LT-653):
+/// `tab=254 vf=0 scope=0 type=1 proto=11 prio=0 0.0.0.0/0.0.0.0/0->10.0.0.0/8 pref=0.0.0.0 gwy=192.0.2.1 dev=5(wan1)`.
+/// `tab` 254 is the main table and 255 the local one (left out); `vf` is
+/// the VDOM's index; `type` 1 is unicast and 2 local; the prefix follows
+/// `->`; `gwy` 0.0.0.0 is no gateway; the interface name is in the `dev`
+/// parentheses. Built from Fortinet's documentation (D-058): the `proto`
+/// numbers are kept as `kernel` (2) and `static` (11), else as printed.
+pub fn kernel_routes(raw: &str) -> Vec<Value> {
+    let mut out = Vec::new();
+    for line in raw.lines() {
+        let mut kv: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+        let mut prefix = None;
+        for w in line.split_whitespace() {
+            if let Some((k, v)) = w.split_once('=') {
+                kv.insert(k.into(), v.into());
+            } else if let Some((_, p)) = w.split_once("->") {
+                prefix = Some(p.to_string());
+            }
+        }
+        let Some(prefix) = prefix else { continue };
+        if kv.get("tab").map(String::as_str) == Some("255") {
+            continue;
+        }
+        let mut row = json!({"prefix": prefix});
+        if let Some(t) = kv.get("tab") {
+            row["tab"] = json!(t);
+        }
+        if let Some(v) = kv.get("vf") {
+            row["vdom_index"] = json!(v);
+        }
+        if let Some(g) = kv.get("gwy").filter(|g| g.as_str() != "0.0.0.0" && g.as_str() != "::") {
+            row["next_hop"] = json!(g);
+        }
+        if let Some(d) = kv.get("dev") {
+            let name = d.split('(').nth(1).map(|x| x.trim_end_matches(')')).unwrap_or(d.as_str());
+            row["interface"] = json!(name);
+        }
+        let proto = match (kv.get("type").map(String::as_str), kv.get("proto").map(String::as_str)) {
+            (Some("2"), _) => "local".to_string(),
+            (_, Some("2")) => "kernel".to_string(),
+            (_, Some("11")) => "static".to_string(),
+            (_, Some(p)) => p.to_string(),
+            _ => String::new(),
+        };
+        if !proto.is_empty() {
+            row["protocol"] = json!(proto);
+        }
+        out.push(row);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// LT-653: the kernel table in Fortinet's documented layout, invented values.
+    #[test]
+    fn kernel_routes_keep_main_table_entries_with_their_gateway_and_device() {
+        let raw = "tab=254 vf=0 scope=0 type=1 proto=11 prio=0 0.0.0.0/0.0.0.0/0->0.0.0.0/0 pref=0.0.0.0 gwy=198.51.100.1 dev=5(wan1)\ntab=254 vf=0 scope=253 type=1 proto=2 prio=0 0.0.0.0/0.0.0.0/0->192.0.2.0/24 pref=192.0.2.99 gwy=0.0.0.0 dev=4(internal)\ntab=255 vf=0 scope=254 type=2 proto=2 prio=0 0.0.0.0/0.0.0.0/0->192.0.2.99/32 pref=192.0.2.99 gwy=0.0.0.0 dev=4(internal)\n";
+        let rows = kernel_routes(raw);
+        assert_eq!(rows, vec![
+            json!({"prefix": "0.0.0.0/0", "tab": "254", "vdom_index": "0", "next_hop": "198.51.100.1", "interface": "wan1", "protocol": "static"}),
+            json!({"prefix": "192.0.2.0/24", "tab": "254", "vdom_index": "0", "interface": "internal", "protocol": "kernel"}),
+        ]);
+    }
 
     // The lab's replies, layout kept, every value invented (D-027).
     const FGT_STATUS: &str = "Version: FortiGate-60F v7.6.7,build3704,260601 (GA.M)
