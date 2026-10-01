@@ -172,7 +172,9 @@ scripts/             Stencil and shape import, run by hand; and the catalog's
                      tooling — `reconcile-ntc.mjs` (spec ↔ ntc index, LT-508),
                      `extract-sessions.py` (scrapli drivers → sessions.json),
                      `build-catalog.mjs` (the one-time bootstrap of the YAML),
-                     `vendor-ntc.sh` + `prune-ntc-tests.mjs`, `allowlist.mjs`
+                     `vendor-ntc.sh` + `prune-ntc-tests.mjs`, `allowlist.mjs`;
+                     and `revert-point.sh`, a bundle and a tar of the tree
+                     under `~/coreview-backups/` before a push (LT-602)
 e2e/                 Playwright harnesses driving the real app
 docs/                ROADMAP, DECISIONS, OPEN-QUESTIONS, and the rest
 ```

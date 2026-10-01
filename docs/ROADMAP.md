@@ -129,16 +129,6 @@ validate the other devices like aruba, cisco Nexus, IOS XE and XR, asa,
 fmc, etc". Waits on the lab being on; then the same run and rules as LT-558
 per platform, the FMC through LT-541's collector.
 
-### LT-575 — **bug** The diagram is "all over the place" — reported 2026-09-29, not yet reproduced
-**Source:** the operator, 2026-09-29, with a screenshot: "also the diagram
-is all over the place". The page shows the lab's devices with links
-crossing the whole page: a firewall at the top edge with a fan of long
-curves to endpoints far below, a row of unlinked devices across the left,
-access switches not beneath what they hang from. **Needs:** which way the
-page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
-a layout run on an existing page — so the same input can be laid out again
-in a test.
-
 ### LT-600 — The lab's Palo Alto, collected and checked against the PAN-OS catalog — 2026-09-30
 **Source:** the operator, 2026-09-30: "I have a palo alto on the network
 … its user is Coreview … if you want to validate it". PAN-OS's commands and
@@ -157,7 +147,20 @@ CLI answers "Invalid user. Please login using a valid account." and closes.
 Waiting on the operator: whether the account changed, or the box limits
 an admin's sessions.
 
-### LT-588 — **bug** Discover with the collector "never finishes": one stuck device held the run for minutes and then ended it — reported 2026-09-30
+
+### LT-575 — **bug** The diagram is "all over the place" — reported 2026-09-29 — reported 2026-09-29, not yet reproduced
+**Source:** the operator, 2026-09-29, with a screenshot: "also the diagram
+is all over the place". The page shows the lab's devices with links
+crossing the whole page: a firewall at the top edge with a fan of long
+curves to endpoints far below, a row of unlinked devices across the left,
+access switches not beneath what they hang from. **Needs:** which way the
+page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
+a layout run on an existing page — so the same input can be laid out again
+in a test.
+**Reproduced 2026-09-30** as LT-605 and LT-606, which together are the
+picture in the screenshot.
+
+### LT-588 — **bug** Discover with the collector "never finishes": one stuck device held the run for minutes and then ended it — 2026-09-30
 **Source:** the operator, 2026-09-30, with screenshots, testing the
 collector on "Discover devices": "it never finishes". The header stood at
 "Collecting <the FortiGate's address> · 1 of 6" — the Catalyst done, the FortiGate in
@@ -178,6 +181,297 @@ the device ends and the run goes on, the sidecar replaced
 one device, and the next device is collected with a fresh one, in under
 20 s), and the Discover panel says "last answered: <command>". Stays here
 until the stall on the operator's machine is found.
+
+### LT-603 — The sweep: every open bug fixed, the engine reviewed by agents, everything checked before one push — 2026-09-30
+**Source:** the same message: "fix all bugs, validate everything with
+MCPs and AI Agents, enhance everything and make sure we have a solid
+working Coreview per the app documentations. make sure everything is good
+before you push an update … continue working until everything is good."
+What it means here: five review agents over the collector, the topology
+and path builders, the interface, the sidecar and the documentation, each
+finding reproduced with a test before its fix (D-020) and filed as its
+own item; the e2e harnesses and every check run before a single push. The
+MCP servers available to this session (Claude Docs, Google Drive) do not
+reach a device or the app, so validation is by tests, harnesses and the
+lab, not by them.
+
+### LT-604 — The documentation says what the app now does — 2026-09-30
+**Source:** the same message: "a solid working Coreview per the app
+documentations". Since D-062 the Discover panel, the Tracert tab, backups
+of Fortinet boxes and the vault's API logins changed; HANDOVER.md, the
+README, the Help text and the catalog's NOTICE are read against the app
+and corrected where they say otherwise.
+
+### LT-605 — **bug** A collection's topology put every device on one row: the view gave them all hop 0 — 2026-09-30
+**Found reproducing LT-575.** The page lays discovered devices out by
+their distance from the seed (LT-114, LT-371), and `crawl_view` wrote
+`hops: 0` for every collected device, so the collector's result — the one
+"Discover devices" now draws — has no rows: a firewall, the switches
+behind it and the switches behind those all on one line, their links
+crossing the page. **Fix:** the view's hops are the distance over the
+graph's links from the run's seeds (the first device named, when the page
+does not say); a device no link reaches sits one row past the furthest.
+
+### LT-606 — **bug** Devices seen on switch ports were laid out on the seed's row, not under their switch — 2026-09-30
+**Found reproducing LT-575.** The page's final pass sets each new node's
+row from its hop depth and takes only the column from the layout; the
+devices hung off switch ports (and the unmanaged switches made for a
+crowd) had no depth recorded, so they were given 0 — the seed's row —
+after being placed under their switch. The classic crawler's result has
+this too, and it is what the operator's screenshot shows: endpoints
+across the top and long curves to the switch that learned them. **Fix:**
+a device hung off a port is one row below that switch; a crowd's switch
+one below, its crowd one more.
+
+### LT-607 — **bug** Three IOS secret forms survived the scrub into a support capture — 2026-09-30
+**Found by the sweep's collector review (LT-603).** `snmp-server host …
+version 2c <community>`, `radius-server host … key 7 <key>` and
+` server-private … key 7 <key>` match no rule in `scrub.rs`, and
+`redact()`'s word list has neither `key` nor `version`, so a diagnostic
+ticked on a run kept them verbatim. **Fix:** rules for each, and
+`looks_clean` run over every kept configuration as its comment promised.
+
+### LT-608 — **bug** A FortiGate's REST replies carried `ENC …` secrets into the database — 2026-09-30
+**Found by the same review.** `/cmdb/vpn.ipsec/phase1-interface` answers
+`psksecret: "ENC …"` and `/cmdb/system/interface` a PPPoE `password`;
+`normalise` keeps every unmapped field in `extra`, which `write_row` stores.
+**Fix:** values of secret-named keys and `ENC …` blobs are removed from
+every API row before it is stored, as the CLI's are.
+
+### LT-609 — **bug** Stop waited out a device's SNMP and REST phases — 2026-09-30
+**Found by the same review.** Only the SSH phase ran under the cancel
+token; a FortiGate's dozens of GETs at 30 s each, and one per FQDN object,
+ran on after Stop. **Fix:** every phase of a device is under the token.
+
+### LT-610 — **bug** One HTTP error ended a device's whole REST phase — 2026-09-30
+**Found by the same review.** Only 404 was "unsupported"; a 424 or 500
+(FortiOS's answer for a feature turned off) or one failing `?mkey=` stopped
+every endpoint after it and marked the device `transport`. **Fix:** an
+endpoint's error is that endpoint's row; the rest are still asked. An
+authentication failure or a changed certificate still stops the phase.
+
+### LT-611 — **bug** After a timed-out probe the sidecar was asked to close, 45 s more — 2026-09-30
+**Found by the same review.** `run_steps` already skips the close on a
+sidecar that timed out (LT-588); the fingerprint and capability passes did
+not. **Fix:** the same rule in all three.
+
+### LT-612 — **bug** Following the default route would log in to the provider's router — 2026-09-30
+**Found by the same review.** Every route's next hop is queued (LT-576), and
+an edge firewall's default route points at the ISP; with no subnet limit
+typed, the collector would open SSH there and send the operator's
+username and password. **Fix:** a next hop or neighbour outside the
+private ranges is followed only when a subnet limit the operator typed
+includes it; otherwise it is listed as not followed, with that reason.
+
+### LT-613 — **bug** An OS hint given for the seeds was applied to every device followed — 2026-09-30
+**Found by the same review.** Reachable through the IPC, not today's
+panels. **Fix:** the hint and the role override apply to the seeds only.
+
+### LT-614 — **bug** A parse error's text carried a line of a device's reply, unscrubbed — 2026-09-30
+**Found by the same review.** TextFSM's "State Error … Input Line: <line>"
+and the shadow detail were stored and shown as they came. **Fix:** both
+pass through the scrub before they are stored.
+
+### LT-615 — **bug** `collection_raw` accepted a drive-absolute path — 2026-09-30
+**Found by the same review.** `C:/…` has no `..`, no leading `/` and no
+backslash, and `Path::join` with it leaves the run's folder. Local IPC
+only. **Fix:** a reply reference with `:` is refused; none legitimate has one.
+
+### LT-616 — **bug** A neighbour with no address and no ARP match was dropped without a word — 2026-09-30
+**Found by the same review.** The review's "not visited" list promises
+every neighbour named and not followed. **Fix:** it is listed, with the
+reason "no address to reach it on".
+
+### LT-617 — **bug** A sidecar that could not be restarted was retried for every remaining device — 2026-09-30
+**Found by the same review.** 500 queued devices × a 10 s hello timeout.
+**Fix:** a failed restart ends the run as failed, with the reason.
+
+### LT-618 — **bug** A database error while storing a device was swallowed — 2026-09-30
+**Found by the same review.** The device was reported done with no
+commands and no failure. **Fix:** it is the device's failure, in its log.
+
+### LT-619 — **bug** A collector run on "Discover devices" was lost when the tab changed — 2026-09-30
+**Found by the sweep's interface review (LT-603)** — and what the operator
+met: "I have to switch screens". The run's id lived in the panel, which
+unmounts on a tab change; back on the tab the form was idle and the result
+never arrived. The classic crawler's result arrives whatever the tab.
+**Fix:** the run in progress and its result live in the store; the panel
+shows them whenever it is mounted.
+
+### LT-620 — **bug** With the collector, most of the Discover form was ignored and said nothing — 2026-09-30
+**Found by the same review.** Telnet, the second login, the device classes,
+the SNMP rows, the Duo tick, "Also read from each device", reverse DNS,
+retries and Dry run are the classic crawler's; the collector took none of
+them and the controls stayed live. **Fix:** the saved SNMP login travels to
+the collector's fallback (LT-549); the controls the collector does not use
+are disabled under it and say so; the seed field's title names what each
+engine takes.
+
+### LT-621 — **bug** With the collector, why a device failed was thrown away — 2026-09-30
+**Found by the same review.** `deviceDone.failure` was counted and
+dropped; the grouped failure list and live table were the classic
+crawler's only. **Fix:** each failed device is in the list with its reason;
+the live table is cleared when a run starts.
+
+### LT-622 — **bug** An event listener leaked when a panel closed before `listen` resolved — 2026-09-30
+**Found by the same review.** The `let off; then(f => off = f)` pattern in
+three panels; in development's StrictMode every mount leaked one. **Fix:**
+a cancelled flag, and the listener removed if it arrives after cleanup.
+
+### LT-623 — **bug** A device trace that failed part-way kept the previous run's summary line — 2026-09-30
+**Found by the same review.** Streamed hops stayed, under "Ran from …" and
+"same path" lines about the earlier run. **Fix:** on a failure the hops
+stay, marked cut short, and the earlier run's summary is cleared.
+
+### LT-624 — **bug** The vault form sent fields its kind had hidden — 2026-09-30
+**Found by the same review.** An enable password typed before switching
+the kind to "API login" was saved as that login's second secret. **Fix:**
+only the fields the kind shows are sent.
+
+### LT-625 — **bug** "1 devices" on the Collect tab's hand-over — 2026-09-30
+**Found by the same review.** `collect.handedOver` was a hard-coded plural.
+**Fix:** the catalogue's `plural.device`.
+
+### LT-627 — **bug** A command that timed out closed the SSH session, and the sidecar kept reporting it alive — 2026-09-30
+**Found by the sweep's sidecar review (LT-603).** Scrapli closes the
+transport on every `timeout_ops`; the sidecar answered `timeout` and left
+the session registered, so each later step came back `error:
+ScrapliConnectionNotOpened` with a traceback, the plan ran to its end
+reporting dozens of them, and FortiOS's console mode was never restored.
+**Fix:** a timed-out session is reported closed: the reply says so, the
+session is dropped, and the collector ends the device there.
+
+### LT-628 — **bug** An `open` that failed after the SSH session was up never closed it — 2026-09-30
+**Found by the same review.** A host-key mismatch, a refused login or a
+timeout in the context or paging checks left the paramiko thread and the
+device's VTY line open until the process ended. **Fix:** the connection is
+closed on every failure past the handshake.
+
+### LT-629 — **bug** A catalog's `escalate` step reached the device unchecked — 2026-09-30
+**Found by the same review.** The one catalog literal sent without the
+session vocabulary or the allowlist: an edited catalog could put
+`configure terminal` there. **Fix:** it passes the vocabulary like every
+other step.
+
+### LT-630 — **bug** FortiOS paging was restored from inside a VDOM, where it cannot be — 2026-09-30
+**Found by the same review.** `close()` ran the restore without leaving the
+current context first, and `_disable_paging` entered global without
+checking it; the console mode the sidecar changed stayed changed.
+**Fix:** leave the context, then restore; the same on the way in.
+
+### LT-631 — **bug** A context name the device had not listed went into `edit {vdom}` — 2026-09-30
+**Found by the same review.** When the VDOM list regex matched nothing, any
+name was accepted; on FortiOS `config vdom` / `edit <new>` / `end` makes a
+VDOM. **Fix:** a name the device did not list is refused.
+
+### LT-632 — **bug** A private key given as text would be echoed in an error — 2026-09-30
+**Found by the same review.** Scrapli takes `auth_private_key` as a file
+path and names the unresolved "path" — the key — in its error. Latent:
+nothing sends one today. **Fix:** the sidecar refuses a key that is not a
+path to a file it may read, without quoting it.
+
+### LT-634 — **bug** A sidecar test of the allowlist never reached it — 2026-09-30
+**Found by the same review.** `dispatch` looked the session up before the
+verdict, so the test's "refused or error" passed on "no such session".
+**Fix:** the verdict comes first, and the test accepts `refused` only.
+
+### LT-635 — **bug** The classic crawler sent an ArubaOS-CX switch the Cisco and AOS-S spellings — 2026-09-30
+**Source:** the operator, 2026-09-30, with a debug zip and a screenshot:
+"Aruba commands are wrong — show lldp neighbor-info detail". His 6200
+(JL727A, AOS-CX 10.18) was recognised as ArubaOS-CX and then asked
+`terminal length 0`, `show cdp neighbors detail`, `show lldp neighbors
+detail`, `show lldp info remote-device`, `show mac address-table`, `show
+etherchannel summary`, `show interfaces status` and the rest of the Cisco
+detail set — every one "Invalid input"; it answered `show system`, `show
+arp`, `show ip route`, `show vsf`, `show spanning-tree` and `show
+mac-address`. So it was reached with no neighbours and no MAC table.
+**Fix:** AOS-CX asks `show lldp neighbor-info detail` (the operator's
+word, and ntc's captured fixtures for the layout), `show mac-address-table`,
+`show arp`, no CDP, and none of the Cisco detail set; bundles wait on a
+capture of `show lag brief`. The 6200 is not reachable from this VM, so
+the readers are written against ntc's captures of real AOS-CX output and
+the operator's next crawl is what earns `verified`.
+
+### LT-636 — **bug** Eleven FortiOS catalog entries called the REST API without `/api/v2`, and fed the wrong tables — 2026-09-30
+**Found by the sweep.** The API-only entries (`/monitor/system/interface`,
+`/cmdb/router/static`, …) carried their path without the `/api/v2` prefix
+every FortiGate wants, so each 404ed on every run with a token; and their
+feeds were wrong — routes into `device`, OSPF neighbours into `arp`. Two of
+them duplicate a `show` command's REST alternate, so LLDP arrived twice.
+**Fix:** the prefix on every path, the feeds by what each endpoint returns
+(checked against the lab FortiGate's replies: `/monitor/system/interface`
+carries each interface's MAC, which LT-569 wanted), and one request per
+endpoint.
+
+### LT-637 — **bug** A tunnel whose far end is reached through the tunnel itself overflowed the stack and killed the app — 2026-09-30
+**Found by the sweep's topology/path review (LT-603), reproduced with a
+scratch program.** A FortiGate with a full-tunnel branch — a default route
+by the WAN and one by the VPN — looks up the tunnel's far end, finds the
+same default route, enters the tunnel again, without end; the Tauri
+backend aborts. **Fix:** inside an underlay a tunnel is never entered;
+the walk says the far end is reached only through another tunnel.
+
+### LT-638 — **bug** An access switch that merely switched the frame was chosen as the only first router — 2026-09-30
+**Found by the same review.** The "prefer where the MAC is learned
+locally" rule kept the switch and dropped the firewall, which has no MAC
+table; the firewall and its policy never appeared. **Fix:** that rule only
+decides between boxes that each have a MAC table, and never drops a
+firewall or router.
+
+### LT-639 — **bug** Missing zone knowledge became a definite Deny — 2026-09-30
+**Found by the same review.** A trace started at a firewall has no arriving
+interface, and a PAN-OS with policies but no zone table matches nothing;
+both fell through to the catch-all deny. D-050 says never a guess. **Fix:**
+no arriving interface, or a zone the box's tables cannot place, is
+Undetermined with the reason; a name that is one of the box's own
+interfaces still decides.
+
+### LT-640 — **bug** Two boxes with an all-zero MAC became one node — 2026-09-30
+**Found by the same review.** Linux's unslaved `bond0` and `gretap0`
+report `00:00:00:00:00:00`. **Fix:** all-zero and broadcast are not MACs.
+
+### LT-641 — **bug** Two neighbours sharing a first DNS label became one placeholder — 2026-09-30
+**Found by the same review.** `ap1.site-a…` and `ap1.site-b…` were one
+`p-ap1`. **Fix:** a placeholder is keyed by chassis MAC, then address, then
+name.
+
+### LT-642 — **bug** One cable became two links depending on which switch was collected first — 2026-09-30
+**Found by the same review.** A claim with no far port was not entered in
+the by-port index, and the reverse claim looked only there. **Fix:** a
+claim with both ports also looks for the half-known reverse before making
+a new link.
+
+### LT-643 — **bug** A known neighbour was also drawn as an endpoint behind its router — 2026-09-30
+**Found by the same review.** `behind_routers` (LT-597) skipped MACs it
+knew, and a CDP placeholder has none. **Fix:** an address a node owns is
+not an endpoint either.
+
+### LT-644 — **bug** A known box placed on a crowded port made the rest of the crowd vanish — 2026-09-30
+**Found by the same review.** Placing the ASA on a port skipped that port
+for the crowd rule. **Fix:** the remaining strangers on a placed port still
+go through it.
+
+### LT-645 — **bug** A port with exactly two unknown devices drew neither — 2026-09-30
+**Found by the same review.** One was an endpoint, three a crowd, two
+nothing. **Fix:** fewer than a crowd are endpoints, each.
+### LT-649 — The lab's Mellanox SN2010 switches, found and collected — 2026-09-30
+**Source:** the operator, 2026-09-30: "what about the other switch it was
+on the network but never crawled" — a Mellanox SN2010. His own capture of
+the 6200's LLDP table names two, `SN2010-1` and `SN2010-2`, on `1/1/49`,
+`1/1/50` and `mgmt`; the crawl never saw them because it asked the 6200
+the wrong LLDP command (LT-635). Coreview knows the maker (NVIDIA's OUI)
+and reads Cumulus Linux and SONiC; it has no reader for Onyx (MLNX-OS).
+**Needs from the operator:** which OS the SN2010s run, their addresses and
+a login. Cumulus or SONiC: the next crawl should reach them. Onyx: a
+dialect from its documentation and his captures (D-058), as LT-466–476 were.
+
+### LT-650 — **bug** `e2e/showcommands.mjs` fails at its last step, a fresh page load — 2026-09-30
+**Found by the sweep's full run (LT-603).** After 44 checks pass, the
+harness's final `openBackups()` — a `page.goto` and a click on the project
+list — times out waiting for `.cv-project-open`. It fails the same way on
+the tree before the sweep, so it is not today's work; it has not been run
+in CI (the harnesses are run by hand). Not yet looked into: whether the app
+or the harness's settings stub is at fault.
 
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
@@ -661,11 +955,42 @@ pulled into Phase 1.*
 - **LT-269** — CI matrix: Windows 10/11, macOS 12+, Ubuntu 22.04/24.04. Cost:
   Q-010.
 
+### LT-626 — A device trace or a collection survives a tab change on the Tracert and Collect tabs — 2026-09-30
+**Found by the same review**, pre-existing: `busy` and the result live in
+the panel. The same move as LT-619, for the Tracert and Collect tabs.
+
+### LT-633 — The sidecar's `open` is bounded past the banner — 2026-09-30
+**Found by the same review.** Paramiko waits an hour for a channel and
+without limit for the shell; the loop is single-threaded, so one such
+device would stall every session until Rust replaced the process. Rare.
+
+### LT-646 — A cable between two uncollected neighbours reaches the review — 2026-09-30
+**Found by the same review:** the view emits links only from collected
+devices, so an AP's LLDP to an uncollected switch (LT-596) is in the graph
+and invisible on the page. Next.
+
+### LT-647 — Next-hop resolution by VRF — 2026-09-30
+**Found by the same review:** `by_ip` is one map across VRFs; overlapping
+customer address space on two PEs resolves to whichever was indexed first.
+Next.
+
+### LT-648 — A next hop under a longer non-connected route — 2026-09-30
+**Found by the same review:** recursion takes the first connected route
+holding the next hop and skips a longer static one. Next.
+
 ### P4 — set by the operator 2026-09-29, in this order
 "start P4 without a separate plan round; write the plan into the spec and
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-602 — A revert point on the VM before every push — 2026-09-30, done the same day
+**Source:** the operator, 2026-09-30: "take local backup on the VM itself
+as revert point incase things break". **Done the same day:** a git bundle
+of every branch and a tar of the working tree (target, node_modules and
+the venv left out) under `~/coreview-backups/`, named by date and commit;
+`scripts/revert-point.sh` makes one, and says how to restore.
+**Run:** `scripts/revert-point.sh` made `coreview-20260930-…` under `~/coreview-backups/` and `git bundle verify` passed on it.
 
 ### LT-601 — **bug** A device slow to send its SSH banner could not be collected — 2026-09-30, fixed the same day
 **Found checking LT-600:** the lab's Palo Alto sends `SSH-2.0-OpenSSH_8.0`
