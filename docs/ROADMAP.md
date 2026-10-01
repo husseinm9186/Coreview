@@ -164,12 +164,11 @@ and reads Cumulus Linux and SONiC; it has no reader for Onyx (MLNX-OS).
 a login. Cumulus or SONiC: the next crawl should reach them. Onyx: a
 dialect from its documentation and his captures (D-058), as LT-466–476 were.
 **The hunt, 2026-10-01** ("find them and add support for them on the next
-build"): from this VM (192.168.14.0/24, behind the FortiGate) the 6200 at
-its 192.168.1.x address is unreachable — the FortiGate passes ICMP and
-nothing else between those subnets — and a ping sweep of the FortiGate's
-netMGMT, 90-LAB, LAB and 192.168.1 subnets found six answering hosts, none
-of them with SSH open to this VM; the FortiGate's own ARP table holds no
-NVIDIA/Mellanox MAC. The SN2010s' addresses therefore stay unknown here;
+build"): from this VM, on the lab subnet behind the FortiGate, the 6200
+on its own subnet is unreachable — the FortiGate passes ICMP and nothing
+else between the two — and a ping sweep of the FortiGate's management
+and lab subnets found six answering hosts, none with SSH open to this
+VM; the FortiGate's own ARP table holds no NVIDIA/Mellanox MAC. The SN2010s' addresses therefore stay unknown here;
 the operator confirmed they are not on this network ("as long as it's
 covered I can go validate"), so the next build is his to point at them. What the build does to try: catalogs for all four operating
 systems an SN2010 can run — Onyx (LT-651), Cumulus 4 NCLU and SONiC
