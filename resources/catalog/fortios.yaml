@@ -645,13 +645,14 @@ commands:
     cmd: get router info kernel
     gate: always
     foreach: vdom
-    parser: none
+    parser: reader:fortios_kernel_routes
     feeds:
-      - route
+      - fib
     weight: heavy
     timeout: 120
-    verified: unverified
-    evidence: no template, no structured output, no capture yet (LT-511)
+    verified: docs
+    evidence: Coreview fortinet reader; Fortinet documentation `get router info kernel` — the kernel's forwarding table (D-058, LT-653)
+    coreview_reader: true
   - id: show_router_static
     cmd: show router static
     gate: always

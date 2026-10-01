@@ -396,6 +396,30 @@ commands:
     timeout: 120
     verified: unverified
     evidence: no template, no structured output, no capture yet (LT-511)
+  # LT-653: the forwarding table, which the path builder walks before the RIB.
+  - id: show_cef_ipv4
+    cmd: show cef ipv4
+    gate: cap.routing
+    parser: reader:iosxr_cef
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview cisco reader; IOS-XR command reference `show cef ipv4` (D-058, LT-653)
+    coreview_reader: true
+  - id: show_cef_vrf_vrf_ipv4
+    cmd: show cef vrf {vrf} ipv4
+    gate: cap.vrf
+    foreach: vrf
+    parser: reader:iosxr_cef
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview cisco reader; IOS-XR command reference `show cef vrf <name> ipv4` (D-058, LT-653)
+    coreview_reader: true
 live_path:
   - id: show_route_dst_detail
     cmd: show route {dst} detail

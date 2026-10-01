@@ -20,8 +20,28 @@ impl Row {
     /// A column's value split into items: a joined list (`a, b`) or a
     /// JSON array kept in `extra`.
     pub fn list(&self, column: &str) -> Vec<String> {
-        self.get(column).map(|s| s.split([',', ' ']).map(str::trim).filter(|x| !x.is_empty()).map(str::to_string).collect()).unwrap_or_default()
+        self.get(column).map(split_list).unwrap_or_default()
     }
+}
+
+/// A joined list's items. Commas separate; a bare space separates only
+/// when every piece on either side of it looks like an interface or an
+/// address (has a digit, a slash or a dot), so `Gi1/0/1 Gi1/0/2` is two
+/// and a Windows `Ethernet 2` or a `Port-channel 1` is one (LT-655).
+pub fn split_list(s: &str) -> Vec<String> {
+    s.split(',')
+        .map(str::trim)
+        .filter(|x| !x.is_empty())
+        .flat_map(|item| {
+            let words: Vec<&str> = item.split_whitespace().collect();
+            let looks_named = |w: &str| w.chars().any(|c| c.is_ascii_digit() || c == '/' || c == '.' || c == ':');
+            if words.len() > 1 && words.iter().all(|w| looks_named(w)) {
+                words.into_iter().map(str::to_string).collect::<Vec<_>>()
+            } else {
+                vec![words.join(" ")]
+            }
+        })
+        .collect()
 }
 
 /// One device a collection reached, with its rows by table.
@@ -204,5 +224,30 @@ pub struct Graph {
 impl Graph {
     pub fn node(&self, id: &str) -> Option<&Node> {
         self.nodes.iter().find(|n| n.id == id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Row;
+
+    fn row(v: &str) -> Row {
+        let mut r = Row::default();
+        r.columns.insert("x".into(), v.into());
+        r
+    }
+
+    /// LT-655: a joined list splits on commas; a bare space splits only
+    /// between things that look like interfaces or addresses, so a Windows
+    /// `Ethernet 2` or a `Port-channel 1` stays one name.
+    #[test]
+    fn a_name_with_a_space_is_one_item() {
+        assert_eq!(row("Ethernet 2").list("x"), vec!["Ethernet 2"]);
+        assert_eq!(row("Port-channel 1").list("x"), vec!["Port-channel 1"]);
+        assert_eq!(row("Ethernet 2, Wi-Fi 3").list("x"), vec!["Ethernet 2", "Wi-Fi 3"]);
+        assert_eq!(row("Gi1/0/1 Gi1/0/2").list("x"), vec!["Gi1/0/1", "Gi1/0/2"]);
+        assert_eq!(row("192.0.2.1 192.0.2.2").list("x"), vec!["192.0.2.1", "192.0.2.2"]);
+        assert_eq!(row("ge-0/0/0.0, ge-0/0/1.0").list("x"), vec!["ge-0/0/0.0", "ge-0/0/1.0"]);
+        assert!(row("  ").list("x").is_empty());
     }
 }

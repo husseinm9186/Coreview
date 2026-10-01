@@ -38,6 +38,8 @@ function why(h: PathHop): string {
 /** One of the builder's hops as the page's engine writes one. */
 function asHop(h: PathHop): Hop {
   const notes = [...h.notes];
+  // LT-653: say when the hop came from the device's forwarding table, not its RIB.
+  if (h.matched?.table === 'forwarding') notes.push(t('cpath.forwardingTable', { command: h.matched.command.replace(/^fib:/, '') }));
   if (h.firewall) notes.push(t('cpath.firewallNote', { verdict: t(`cpath.verdict.${h.firewall.verdict}`), reason: h.firewall.reason }));
   for (const n of h.nat) notes.push(t('cpath.natNote', { rule: n.rule, field: t(`cpath.field.${n.field}`), was: n.was, now: n.now }));
   const dnat = h.nat.find((n) => n.field === 'destination');

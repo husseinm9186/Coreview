@@ -73,6 +73,10 @@ pub struct Matched {
     pub metric: Option<u32>,
     pub next_hop: Option<String>,
     pub command: String,
+    /// LT-653: `forwarding` when the hop was looked up in the device's
+    /// forwarding table (CEF, `show forwarding`, the kernel), `routing`
+    /// when only the RIB was collected.
+    pub table: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -261,7 +265,7 @@ struct Choice {
 }
 
 fn matched_of(r: &RouteEntry, nh: Option<IpAddr>) -> Matched {
-    Matched { prefix: r.net.to_string(), protocol: r.proto.clone(), kind: proto_word(&r.proto), distance: r.ad, metric: r.metric, next_hop: nh.map(|a| a.to_string()), command: r.command.clone() }
+    Matched { prefix: r.net.to_string(), protocol: r.proto.clone(), kind: proto_word(&r.proto), distance: r.ad, metric: r.metric, next_hop: nh.map(|a| a.to_string()), command: r.command.clone(), table: if r.command.starts_with("fib:") { "forwarding".into() } else { "routing".into() } }
 }
 
 fn is_null(iface: &str) -> bool {
@@ -269,9 +273,12 @@ fn is_null(iface: &str) -> bool {
     l.starts_with("null") || l == "blackhole" || l == "discard" || l == "reject" || l.starts_with("dsc")
 }
 
-/// Routes in a VRF that hold an address, longest first, then by distance and metric.
+/// Routes in a VRF that hold an address, longest first, then by distance
+/// and metric — from the forwarding table when one was collected for the
+/// VRF (LT-653), else the RIB.
 fn candidates<'a>(b: &'a Box_, vrf: &str, ip: IpAddr) -> Vec<&'a RouteEntry> {
-    let mut v: Vec<&RouteEntry> = b.routes.iter().filter(|r| r.vrf == vrf && r.net.contains(ip)).collect();
+    let table: &Vec<RouteEntry> = if b.fib.iter().any(|r| r.vrf == vrf) { &b.fib } else { &b.routes };
+    let mut v: Vec<&RouteEntry> = table.iter().filter(|r| r.vrf == vrf && r.net.contains(ip)).collect();
     v.sort_by(|x, y| y.net.len.cmp(&x.net.len).then(x.ad.unwrap_or(u32::MAX).cmp(&y.ad.unwrap_or(u32::MAX))).then(x.metric.unwrap_or(u32::MAX).cmp(&y.metric.unwrap_or(u32::MAX))));
     v
 }
@@ -367,7 +374,7 @@ impl Ctx<'_> {
                 }
                 firewall::Tri::Yes => {}
             }
-            let matched = Matched { prefix: p.dst.clone().unwrap_or_else(|| "any".into()), protocol: "policy".into(), kind: "pbr".into(), distance: None, metric: None, next_hop: p.next_hop.map(|a| a.to_string()), command: p.command.clone() };
+            let matched = Matched { prefix: p.dst.clone().unwrap_or_else(|| "any".into()), protocol: "policy".into(), kind: "pbr".into(), distance: None, metric: None, next_hop: p.next_hop.map(|a| a.to_string()), command: p.command.clone(), table: "policy".into() };
             let choice = match (p.next_hop, &p.out_if) {
                 (Some(nh), out) => {
                     let out_if = out.clone().or_else(|| attached_iface(b, &at.vrf, nh));
@@ -391,12 +398,30 @@ impl Ctx<'_> {
     /// The table: the longest prefix whose next hops are not all down.
     fn lookup(&self, b_idx: usize, vrf: &str, dst: IpAddr, notes: &mut Vec<String>) -> Result<Vec<Choice>, Ending> {
         let b = &self.net.boxes[b_idx];
-        if !b.has_table("route") {
+        if !b.has_table("route") && !b.has_table("fib") {
             return Err(Ending::Insufficient { at: Some(b.name.clone()), reason: format!("No routing table was collected from {}.", b.name) });
         }
         let all = candidates(b, vrf, dst);
+        // LT-653: where the forwarding table is walked, say so, and say when
+        // the RIB would have sent the packet elsewhere.
+        if let Some(best) = all.first().filter(|r| r.command.starts_with("fib:")) {
+            let rib: Vec<&RouteEntry> = {
+                let mut v: Vec<&RouteEntry> = b.routes.iter().filter(|r| r.vrf == vrf && r.net.contains(dst)).collect();
+                v.sort_by(|x, y| y.net.len.cmp(&x.net.len).then(x.ad.unwrap_or(u32::MAX).cmp(&y.ad.unwrap_or(u32::MAX))));
+                v
+            };
+            if let Some(rr) = rib.first() {
+                let fib_hops: BTreeSet<String> = best.next_hops.iter().map(|h| h.ip.map(|a| a.to_string()).or_else(|| h.iface.clone()).unwrap_or_default()).collect();
+                let rib_hops: BTreeSet<String> = rr.next_hops.iter().map(|h| h.ip.map(|a| a.to_string()).or_else(|| h.iface.clone()).unwrap_or_default()).collect();
+                if rr.net != best.net || (!rib_hops.is_empty() && rib_hops != fib_hops) {
+                    let w = format!("{}: the forwarding table sends {dst} by {} ({}) but the routing table holds {} ({}); the forwarding table was followed.", b.name, best.net, fib_hops.iter().cloned().collect::<Vec<_>>().join(", "), rr.net, rib_hops.iter().cloned().collect::<Vec<_>>().join(", "));
+                    notes.push(w.clone());
+                    self.warn(w);
+                }
+            }
+        }
         if all.is_empty() {
-            let vrfs: BTreeSet<&str> = b.routes.iter().map(|r| r.vrf.as_str()).collect();
+            let vrfs: BTreeSet<&str> = b.routes.iter().chain(b.fib.iter()).map(|r| r.vrf.as_str()).collect();
             let reason = if vrfs.contains(vrf) { format!("{} has no route to {dst} in {}.", b.name, vrf_label(vrf)) } else { format!("No routing table for {} was collected from {}.", vrf_label(vrf), b.name) };
             return if vrfs.contains(vrf) { Err(Ending::Dropped { at: b.name.clone(), reason }) } else { Err(Ending::Insufficient { at: Some(b.name.clone()), reason }) };
         }
@@ -455,6 +480,23 @@ impl Ctx<'_> {
             }
             if choices.is_empty() && n == 0 && r.is_connected() {
                 choices.push(Choice { decision: Decision::Connected, matched: Some(matched_of(r, None)), via: vec![], out_if: None, toward: Toward::Attached, nh_vrf: None });
+            }
+            // LT-659: an interface the device itself reports down, or a
+            // tunnel it reports down, carries nothing.
+            let before = choices.len();
+            choices.retain(|c| {
+                let iface_down = c.out_if.as_deref().map(|i| b.down_ifaces.contains(&key(i))).unwrap_or(false);
+                let tunnel_down = matches!(&c.toward, Toward::Tunnel(t) if t.down);
+                if iface_down {
+                    notes.push(format!("{}: {} is down on {}, so that next hop was not used.", r.net, c.out_if.clone().unwrap_or_default(), b.name));
+                } else if let (true, Toward::Tunnel(t)) = (tunnel_down, &c.toward) {
+                    notes.push(format!("{}: {} is down on {}, so that next hop was not used.", r.net, t.name, b.name));
+                }
+                !(iface_down || tunnel_down)
+            });
+            if choices.is_empty() && before > 0 {
+                skipped.push(r.net.to_string());
+                continue;
             }
             // What-if: an interface down, or the device a next hop is.
             let before = choices.len();
@@ -529,7 +571,7 @@ impl Ctx<'_> {
     fn l2_path(&self, from: usize, egress: Option<&str>, target_mac: Option<&str>, target: Option<usize>) -> (Vec<L2Step>, Option<(usize, String)>) {
         let net = self.net;
         let Some(m) = target_mac else { return (vec![], None) };
-        let vlan = egress.and_then(svi_vlan);
+        let mut vlan = egress.and_then(svi_vlan);
         let mut steps = Vec::new();
         let mut cur = from;
         let mut in_port: Option<String> = None;
@@ -540,11 +582,33 @@ impl Ctx<'_> {
                 break;
             }
             let b = &net.boxes[cur];
-            let out = if i == 0 && vlan.is_none() {
-                egress.map(str::to_string)
-            } else {
-                b.port_for(m, vlan.as_deref()).map(|e| e.iface.clone())
-            };
+            // LT-662: a frame from a routed port enters the switch in the
+            // port's own VLAN, which the VLAN table says.
+            if i > 0 && vlan.is_none() {
+                vlan = in_port.as_deref().and_then(|p| b.vlan_of_port(p));
+            }
+            let entry = if i == 0 && vlan.is_none() { None } else { b.port_for(m, vlan.as_deref()) };
+            let out = if i == 0 && vlan.is_none() { egress.map(str::to_string) } else { entry.map(|e| e.iface.clone()) };
+            // LT-660: a MAC learned over VXLAN is at another VTEP: the walk
+            // crosses the overlay to it, and goes on there.
+            if let Some(vtep) = entry.and_then(|e| e.vtep) {
+                let out = out.clone().unwrap_or_else(|| "nve".into());
+                steps.push(L2Step { device: b.name.clone(), in_port: in_port.clone(), out_port: Some(format!("{out} → {vtep}")), vlan: vlan.clone(), blocked: false });
+                match net.by_ip.get(&vtep).copied() {
+                    Some(far) if Some(far) == target => break,
+                    Some(far) => {
+                        cur = far;
+                        in_port = Some(out);
+                        continue;
+                    }
+                    None => return (steps, Some((cur, format!("{out} → {vtep}")))),
+                }
+            }
+            if let (Some(o), Some(v)) = (&out, &vlan) {
+                if i > 0 && b.port_outside_vlan(o, v) {
+                    self.warn(format!("{}'s MAC table has {m} on {o}, which its VLAN table does not place in VLAN {v}.", b.name));
+                }
+            }
             let Some(out) = out else {
                 if i > 0 {
                     steps.push(L2Step { device: b.name.clone(), in_port: in_port.clone(), out_port: None, vlan: vlan.clone(), blocked: false });
@@ -785,7 +849,10 @@ impl Ctx<'_> {
                 }
                 Toward::Vpn(pe) => {
                     let underlay = self.underlay(at.b, pe);
-                    h.overlay = Some(Overlay { tunnel: "MPLS L3VPN".into(), kind: Some("mpls".into()), local: None, remote: pe.to_string(), underlay });
+                    // LT-660: a VTEP's VPN route is EVPN over VXLAN, not MPLS.
+                    let evpn = b.tunnels.iter().any(|t| t.kind.as_deref().map(|k| k.eq_ignore_ascii_case("vxlan")).unwrap_or(false)) || c.matched.as_ref().map(|m| m.command.contains("evpn") || m.command.contains("l2vpn")).unwrap_or(false);
+                    let (tunnel, kind) = if evpn { ("EVPN/VXLAN", "vxlan") } else { ("MPLS L3VPN", "mpls") };
+                    h.overlay = Some(Overlay { tunnel: tunnel.into(), kind: Some(kind.into()), local: b.tunnels.iter().find_map(|t| t.local_ip.map(|a| a.to_string())).filter(|_| evpn), remote: pe.to_string(), underlay });
                     h.next_hop = Some(pe.to_string());
                     match net.by_ip.get(&pe).copied().filter(|x| !self.down.contains(x)) {
                         Some(far) => {
@@ -794,7 +861,7 @@ impl Ctx<'_> {
                             let imports = b.vrf_rts.get(&at.vrf).map(|x| x.0.clone()).unwrap_or_default();
                             let fb = &net.boxes[far];
                             let by_rt = fb.vrf_rts.iter().find(|(_, (_, ex))| ex.iter().any(|rt| imports.contains(rt))).map(|(v, _)| v.clone());
-                            let by_name = fb.routes.iter().any(|r| r.vrf == at.vrf).then(|| at.vrf.clone());
+                            let by_name = fb.forwarding().iter().any(|r| r.vrf == at.vrf).then(|| at.vrf.clone());
                             let mut hs = hops.clone();
                             match by_rt.or(by_name) {
                                 Some(v) => {
@@ -966,7 +1033,7 @@ fn locate(ctx: &Ctx, from: &str, vrf: Option<&str>) -> Result<(Vec<Start>, Sourc
     // Gateways: the devices whose routing table has the source's subnet as attached.
     let mut gws: Vec<(usize, String, Option<String>)> = Vec::new();
     for (i, b) in net.boxes.iter().enumerate() {
-        for r in b.routes.iter().filter(|r| r.is_connected() && !r.net.is_host() && r.net.contains(src)) {
+        for r in b.forwarding().iter().filter(|r| r.is_connected() && !r.net.is_host() && r.net.contains(src)) {
             if want_vrf.as_ref().map(|v| v != &r.vrf).unwrap_or(false) {
                 continue;
             }
@@ -986,7 +1053,7 @@ fn locate(ctx: &Ctx, from: &str, vrf: Option<&str>) -> Result<(Vec<Start>, Sourc
     // IPv6 multicast whether or not IPv6 is in use.
     let routes_more = |i: usize| {
         let nets: std::collections::BTreeSet<String> = net.boxes[i]
-            .routes
+            .forwarding()
             .iter()
             .filter(|r| r.is_connected() && !r.net.is_host() && r.net.v6 == src.is_ipv6() && !r.next_hops.iter().any(|h| h.iface.as_deref().is_some_and(is_null)))
             .map(|r| r.net.to_string())

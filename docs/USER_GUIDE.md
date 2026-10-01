@@ -648,8 +648,14 @@ and names the first one that is down.
 
 **Path-Trace.** **Path-Trace** in the bottom panel answers a different question
 from Path check beside it: not *can* A reach B, but *which way would it go*.
-Pick a source device, a destination address, and it reads the routing tables a
-crawl collected — nothing is sent. You get the hop-by-hop decisions with the
+Pick a source device, a destination address, and it reads the tables a crawl
+collected — nothing is sent. Where a device's **forwarding table** was
+collected (CEF on IOS, `show forwarding` on NX-OS, the kernel's routes on
+Cumulus or a FortiGate, the Junos forwarding-table), that is what each hop
+is looked up in, because it is what the device forwards by; the routing
+table is used only where no forwarding table was read, and the hop says
+which. Where the two disagree on a prefix or a next hop, the hop and the
+trace say so. You get the hop-by-hop decisions with the
 prefix, protocol, next hop, outgoing interface and metric; **Why this path?**
 explaining which route won and why, including a BGP next hop resolved through
 the IGP down to a real cable; every equal-cost path where there is more than

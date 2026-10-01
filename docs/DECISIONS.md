@@ -1279,3 +1279,22 @@ hop outside the private ranges only when a subnet limit names it (LT-612); a
 range seed is refused by the collector; the panel offers the project's API
 login (LT-598) and one saved SNMP login (LT-620); the run lives in the store
 so a tab change does not lose it (LT-619).
+
+### D-063 — The path builder walks the forwarding table where one was collected — 2026-09-30
+**Decision:** a device's `fib` table (CEF, NX-OS `show forwarding`, IOS-XR
+`show cef`, Junos's forwarding-table, PAN-OS `show routing fib`, FortiOS's
+kernel routes, the ASA's `asp table routing`, a Linux kernel's `ip route`)
+is what the path builder looks a destination up in; the RIB (`route`) is
+used only on a device with no forwarding table, and a hop says which it
+used. Where the two disagree on a prefix or its next hops, the hop and the
+trace say so and the forwarding table is followed.
+**Rejected:** walking the RIB and reporting the FIB as a check; merging the
+two into one table (a FIB row has no protocol word, and a RIB row is not
+what the box forwards by); refusing a path on disagreement.
+**Why:** the operator, 2026-09-30: "the routing and switching and cef and
+forwarding all captured so our path trace is perfect". The RIB is what the
+device has learned; the FIB is what it does. A route that failed to
+program, a CEF adjacency that resolves differently, a kernel entry FRR
+could not install — the packet follows the FIB, so the path must. The
+disagreement is the finding an engineer wants named, not hidden by
+choosing one table in silence (LT-653).

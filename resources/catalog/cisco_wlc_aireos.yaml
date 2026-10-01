@@ -85,6 +85,7 @@ commands:
     parser: textfsm:cisco_wlc_ssh_show_interface_summary
     feeds:
       - interface
+      - ip_address
     weight: light
     timeout: 30
     verified: lab

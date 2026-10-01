@@ -383,7 +383,7 @@ roadmap items name what each box proved.
 | Ubiquiti USL8L | SNMP only; found via a FortiAP's LLDP |
 | Palo Alto PA-220 | SNMP v2c identity; logs in over SSH (LT-600) — the box ends a second session with "Invalid user", still open |
 | Aruba CX 6200F | Identity over SSH (LT-490); its own LLDP and MAC readings (LT-635) wait on his next crawl |
-| Mellanox SN2010 ×2 | Named by the 6200's LLDP; OS not yet known (LT-649) |
+| Mellanox SN2010 ×2 | Named by the 6200's LLDP; OS not yet known (LT-649). Catalogs for all three it could run — Onyx, Cumulus NCLU, SONiC — built from documentation and waiting for it (LT-651, LT-652) |
 
 **Parsers are written against captured output, never against documentation**
 — with the exceptions CLAUDE.md records (D-026, D-051, D-058), each marked
@@ -559,6 +559,21 @@ trust the summary below over that file; it is a signpost and it will rot.
   `scripts/revert-point.sh` precedes a push. The sweep's reviews
   (LT-603) are items LT-605–LT-648 — read them before touching the
   topology or path builders.
+
+- **Shipped 2026-09-30, late, after the mandate "make this app the best in
+  the world" (LT-651–LT-670):** three catalogs built from documentation for
+  whatever the lab's SN2010s turn out to run — `onyx.yaml` with 25 readers
+  in `coreview-collect/src/readers/onyx.rs`, `cumulus.yaml` (NCLU) and
+  `sonic.yaml`, with `readers/frr.rs` shared (FRR's routes, BGP and OSPF),
+  `readers/text.rs` the fixed-width table helpers; the forwarding table as
+  a `fib` table the path builder walks before the RIB (D-063 — `tables.rs`
+  `fib_fixups`, `readers/cisco.rs` for IOS-XR's CEF and the ASA's data
+  path, FortiOS's kernel routes in `readers/fortinet.rs`,
+  `walk::candidates` and `Box_::forwarding()`); the builders' review bugs
+  LT-654–LT-662 (Junos routes dropped, names with spaces, AP columns,
+  down interfaces, adjacency per VRF, the VLAN table in the L2 walk); and
+  `every_routing_os_feeds_what_the_path_builder_reads` in the catalog
+  crate, which pins the six holes still open to their items.
 
 - **Shipped 2026-09-18, after the mission:** LT-285 the address register (the
   **Addresses** tab; `src/lib/ipam.ts` is the arithmetic, `e2e/ipam.mjs` drives

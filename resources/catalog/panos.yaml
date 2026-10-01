@@ -361,7 +361,7 @@ commands:
     gate: cap.routing && !cap.advanced_routing
     parser: xml
     feeds:
-      - route
+      - fib
     weight: heavy
     timeout: 120
     verified: docs

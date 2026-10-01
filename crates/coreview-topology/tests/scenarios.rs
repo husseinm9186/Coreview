@@ -575,3 +575,50 @@ fn a_placed_box_leaves_the_crowd_and_two_strangers_are_two_endpoints() {
     let on6: Vec<&Endpoint> = g.endpoints.iter().filter(|e| e.port == "GigabitEthernet0/6").collect();
     assert_eq!(on6.len(), 2, "two strangers are two endpoints: {:?}", g.endpoints);
 }
+
+/// LT-656: a 9800's `show ap cdp neighbors` names the switch by its CDP
+/// device-id and address; the address is what finds the switch when the
+/// name differs from the switch's own hostname. The builder asked the row
+/// for columns nothing fed, so the switch was a placeholder beside itself.
+#[test]
+fn an_access_points_uplink_finds_its_switch_by_the_address_the_controller_reports() {
+    let sw = device("sw", "192.0.2.7", "cisco_ios", "switch", vec![
+        ("device", vec![row("show_version", &[("hostname", "LAB-ACC-SW"), ("serial", "FAKE0000071")])]),
+        ("ip_address", vec![row("show_ip_interface_brief", &[("interface", "Vlan1"), ("ip", "192.0.2.7"), ("prefixlen", "24")])]),
+    ]);
+    let wlc = device("wlc", "192.0.2.9", "cisco_ios", "wlc", vec![
+        ("device", vec![row("show_version", &[("hostname", "WLC1"), ("serial", "FAKE0000090")])]),
+        ("ap", vec![row("show_ap_cdp_neighbors", &[("ap_name", "AP-HALL"), ("ap_ip", "192.0.2.31"), ("nbr_switch", "acc-sw.lab.example"), ("nbr_ip", "192.0.2.7"), ("nbr_port", "Gi1/0/12")])]),
+    ]);
+    let g = build(&[sw, wlc]);
+    let ap = node_named(&g, "AP-HALL");
+    let acc = node_named(&g, "LAB-ACC-SW");
+    assert!(!g.nodes.iter().any(|n| n.name.starts_with("acc-sw")), "no placeholder for the switch the AP named: {:?}", g.nodes.iter().map(|n| &n.name).collect::<Vec<_>>());
+    let up: Vec<&Link> = g.links.iter().filter(|l| [&l.a.node, &l.b.node].contains(&&ap.id)).collect();
+    assert_eq!(up.len(), 1, "{up:?}");
+    let sw_end = if up[0].a.node == acc.id { &up[0].a } else { &up[0].b };
+    assert_eq!((sw_end.node.as_str(), sw_end.port.as_deref()), (acc.id.as_str(), Some("GigabitEthernet1/0/12")));
+}
+
+/// LT-661: the same subnet in two VRFs is two subnets. R1 and R2 both have
+/// 10.0.0.0/24, R1's in VRF A and R2's in VRF B — no adjacency; both have
+/// 10.1.0.0/24 in VRF A — one adjacency, in VRF A.
+#[test]
+fn a_shared_subnet_is_an_adjacency_only_within_one_vrf() {
+    let ipr = |iface: &str, ip: &str, vrf: &str| row("show_ip_interface_brief", &[("interface", iface), ("ip", ip), ("prefixlen", "24"), ("vrf", vrf)]);
+    let r1 = device("r1", "192.0.2.1", "cisco_ios", "router", vec![
+        ("device", vec![row("show_version", &[("hostname", "R1"), ("serial", "FAKER10001")])]),
+        ("ip_address", vec![ipr("Gi0/0", "10.0.0.1", "A"), ipr("Gi0/1", "10.1.0.1", "A"), ipr("Gi0/9", "192.0.2.1", "")]),
+    ]);
+    let r2 = device("r2", "192.0.2.2", "cisco_ios", "router", vec![
+        ("device", vec![row("show_version", &[("hostname", "R2"), ("serial", "FAKER20001")])]),
+        ("ip_address", vec![ipr("Gi0/0", "10.0.0.2", "B"), ipr("Gi0/1", "10.1.0.2", "A"), ipr("Gi0/9", "192.0.2.2", "")]),
+    ]);
+    let g = build(&[r1, r2]);
+    assert!(g.l3.iter().all(|a| a.subnet != "10.0.0.0/24"), "10.0.0.0/24 is in two VRFs: {:?}", g.l3);
+    let shared: Vec<&L3Adjacency> = g.l3.iter().filter(|a| a.subnet == "10.1.0.0/24").collect();
+    assert_eq!(shared.len(), 1, "{:?}", g.l3);
+    assert_eq!(shared[0].vrf.as_deref(), Some("A"));
+    let global: Vec<&L3Adjacency> = g.l3.iter().filter(|a| a.subnet == "192.0.2.0/24").collect();
+    assert_eq!((global.len(), global[0].vrf.as_deref()), (1, None));
+}

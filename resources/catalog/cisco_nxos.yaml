@@ -18,7 +18,8 @@ ntc_platform: cisco_nxos
 phase: 1
 fingerprint:
   probe: show version
-  match_regex: Cisco Nexus Operating System|NX-OS
+  # Not `MLNX-OS`, which an older Onyx switch calls itself (LT-651).
+  match_regex: Cisco Nexus Operating System|(^|[^A-Z])NX-OS
 session:
   source: scrapli scrapli.driver.core.cisco_nxos.sync_driver.NXOSDriver
   privilege_levels:
@@ -566,6 +567,28 @@ commands:
     timeout: 120
     verified: docs
     evidence: structured output (`| json`); field mapping from documentation
+  # LT-653: the forwarding table, which the path builder walks before the RIB.
+  - id: show_forwarding_ipv4_route
+    cmd: show forwarding ipv4 route
+    gate: cap.routing
+    parser: textfsm:cisco_nxos_show_forwarding_ipv4_route
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: ntc-templates template (no fixture in its tests); Attached/Receive/Drop become the RIB's words (LT-653)
+  - id: show_forwarding_ipv4_route_vrf_vrf
+    cmd: show forwarding ipv4 route vrf {vrf}
+    gate: cap.vrf
+    foreach: vrf
+    parser: textfsm:cisco_nxos_show_forwarding_ipv4_route
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: ntc-templates template (no fixture in its tests) (LT-653)
 live_path:
   - id: show_ip_route_dst_vrf_vrf
     cmd: show ip route {dst} vrf {vrf}

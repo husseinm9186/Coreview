@@ -766,6 +766,28 @@ commands:
     timeout: 120
     verified: unverified
     evidence: no template, no structured output, no capture yet (LT-511)
+  # LT-653: the forwarding table, which the path builder walks before the RIB.
+  - id: show_ip_cef
+    cmd: show ip cef
+    gate: cap.routing
+    parser: textfsm:cisco_ios_show_ip_cef
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: ntc-templates template (no fixture in its tests); CEF's attached/receive/drop words become the RIB's (LT-653)
+  - id: show_ip_cef_vrf_vrf
+    cmd: show ip cef vrf {vrf}
+    gate: cap.vrf
+    foreach: vrf
+    parser: textfsm:cisco_ios_show_ip_cef
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: ntc-templates template (no fixture in its tests) (LT-653)
 live_path:
   - id: show_ip_route_dst
     cmd: show ip route {dst}

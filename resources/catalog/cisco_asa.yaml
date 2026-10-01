@@ -343,6 +343,7 @@ commands:
     parser: textfsm:cisco_asa_show_interface
     feeds:
       - interface
+      - ip_address
     weight: heavy
     timeout: 120
     verified: lab
@@ -401,6 +402,18 @@ commands:
     timeout: 120
     verified: lab
     evidence: ntc-templates tests (3 captures)
+  # LT-653: the data path's own table, which the path builder walks before the RIB.
+  - id: show_asp_table_routing
+    cmd: show asp table routing
+    gate: always
+    parser: reader:asa_asp_routing
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview cisco reader; ASA command reference `show asp table routing` (D-058, LT-653)
+    coreview_reader: true
 live_path:
   - id: show_route_dst
     cmd: show route {dst}

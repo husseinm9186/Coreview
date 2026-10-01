@@ -207,6 +207,9 @@ pub struct MacEntry {
     pub vlan: Option<String>,
     pub mac: String,
     pub iface: String,
+    /// LT-660: a MAC learned over VXLAN — the far VTEP's address, as NX-OS
+    /// prints `nve1(192.0.2.12)` or Onyx's reader keeps `remote_ip`.
+    pub vtep: Option<IpAddr>,
 }
 
 #[derive(Debug, Clone)]
@@ -287,6 +290,8 @@ pub struct Tunnel {
     pub kind: Option<String>,
     pub local_ip: Option<IpAddr>,
     pub remote_ip: Option<IpAddr>,
+    /// LT-659: the device says it is down.
+    pub down: bool,
 }
 
 /// One collected box: every collection of it merged.
@@ -299,6 +304,9 @@ pub struct Box_ {
     pub host: String,
     pub addrs: Vec<Addr>,
     pub routes: Vec<RouteEntry>,
+    /// LT-653: the forwarding table, where one was collected — what the
+    /// device actually forwards by. Walked in preference to `routes`.
+    pub fib: Vec<RouteEntry>,
     pub arp: Vec<ArpEntry>,
     pub macs: Vec<MacEntry>,
     pub fhrp: Vec<Fhrp>,
@@ -315,6 +323,13 @@ pub struct Box_ {
     /// LT-639: every interface the box lists, by port key, address or not —
     /// a FortiOS policy names interfaces, and a VLAN interface carries none.
     pub ifaces: BTreeSet<String>,
+    /// LT-659: interfaces the device reports down, by port key — a route
+    /// out one carries nothing.
+    pub down_ifaces: BTreeSet<String>,
+    /// LT-662: VLAN → the ports in it, from the `vlan` table and access
+    /// ports' `interface.vlan`, so the VLAN a frame enters on a port is
+    /// known where no SVI names it.
+    pub vlan_ports: BTreeMap<String, BTreeSet<String>>,
     /// Which discovery tables had rows for it.
     pub has: BTreeSet<String>,
     /// LT-540: where each policy applies (ASA `access-group`).
@@ -386,6 +401,21 @@ impl Box_ {
         in_vlan.or_else(|| self.macs.iter().find(|e| e.mac == m))
     }
 
+    /// LT-662: the one VLAN a port is in — an access port; a trunk, in
+    /// several, answers nothing.
+    pub fn vlan_of_port(&self, port: &str) -> Option<String> {
+        let k = key(port);
+        let mut found = self.vlan_ports.iter().filter(|(_, ports)| ports.contains(&k)).map(|(v, _)| v.clone());
+        let first = found.next()?;
+        found.next().is_none().then_some(first)
+    }
+
+    /// LT-662: whether the VLAN table says a port is not in a VLAN it
+    /// claims to be in (a known VLAN, a port outside it).
+    pub fn port_outside_vlan(&self, port: &str, vlan: &str) -> bool {
+        self.vlan_ports.get(vlan).map(|ports| !ports.contains(&key(port))).unwrap_or(false)
+    }
+
     pub fn blocked(&self, port: &str, vlan: Option<&str>) -> bool {
         let k = key(port);
         self.stp_blocked.iter().any(|(inst, p)| p == &k && (inst.is_none() || vlan.is_none() || inst.as_deref() == vlan))
@@ -403,6 +433,16 @@ impl Box_ {
 
     pub fn has_table(&self, t: &str) -> bool {
         self.has.contains(t)
+    }
+
+    /// LT-653: the table the device forwards by — its forwarding table
+    /// when one was collected, else its RIB.
+    pub fn forwarding(&self) -> &Vec<RouteEntry> {
+        if self.fib.is_empty() {
+            &self.routes
+        } else {
+            &self.fib
+        }
     }
 
     pub fn is_tunnel_iface(&self, iface: &str) -> Option<&Tunnel> {
@@ -489,6 +529,12 @@ fn vlan_word(v: &str) -> String {
 }
 
 /// Is a MAC-table port a real port (not the CPU, a router, a drop entry)?
+/// LT-660: an NVE / VXLAN interface, behind which a MAC is at another VTEP.
+pub fn is_vtep_iface(p: &str) -> bool {
+    let l = p.trim().to_ascii_lowercase();
+    l.starts_with("nve") || l.starts_with("vxlan") || l.starts_with("vtep") || l.starts_with("vx")
+}
+
 fn real_port(p: &str) -> bool {
     let l = p.trim().to_ascii_lowercase();
     !(l.is_empty() || l == "cpu" || l.starts_with("router") || l.starts_with("sup-") || l == "drop" || l == "self" || l.starts_with("vlan"))
@@ -603,9 +649,23 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
         rts.0.extend(r.list("rt_import"));
         rts.1.extend(r.list("rt_export"));
     }
+    for r in d.rows("vlan") {
+        if let (Some(v), ports) = (r.get("vlan_id"), r.list("ports")) {
+            let set = b.vlan_ports.entry(v.trim().to_string()).or_default();
+            set.extend(ports.iter().map(|p| key(p)));
+        }
+    }
     for r in d.rows("interface") {
+        if let (Some(n), Some(v)) = (r.get("name"), r.get("vlan")) {
+            if r.get("mode").map(|m| m.to_ascii_lowercase().contains("access")).unwrap_or(false) && v.trim().chars().all(|c| c.is_ascii_digit()) && !v.trim().is_empty() {
+                b.vlan_ports.entry(v.trim().to_string()).or_default().insert(key(n));
+            }
+        }
         if let Some(n) = r.get("name") {
             b.ifaces.insert(key(n));
+            if r.get("oper").map(is_down).unwrap_or(false) || r.get("admin").map(is_down).unwrap_or(false) {
+                b.down_ifaces.insert(key(n));
+            }
         }
         if let (Some(n), Some(m)) = (r.get("name"), r.get("mac").and_then(mac)) {
             b.iface_mac.entry(key(n)).or_insert(m);
@@ -628,13 +688,13 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
     // A local /32 is the device saying the address is its own (IOS `L`,
     // NX-OS `local`), which is enough when the address table was not read.
     let owned: Vec<Addr> = b
-        .routes
+        .forwarding()
         .iter()
         .filter(|r| r.net.is_host() && proto_word(&r.proto) == "local")
         .filter_map(|r| {
             let ip = r.net.ip();
             let iface = r.next_hops.iter().find_map(|h| h.iface.clone());
-            let len = b.routes.iter().filter(|c| c.vrf == r.vrf && proto_word(&c.proto) == "connected" && !c.net.is_host() && c.net.contains(ip)).map(|c| c.net.len).max();
+            let len = b.forwarding().iter().filter(|c| c.vrf == r.vrf && proto_word(&c.proto) == "connected" && !c.net.is_host() && c.net.contains(ip)).map(|c| c.net.len).max();
             (!b.addrs.iter().any(|a| a.ip == ip && a.vrf == r.vrf)).then(|| Addr { ip, len, iface, vrf: r.vrf.clone() })
         })
         .collect();
@@ -645,8 +705,14 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
     }
     for r in d.rows("mac_table") {
         let (Some(m), Some(p)) = (r.get("mac").and_then(mac), r.get("interface")) else { continue };
+        let remote = r.extra.get("remote_ip").and_then(serde_json::Value::as_str).and_then(ip);
         for p in p.split([',', ' ']).map(str::trim).filter(|p| real_port(p)) {
-            b.macs.push(MacEntry { vlan: r.get("vlan").map(vlan_word).filter(|v| !v.is_empty()), mac: m.clone(), iface: p.to_string() });
+            // `nve1(192.0.2.12)`: the VTEP in the port's parentheses.
+            let (iface, vtep) = match p.split_once('(') {
+                Some((i, rest)) if is_vtep_iface(i) => (i.to_string(), rest.trim_end_matches(')').parse().ok()),
+                _ => (p.to_string(), if is_vtep_iface(p) { remote } else { None }),
+            };
+            b.macs.push(MacEntry { vlan: r.get("vlan").map(vlan_word).filter(|v| !v.is_empty()), mac: m.clone(), iface, vtep });
         }
     }
     for r in d.rows("fhrp") {
@@ -736,14 +802,35 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
     expand_policies(b);
     for r in d.rows("tunnel") {
         let Some(name) = opt(r, "name") else { continue };
-        b.tunnels.push(Tunnel { name, kind: opt(r, "kind"), local_ip: r.get("local_ip").and_then(ip), remote_ip: r.get("remote_ip").and_then(ip) });
+        let down = r.get("state").map(is_down).unwrap_or(false);
+        b.tunnels.push(Tunnel { name, kind: opt(r, "kind"), local_ip: r.get("local_ip").and_then(ip), remote_ip: r.get("remote_ip").and_then(ip), down });
     }
+}
+
+/// An interface or tunnel state word that means it carries nothing
+/// (LT-659): IOS `down` / `administratively down` / `notconnect`,
+/// Junos `down`, NX-OS `err-disabled`, FortiOS `down`, PAN-OS `down`.
+pub fn is_down(state: &str) -> bool {
+    let s = state.trim().to_ascii_lowercase();
+    let s = s.replace(['-', '_'], " ");
+    matches!(s.as_str(), "down" | "dn" | "administratively down" | "admin down" | "adm down" | "notconnect" | "not connect" | "notconnected" | "not connected" | "disabled" | "err disabled" | "errdisabled" | "lower layer down" | "inactive" | "shutdown" | "sfp not inserted" | "xcvr absent" | "notpresent" | "not present" | "link down" | "nolink")
+        || s.starts_with("admin")
+        || s.starts_with("err disabled")
 }
 
 /// Route rows merged per (VRF, prefix, protocol): a template writes one row
 /// per next hop, and equal-cost next hops are one route with several.
 fn read_routes(d: &DeviceIn, b: &mut Box_) {
-    for r in d.rows("route") {
+    let mut routes = std::mem::take(&mut b.routes);
+    read_route_table(d, "route", &mut routes);
+    b.routes = routes;
+    let mut fib = std::mem::take(&mut b.fib);
+    read_route_table(d, "fib", &mut fib);
+    b.fib = fib;
+}
+
+fn read_route_table(d: &DeviceIn, table: &str, into: &mut Vec<RouteEntry>) {
+    for r in d.rows(table) {
         let Some(p) = r.get("prefix") else { continue };
         // LT-550: iproute2 and esxcli write the default route as `default`.
         let v6 = r.get("next_hop").map(|h| h.contains(':')).unwrap_or(false);
@@ -772,7 +859,7 @@ fn read_routes(d: &DeviceIn, b: &mut Box_) {
             }
         }
         let num = |c: &str| r.get(c).and_then(|v| v.trim().parse::<u32>().ok());
-        match b.routes.iter_mut().find(|x| x.vrf == vrf && x.net == net && x.proto == proto) {
+        match into.iter_mut().find(|x| x.vrf == vrf && x.net == net && x.proto == proto) {
             Some(existing) => {
                 for h in next_hops {
                     if !existing.next_hops.contains(&h) {
@@ -780,7 +867,7 @@ fn read_routes(d: &DeviceIn, b: &mut Box_) {
                     }
                 }
             }
-            None => b.routes.push(RouteEntry { vrf, net, proto, ad: num("ad"), metric: num("metric"), next_hops, command: r.command.clone() }),
+            None => into.push(RouteEntry { vrf, net, proto, ad: num("ad"), metric: num("metric"), next_hops, command: if table == "fib" { format!("fib:{}", r.command) } else { r.command.clone() } }),
         }
     }
 }

@@ -39,9 +39,29 @@ fn is_mgmt(iface: Option<&str>) -> bool {
     i.starts_with("mgmt") || i.starts_with("management") || i == "me0" || i == "fxp0" || i == "em0" || i == "vme" || i.starts_with("ma1") || i == "oob"
 }
 
+/// The VRF an address row names, the global table's many spellings as one.
+fn vrf_word(v: Option<&str>) -> String {
+    match v.map(str::trim).unwrap_or("").to_ascii_lowercase().as_str() {
+        "" | "default" | "global" | "master" | "main" | "-" | "n/a" | "inet.0" => "default".into(),
+        _ => v.unwrap().trim().to_string(),
+    }
+}
+
 pub fn shared_subnets(devices: &[DeviceIn], graph: &mut Graph, ids: &Identities) {
-    // subnet → node → interface
-    let mut on: BTreeMap<String, BTreeMap<String, Option<String>>> = BTreeMap::new();
+    // LT-661: (node, address) → VRF, from the rows, so one subnet in two
+    // VRFs is two subnets.
+    let mut vrf_of: BTreeMap<(String, String), String> = BTreeMap::new();
+    for d in devices {
+        let Some(node) = ids.of_device.get(&d.device_id) else { continue };
+        for r in d.rows("ip_address") {
+            if let Some(ip) = r.get("ip") {
+                let ip = ip.split('/').next().unwrap_or(ip).trim().to_string();
+                vrf_of.insert((node.clone(), ip), vrf_word(r.get("vrf")));
+            }
+        }
+    }
+    // (vrf, subnet) → node → interface
+    let mut on: BTreeMap<(String, String), BTreeMap<String, Option<String>>> = BTreeMap::new();
     for n in &graph.nodes {
         if n.kind != NodeKind::Collected {
             continue;
@@ -52,7 +72,8 @@ pub fn shared_subnets(devices: &[DeviceIn], graph: &mut Graph, ids: &Identities)
                 continue;
             }
             if let Some(net) = network(ip, *p) {
-                on.entry(net).or_default().entry(n.id.clone()).or_insert_with(|| iface.clone());
+                let vrf = vrf_of.get(&(n.id.clone(), ip.clone())).cloned().unwrap_or_else(|| "default".into());
+                on.entry((vrf, net)).or_default().entry(n.id.clone()).or_insert_with(|| iface.clone());
             }
         }
     }
@@ -78,7 +99,7 @@ pub fn shared_subnets(devices: &[DeviceIn], graph: &mut Graph, ids: &Identities)
             }
         }
     }
-    for (net, members) in &on {
+    for ((vrf, net), members) in &on {
         let nodes: Vec<(&String, &Option<String>)> = members.iter().collect();
         if nodes.len() < 2 {
             continue;
@@ -101,7 +122,7 @@ pub fn shared_subnets(devices: &[DeviceIn], graph: &mut Graph, ids: &Identities)
                     a_if: ai.clone(),
                     b: b.clone(),
                     b_if: bi.clone(),
-                    vrf: None,
+                    vrf: (vrf != "default").then(|| vrf.clone()),
                     subnet: net.clone(),
                     confidence: if by.is_empty() { 0.4 } else { 1.0 },
                     confirmed_by: by.into_iter().collect(),

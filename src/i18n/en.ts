@@ -974,6 +974,7 @@ export const en = {
   'cpath.why.default': 'only the default route matched; it goes to {nextHop}.',
   'cpath.why.lpm': '{prefix} ({protocol}) is the longest match; it goes to {nextHop}.',
   'cpath.firewallNote': 'Firewall: {verdict}. {reason}',
+  'cpath.forwardingTable': 'Looked up in the forwarding table ({command}), which the device forwards by, rather than its routing table.',
   'cpath.natNote': 'NAT rule {rule} translates the {field} {was} to {now}.',
   'cpath.field.source': 'source',
   'cpath.field.destination': 'destination',

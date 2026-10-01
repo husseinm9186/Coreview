@@ -21,6 +21,8 @@ pub const TABLES: &[(&str, &[&str])] = &[
     ("stp", &["instance", "root_bridge", "root_port", "bridge_prio", "interface", "role", "state", "cost"]),
     ("vrf", &["name", "rd", "rt_import", "rt_export", "interfaces"]),
     ("route", &["vrf", "prefix", "mask", "proto", "ad", "metric", "next_hop", "interface", "age"]),
+    // LT-653: the forwarding table, the RIB's columns plus a label and the adjacency kind.
+    ("fib", &["vrf", "prefix", "mask", "proto", "ad", "metric", "next_hop", "interface", "label", "adjacency"]),
     ("routing_neighbor", &["vrf", "proto", "neighbor_id", "neighbor_ip", "local_if", "state", "area_or_as", "uptime"]),
     ("fhrp", &["proto", "group", "interface", "vip", "prio", "state", "peer_ip"]),
     ("policy_route", &["vrf", "seq", "in_if", "src", "dst", "proto", "port", "action_nh", "action_if"]),
@@ -32,7 +34,9 @@ pub const TABLES: &[(&str, &[&str])] = &[
     ("fw_object", &["name", "type", "host", "network", "mask", "range_start", "range_end", "member", "protocol", "port_op", "port_start", "port_end", "fqdn"]),
     ("tunnel", &["name", "kind", "local_ip", "remote_ip", "state"]),
     ("ha_pair", &["kind", "member", "role", "mac", "model", "serial", "peer_link"]),
-    ("ap", &["ap_name", "ap_ip", "ap_mac", "model", "nbr_switch", "nbr_port", "state"]),
+    // LT-656: nbr_ip, nbr_chassis, nbr_platform and local_port, which the
+    // builder read and nothing stored.
+    ("ap", &["ap_name", "ap_ip", "ap_mac", "model", "nbr_switch", "nbr_port", "state", "nbr_ip", "nbr_chassis", "nbr_platform", "local_port"]),
     ("endpoint", &["mac", "ip", "vlan", "switch", "port", "seen_via"]),
 ];
 
@@ -110,6 +114,21 @@ pub fn discovery_tables(conn: &Connection) -> rusqlite::Result<()> {
             CREATE INDEX IF NOT EXISTS d_{table}_run ON d_{table} (run_id, device_id);",
             cols.join(",\n                ")
         ))?;
+    }
+    Ok(())
+}
+
+/// A column added to a typed table after a database was made (LT-656):
+/// `CREATE TABLE IF NOT EXISTS` leaves an existing table as it was, so each
+/// of `TABLES`' columns is checked for and added.
+pub fn typed_columns(conn: &Connection) -> rusqlite::Result<()> {
+    for (table, columns) in TABLES {
+        let have: Vec<String> = conn.prepare(&format!("PRAGMA table_info(d_{table})"))?.query_map([], |r| r.get::<_, String>(1))?.filter_map(|r| r.ok()).collect();
+        for col in *columns {
+            if !have.iter().any(|c| c == col) {
+                conn.execute(&format!("ALTER TABLE d_{table} ADD COLUMN \"{col}\" TEXT"), [])?;
+            }
+        }
     }
     Ok(())
 }
@@ -464,6 +483,7 @@ mod tests {
         c.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
         discovery_tables(&c).unwrap();
         shadow_columns(&c).unwrap();
+        typed_columns(&c).unwrap();
         c
     }
 
@@ -556,6 +576,20 @@ mod fresh {
         }
         drop(conn);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// LT-656: a database made before `ap` had its neighbour columns gets
+    /// them on open, and a row with them is written whole.
+    #[test]
+    fn a_typed_table_made_without_a_column_gains_it() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE d_ap (run_id TEXT NOT NULL, device_id TEXT NOT NULL, command_id TEXT NOT NULL, ap_name TEXT, ap_ip TEXT, extra TEXT NOT NULL DEFAULT '{}', collected_at INTEGER NOT NULL);").unwrap();
+        super::discovery_tables(&conn).unwrap();
+        super::typed_columns(&conn).unwrap();
+        let cols: Vec<String> = conn.prepare("PRAGMA table_info(d_ap)").unwrap().query_map([], |r| r.get::<_, String>(1)).unwrap().filter_map(|r| r.ok()).collect();
+        for c in ["nbr_switch", "nbr_ip", "nbr_chassis", "nbr_platform", "local_port"] {
+            assert!(cols.iter().any(|x| x == c), "d_ap still has no {c}: {cols:?}");
+        }
     }
 }
 

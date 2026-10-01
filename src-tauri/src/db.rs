@@ -431,6 +431,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // migrates is unaffected.
     crate::collection_db::discovery_tables(conn)?;
     crate::collection_db::shadow_columns(conn)?;
+    crate::collection_db::typed_columns(conn)?;
     crate::collection_db::topology_tables(conn)?;
 
     apply_migrations(conn, MIGRATIONS)

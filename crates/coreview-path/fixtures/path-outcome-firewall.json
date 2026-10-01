@@ -26,7 +26,8 @@
               "distance": null,
               "metric": null,
               "nextHop": null,
-              "command": "show_ip_route"
+              "command": "show_ip_route",
+              "table": "routing"
             },
             "via": [],
             "outInterface": "port2",
@@ -103,7 +104,8 @@
               "distance": null,
               "metric": null,
               "nextHop": null,
-              "command": "show_ip_route"
+              "command": "show_ip_route",
+              "table": "routing"
             },
             "via": [],
             "outInterface": "port1",

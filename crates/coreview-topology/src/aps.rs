@@ -52,7 +52,9 @@ pub fn access_points(devices: &[DeviceIn], graph: &mut Graph, ids: &mut Identiti
             }
             // The AP's own LLDP: the switch port it is plugged into.
             let Some(sw_name) = r.get("nbr_switch") else { continue };
-            let sw = ids.find(r.get("nbr_chassis"), None, Some(sw_name), None).unwrap_or_else(|| {
+            // LT-656: the switch by its chassis or address first — a CDP
+            // device-id is often not the hostname the switch gave.
+            let sw = ids.find(r.get("nbr_chassis"), r.get("nbr_ip"), Some(sw_name), None).unwrap_or_else(|| {
                 let sid = format!("p-{}", crate::identity::name_key(sw_name));
                 if !graph.nodes.iter().any(|n| n.id == sid) {
                     let mut node = bare(&sid, sw_name);

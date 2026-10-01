@@ -106,15 +106,30 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("rt_export", &["export_rt", "rt_export", "export_targets"]),
         ],
         "route" => &[
-            ("vrf", &["vrf", "vrf_name", "routing_instance", "table", "vrf_name_out"]),
-            ("prefix", &["network", "prefix", "destination", "dest", "route", "network_prefix", "ipprefix", "ip_prefix", "ip_address", "dst", "destination_prefix", "ip_mask"]),
+            ("vrf", &["vrf", "vrf_name", "routing_instance", "table", "vrf_name_out", "table_name", "vr", "virtual_router"]),
+            ("prefix", &["network", "prefix", "destination", "dest", "route", "network_prefix", "ipprefix", "ip_prefix", "ip_address", "dst", "destination_prefix", "ip_mask", "rt_destination"]),
             ("mask", &["mask", "prefixlen", "prefix_length", "netmask", "subnet", "masklen", "prefix_len"]),
-            ("proto", &["protocol", "type", "source_proto", "route_source", "source", "clientname", "status"]),
+            ("proto", &["protocol", "type", "source_proto", "route_source", "source", "clientname", "status", "protocol_name"]),
             ("ad", &["distance", "admin_distance", "ad", "preference", "pref"]),
             ("metric", &["metric", "cost", "route_metric"]),
-            ("next_hop", &["nexthop_ip", "next_hop", "nexthop", "gateway", "via", "next_hop_ip", "nh", "ipnexthop", "gw", "nexthopip"]),
-            ("interface", &["nexthop_if", "interface", "outgoing_interface", "nexthop_interface", "out_interface", "exit_interface", "next_hop_interface", "ifname", "intf", "dev", "nexthopif", "vlan_name", "interface_alias"]),
+            ("next_hop", &["nexthop_ip", "next_hop", "nexthop", "gateway", "via", "next_hop_ip", "nh", "ipnexthop", "gw", "nexthopip", "nh_to"]),
+            ("interface", &["nexthop_if", "interface", "outgoing_interface", "nexthop_interface", "out_interface", "exit_interface", "next_hop_interface", "ifname", "intf", "dev", "nexthopif", "vlan_name", "interface_alias", "nh_via"]),
             ("age", &["uptime", "age", "time"]),
+        ],
+        // LT-653: the forwarding table — the RIB's columns, a label, and the
+        // adjacency kind (`attached`, `receive`, `drop`; Junos's `ucst`,
+        // `locl`, `rjct`), which `fib_fixups` turns into a protocol or Null0.
+        "fib" => &[
+            ("vrf", &["vrf", "vrf_name", "routing_instance", "table", "vrf_name_out", "table_name", "vr", "virtual_router", "tab"]),
+            ("prefix", &["network", "prefix", "destination", "dest", "route", "network_prefix", "ipprefix", "ip_prefix", "ip_address", "dst", "destination_prefix", "ip_mask", "rt_destination"]),
+            ("mask", &["mask", "prefixlen", "prefix_length", "netmask", "subnet", "masklen", "prefix_len"]),
+            ("proto", &["protocol", "proto", "source_proto", "route_source", "source", "protocol_name"]),
+            ("ad", &["distance", "admin_distance", "ad", "preference", "pref"]),
+            ("metric", &["metric", "cost", "route_metric"]),
+            ("next_hop", &["nexthop_ip", "next_hop", "nexthop", "gateway", "via", "next_hop_ip", "nh", "ipnexthop", "gw", "nexthopip", "nh_to", "gwy"]),
+            ("interface", &["nexthop_if", "interface", "outgoing_interface", "nexthop_interface", "out_interface", "exit_interface", "next_hop_interface", "ifname", "intf", "dev", "nexthopif", "vlan_name", "interface_alias", "nh_via"]),
+            ("label", &["label", "labels", "out_label", "outgoing_label", "local_label", "mpls_label"]),
+            ("adjacency", &["adjacency", "adj", "rewrite", "nh_type", "nh_nh_type", "nexthop_type", "destination_type", "flags"]),
         ],
         "routing_neighbor" => &[
             ("proto", &["proto", "protocol"]),
@@ -214,6 +229,12 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("model", &["model", "ap_model", "type"]),
             ("nbr_switch", &["nbr_switch", "neighbor", "neighbor_name", "device_id", "switch"]),
             ("nbr_port", &["nbr_port", "neighbor_port", "port", "interface", "neighbor_interface"]),
+            // LT-656: what the AP's own CDP/LLDP says of its switch — the
+            // address and chassis find a switch whose hostname differs.
+            ("nbr_ip", &["nbr_ip", "neighbor_ip", "neighbor_address", "nbr_address", "neighbor_mgmt_ip"]),
+            ("nbr_chassis", &["nbr_chassis", "neighbor_chassis", "chassis_id", "neighbor_chassis_id", "neighbor_mac"]),
+            ("nbr_platform", &["nbr_platform", "neighbor_platform", "platform"]),
+            ("local_port", &["local_port", "local_interface", "ap_port", "ap_interface"]),
             ("state", &["state", "status", "operation_state"]),
         ],
         "endpoint" => &[
@@ -304,6 +325,12 @@ pub fn normalise(table: &str, row: &Value) -> Normalised {
     }
     if table == "route" {
         route_fixups(&mut out.columns);
+        linux_route_fixups(&mut out.columns, &out.extra);
+    }
+    if table == "fib" {
+        route_fixups(&mut out.columns);
+        fib_fixups(&mut out.columns);
+        linux_route_fixups(&mut out.columns, &out.extra);
     }
     out
 }
@@ -346,6 +373,88 @@ fn route_fixups(c: &mut BTreeMap<String, String>) {
     }
 }
 
+/// LT-653: a forwarding table says where a packet goes in its own words —
+/// CEF's `attached`, `receive`, `drop`, `no route`; NX-OS's `Attached`,
+/// `Receive`, `Drop`; Junos's `ucst`, `locl`, `rjct`, `dscd`; a kernel's
+/// `unreachable`. Those become the RIB's vocabulary: a connected or local
+/// prefix, a Null0 interface, or a next hop kept as it is.
+fn fib_fixups(c: &mut BTreeMap<String, String>) {
+    let mut proto = c.get("proto").cloned().unwrap_or_default();
+    let mut null = false;
+    let mut hops: Vec<String> = Vec::new();
+    if let Some(nh) = c.get("next_hop").cloned() {
+        for h in nh.split(',').map(str::trim).filter(|h| !h.is_empty()) {
+            match h.to_ascii_lowercase().as_str() {
+                "attached" | "connected" | "direct" => {
+                    if proto.is_empty() {
+                        proto = "connected".into();
+                    }
+                }
+                "receive" | "local" | "locl" | "identity" => {
+                    if proto.is_empty() {
+                        proto = "local".into();
+                    }
+                }
+                "drop" | "discard" | "no route" | "noroute" | "null" | "null0" | "rjct" | "dscd" | "blackhole" | "unreachable" | "broadcast" | "bcst" | "mcst" | "mdsc" => null = true,
+                _ => hops.push(h.to_string()),
+            }
+        }
+    }
+    if let Some(adj) = c.get("adjacency").map(|a| a.to_ascii_lowercase()) {
+        match adj.as_str() {
+            "locl" | "receive" | "local" => {
+                if proto.is_empty() {
+                    proto = "local".into();
+                }
+            }
+            "intf" | "attached" | "connected" => {
+                if proto.is_empty() {
+                    proto = "connected".into();
+                }
+            }
+            "rjct" | "dscd" | "drop" | "discard" | "unreachable" => null = true,
+            _ => {}
+        }
+    }
+    let hops: Vec<String> = hops.into_iter().filter(|h| h.parse::<std::net::IpAddr>().map(|a| !a.is_unspecified()).unwrap_or(false) || h.contains('%')).collect();
+    if hops.is_empty() {
+        c.remove("next_hop");
+    } else {
+        c.insert("next_hop".into(), hops.join(", "));
+    }
+    if null && !c.contains_key("interface") {
+        c.insert("interface".into(), "Null0".into());
+    }
+    if !proto.is_empty() {
+        c.insert("proto".into(), proto);
+    }
+}
+
+/// LT-653: iproute2's words. `scope: link` with no gateway is a connected
+/// subnet, `type: local` the box's own address, `type: unreachable` /
+/// `blackhole` / `prohibit` a drop — none of which the `protocol` column
+/// (`kernel`, `boot`) says.
+fn linux_route_fixups(c: &mut BTreeMap<String, String>, extra: &Map<String, Value>) {
+    let word = |k: &str| extra.get(k).and_then(Value::as_str).map(|v| v.to_ascii_lowercase()).unwrap_or_default();
+    let proto = c.get("proto").cloned().unwrap_or_default();
+    let plain = proto.is_empty() || matches!(proto.as_str(), "kernel" | "boot" | "static" | "dhcp");
+    match word("type").as_str() {
+        "local" => {
+            if plain {
+                c.insert("proto".into(), "local".into());
+            }
+        }
+        "unreachable" | "blackhole" | "prohibit" => {
+            c.entry("interface".into()).or_insert_with(|| "Null0".into());
+        }
+        _ => {
+            if word("scope") == "link" && !c.contains_key("next_hop") && plain {
+                c.insert("proto".into(), "connected".into());
+            }
+        }
+    }
+}
+
 /// Every row of one answer into every table the command feeds.
 pub fn normalise_all(feeds: &[String], rows: &[Value]) -> Vec<Normalised> {
     let mut out = Vec::new();
@@ -376,7 +485,7 @@ pub fn rows_of(parser: &str, outcome: &crate::run::CommandOutcome) -> Vec<Value>
 /// so its routing rows are kept apart as a VRF of that name too, and every
 /// row remembers where it was read, so a live check asks inside the same one.
 pub fn tag_context(kind: &str, name: &str, n: &mut Normalised) {
-    let routed = n.table == "route" || n.table == "arp" || n.table == "routing_neighbor" || n.table == "ip_address";
+    let routed = n.table == "route" || n.table == "fib" || n.table == "arp" || n.table == "routing_neighbor" || n.table == "ip_address";
     if kind == "vrf" && !n.columns.contains_key("vrf") && routed {
         n.columns.insert("vrf".into(), name.to_string());
     }
@@ -403,7 +512,7 @@ pub fn rows_for_step(step: &coreview_catalog::Step, rows: &[Value]) -> Vec<Norma
             n.columns.insert("proto".into(), proto.into());
         }
         if (n.table == "routing_neighbor" || n.table == "fhrp") && !n.columns.contains_key("proto") {
-            for p in ["ospf", "eigrp", "bgp", "isis", "rip", "standby", "hsrp", "vrrp", "glbp", "ldp"] {
+            for p in ["ospf", "eigrp", "bgp", "isis", "rip", "standby", "hsrp", "vrrp", "glbp", "magp", "ldp"] {
                 if step.cmd.contains(p) {
                     n.columns.insert("proto".into(), if p == "standby" { "hsrp".into() } else { p.into() });
                     break;
@@ -547,6 +656,12 @@ fn flatten_into(v: &Value, prefix: &str, out: &mut Map<String, Value>, depth: us
 pub fn rows_from_xml(text: &str) -> Result<Vec<Value>, String> {
     let doc = roxmltree::Document::parse(text.trim()).map_err(|e| format!("xml: {e}"))?;
     let root = doc.root_element();
+    // LT-654: Junos's routing table nests twice — `route-table` per table,
+    // `rt` per prefix, `rt-entry` per protocol — and the generic rule
+    // flattened a whole table into one row.
+    if root.descendants().any(|n| n.is_element() && n.tag_name().name() == "route-table") {
+        return Ok(junos_route_rows(root));
+    }
     let mut node = root;
     // Walk down single-child chains (rpc-reply → interface-information → ...).
     loop {
@@ -579,6 +694,46 @@ pub fn rows_from_xml(text: &str) -> Result<Vec<Value>, String> {
         }
     }
     Ok(rows)
+}
+
+/// Junos `show route | display xml`: one row per active `rt-entry` (every
+/// entry when none is marked active), the table's name on each, the
+/// entry's leaves flattened without a prefix — `protocol_name`,
+/// `preference`, `nh_to`, `nh_via` — so an ECMP entry's hops are a list.
+fn junos_route_rows(root: roxmltree::Node) -> Vec<Value> {
+    let mut rows = Vec::new();
+    for table in root.descendants().filter(|n| n.is_element() && n.tag_name().name() == "route-table") {
+        let name = table.children().find(|c| c.is_element() && c.tag_name().name() == "table-name").and_then(|c| c.text()).unwrap_or("").trim().to_string();
+        // LT-653: `show route forwarding-table` has `rt-entry` straight under the
+        // table, each carrying its own `rt-destination`; the RIB wraps them in `rt`.
+        for e in table.children().filter(|c| c.is_element() && c.tag_name().name() == "rt-entry") {
+            let mut m = Map::new();
+            flatten_xml(e, "", &mut m, 0);
+            m.insert("table_name".into(), Value::String(name.clone()));
+            // What the entry does: a next-hop type that decides on its own
+            // (local, reject, discard), else the destination type (interface,
+            // user, permanent).
+            let nh_type = m.get("nh_nh_type").and_then(Value::as_str).unwrap_or("").to_string();
+            let dest_type = m.get("destination_type").and_then(Value::as_str).unwrap_or("").to_string();
+            let adjacency = if matches!(nh_type.as_str(), "locl" | "rjct" | "dscd" | "bcst" | "mcst" | "mdsc") { nh_type } else { dest_type };
+            m.insert("adjacency".into(), Value::String(adjacency));
+            rows.push(Value::Object(m));
+        }
+        for rt in table.children().filter(|c| c.is_element() && c.tag_name().name() == "rt") {
+            let dest = rt.children().find(|c| c.is_element() && c.tag_name().name() == "rt-destination").and_then(|c| c.text()).unwrap_or("").trim().to_string();
+            let entries: Vec<roxmltree::Node> = rt.children().filter(|c| c.is_element() && c.tag_name().name() == "rt-entry").collect();
+            let is_active = |e: &roxmltree::Node| e.children().any(|c| c.is_element() && (c.tag_name().name() == "current-active" || (c.tag_name().name() == "active-tag" && c.text().map(str::trim) == Some("*"))));
+            let active: Vec<roxmltree::Node> = entries.iter().copied().filter(is_active).collect();
+            for e in if active.is_empty() { entries } else { active } {
+                let mut m = Map::new();
+                flatten_xml(e, "", &mut m, 0);
+                m.insert("rt_destination".into(), Value::String(dest.clone()));
+                m.insert("table_name".into(), Value::String(name.clone()));
+                rows.push(Value::Object(m));
+            }
+        }
+    }
+    rows
 }
 
 fn flatten_xml(node: roxmltree::Node, prefix: &str, out: &mut Map<String, Value>, depth: usize) {
@@ -827,6 +982,101 @@ mod tests {
         assert_eq!(n.columns["admin"], "up");
         assert_eq!(n.columns["oper"], "up");
         assert_eq!(n.extra["current_physical_address"], "00:00:00:00:00:01");
+    }
+
+    /// LT-654: a Junos router's `show route | display xml` — two tables, a
+    /// prefix with an active static and an inactive OSPF entry, ECMP next
+    /// hops — reaches the `route` table one row per active entry, the table
+    /// name as the VRF. It did not: `rt-destination` had no synonym and the
+    /// repeated `route-table` swallowed every `rt` into one row.
+    #[test]
+    fn junos_route_xml_becomes_one_route_row_per_active_entry() {
+        let xml = r#"<rpc-reply><route-information>
+          <route-table><table-name>inet.0</table-name><destination-count>2</destination-count>
+            <rt><rt-destination>10.0.0.0/24</rt-destination>
+              <rt-entry><active-tag>*</active-tag><current-active/><protocol-name>Static</protocol-name><preference>5</preference><age seconds="100">00:01:40</age>
+                <nh><selected-next-hop/><to>192.0.2.1</to><via>ge-0/0/0.0</via></nh><nh><to>192.0.2.5</to><via>ge-0/0/1.0</via></nh></rt-entry>
+              <rt-entry><protocol-name>OSPF</protocol-name><preference>10</preference><metric>2</metric><nh><to>192.0.2.9</to><via>ge-0/0/2.0</via></nh></rt-entry>
+            </rt>
+            <rt><rt-destination>0.0.0.0/0</rt-destination><rt-entry><active-tag>*</active-tag><current-active/><protocol-name>Static</protocol-name><preference>5</preference><nh><to>192.0.2.254</to><via>ge-0/0/3.0</via></nh></rt-entry></rt>
+          </route-table>
+          <route-table><table-name>CUST-A.inet.0</table-name>
+            <rt><rt-destination>172.16.0.0/16</rt-destination><rt-entry><active-tag>*</active-tag><current-active/><protocol-name>BGP</protocol-name><preference>170</preference><nh><to>192.0.2.17</to><via>ge-0/0/4.0</via></nh></rt-entry></rt>
+          </route-table>
+        </route-information></rpc-reply>"#;
+        let rows = rows_from_xml(xml).unwrap();
+        assert_eq!(rows.len(), 3, "{rows:?}");
+        let r: Vec<Normalised> = rows.iter().map(|r| normalise("route", r)).collect();
+        assert_eq!(r[0].columns["prefix"], "10.0.0.0/24");
+        assert_eq!(r[0].columns["vrf"], "inet.0");
+        assert_eq!(r[0].columns["proto"], "Static");
+        assert_eq!(r[0].columns["ad"], "5");
+        assert_eq!(r[0].columns["next_hop"], "192.0.2.1, 192.0.2.5");
+        assert_eq!(r[0].columns["interface"], "ge-0/0/0.0, ge-0/0/1.0");
+        assert_eq!(r[1].columns["prefix"], "0.0.0.0/0");
+        assert_eq!(r[2].columns["vrf"], "CUST-A.inet.0");
+        assert_eq!(r[2].columns["proto"], "BGP");
+        assert_eq!(r[2].columns["next_hop"], "192.0.2.17");
+    }
+
+    /// LT-653: forwarding tables in their own words become the RIB's.
+    #[test]
+    fn a_forwarding_table_row_speaks_the_ribs_vocabulary() {
+        // IOS `show ip cef`: attached, receive, drop, an ECMP pair, a plain next hop.
+        let cef = |nh: &[&str], ifs: &[&str]| json!({"ip_address": "10.0.0.0", "prefix_length": "24", "nexthop": nh, "interface": ifs});
+        let n = normalise("fib", &cef(&["attached"], &["GigabitEthernet0/1"]));
+        assert_eq!((n.columns["proto"].as_str(), n.columns["interface"].as_str(), n.columns.get("next_hop")), ("connected", "GigabitEthernet0/1", None));
+        let n = normalise("fib", &cef(&["receive"], &["GigabitEthernet0/1"]));
+        assert_eq!(n.columns["proto"], "local");
+        let n = normalise("fib", &cef(&["drop"], &[]));
+        assert_eq!((n.columns["interface"].as_str(), n.columns.get("next_hop")), ("Null0", None));
+        let n = normalise("fib", &cef(&["no route"], &[]));
+        assert_eq!(n.columns["interface"], "Null0");
+        let n = normalise("fib", &cef(&["192.0.2.1", "192.0.2.5"], &["GigabitEthernet0/1", "GigabitEthernet0/2"]));
+        assert_eq!((n.columns["next_hop"].as_str(), n.columns["interface"].as_str(), n.columns["prefix"].as_str(), n.columns["mask"].as_str()), ("192.0.2.1, 192.0.2.5", "GigabitEthernet0/1, GigabitEthernet0/2", "10.0.0.0", "24"));
+        // NX-OS `show forwarding ipv4 route`.
+        let n = normalise("fib", &json!({"ip_address": "10.1.0.0", "prefix_length": "16", "nexthop": ["Attached"], "interface": ["Vlan10"]}));
+        assert_eq!(n.columns["proto"], "connected");
+        // Junos `show route forwarding-table`: the nh-type decides.
+        let xml = r#"<rpc-reply><forwarding-table-information><route-table><table-name>default.inet</table-name><address-family>Internet</address-family>
+          <rt-entry><rt-destination>default</rt-destination><destination-type>perm</destination-type><nh><nh-type>rjct</nh-type><nh-index>36</nh-index></nh></rt-entry>
+          <rt-entry><rt-destination>10.0.0.0/24</rt-destination><destination-type>user</destination-type><nh><nh-type>ucst</nh-type><nh-index>581</nh-index><to>192.0.2.1</to><via>ge-0/0/0.0</via></nh></rt-entry>
+          <rt-entry><rt-destination>192.0.2.0/30</rt-destination><destination-type>intf</destination-type><nh><nh-type>rslv</nh-type><nh-index>582</nh-index><via>ge-0/0/0.0</via></nh></rt-entry>
+          <rt-entry><rt-destination>192.0.2.2/32</rt-destination><destination-type>intf</destination-type><nh><nh-type>locl</nh-type><nh-index>583</nh-index></nh></rt-entry>
+        </route-table></forwarding-table-information></rpc-reply>"#;
+        let rows = rows_from_xml(xml).unwrap();
+        let r: Vec<Normalised> = rows.iter().map(|r| normalise("fib", r)).collect();
+        assert_eq!(r.len(), 4, "{rows:?}");
+        assert_eq!((r[0].columns["prefix"].as_str(), r[0].columns["interface"].as_str(), r[0].columns["vrf"].as_str()), ("default", "Null0", "default.inet"));
+        assert_eq!((r[1].columns["prefix"].as_str(), r[1].columns["next_hop"].as_str(), r[1].columns["interface"].as_str()), ("10.0.0.0/24", "192.0.2.1", "ge-0/0/0.0"));
+        assert_eq!((r[2].columns["proto"].as_str(), r[2].columns["interface"].as_str()), ("connected", "ge-0/0/0.0"));
+        assert_eq!(r[3].columns["proto"], "local");
+    }
+
+    /// LT-653: a kernel's routes say what they are in iproute2's words.
+    #[test]
+    fn iproute2_rows_say_connected_local_and_drop() {
+        for table in ["route", "fib"] {
+            let n = normalise(table, &json!({"dst": "192.0.2.0/24", "dev": "eth0", "protocol": "kernel", "scope": "link", "prefsrc": "192.0.2.11"}));
+            assert_eq!((n.columns["proto"].as_str(), n.columns["interface"].as_str(), n.columns.get("next_hop")), ("connected", "eth0", None), "{table}");
+            let n = normalise(table, &json!({"type": "local", "dst": "192.0.2.11", "dev": "eth0", "table": "local", "protocol": "kernel", "scope": "host"}));
+            assert_eq!(n.columns["proto"], "local");
+            let n = normalise(table, &json!({"type": "blackhole", "dst": "10.0.0.0/8", "protocol": "static"}));
+            assert_eq!(n.columns["interface"], "Null0");
+            let n = normalise(table, &json!({"dst": "default", "gateway": "192.0.2.1", "dev": "eth0", "protocol": "dhcp", "metric": 100}));
+            assert_eq!((n.columns["proto"].as_str(), n.columns["next_hop"].as_str()), ("dhcp", "192.0.2.1"));
+        }
+    }
+
+    /// LT-658: the ASA's `show interface` and the AireOS controller's
+    /// `show interface summary` carry addresses their catalogs never fed.
+    #[test]
+    fn an_asa_and_an_aireos_interface_row_give_an_address() {
+        let asa = normalise("ip_address", &json!({"interface": "GigabitEthernet0/0", "interface_zone": "outside", "link_status": "up", "protocol_status": "up", "mac_address": "0000.0000.0a01", "mtu": "1500", "ip_address": "198.51.100.2", "netmask": "255.255.255.0"}));
+        assert_eq!((asa.columns["interface"].as_str(), asa.columns["ip"].as_str(), asa.columns["prefixlen"].as_str()), ("GigabitEthernet0/0", "198.51.100.2", "255.255.255.0"));
+        assert_eq!(asa.extra["interface_zone"], "outside");
+        let wlc = normalise("ip_address", &json!({"int_count": "3", "name": "management", "port": "1", "vlan_id": "10", "ip_address": "192.0.2.5", "type": "Static", "ap_mgr": "Yes", "guest": "No"}));
+        assert_eq!((wlc.columns["interface"].as_str(), wlc.columns["ip"].as_str()), ("management", "192.0.2.5"));
     }
 
     #[test]

@@ -193,10 +193,69 @@ pub fn problems(catalog: &Catalog, templates: Option<&Path>) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
 
     fn repo() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    /// LT-667: the routing matrix. Every OS that can route feeds what the
+    /// path builder reads — routes, addresses, ARP, interfaces — and every
+    /// OS that can do a thing feeds that thing's table: VRFs, FHRP, policy
+    /// routes, a firewall's zones, policy, NAT and objects. A catalog with a
+    /// hole here is a device the path cannot be traced through.
+    #[test]
+    fn every_routing_os_feeds_what_the_path_builder_reads() {
+        let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+        let mut holes = Vec::new();
+        for c in &catalogs {
+            if c.commands.is_empty() {
+                continue; // a phase-2 shell with nothing yet (LT-666)
+            }
+            let feeds = |t: &str| c.commands.iter().any(|cmd| cmd.feeds.iter().any(|f| f == t));
+            let roles: BTreeSet<&str> = c.role_hint.iter().map(|r| r.role.as_str()).chain(c.role_defaults.keys().map(String::as_str)).collect();
+            let flags: BTreeSet<&str> = c.caps_probe.iter().flat_map(|p| p.flags.keys().map(String::as_str)).chain(c.role_defaults.values().flatten().map(String::as_str)).collect();
+            let routes = roles.iter().any(|r| matches!(*r, "router" | "l3_switch" | "firewall")) || flags.contains("routing");
+            let mut need: Vec<&str> = Vec::new();
+            if routes {
+                need.extend(["route", "ip_address", "arp", "interface"]);
+            }
+            if flags.contains("vrf") {
+                need.push("vrf");
+            }
+            if flags.contains("fhrp") {
+                need.push("fhrp");
+            }
+            if flags.contains("pbr") {
+                need.push("policy_route");
+            }
+            if roles.contains("firewall") {
+                need.extend(["fw_policy", "fw_zone", "nat_rule", "fw_object"]);
+            }
+            for t in need {
+                if !feeds(t) {
+                    holes.push(format!("{}: nothing feeds {t}", c.os));
+                }
+            }
+        }
+        // The holes still open, each owned by a roadmap item; a new hole
+        // fails here, and a closed one must be struck from this list.
+        let known: BTreeSet<&str> = [
+            "cisco_iosxr: nothing feeds policy_route", // ABF (LT-663)
+            "fortios: nothing feeds vrf",              // VRFs are numbers on interfaces (LT-665)
+            "juniper_junos: nothing feeds policy_route", // filter-based forwarding (LT-669)
+            "juniper_junos: nothing feeds fw_object",  // address books (LT-669)
+            "panos: nothing feeds fw_zone",            // (LT-670)
+            "panos: nothing feeds fw_object",          // (LT-670)
+        ]
+        .into_iter()
+        .collect();
+        let new: Vec<&String> = holes.iter().filter(|h| !known.contains(h.as_str())).collect();
+        assert!(new.is_empty(), "{} new holes in the routing matrix:\n{}", new.len(), new.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"));
+        let closed: Vec<&&str> = known.iter().filter(|k| !holes.iter().any(|h| h == *k)).collect();
+        assert!(closed.is_empty(), "closed since, strike them from the list: {closed:?}");
     }
 
     #[test]
@@ -270,6 +329,7 @@ commands:
   - { id: a, cmd: show version, gate: always, parser: magic, feeds: [device], verified: docs }
   - { id: b, cmd: show version, gate: always, parser: json, feeds: [devices], verified: docs }
   - { id: c, cmd: show version, gate: cap.x &&, parser: json, feeds: [device], verified: docs }
+  - { id: d, cmd: show version, gate: always, parser: json, feeds: [link, l3_adjacency], verified: docs }
 "#;
         let c = load_str(text).unwrap();
         let p = problems(&c, None).join("\n");
@@ -277,6 +337,10 @@ commands:
         assert!(p.contains("\"hyperdrive\" is not a capability flag"), "{p}");
         assert!(p.contains("\"magic\" is not a parser"), "{p}");
         assert!(p.contains("\"devices\" is not a table"), "{p}");
+        // LT-657: the builder writes `link` and `l3_adjacency`; a command
+        // feeding either would have its rows dropped by the store.
+        assert!(p.contains("\"link\" is not a table"), "{p}");
+        assert!(p.contains("\"l3_adjacency\" is not a table"), "{p}");
         assert!(p.contains("expected a term"), "{p}");
     }
 }

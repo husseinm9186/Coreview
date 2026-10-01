@@ -267,10 +267,17 @@ impl fmt::Display for Parser {
     }
 }
 
-/// The tables the spec defines; a command may feed no other.
+/// The tables the spec defines that a command may feed. The spec's `link`
+/// and `l3_adjacency` are written by the topology builder, never by a
+/// command — a command feeding them had its rows dropped by the store
+/// (LT-657).
 pub const TABLES: &[&str] = &[
     "device", "interface", "ip_address", "neighbor", "mac_table", "arp", "vlan", "lag", "stp", "vrf", "route", "routing_neighbor", "fhrp",
-    "policy_route", "nat_rule", "fw_zone", "fw_policy", "fw_binding", "fw_object", "tunnel", "ha_pair", "ap", "endpoint", "link", "l3_adjacency", "raw_config", "path_probe",
+    "policy_route", "nat_rule", "fw_zone", "fw_policy", "fw_binding", "fw_object", "tunnel", "ha_pair", "ap", "endpoint", "raw_config", "path_probe",
+    // LT-653: the forwarding table (CEF, `show forwarding`, Junos's
+    // forwarding-table, a kernel's routes), which the path builder walks
+    // in preference to the RIB.
+    "fib",
 ];
 
 /// The capability flags the spec defines, plus the few the catalogs needed.

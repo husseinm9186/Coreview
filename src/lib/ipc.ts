@@ -503,7 +503,7 @@ export type PathRequest = {
   traceroute?: (string | null)[] | null;
   noReverse?: boolean;
 };
-export type PathMatched = { prefix: string; protocol: string; kind: string; distance: number | null; metric: number | null; nextHop: string | null; command: string };
+export type PathMatched = { prefix: string; protocol: string; kind: string; distance: number | null; metric: number | null; nextHop: string | null; command: string; table: 'forwarding' | 'routing' | 'policy' };
 export type PathL2Step = { device: string; inPort: string | null; outPort: string | null; vlan: string | null; blocked: boolean };
 export type PathFirewall = { zoneIn: string | null; zoneOut: string | null; policy: string | null; action: string | null; verdict: 'allow' | 'deny' | 'undetermined'; reason: string };
 export type PathRewrite = { rule: string; kind: string; field: 'source' | 'destination'; was: string; now: string };

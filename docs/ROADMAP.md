@@ -26,6 +26,12 @@ then **LT-125**, then **LT-124**, then **LT-134's second half** (IF-MIB,
 LLDP-MIB, BRIDGE-MIB). One at a time, in that order. **Not** LT-110's
 Lucidchart path — "don't do it we don't want this"; see LT-110 in Done.
 
+**Mandate set 2026-09-30** — "make this app the best in the world": every
+vendor a network engineer meets collected by the engine, and the path trace
+answered from the forwarding table, not a guess. LT-651–LT-668 are its
+first cut; the order is Onyx (LT-651, LT-652), the FIB (LT-653), the
+builders' review bugs (LT-654–LT-662), then the vendor matrix (LT-663–LT-668).
+
 **Mission set 2026-09-16 — parity with Lucidchart and Visio, and beyond.**
 Eight phases, checked in after each. Phase 1 is below; phases 2–8 are under
 **Next**. The operator's rulings on the conflicts it raised are D-028 (shapes),
@@ -165,6 +171,74 @@ list — times out waiting for `.cv-project-open`. It fails the same way on
 the tree before the sweep, so it is not today's work; it has not been run
 in CI (the harnesses are run by hand). Not yet looked into: whether the app
 or the harness's settings stub is at fault.
+
+### LT-663 — Every Cisco: SMB switches, FTD's CLI, SD-WAN edges, the 9800's wireless tables — 2026-09-30
+**Source:** the operator, 2026-09-30: "make sure crawler engines cover all
+aruba all cisco all fortinet and everything you would think of".
+Catalogs from vendored templates and documentation (D-058): `cisco_s300`
+(SG/CBS small-business CLI — `show system`, `show lldp neighbors`, `show mac
+address-table`, `show ip interface`), `cisco_ftd` (the session block
+exists, the catalog does not — `show network`, `show route`, `show arp`,
+`show interface ip brief` in clish), `cisco_viptela` (cEdge/vEdge — `show
+omp peers`, `show control connections`, `show interface`, `show arp`), and
+the 9800's `show wireless client summary` / `show ap summary` / `show ap
+cdp neighbors` under cisco_ios's wlc role. The IOS, NX-OS and IOS-XR
+`unverified` entries each get a documentation fixture or are removed.
+
+### LT-664 — Every Aruba: Mobility controllers, Instant APs, and AOS-CX's L3 verified — 2026-09-30
+**Source:** the same message. `aruba_os` (Mobility controllers, templates
+vendored: `show ap database`, `show ap bss-table`, `show arp`, `show ip
+interface brief`, `show inventory`, `show version`, `show vlan`) and Aruba
+Instant (`show version`, `show ap-env`, `show clients`, `show summary`);
+AOS-CX's `fhrp` (`show vrrp`, `show vsx status`), `stp` and `lag` entries
+verified against fixtures and the operator's 6200 capture (LT-635).
+
+### LT-665 — Every Fortinet: SD-WAN, VRF, the kernel FIB, FortiSwitch's L3 side — 2026-09-30
+**Source:** the same message. FortiOS: `diagnose sys sdwan member` /
+`service` / `health-check`, `get router info routing-table all` per VRF,
+`get router info bgp summary` / `ospf neighbor` verified against the lab
+(LT-558), `get router info kernel` (LT-653), `diagnose firewall iprope list`
+only if read-only is certain, policy routes verified. FortiSwitch:
+`get switch trunk`, `get switch stp instance`, `show system interface`,
+`get router info routing-table all`, `diagnose switch vlan list`. FortiAP
+stays read through its FortiGate (LT-596).
+
+### LT-666 — The empty shells filled: Dell OS10, Extreme EXOS, Ruckus ICX, Ubiquiti EdgeOS, VyOS — 2026-09-30
+**Source:** the same message. Four catalogs exist with no commands; the
+templates for all four are vendored (`dell_force10`, `extreme_exos`,
+`ruckus_fastiron` / `brocade_fastiron`, `ubiquiti_edgerouter`) and VyOS's
+session block exists with no catalog. Each filled from its templates and
+documentation, `verified: docs`, with device, interface, ip_address,
+neighbor, mac_table, arp, route, vlan, lag at least.
+
+### LT-668 — Which ECMP member the hardware picks: the live hash per OS — 2026-09-30
+**Source:** the same message. The walk branches over every ECMP next hop;
+the live check should say which one the device would use for this flow:
+`show ip cef exact-route {src} {dst}` (IOS), `show cef exact-route` (XR),
+`show routing-context`/`show forwarding ... ecmp` (NX-OS), `show route
+forwarding-table` + `show pfe` where it exists (Junos), `get router info
+routing-table details` (FortiOS), `test routing fib-lookup` (PAN-OS, if its
+allowlist verdict is read-only). The verify step marks the member taken.
+
+### LT-669 — Every Juniper: filter-based forwarding and the SRX's address books — 2026-09-30
+**Found by LT-667's matrix.** The Junos catalog sets `pbr` and the
+firewall role and feeds neither `policy_route` (filter-based forwarding:
+`show configuration firewall` is configuration, `show firewall` is
+counters) nor `fw_object` (`show security address-book`, `show
+configuration security address-book | display xml`), so an SRX's verdict
+stays Undetermined and a filter steering traffic to another instance is
+not seen. Each needs a command the allowlist admits and a reader or XML
+mapping, built from Juniper's documentation (D-058).
+
+### LT-670 — Every Palo Alto: zones, address and service objects, the virtual router as the VRF — 2026-09-30
+**Found by LT-667's matrix.** PAN-OS feeds neither `fw_zone` (`show
+interface all` carries each interface's zone, but as a column beside the
+interface's own name, which the zone table cannot take as it stands) nor
+`fw_object` (address and service objects live in the configuration: the
+XML API's `type=config&action=get` on the address and service xpaths, or
+`show running address-object` where it exists). The `vr`/`virtual_router`
+synonym now lands a virtual router in `vrf`; whether `show routing route`'s
+XML names it so is for the lab's Palo Alto (LT-600) to say.
 
 ### LT-519 — P1 packaging: the sidecar laid into the installer, every PE signed — 2026-09-29
 **Source:** D-060's packaging rules and `sidecar/build/windows.ps1`;
@@ -676,6 +750,230 @@ holding the next hop and skips a longer static one. Next.
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-660 — EVPN is not MPLS: VXLAN routes and MAC-over-VTEP modelled — 2026-09-30, done the same day
+**Found by the builders' review.** An EVPN type-5 route takes the L3VPN
+branch and is labelled "MPLS L3VPN"; a MAC learned on `nve1` ends the L2
+walk. Label the overlay by what the tunnel row says it is, and carry an L2
+walk over the VTEP to the remote switch that holds the MAC (`show l2route
+evpn mac all`, `show bgp l2vpn evpn`). Tests on invented rows.
+**Done 2026-09-30.** A MAC the table places behind an NVE — NX-OS's
+`nve1(192.0.2.12)`, Onyx's `remote_ip` — carries the far VTEP's address
+(`MacEntry.vtep`); the L2 walk writes the step as `nve1 → 192.0.2.12`,
+crosses to the collected VTEP and goes on there, or ends at the VTEP when
+it was not collected. A VPN route on a box with a VXLAN tunnel, or from
+an EVPN command, is labelled `EVPN/VXLAN` with the local VTEP, not `MPLS
+L3VPN`. **Run:** `a_mac_behind_a_vtep_is_followed_to_the_far_leaf` and
+`an_evpn_type5_route_is_labelled_vxlan_not_mpls`. **Not done:** the MPLS
+LFIB and labels, and `show l2route evpn mac all` as a source (the MAC
+tables already say which VTEP).
+
+### LT-661 — L3 adjacency per VRF — 2026-09-30, done the same day
+**Found by the builders' review.** `shared_subnets` ignores the address's
+VRF, so the same subnet in two VRFs draws a false adjacency. Carry the VRF
+through `L3Adjacency` and match within it; a test with 10.0.0.0/24 in two
+VRFs.
+**Done 2026-09-30.** `shared_subnets` keys a subnet by (VRF, prefix),
+the VRF read from the devices' `ip_address` rows, and writes it on the
+adjacency. **Run:** `a_shared_subnet_is_an_adjacency_only_within_one_vrf`
+(failed first: an adjacency across VRF A and VRF B).
+
+### LT-662 — The VLAN table read: access and trunk membership in the L2 walk — 2026-09-30, done the same day
+**Found by the builders' review.** Ten catalogs feed `vlan` and nothing
+reads it; the L2 walk takes the VLAN from the SVI's name alone. Use the
+table for membership and for the VLAN a routed port's frame enters, and
+refuse a MAC-table hit on a port not in the VLAN. Tests on invented rows.
+**Done 2026-09-30.** `Box_.vlan_ports` from the `vlan` table and access
+ports' `interface.vlan`; the L2 walk reads the VLAN a frame enters on from
+the arriving port where no SVI names it, and warns when a MAC-table hit
+is on a port the VLAN table does not place in that VLAN. **Run:**
+`the_vlan_a_frame_enters_is_read_from_the_vlan_table` (a stale entry in
+another VLAN listed first was what the walk took).
+
+### LT-658 — The ASA and the AireOS controller own no addresses — 2026-09-30, done the same day
+**Found by the builders' review.** Neither catalog feeds `ip_address`, so
+ownership rests on `L` /32 routes and a controller is never found by IP.
+`show interface ip brief` + `show ip address` (ASA), `show interface
+summary` (AireOS); verified against ntc fixtures.
+**Done 2026-09-30.** The ASA's `show interface` (address and netmask in
+ntc's template) and the AireOS controller's `show interface summary` now
+feed `ip_address` as well as `interface`; the ASA's `nameif` rides along in
+`extra.interface_zone`. **Run:** `an_asa_and_an_aireos_interface_row_give_an_address`
+(the normaliser on the templates' own column names).
+
+### LT-667 — The routing matrix: what the path builder reads, fed by every OS that routes — 2026-09-30, done the same day
+**Source:** the same message — "routing and switching … all captured". A
+test over the catalogs: every OS whose role can be `router`, `l3_switch`
+or `firewall` feeds `route`, `ip_address`, `arp`, `interface`; every OS
+with a `vrf` flag feeds `vrf`; every OS with `fhrp` feeds `fhrp`; every
+firewall feeds `fw_policy`, `fw_zone`, `nat_rule`, `fw_object`; every OS
+with `pbr` feeds `policy_route`. The holes it finds (today: Junos routes all
+`docs`, FortiOS routes `unverified`, FHRP on CX and NX-OS unverified, ASA
+no VRF, PAN-OS and Junos objects unresolved) each closed with a fixture.
+**Done 2026-09-30.** `every_routing_os_feeds_what_the_path_builder_reads`
+in the catalog crate: every OS with a routing role or flag must feed
+route, ip_address, arp and interface; a `vrf` flag needs `vrf`, `fhrp`
+needs `fhrp`, `pbr` needs `policy_route`, a firewall needs fw_policy,
+fw_zone, nat_rule and fw_object. It found six holes, each pinned in the
+test to the item that owns it — a new hole fails the build, a closed one
+must be struck: IOS-XR's ABF (LT-663), FortiOS VRFs (LT-665), Junos
+filter-based forwarding and address books (LT-669), PAN-OS zones and
+objects (LT-670). The `verified` audit the item also asked for — Junos
+routes all `docs`, FHRP on CX and NX-OS unverified — stays with the lab
+items (LT-559, LT-600): only a capture changes a `verified:` word.
+**Run:** `cargo test -p coreview-catalog`.
+
+### LT-653 — The forwarding table (`fib`), and the path builder trusting it over the RIB — 2026-09-30, done the same day
+**Source:** the operator, 2026-09-30: "the routing and switching and cef and
+forwarding all captured so our path trace is perfect". There is no
+forwarding table today: CEF commands feed only `path_probe` (text matched
+on the live check), Junos's `show route forwarding-table` is mixed into the
+RIB as if it were one, and IOS's `show mpls forwarding-table` has no parser.
+A `fib` table (vrf, prefix, next_hop, interface, label, adjacency) in the
+schema, `tables.rs` and `collection_db`; fed by `show ip cef [vrf X]` (IOS),
+`show cef [vrf X] ipv4` (IOS-XR), `show forwarding [vrf X] ipv4 route`
+(NX-OS), `show ip route` is the FIB on EOS already (documented), `show route
+forwarding-table` (Junos, moved out of `route`), `get router info kernel`
+(FortiOS), `show routing fib` (PAN-OS), `show asp table routing` (ASA).
+The path builder walks the FIB where a device has one and the RIB
+otherwise, says which it used in the hop's `why`, and a prefix the two
+disagree on is a finding on the device. Tests on invented rows per OS.
+**Done 2026-09-30 (D-063).** A `fib` table in the schema, the store and the
+normaliser, whose fixups turn CEF's `attached`/`receive`/`drop`, NX-OS's
+`Attached`/`Receive`/`Drop`, Junos's `ucst`/`locl`/`rjct`/`dscd`,
+iproute2's `scope link`/`type local`/`blackhole` into the RIB's words
+(connected, local, Null0). Fed by IOS `show ip cef [vrf]`, NX-OS `show
+forwarding ipv4 route [vrf]`, IOS-XR `show cef [vrf] ipv4` (a reader),
+Junos `show route forwarding-table` (moved out of `route`; the XML's
+`rt-entry`-under-table shape read), PAN-OS `show routing fib` (moved),
+FortiOS `get router info kernel` (a reader, was unverified), the ASA's
+`show asp table routing` (a reader), Cumulus's and SONiC's `ip -j route
+show table all`. The path builder's candidates, gateway discovery and
+local-address inference read the forwarding table where one exists;
+`Matched.table` says `forwarding`/`routing`/`policy`; a RIB/FIB
+disagreement is a note on the hop and a warning on the trace; the page
+notes the forwarding table on each such hop. **Run:** `cargo test -p
+coreview-collect -p coreview-path -p coreview-catalog` (the fixups per
+OS, Junos FIB XML, the two scenarios — CEF with one ECMP leg → one path
+and the disagreement named; FIB alone → walkable), the page fixtures
+regenerated, `vitest` catalog/collectedPath/i18n, `node
+e2e/collectedpath.mjs`, `pytest`. Not done: Arista (EOS's `show ip route`
+is already what it forwards by), AOS-CX, Onyx (no FIB dump; its `F`/`p`
+flags are kept in `flags`), and the MPLS LFIB (LT-660).
+
+### LT-651 — NVIDIA Onyx (MLNX-OS): a catalog and readers for the SN2010 family — 2026-09-30, done the same day
+**Source:** the operator, 2026-09-30: "build the mellanox based on command
+reference in the internet". Built from NVIDIA's Onyx user manual and
+command reference under D-058 — `verified: docs` until his SN2010s answer
+(LT-649). Fingerprint on `show version` (`Product name: Onyx`, older
+`MLNX-OS`); session from netmiko's `mellanox_mlnxos` driver (`enable` to
+`#`, `no cli session paging enable`, `exit`); readers in
+`coreview-collect/src/readers/onyx.rs` for `show version`, `show inventory`,
+`show interfaces ethernet status`, `show interfaces port-channel summary`,
+`show mlag`, `show vlan`, `show mac-address-table`, `show lldp interfaces
+ethernet remote`, `show ip interface`, `show ip route [vrf]`, `show ip arp`,
+`show vrf`, `show ip ospf neighbors`, `show ip bgp summary`, VRRP/MAGP and
+`show interfaces nve`/`show interfaces vxlan`. The sidecar's step vocabulary
+learns `no cli session paging enable`. Each reader's fixture is the
+documentation's sample with invented names.
+**Done 2026-09-30.** `resources/catalog/onyx.yaml` (29 commands and a
+live-path lookup, every one `verified: docs`) and
+`coreview-collect/src/readers/onyx.rs` — 25 readers, each tested on the
+manual's own sample with invented names; the tables are read by their
+header's column starts, so a wider column on a real box still reads.
+Fingerprint `^Product name:\s+(Onyx|MLNX-OS)`; NX-OS's regex had matched
+`MLNX-OS` and now does not. Session on the generic driver: `enable`,
+`terminal length 999`, `exit`; the sidecar knows `onyx`. **Run:** `cargo
+test -p coreview-collect -p coreview-catalog` (the readers, the row shapes
+through the normaliser, the fingerprint), `vitest src/lib/catalog.test.ts`
+(schema, allowlist), `pytest tests/test_session.py`. Not run: a device —
+the operator's SN2010s (LT-649). The per-port LLDP detail reader exists but
+no command sends it, since that form needs a port and the plan has no
+foreach over ports.
+
+### LT-652 — Cumulus Linux and SONiC catalogs for the collector — 2026-09-30, done the same day
+**Source:** LT-649 — an SN2010 can run Onyx, Cumulus or SONiC, and the
+classic crawler reads the last two (LT-489) while the collector has neither.
+Cumulus from NVIDIA's documentation (`net show` / NVUE `nv show`,
+`ip`/`bridge` under the hood; sessions.json already holds the driver block);
+SONiC from its own (`show version`, `show interfaces status`, `show lldp
+table`, `show mac`, `show ip route`, `show arp`, `show vlan brief`). Linux
+readers shared with `hosts` where the output is the same. `verified: docs`.
+**Done 2026-09-30.** `cumulus.yaml` (NCLU — `net show system`, bonds,
+`clag`, VRFs, FRR's routes, BGP and OSPF through NCLU, and the same `ip -j`
+/ `bridge -j` / `lldpcli` JSON the hosts catalog sends) and `sonic.yaml`
+(`show version`, interfaces status, ip interfaces, arp, mac, portchannel,
+lldp table, vrf, FRR's routes, BGP and OSPF), with `readers/cumulus.rs`,
+`readers/sonic.rs` and `readers/frr.rs` — the FRR readers shared, built
+from FRR's documentation. SONiC's tables are sliced by their rule line,
+since tabulate right-aligns. Every entry `verified: docs`. **Not read:**
+Cumulus 5.x (NVUE, `nv show`) — NCLU is gone there and the JSON shapes are
+not documented well enough to claim; and SONiC's `show vlan brief`, drawn
+in box characters. **Run:** the same tests as LT-651; no device.
+
+### LT-654 — **bug** Junos route rows never reach the `route` table — 2026-09-30, done the same day
+**Found by the builders' review (LT-603).** ntc's `juniper_junos_show_route`
+names the prefix `rt_destination` and the table `table_name`; `tables.rs`
+has no synonym for either, so a Junos router's routes are dropped at the
+builder's door and a path through one ends Insufficient. A test with the
+template's own fixture rows that fails today, then the synonyms.
+**Done 2026-09-30.** Reproduced: a Junos `show route | display xml` with
+two tables and ECMP gave two rows, one per table, with every `rt` flattened
+into arrays — no prefix column at all. `rows_from_xml` now reads a
+`route-table` document on its own: one row per active `rt-entry`
+(`rt_destination`, `table_name`, the entry's leaves unprefixed), and the
+synonyms gained `rt_destination`, `table_name`, `protocol_name`, `nh_to`,
+`nh_via`. **Run:** `tables::tests::junos_route_xml_becomes_one_route_row_per_active_entry`.
+
+### LT-655 — **bug** A name with a space is split in two — 2026-09-30, done the same day
+**Found by the builders' review.** `Row.list` splits on spaces as well as
+commas, so a route's interface list, a VRF's or zone's interface list
+breaks `Ethernet 2` (Windows), `Port-channel 1` and every PAN-OS
+`ethernet1/1.100` description with a space. Split on commas only where the
+column is a list; a test with a Windows host's route.
+**Done 2026-09-30.** `Row::list` splits on commas, and on a bare space
+only when every piece looks like an interface or an address (a digit, `/`,
+`.` or `:`), so `Gi1/0/1 Gi1/0/2` is two and `Ethernet 2` or `Port-channel
+1` is one. **Run:** `model::tests::a_name_with_a_space_is_one_item`; the
+topology and path suites unchanged.
+
+### LT-656 — **bug** The AP builder reads columns nothing feeds — 2026-09-30, done the same day
+**Found by the builders' review.** `aps.rs` asks a row for `nbr_chassis`,
+`nbr_platform` and `local_port`; none is an `ap` synonym or a stored
+column, so an AP's switch is never matched by chassis and its port never
+by the controller's own column. Add the synonyms and columns; a test with a
+9800's `show ap cdp neighbors` row.
+**Done 2026-09-30.** `ap` gained `nbr_ip`, `nbr_chassis`, `nbr_platform`
+and `local_port` as columns and synonyms; the store adds missing columns to
+a typed table on open (`typed_columns`, so a database made before this is
+not stuck); `aps.rs` finds the switch by chassis, then by the address the
+controller reports, then by name. **Run:** the topology scenario
+`an_access_points_uplink_finds_its_switch_by_the_address_the_controller_reports`
+(failed first: a placeholder beside the real switch), and the store's
+`a_typed_table_made_without_a_column_gains_it`.
+
+### LT-657 — **bug** `link` and `l3_adjacency` rows are accepted and dropped — 2026-09-30, done the same day
+**Found by the builders' review.** The validator admits the two table
+names, `write_row` has no store for them, and a catalog feeding either
+would lose its rows silently. Either a store or the names gone from the
+schema; a test either way.
+**Done 2026-09-30.** `link` and `l3_adjacency` are no longer tables a
+command may feed — the validator names them as such — while the store keeps
+the two tables the builder writes. **Run:** `load::tests::unknown_tables_flags_and_parsers_are_named`.
+
+### LT-659 — A down interface or a down tunnel is not a path — 2026-09-30, done the same day
+**Found by the builders' review.** `interface.oper` and `tunnel.state` are
+stored and never read: a route out a down port, or over a tunnel the
+device reports down, is walked as if it carried traffic. The walk skips
+them and says so in the hop; tests with one down member of an ECMP pair.
+**Done 2026-09-30.** `interface.oper`/`admin` and `tunnel.state` are
+read (`is_down`: down, administratively down, notconnect, err-disabled,
+inactive, …); a choice whose out-interface or tunnel the device reports
+down is dropped with a note on the hop, and a route left with no live
+next hop falls through to the next candidate. **Run:**
+`a_down_interface_is_not_a_path` (an ECMP pair with one member down → one
+path, through the other) and `a_down_tunnel_is_not_a_path` (a floating
+static behind a down GRE tunnel is used).
 
 ### LT-602 — A revert point on the VM before every push — 2026-09-30, done the same day
 **Source:** the operator, 2026-09-30: "take local backup on the VM itself

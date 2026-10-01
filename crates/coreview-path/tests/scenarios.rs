@@ -1101,3 +1101,255 @@ fn missing_zone_knowledge_is_undetermined_not_denied() {
     assert_eq!(fw.verdict, Verdict::Undetermined, "{}", fw.reason);
     assert!(fw.reason.contains("zone"), "{}", fw.reason);
 }
+
+// ------------------------------------------------------------ LT-659: what is down carries nothing
+
+/// ACC1's second uplink is down on the device itself: the walk takes the
+/// one that is up and says why, rather than drawing two paths.
+#[test]
+fn a_down_interface_is_not_a_path() {
+    let mut devices = routed_core();
+    devices[0].tables.entry("interface".into()).or_default().extend([
+        row("show_interfaces", &[("name", "Gi1/0/49"), ("admin", "up"), ("oper", "up")]),
+        row("show_interfaces", &[("name", "Gi1/0/50"), ("admin", "up"), ("oper", "down")]),
+    ]);
+    let out = run(&devices, &req("192.0.2.50", "203.0.113.50"));
+    let f = &out.forward;
+    assert_eq!(f.paths.len(), 1, "{f:#?}");
+    assert_eq!(routers(&f.paths[0]), vec!["ACC1", "CORE1", "DC1"]);
+    assert_eq!(f.paths[0].hops[0].out_interface.as_deref(), Some("Gi1/0/49"));
+    assert!(f.paths[0].hops[0].notes.iter().any(|n| n.contains("Gi1/0/50") && n.contains("down")), "{:?}", f.paths[0].hops[0].notes);
+}
+
+/// A route out a tunnel the device reports down: the floating static
+/// behind it is used instead.
+#[test]
+fn a_down_tunnel_is_not_a_path() {
+    let r1 = device(
+        "R1",
+        "192.0.2.1",
+        "cisco_ios",
+        "router",
+        "FAKER10001",
+        vec![
+            ("ip_address", vec![addr("Gi0/0", "192.0.2.1", "24"), addr("Gi0/1", "198.51.100.1", "30"), addr("Tunnel1", "10.255.0.1", "30")]),
+            (
+                "route",
+                vec![
+                    route("192.0.2.0", "24", "C", "", "Gi0/0"),
+                    route("198.51.100.0", "30", "C", "", "Gi0/1"),
+                    route("10.255.0.0", "30", "C", "", "Tunnel1"),
+                    route("203.0.113.0", "24", "S", "10.255.0.2", "Tunnel1"),
+                    row("show_ip_route", &[("prefix", "203.0.113.0"), ("mask", "24"), ("proto", "S"), ("ad", "250"), ("next_hop", "198.51.100.2"), ("interface", "Gi0/1")]),
+                ],
+            ),
+            ("arp", vec![arp("192.0.2.50", "0000.0000.5001", "Gi0/0"), arp("198.51.100.2", "0000.0000.c101", "Gi0/1")]),
+            ("tunnel", vec![row("show_interface_tunnel", &[("name", "Tunnel1"), ("kind", "gre"), ("local_ip", "198.51.100.1"), ("remote_ip", "203.0.113.254"), ("state", "down")])]),
+        ],
+    );
+    let r2 = device(
+        "R2",
+        "198.51.100.2",
+        "cisco_ios",
+        "router",
+        "FAKER20001",
+        vec![
+            ("ip_address", vec![addr("Gi0/1", "198.51.100.2", "30"), addr("Gi0/0", "203.0.113.1", "24")]),
+            ("route", vec![route("198.51.100.0", "30", "C", "", "Gi0/1"), route("203.0.113.0", "24", "C", "", "Gi0/0")]),
+            ("arp", vec![arp("203.0.113.50", "0000.0000.d001", "Gi0/0")]),
+        ],
+    );
+    let out = run(&[r1, r2], &req("192.0.2.50", "203.0.113.50"));
+    let f = &out.forward;
+    assert_eq!(f.paths.len(), 1, "{f:#?}");
+    assert_eq!(routers(&f.paths[0]), vec!["R1", "R2"]);
+    assert_eq!(f.paths[0].hops[0].out_interface.as_deref(), Some("Gi0/1"));
+    assert!(f.paths[0].hops[0].notes.iter().any(|n| n.contains("Tunnel1") && n.contains("down")), "{:?}", f.paths[0].hops[0].notes);
+}
+
+// ------------------------------------------------------------ LT-653: the forwarding table
+
+/// A forwarding-table row as the store holds it: CEF's `attached` has
+/// become `connected` by then, and a next hop has no protocol word.
+fn fib(prefix: &str, len: &str, nh: &str, iface: &str) -> Row {
+    let mut cols = vec![("prefix", prefix), ("mask", len)];
+    if !nh.is_empty() {
+        cols.push(("next_hop", nh));
+    } else {
+        cols.push(("proto", "connected"));
+    }
+    if !iface.is_empty() {
+        cols.push(("interface", iface));
+    }
+    row("show_ip_cef", &cols)
+}
+
+/// ACC1's CEF table has only the CORE1 leg for 203.0.113.0/24 (the RIB
+/// has both): the walk follows CEF, draws one path, and says the two
+/// tables disagree.
+#[test]
+fn the_forwarding_table_is_followed_and_a_disagreement_with_the_rib_is_said() {
+    let mut devices = routed_core();
+    devices[0].tables.insert("fib".into(), vec![
+        fib("192.0.2.0", "24", "", "Vlan10"),
+        fib("198.51.100.0", "30", "", "Gi1/0/49"),
+        fib("198.51.100.4", "30", "", "Gi1/0/50"),
+        fib("203.0.113.0", "24", "198.51.100.2", "Gi1/0/49"),
+    ]);
+    let out = run(&devices, &req("192.0.2.50", "203.0.113.50"));
+    let f = &out.forward;
+    assert_eq!(f.paths.len(), 1, "{f:#?}");
+    assert_eq!(routers(&f.paths[0]), vec!["ACC1", "CORE1", "DC1"], "{f:#?}");
+    let first = &f.paths[0].hops[0];
+    assert_eq!(first.matched.as_ref().map(|m| m.table.as_str()), Some("forwarding"));
+    assert!(first.notes.iter().any(|n| n.contains("forwarding table") && n.contains("routing table")), "{:?}", first.notes);
+    assert!(f.warnings.iter().any(|w| w.starts_with("ACC1:") && w.contains("198.51.100.2")), "{:?}", f.warnings);
+    // CORE1 has no forwarding table: its hop is from the RIB, and says so.
+    assert_eq!(f.paths[0].hops[1].matched.as_ref().map(|m| m.table.as_str()), Some("routing"));
+}
+
+/// A device with only a forwarding table (a kernel's routes, a CEF dump)
+/// is walked as well as one with a RIB.
+#[test]
+fn a_forwarding_table_alone_is_enough_to_walk() {
+    let mut devices = routed_core();
+    let rib = devices[0].tables.remove("route").unwrap();
+    devices[0].tables.insert("fib".into(), rib);
+    let out = run(&devices, &req("192.0.2.50", "203.0.113.50"));
+    assert_eq!(out.forward.paths.len(), 2, "{:#?}", out.forward);
+    assert_eq!(out.forward.paths[0].hops[0].matched.as_ref().map(|m| m.table.as_str()), Some("forwarding"));
+    assert!(out.forward.warnings.is_empty(), "{:?}", out.forward.warnings);
+}
+
+// ------------------------------------------------------------ LT-662: the VLAN table in the L2 walk
+
+/// R1's routed port lands on SW1's access port in VLAN 20; the host's MAC
+/// is in SW1's table twice — a stale entry in VLAN 30 first. The VLAN the
+/// frame arrives in is read from the VLAN table, and the VLAN-20 port wins.
+#[test]
+fn the_vlan_a_frame_enters_is_read_from_the_vlan_table() {
+    let host_mac = "0000.0000.5050";
+    let r1 = device(
+        "R1",
+        "198.51.100.1",
+        "cisco_ios",
+        "router",
+        "FAKER10001",
+        vec![
+            ("ip_address", vec![addr("Gi0/1", "192.0.2.1", "24"), addr("Gi0/0", "198.51.100.1", "30")]),
+            ("route", vec![route("192.0.2.0", "24", "C", "", "Gi0/1"), route("198.51.100.0", "30", "C", "", "Gi0/0")]),
+            ("arp", vec![arp("192.0.2.50", host_mac, "Gi0/1")]),
+            ("neighbor", vec![cdp("Gi0/1", "SW1", "Gi1/0/48")]),
+        ],
+    );
+    let sw1 = device(
+        "SW1",
+        "192.0.2.7",
+        "cisco_ios",
+        "switch",
+        "FAKESW10001",
+        vec![
+            ("ip_address", vec![addr("Vlan20", "192.0.2.7", "24")]),
+            ("vlan", vec![
+                row("show_vlan", &[("vlan_id", "20"), ("name", "users"), ("ports", "Gi1/0/48, Gi1/0/5")]),
+                row("show_vlan", &[("vlan_id", "30"), ("name", "printers"), ("ports", "Gi1/0/9")]),
+            ]),
+            ("mac_table", vec![mac("30", host_mac, "Gi1/0/9"), mac("20", host_mac, "Gi1/0/5")]),
+            ("neighbor", vec![cdp("Gi1/0/48", "R1", "Gi0/1")]),
+        ],
+    );
+    let out = run(&[r1, sw1], &req("R1", "192.0.2.50"));
+    let f = &out.forward;
+    assert_eq!(f.paths.len(), 1, "{f:#?}");
+    let h = &f.paths[0].hops[0];
+    let steps: Vec<String> = h.l2.iter().map(|s| format!("{} {}→{} vlan {}", s.device, s.in_port.as_deref().unwrap_or("-"), s.out_port.as_deref().unwrap_or("-"), s.vlan.as_deref().unwrap_or("-"))).collect();
+    // Without the VLAN table the walk took the first MAC entry, Gi1/0/9 in VLAN 30.
+    assert_eq!(steps, vec!["R1 -→Gi0/1 vlan -", "SW1 GigabitEthernet1/0/48→Gi1/0/5 vlan 20"], "{f:#?}");
+}
+
+// ------------------------------------------------------------ LT-660: EVPN is not MPLS
+
+/// LEAF1 is the anycast gateway; the host's MAC is behind VXLAN at LEAF2
+/// (`nve1(192.0.2.12)` in LEAF1's MAC table). The walk crosses to LEAF2
+/// and finds the port there.
+#[test]
+fn a_mac_behind_a_vtep_is_followed_to_the_far_leaf() {
+    let host_mac = "0000.0000.1050";
+    let leaf = |name: &str, lo: &str, serial: &str, macs: Vec<Row>| {
+        device(
+            name,
+            lo,
+            "cisco_nxos",
+            "l3_switch",
+            serial,
+            vec![
+                ("ip_address", vec![addr("Vlan10", "10.0.10.1", "24"), addr("loopback0", lo, "32")]),
+                ("route", vec![route("10.0.10.0", "24", "direct", "", "Vlan10"), route(lo, "32", "local", "", "loopback0")]),
+                ("arp", vec![arp("10.0.10.50", host_mac, "Vlan10")]),
+                ("mac_table", macs),
+                ("tunnel", vec![row("show_nve_peers", &[("name", "nve1"), ("kind", "vxlan"), ("local_ip", lo), ("remote_ip", if lo == "192.0.2.11" { "192.0.2.12" } else { "192.0.2.11" })])]),
+            ],
+        )
+    };
+    let leaf1 = leaf("LEAF1", "192.0.2.11", "FAKELEAF001", vec![mac("10", host_mac, "nve1(192.0.2.12)")]);
+    let leaf2 = leaf("LEAF2", "192.0.2.12", "FAKELEAF002", vec![mac("10", host_mac, "Eth1/5")]);
+    let out = run(&[leaf1, leaf2], &req("LEAF1", "10.0.10.50"));
+    let f = &out.forward;
+    assert_eq!(f.paths.len(), 1, "{f:#?}");
+    let p = &f.paths[0];
+    let Ending::Delivered { endpoint: Some(place), .. } = &p.ending else { panic!("{p:#?}") };
+    assert_eq!((place.switch.as_str(), place.port.as_str()), ("LEAF2", "Eth1/5"));
+    let steps: Vec<(String, Option<String>, Option<String>)> = p.hops[0].l2.iter().map(|s| (s.device.clone(), s.in_port.clone(), s.out_port.clone())).collect();
+    assert_eq!(steps, vec![("LEAF1".to_string(), None, Some("nve1 → 192.0.2.12".to_string())), ("LEAF2".to_string(), Some("nve1".to_string()), Some("Eth1/5".to_string()))], "{p:#?}");
+}
+
+/// A tenant route whose next hop is the far VTEP in the global table is an
+/// EVPN type-5 route over VXLAN, and the overlay says so.
+#[test]
+fn an_evpn_type5_route_is_labelled_vxlan_not_mpls() {
+    let leaf1 = device(
+        "LEAF1",
+        "192.0.2.11",
+        "cisco_nxos",
+        "l3_switch",
+        "FAKELEAF001",
+        vec![
+            ("vrf", vec![vrf_row("TENANT", "65000:100", "65000:100", "Vlan10")]),
+            ("ip_address", vec![row("x", &[("interface", "loopback0"), ("ip", "192.0.2.11"), ("prefixlen", "32")]), row("x", &[("interface", "Eth1/49"), ("ip", "198.51.100.1"), ("prefixlen", "31")]), row("x", &[("interface", "Vlan10"), ("ip", "10.0.10.1"), ("prefixlen", "24"), ("vrf", "TENANT")])]),
+            ("route", vec![route("198.51.100.0", "31", "direct", "", "Eth1/49"), route("192.0.2.11", "32", "local", "", "loopback0"), route("192.0.2.12", "32", "ospf", "198.51.100.0", "Eth1/49"), vroute("TENANT", "10.0.10.0", "24", "direct", "", "Vlan10"), vroute("TENANT", "10.0.20.0", "24", "bgp", "192.0.2.12", "")]),
+            ("tunnel", vec![row("show_nve_peers", &[("name", "nve1"), ("kind", "vxlan"), ("local_ip", "192.0.2.11"), ("remote_ip", "192.0.2.12")])]),
+            ("arp", vec![row("show_ip_arp_vrf", &[("vrf", "TENANT"), ("ip", "10.0.10.50"), ("mac", "0000.0000.1050"), ("interface", "Vlan10")])]),
+        ],
+    );
+    let spine = device(
+        "SPINE1",
+        "198.51.100.0",
+        "cisco_nxos",
+        "router",
+        "FAKESPINE01",
+        vec![
+            ("ip_address", vec![row("x", &[("interface", "Eth1/1"), ("ip", "198.51.100.0"), ("prefixlen", "31")]), row("x", &[("interface", "Eth1/2"), ("ip", "198.51.100.2"), ("prefixlen", "31")])]),
+            ("route", vec![route("198.51.100.0", "31", "direct", "", "Eth1/1"), route("198.51.100.2", "31", "direct", "", "Eth1/2"), route("192.0.2.12", "32", "ospf", "198.51.100.3", "Eth1/2")]),
+        ],
+    );
+    let leaf2 = device(
+        "LEAF2",
+        "192.0.2.12",
+        "cisco_nxos",
+        "l3_switch",
+        "FAKELEAF002",
+        vec![
+            ("vrf", vec![vrf_row("TENANT", "65000:100", "65000:100", "Vlan20")]),
+            ("ip_address", vec![row("x", &[("interface", "loopback0"), ("ip", "192.0.2.12"), ("prefixlen", "32")]), row("x", &[("interface", "Eth1/49"), ("ip", "198.51.100.3"), ("prefixlen", "31")]), row("x", &[("interface", "Vlan20"), ("ip", "10.0.20.1"), ("prefixlen", "24"), ("vrf", "TENANT")])]),
+            ("route", vec![route("198.51.100.2", "31", "direct", "", "Eth1/49"), route("192.0.2.12", "32", "local", "", "loopback0"), vroute("TENANT", "10.0.20.0", "24", "direct", "", "Vlan20")]),
+            ("arp", vec![row("show_ip_arp_vrf", &[("vrf", "TENANT"), ("ip", "10.0.20.50"), ("mac", "0000.0000.2050"), ("interface", "Vlan20")])]),
+        ],
+    );
+    let f = run(&[leaf1, spine, leaf2], &Request { from: "10.0.10.50".into(), to: "10.0.20.50".into(), vrf: Some("TENANT".into()), ..Default::default() }).forward;
+    let p = &f.paths[0];
+    assert_eq!(routers(p), vec!["LEAF1", "LEAF2"], "{p:#?}");
+    let o = p.hops[0].overlay.as_ref().expect("the VXLAN hop");
+    assert_eq!((o.tunnel.as_str(), o.kind.as_deref(), o.local.as_deref(), o.remote.as_str()), ("EVPN/VXLAN", Some("vxlan"), Some("192.0.2.11"), "192.0.2.12"));
+    assert_eq!(o.underlay, vec!["LEAF1", "SPINE1", "LEAF2"]);
+    assert!(matches!(p.ending, Ending::Delivered { .. }), "{p:#?}");
+}
