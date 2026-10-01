@@ -124,7 +124,13 @@ pub fn mac(raw: &str) -> Option<String> {
     let seps = raw.chars().filter(|c| matches!(c, ':' | '-' | '.' | ' ')).count();
     let only_mac_chars = raw.trim().chars().all(|c| c.is_ascii_hexdigit() || matches!(c, ':' | '-' | '.' | ' '));
     if hex.len() == 12 && only_mac_chars && (seps > 0 || raw.trim().len() == 12) {
-        Some(hex.to_ascii_lowercase())
+        let hex = hex.to_ascii_lowercase();
+        // LT-640: an unslaved bond or a GRE tap reports all zeros; neither
+        // it nor broadcast identifies a box.
+        if hex == "000000000000" || hex == "ffffffffffff" {
+            return None;
+        }
+        Some(hex)
     } else {
         None
     }

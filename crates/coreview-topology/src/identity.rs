@@ -18,10 +18,16 @@ pub struct Identities {
     by_serial: BTreeMap<String, String>,
     /// collected device_id → node id
     pub of_device: BTreeMap<String, String>,
+    /// LT-641: what each node is known to be, so a name match alone cannot
+    /// fold a neighbour whose chassis or address says it is another box.
+    macs_of: BTreeMap<String, BTreeSet<String>>,
+    ips_of: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl Identities {
     pub fn index(&mut self, node: &Node) {
+        self.macs_of.entry(node.id.clone()).or_default().extend(node.macs.iter().cloned());
+        self.ips_of.entry(node.id.clone()).or_default().extend(node.addresses.iter().map(|(ip, _, _, _)| ip.clone()).chain(node.mgmt_ip.clone()));
         for m in &node.macs {
             self.by_mac.entry(m.clone()).or_insert_with(|| node.id.clone());
         }
@@ -60,7 +66,13 @@ impl Identities {
         }
         if let Some(n) = name {
             if let Some(id) = self.by_name.get(&name_key(n)) {
-                return Some(id.clone());
+                // LT-641: a name match is the weakest; a chassis or address the
+                // row gives that this node does not have says it is another box.
+                let other_mac = chassis.and_then(mac).is_some_and(|m| self.macs_of.get(id).is_some_and(|ms| !ms.is_empty() && !ms.contains(&m)));
+                let other_ip = ip.map(str::trim).is_some_and(|a| self.ips_of.get(id).is_some_and(|is| !is.is_empty() && !is.contains(a)));
+                if !other_mac && !other_ip {
+                    return Some(id.clone());
+                }
             }
         }
         None

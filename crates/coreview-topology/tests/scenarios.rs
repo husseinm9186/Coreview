@@ -442,3 +442,136 @@ fn hosts_only_a_firewalls_arp_knows_hang_off_its_interface() {
     assert_eq!(fw.attached.len(), 2);
     assert!(fw.attached.iter().all(|a| a.port == "IoT" && a.vendor.is_some()), "{:?}", fw.attached);
 }
+
+/// LT-605: the review's devices carry their distance from the seed, which
+/// is the row the page draws them on. A firewall seeded, a switch behind
+/// it by LLDP, a second switch behind that: hops 0, 1, 2. A device no
+/// link reaches is one row past the furthest.
+#[test]
+fn the_view_counts_hops_from_the_seed_over_the_links() {
+    let lldp = |local: &str, name: &str, port: &str| row("show_lldp_neighbors_detail", &[("local_if", local), ("rem_sysname", name), ("rem_port_id", port), ("proto", "lldp")]);
+    let fw = device("fw", "192.0.2.1", "fortios", "firewall", vec![
+        ("device", vec![row("get_system_status", &[("hostname", "FW1"), ("serial", "FGTFAKE0000001")])]),
+        ("neighbor", vec![lldp("internal", "SW1", "Gi0/9")]),
+    ]);
+    let sw1 = device("sw1", "192.0.2.7", "cisco_ios", "switch", vec![
+        ("device", vec![row("show_version", &[("hostname", "SW1"), ("serial", "FAKE0000071")])]),
+        ("neighbor", vec![lldp("Gi0/9", "FW1", "internal"), lldp("Gi0/1", "SW2", "port24")]),
+    ]);
+    let sw2 = device("sw2", "192.0.2.203", "fortiswitch", "switch", vec![
+        ("device", vec![row("get_system_status", &[("hostname", "SW2"), ("serial", "FSWFAKE0000001")])]),
+    ]);
+    let alone = device("alone", "192.0.2.99", "cisco_ios", "switch", vec![
+        ("device", vec![row("show_version", &[("hostname", "ALONE"), ("serial", "FAKE0000099")])]),
+    ]);
+    let g = build(&[fw, sw1, sw2, alone]);
+    let opts = coreview_topology::crawl_view::ViewOptions { seeds: vec!["192.0.2.1".into()], ..Default::default() };
+    let view = coreview_topology::crawl_view::view_with(&g, &opts);
+    let hops = |name: &str| view.devices.iter().find(|d| d.hostname == name).unwrap_or_else(|| panic!("{name}")).hops;
+    assert_eq!((hops("FW1"), hops("SW1"), hops("SW2")), (0, 1, 2));
+    assert_eq!(hops("ALONE"), 3, "unreached: one past the furthest");
+    // No seed named: the best-connected collected device is hop 0.
+    let view = coreview_topology::crawl_view::view(&g);
+    let hops = |name: &str| view.devices.iter().find(|d| d.hostname == name).unwrap().hops;
+    assert_eq!((hops("SW1"), hops("FW1"), hops("SW2"), hops("ALONE")), (0, 1, 1, 2));
+}
+
+// ------------------------------------------------- the sweep's findings (LT-603)
+
+/// LT-640: `00:00:00:00:00:00` is what an unslaved bond or a GRE tap
+/// reports; it identifies nothing.
+#[test]
+fn an_all_zero_mac_does_not_merge_two_boxes() {
+    let host = |id: &str, name: &str, ip: &str| device(id, ip, "linux", "host", vec![
+        ("device", vec![row("hostnamectl", &[("hostname", name)])]),
+        ("interface", vec![row("ip_link", &[("interface", "bond0"), ("mac", "00:00:00:00:00:00")]), row("ip_link", &[("interface", "eth0"), ("mac", format!("00:00:5e:00:53:{}", &id[id.len() - 2..]).as_str())])]),
+    ]);
+    let g = build(&[host("host-a1", "HOST-A", "192.0.2.11"), host("host-b2", "HOST-B", "192.0.2.12")]);
+    assert_eq!(g.nodes.iter().filter(|n| n.kind == NodeKind::Collected).count(), 2, "{:?}", g.nodes.iter().map(|n| &n.name).collect::<Vec<_>>());
+}
+
+/// LT-641: two neighbours whose names share a first label are two devices.
+#[test]
+fn two_neighbours_sharing_a_first_label_are_two_placeholders() {
+    let sw = device("sw", "192.0.2.7", "cisco_ios", "switch", vec![
+        ("device", vec![row("show_version", &[("hostname", "SW1"), ("serial", "FAKE0000071")])]),
+        ("neighbor", vec![
+            row("show_lldp_neighbors_detail", &[("local_if", "Gi1/0/1"), ("rem_sysname", "ap1.site-a.example.net"), ("rem_chassis_id", "0000.0000.0a01"), ("rem_mgmt_ip", "10.1.0.5"), ("rem_port_id", "eth0"), ("proto", "lldp")]),
+            row("show_lldp_neighbors_detail", &[("local_if", "Gi1/0/2"), ("rem_sysname", "ap1.site-b.example.net"), ("rem_chassis_id", "0000.0000.0b01"), ("rem_mgmt_ip", "10.2.0.5"), ("rem_port_id", "eth0"), ("proto", "lldp")]),
+        ]),
+    ]);
+    let g = build(&[sw]);
+    let aps: Vec<&Node> = g.nodes.iter().filter(|n| n.kind == NodeKind::Neighbor).collect();
+    assert_eq!(aps.len(), 2, "{:?}", g.nodes.iter().map(|n| &n.name).collect::<Vec<_>>());
+    assert_eq!(g.links.len(), 2);
+}
+
+/// LT-642: one cable, whichever end was collected first — the first claim
+/// knows no far port (a MAC port-id the far side's table lacks), the
+/// reverse claim knows both.
+#[test]
+fn a_half_known_claim_and_its_reverse_are_one_link_in_either_order() {
+    let make = || {
+        let sw1 = device("sw1", "192.0.2.1", "cisco_ios", "switch", vec![
+            ("device", vec![row("show_version", &[("hostname", "SW1"), ("serial", "FAKE0000001")])]),
+            ("neighbor", vec![row("show_lldp_neighbors_detail", &[("local_if", "Gi1/0/1"), ("rem_sysname", "SW2"), ("rem_chassis_id", "0000.0000.0002"), ("rem_port_id", "0000.0000.00f2"), ("proto", "lldp")])]),
+        ]);
+        let sw2 = device("sw2", "192.0.2.2", "cisco_ios", "switch", vec![
+            ("device", vec![row("show_version", &[("hostname", "SW2"), ("serial", "FAKE0000002")]), row("show_version", &[("hostname", "SW2"), ("base_mac", "0000.0000.0002")])]),
+            ("neighbor", vec![row("show_lldp_neighbors_detail", &[("local_if", "Gi1/0/2"), ("rem_sysname", "SW1"), ("rem_port_id", "Gi1/0/1"), ("proto", "lldp")])]),
+        ]);
+        (sw1, sw2)
+    };
+    let (a, b) = make();
+    let one = build(&[a, b]);
+    let (a, b) = make();
+    let other = build(&[b, a]);
+    for g in [&one, &other] {
+        let links: Vec<&Link> = g.links.iter().filter(|l| l.kind == LinkKind::Lldp).collect();
+        assert_eq!(links.len(), 1, "{links:?}");
+        assert!(links[0].both_directions && links[0].confidence == 1.0, "{links:?}");
+    }
+}
+
+/// LT-643: a neighbour a router names by CDP, whose address is in the
+/// router's ARP, is that neighbour — not an endpoint behind the router.
+#[test]
+fn a_known_neighbour_is_not_also_an_endpoint_behind_its_router() {
+    let r1 = device("r1", "10.0.0.1", "cisco_ios", "router", vec![
+        ("device", vec![row("show_version", &[("hostname", "R1"), ("serial", "FAKE0000001")])]),
+        ("neighbor", vec![row("show_cdp_neighbors_detail", &[("local_if", "Gi0/1"), ("rem_sysname", "R2"), ("rem_port_id", "Gi0/1"), ("rem_mgmt_ip", "10.0.0.2"), ("proto", "cdp")])]),
+        ("arp", vec![row("show_ip_arp", &[("ip", "10.0.0.2"), ("mac", "0000.0000.0002"), ("interface", "Gi0/1")])]),
+    ]);
+    let g = build(&[r1]);
+    assert!(g.endpoints.is_empty(), "{:?}", g.endpoints);
+}
+
+/// LT-644: a known box placed on a crowded port does not hide the crowd
+/// it shares the port with; LT-645: two strangers on a port are two
+/// endpoints.
+#[test]
+fn a_placed_box_leaves_the_crowd_and_two_strangers_are_two_endpoints() {
+    let sw = device("sw", "192.0.2.7", "cisco_ios", "switch", vec![
+        ("device", vec![row("show_version", &[("hostname", "SW1"), ("serial", "FAKE0000071")])]),
+        ("mac_table", vec![
+            row("show_mac_address_table", &[("mac", "0000.0000.00fe"), ("interface", "Gi0/5"), ("vlan", "1"), ("type", "DYNAMIC")]),
+            row("show_mac_address_table", &[("mac", "0000.0000.0a01"), ("interface", "Gi0/5"), ("vlan", "1"), ("type", "DYNAMIC")]),
+            row("show_mac_address_table", &[("mac", "0000.0000.0a02"), ("interface", "Gi0/5"), ("vlan", "1"), ("type", "DYNAMIC")]),
+            row("show_mac_address_table", &[("mac", "0000.0000.0a03"), ("interface", "Gi0/5"), ("vlan", "1"), ("type", "DYNAMIC")]),
+            row("show_mac_address_table", &[("mac", "0000.0000.0b01"), ("interface", "Gi0/6"), ("vlan", "1"), ("type", "DYNAMIC")]),
+            row("show_mac_address_table", &[("mac", "0000.0000.0b02"), ("interface", "Gi0/6"), ("vlan", "1"), ("type", "DYNAMIC")]),
+        ]),
+    ]);
+    let fw = device("fw", "192.0.2.1", "cisco_asa", "firewall", vec![
+        ("device", vec![row("show_version", &[("hostname", "FW1"), ("serial", "FAKEFW0001")])]),
+        ("interface", vec![row("show_interface", &[("interface", "inside"), ("mac", "0000.0000.00fe")])]),
+    ]);
+    let g = build(&[sw, fw]);
+    let fw_id = node_named(&g, "FW1").id.clone();
+    assert!(g.links.iter().any(|l| l.kind == LinkKind::InferredMac && l.b.node == fw_id), "the firewall is placed");
+    let on5: Vec<&Endpoint> = g.endpoints.iter().filter(|e| e.port == "GigabitEthernet0/5").collect();
+    assert_eq!(on5.len(), 3, "the crowd beside it: {:?}", g.endpoints);
+    assert!(g.nodes.iter().any(|n| n.kind == NodeKind::UnknownSwitch), "and the switch it must be behind");
+    let on6: Vec<&Endpoint> = g.endpoints.iter().filter(|e| e.port == "GigabitEthernet0/6").collect();
+    assert_eq!(on6.len(), 2, "two strangers are two endpoints: {:?}", g.endpoints);
+}

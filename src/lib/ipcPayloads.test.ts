@@ -41,7 +41,7 @@ const payloads: Record<string, unknown> = {
     kinds: ['running', 'startup'], secondFactor: false, port: 22, showCommands: ['show inventory'], paging: 'auto', filePattern: '{device}-{stamp}', ...extra,
   }),
   sweep_options: sweepOptions({ timeoutMs: 800, concurrency: 64, identify: true, scanPorts: true, ports: [22, 161], ...extra }),
-  topology_view_options: topologyViewOptions({ collapseBundles: true, collapseStacks: false, placeholders: true, minConfidence: 0.7, vlan: '10', vrf: 'default', ...extra }),
+  topology_view_options: topologyViewOptions({ collapseBundles: true, collapseStacks: false, placeholders: true, minConfidence: 0.7, vlan: '10', vrf: 'default', seeds: ['192.0.2.1'], ...extra }),
   path_request: pathRequest({
     from: '192.0.2.50', to: '203.0.113.50', vrf: 'default', protocol: 'tcp', port: 443, sourcePort: 50000, downDevices: ['CORE1'],
     downLinks: [{ device: 'ACC1', interface: 'Gi1/0/50', ...extra }], traceroute: ['198.51.100.2', null, '203.0.113.50'], noReverse: false, ...extra,

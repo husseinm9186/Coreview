@@ -148,18 +148,6 @@ Waiting on the operator: whether the account changed, or the box limits
 an admin's sessions.
 
 
-### LT-575 — **bug** The diagram is "all over the place" — reported 2026-09-29 — reported 2026-09-29, not yet reproduced
-**Source:** the operator, 2026-09-29, with a screenshot: "also the diagram
-is all over the place". The page shows the lab's devices with links
-crossing the whole page: a firewall at the top edge with a fan of long
-curves to endpoints far below, a row of unlinked devices across the left,
-access switches not beneath what they hang from. **Needs:** which way the
-page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
-a layout run on an existing page — so the same input can be laid out again
-in a test.
-**Reproduced 2026-09-30** as LT-605 and LT-606, which together are the
-picture in the screenshot.
-
 ### LT-588 — **bug** Discover with the collector "never finishes": one stuck device held the run for minutes and then ended it — 2026-09-30
 **Source:** the operator, 2026-09-30, with screenshots, testing the
 collector on "Discover devices": "it never finishes". The header stood at
@@ -201,27 +189,6 @@ documentations". Since D-062 the Discover panel, the Tracert tab, backups
 of Fortinet boxes and the vault's API logins changed; HANDOVER.md, the
 README, the Help text and the catalog's NOTICE are read against the app
 and corrected where they say otherwise.
-
-### LT-605 — **bug** A collection's topology put every device on one row: the view gave them all hop 0 — 2026-09-30
-**Found reproducing LT-575.** The page lays discovered devices out by
-their distance from the seed (LT-114, LT-371), and `crawl_view` wrote
-`hops: 0` for every collected device, so the collector's result — the one
-"Discover devices" now draws — has no rows: a firewall, the switches
-behind it and the switches behind those all on one line, their links
-crossing the page. **Fix:** the view's hops are the distance over the
-graph's links from the run's seeds (the first device named, when the page
-does not say); a device no link reaches sits one row past the furthest.
-
-### LT-606 — **bug** Devices seen on switch ports were laid out on the seed's row, not under their switch — 2026-09-30
-**Found reproducing LT-575.** The page's final pass sets each new node's
-row from its hop depth and takes only the column from the layout; the
-devices hung off switch ports (and the unmanaged switches made for a
-crowd) had no depth recorded, so they were given 0 — the seed's row —
-after being placed under their switch. The classic crawler's result has
-this too, and it is what the operator's screenshot shows: endpoints
-across the top and long curves to the switch that learned them. **Fix:**
-a device hung off a port is one row below that switch; a crowd's switch
-one below, its crowd one more.
 
 ### LT-619 — **bug** A collector run on "Discover devices" was lost when the tab changed — 2026-09-30
 **Found by the sweep's interface review (LT-603)** — and what the operator
@@ -307,58 +274,6 @@ path to a file it may read, without quoting it.
 **Found by the same review.** `dispatch` looked the session up before the
 verdict, so the test's "refused or error" passed on "no such session".
 **Fix:** the verdict comes first, and the test accepts `refused` only.
-
-### LT-637 — **bug** A tunnel whose far end is reached through the tunnel itself overflowed the stack and killed the app — 2026-09-30
-**Found by the sweep's topology/path review (LT-603), reproduced with a
-scratch program.** A FortiGate with a full-tunnel branch — a default route
-by the WAN and one by the VPN — looks up the tunnel's far end, finds the
-same default route, enters the tunnel again, without end; the Tauri
-backend aborts. **Fix:** inside an underlay a tunnel is never entered;
-the walk says the far end is reached only through another tunnel.
-
-### LT-638 — **bug** An access switch that merely switched the frame was chosen as the only first router — 2026-09-30
-**Found by the same review.** The "prefer where the MAC is learned
-locally" rule kept the switch and dropped the firewall, which has no MAC
-table; the firewall and its policy never appeared. **Fix:** that rule only
-decides between boxes that each have a MAC table, and never drops a
-firewall or router.
-
-### LT-639 — **bug** Missing zone knowledge became a definite Deny — 2026-09-30
-**Found by the same review.** A trace started at a firewall has no arriving
-interface, and a PAN-OS with policies but no zone table matches nothing;
-both fell through to the catch-all deny. D-050 says never a guess. **Fix:**
-no arriving interface, or a zone the box's tables cannot place, is
-Undetermined with the reason; a name that is one of the box's own
-interfaces still decides.
-
-### LT-640 — **bug** Two boxes with an all-zero MAC became one node — 2026-09-30
-**Found by the same review.** Linux's unslaved `bond0` and `gretap0`
-report `00:00:00:00:00:00`. **Fix:** all-zero and broadcast are not MACs.
-
-### LT-641 — **bug** Two neighbours sharing a first DNS label became one placeholder — 2026-09-30
-**Found by the same review.** `ap1.site-a…` and `ap1.site-b…` were one
-`p-ap1`. **Fix:** a placeholder is keyed by chassis MAC, then address, then
-name.
-
-### LT-642 — **bug** One cable became two links depending on which switch was collected first — 2026-09-30
-**Found by the same review.** A claim with no far port was not entered in
-the by-port index, and the reverse claim looked only there. **Fix:** a
-claim with both ports also looks for the half-known reverse before making
-a new link.
-
-### LT-643 — **bug** A known neighbour was also drawn as an endpoint behind its router — 2026-09-30
-**Found by the same review.** `behind_routers` (LT-597) skipped MACs it
-knew, and a CDP placeholder has none. **Fix:** an address a node owns is
-not an endpoint either.
-
-### LT-644 — **bug** A known box placed on a crowded port made the rest of the crowd vanish — 2026-09-30
-**Found by the same review.** Placing the ASA on a port skipped that port
-for the crowd rule. **Fix:** the remaining strangers on a placed port still
-go through it.
-
-### LT-645 — **bug** A port with exactly two unknown devices drew neither — 2026-09-30
-**Found by the same review.** One was an endpoint, three a crowd, two
-nothing. **Fix:** fewer than a crowd are endpoints, each.
 ### LT-649 — The lab's Mellanox SN2010 switches, found and collected — 2026-09-30
 **Source:** the operator, 2026-09-30: "what about the other switch it was
 on the network but never crawled" — a Mellanox SN2010. His own capture of
@@ -897,6 +812,42 @@ the venv left out) under `~/coreview-backups/`, named by date and commit;
 `scripts/revert-point.sh` makes one, and says how to restore.
 **Run:** `scripts/revert-point.sh` made `coreview-20260930-…` under `~/coreview-backups/` and `git bundle verify` passed on it.
 
+### LT-575 — **bug** The diagram is "all over the place" — reported 2026-09-29 — fixed 2026-09-30 by LT-605 and LT-606
+**Source:** the operator, 2026-09-29, with a screenshot: "also the diagram
+is all over the place". The page shows the lab's devices with links
+crossing the whole page: a firewall at the top edge with a fan of long
+curves to endpoints far below, a row of unlinked devices across the left,
+access switches not beneath what they hang from. **Needs:** which way the
+page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
+a layout run on an existing page — so the same input can be laid out again
+in a test.
+**Reproduced 2026-09-30** as LT-605 and LT-606, which together are the
+picture in the screenshot.
+**Run:** the two tests under LT-605 and LT-606; not yet the operator's own eye on the new build.
+
+### LT-605 — **bug** A collection's topology put every device on one row: the view gave them all hop 0 — 2026-09-30, fixed the same day
+**Found reproducing LT-575.** The page lays discovered devices out by
+their distance from the seed (LT-114, LT-371), and `crawl_view` wrote
+`hops: 0` for every collected device, so the collector's result — the one
+"Discover devices" now draws — has no rows: a firewall, the switches
+behind it and the switches behind those all on one line, their links
+crossing the page. **Fix:** the view's hops are the distance over the
+graph's links from the run's seeds (the first device named, when the page
+does not say); a device no link reaches sits one row past the furthest.
+**Run:** a topology scenario (failed with every device at hop 0, passes): a firewall seeded, a switch behind it, a switch behind that are hops 0, 1, 2 and an unlinked box one past; with no seed the best-connected device is hop 0. `collection_topology` passes the run's targets; `lab_run` its first host.
+
+### LT-606 — **bug** Devices seen on switch ports were laid out on the seed's row, not under their switch — 2026-09-30, fixed the same day
+**Found reproducing LT-575.** The page's final pass sets each new node's
+row from its hop depth and takes only the column from the layout; the
+devices hung off switch ports (and the unmanaged switches made for a
+crowd) had no depth recorded, so they were given 0 — the seed's row —
+after being placed under their switch. The classic crawler's result has
+this too, and it is what the operator's screenshot shows: endpoints
+across the top and long curves to the switch that learned them. **Fix:**
+a device hung off a port is one row below that switch; a crowd's switch
+one below, its crowd one more.
+**Run:** `topology.test.ts` (failed with the attached devices on the seed's row, passes): five devices seen on a switch's port sit below that switch and never on the seed's row; the other 85 layout tests unchanged.
+
 ### LT-607 — **bug** Three IOS secret forms survived the scrub into a support capture — 2026-09-30, fixed the same day
 **Found by the sweep's collector review (LT-603).** `snmp-server host …
 version 2c <community>`, `radius-server host … key 7 <key>` and
@@ -1005,6 +956,67 @@ them duplicate a `show` command's REST alternate, so LLDP arrived twice.
 carries each interface's MAC, which LT-569 wanted), and one request per
 endpoint.
 **Run:** every API-only path prefixed and its feeds set from the lab FortiGate's own replies; `api_commands` sends one request per endpoint; the TLS test asks an endpoint that was unreachable before.
+
+### LT-637 — **bug** A tunnel whose far end is reached through the tunnel itself overflowed the stack and killed the app — 2026-09-30, fixed the same day
+**Found by the sweep's topology/path review (LT-603), reproduced with a
+scratch program.** A FortiGate with a full-tunnel branch — a default route
+by the WAN and one by the VPN — looks up the tunnel's far end, finds the
+same default route, enters the tunnel again, without end; the Tauri
+backend aborts. **Fix:** inside an underlay a tunnel is never entered;
+the walk says the far end is reached only through another tunnel.
+**Run:** a path scenario that aborted the test binary with a stack overflow and now returns a path of at most four hops.
+
+### LT-638 — **bug** An access switch that merely switched the frame was chosen as the only first router — 2026-09-30, fixed the same day
+**Found by the same review.** The "prefer where the MAC is learned
+locally" rule kept the switch and dropped the firewall, which has no MAC
+table; the firewall and its policy never appeared. **Fix:** that rule only
+decides between boxes that each have a MAC table, and never drops a
+firewall or router.
+**Run:** a path scenario (failed with the switch as the only start): the firewall is among the starts.
+
+### LT-639 — **bug** Missing zone knowledge became a definite Deny — 2026-09-30, fixed the same day
+**Found by the same review.** A trace started at a firewall has no arriving
+interface, and a PAN-OS with policies but no zone table matches nothing;
+both fell through to the catch-all deny. D-050 says never a guess. **Fix:**
+no arriving interface, or a zone the box's tables cannot place, is
+Undetermined with the reason; a name that is one of the box's own
+interfaces still decides.
+**Run:** a path scenario: a trace from the FortiGate itself and a PAN-OS without a zone table are Undetermined with the reason; the FortiGate REST tests still decide, from the box's interface list.
+
+### LT-640 — **bug** Two boxes with an all-zero MAC became one node — 2026-09-30, fixed the same day
+**Found by the same review.** Linux's unslaved `bond0` and `gretap0`
+report `00:00:00:00:00:00`. **Fix:** all-zero and broadcast are not MACs.
+**Run:** a topology scenario: two hosts with `bond0` at all zeros are two nodes (failed before).
+
+### LT-641 — **bug** Two neighbours sharing a first DNS label became one placeholder — 2026-09-30, fixed the same day
+**Found by the same review.** `ap1.site-a…` and `ap1.site-b…` were one
+`p-ap1`. **Fix:** a placeholder is keyed by chassis MAC, then address, then
+name.
+**Run:** a topology scenario: `ap1.site-a` and `ap1.site-b` are two placeholders with two links (failed before); a name match no longer folds a neighbour whose chassis or address says otherwise.
+
+### LT-642 — **bug** One cable became two links depending on which switch was collected first — 2026-09-30, fixed the same day
+**Found by the same review.** A claim with no far port was not entered in
+the by-port index, and the reverse claim looked only there. **Fix:** a
+claim with both ports also looks for the half-known reverse before making
+a new link.
+**Run:** a topology scenario in both collection orders: one link, both ends, 1.0 (failed with two in one order).
+
+### LT-643 — **bug** A known neighbour was also drawn as an endpoint behind its router — 2026-09-30, fixed the same day
+**Found by the same review.** `behind_routers` (LT-597) skipped MACs it
+knew, and a CDP placeholder has none. **Fix:** an address a node owns is
+not an endpoint either.
+**Run:** a topology scenario: a CDP neighbour in the router's ARP is not an endpoint (failed before).
+
+### LT-644 — **bug** A known box placed on a crowded port made the rest of the crowd vanish — 2026-09-30, fixed the same day
+**Found by the same review.** Placing the ASA on a port skipped that port
+for the crowd rule. **Fix:** the remaining strangers on a placed port still
+go through it.
+**Run:** a topology scenario: a placed firewall and the three strangers beside it — the crowd and its unknown switch are kept (failed before).
+
+### LT-645 — **bug** A port with exactly two unknown devices drew neither — 2026-09-30, fixed the same day
+**Found by the same review.** One was an endpoint, three a crowd, two
+nothing. **Fix:** fewer than a crowd are endpoints, each.
+**Run:** the same scenario: two strangers on a port are two endpoints (failed before).
 
 ### LT-601 — **bug** A device slow to send its SSH banner could not be collected — 2026-09-30, fixed the same day
 **Found checking LT-600:** the lab's Palo Alto sends `SSH-2.0-OpenSSH_8.0`

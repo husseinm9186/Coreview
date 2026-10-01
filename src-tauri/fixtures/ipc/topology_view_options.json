@@ -4,5 +4,8 @@
   "placeholders": true,
   "minConfidence": 0.7,
   "vlan": "10",
-  "vrf": "default"
+  "vrf": "default",
+  "seeds": [
+    "192.0.2.1"
+  ]
 }

@@ -88,7 +88,6 @@ pub fn mac_placements(devices: &[DeviceIn], graph: &mut Graph, ids: &mut Identit
             }
         }
     }
-    let mut placed_ports: BTreeSet<(String, String)> = BTreeSet::new();
     for (node, (pop, (sw, pk), m)) in &best {
         let seen = &behind[&(sw.clone(), pk.clone())][m];
         graph.links.push(Link {
@@ -104,14 +103,12 @@ pub fn mac_placements(devices: &[DeviceIn], graph: &mut Graph, ids: &mut Identit
                 note: format!("MAC {m} of {} learned on {}{} ({pop} MAC{} on that port); no CDP/LLDP neighbour there", name(graph, node), seen.port, seen.vlan.as_deref().map(|v| format!(" in VLAN {v}")).unwrap_or_default(), if *pop == 1 { "" } else { "s" }),
             }],
         });
-        placed_ports.insert((sw.clone(), pk.clone()));
     }
-    // What remains: crowds become unknown switches, lone strangers endpoints.
+    // What remains: crowds become unknown switches, fewer than a crowd
+    // endpoints. LT-644: a known box placed on a port does not hide the
+    // strangers beside it — they are behind the same unmanaged switch.
     let mut unknown = Vec::new();
     for ((sw, pk), macs) in &behind {
-        if placed_ports.contains(&(sw.clone(), pk.clone())) {
-            continue;
-        }
         let strangers: Vec<(&String, &Seen)> = macs.iter().filter(|(m, _)| ids.by_mac(m).is_none()).collect();
         if strangers.len() >= CROWD {
             let (_, first) = strangers[0];
@@ -151,9 +148,11 @@ pub fn mac_placements(devices: &[DeviceIn], graph: &mut Graph, ids: &mut Identit
                     evidence: vec![Evidence { device: first.device.clone(), command: first.command.clone(), note: format!("{} MACs learned on {} and no CDP/LLDP neighbour there: something unmanaged is behind it", strangers.len(), first.port) }],
                 },
             ));
-        } else if strangers.len() == 1 {
-            let (m, s) = strangers[0];
-            graph.endpoints.push(Endpoint { switch: sw.clone(), port: s.port.clone(), mac: m.clone(), ip: ip_of.get(m).cloned(), vlan: s.vlan.clone() });
+        } else {
+            // LT-645: one or two strangers are endpoints, each.
+            for (m, s) in &strangers {
+                graph.endpoints.push(Endpoint { switch: sw.clone(), port: s.port.clone(), mac: (*m).clone(), ip: ip_of.get(*m).cloned(), vlan: s.vlan.clone() });
+            }
         }
     }
     for (n, l) in unknown {
@@ -177,7 +176,8 @@ fn behind_routers(devices: &[DeviceIn], graph: &mut Graph, ids: &Identities) {
         let Some(node) = ids.of_device.get(&d.device_id).cloned() else { continue };
         for r in d.rows("arp") {
             let (Some(m), Some(iface)) = (r.get("mac").and_then(mac), r.get("interface")) else { continue };
-            if ids.by_mac(&m).is_some() || !placed.insert(m.clone()) {
+            // LT-643: a box the graph knows by MAC or by this address is not an endpoint.
+            if ids.by_mac(&m).is_some() || r.get("ip").is_some_and(|ip| ids.by_ip(ip.trim()).is_some()) || !placed.insert(m.clone()) {
                 continue;
             }
             graph.endpoints.push(Endpoint { switch: node.clone(), port: iface.to_string(), mac: m, ip: r.get("ip").map(str::to_string), vlan: None });

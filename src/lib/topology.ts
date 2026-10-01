@@ -909,6 +909,8 @@ export function buildTopology(
         id = uid();
         inferredIds.set(key, id);
         const index = inferredIds.size - 1;
+        // LT-606: one row below the switch that learned the crowd.
+        depthOf.set(id, (depthOf.get(onSwitch) ?? 0) + 1);
         const node = {
           id,
           type: 'device',
@@ -1008,6 +1010,9 @@ export function buildTopology(
       // A name the device gave beats a maker inferred from its MAC: "HPLJ-3rdfloor"
       // is findable on a floor, "Hewlett Packard device" is not.
       const label = a.hostname || (a.vendor ? `${a.vendor} device` : a.mac);
+      // LT-606: one row below what it hangs off — the switch, or the crowd's
+      // inferred switch — so the final pass keeps it there.
+      depthOf.set(id, (depthOf.get(parent) ?? 0) + 1);
       nodes.push({
         id,
         type: 'device',

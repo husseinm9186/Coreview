@@ -312,6 +312,9 @@ pub struct Box_ {
     pub tunnels: Vec<Tunnel>,
     /// port key → interface MAC
     pub iface_mac: BTreeMap<String, String>,
+    /// LT-639: every interface the box lists, by port key, address or not —
+    /// a FortiOS policy names interfaces, and a VLAN interface carries none.
+    pub ifaces: BTreeSet<String>,
     /// Which discovery tables had rows for it.
     pub has: BTreeSet<String>,
     /// LT-540: where each policy applies (ASA `access-group`).
@@ -601,6 +604,9 @@ fn read_device(d: &DeviceIn, b: &mut Box_) {
         rts.1.extend(r.list("rt_export"));
     }
     for r in d.rows("interface") {
+        if let Some(n) = r.get("name") {
+            b.ifaces.insert(key(n));
+        }
         if let (Some(n), Some(m)) = (r.get("name"), r.get("mac").and_then(mac)) {
             b.iface_mac.entry(key(n)).or_insert(m);
         }

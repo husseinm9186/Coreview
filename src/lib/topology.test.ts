@@ -659,6 +659,30 @@ describe('drawing what a switch has learned', () => {
     host: 'CORE-SW',
   });
 
+  // LT-606: the final pass sets every new node's row from its depth, and a
+  // device hung off a port had none — so it was given the seed's row.
+  it('lays devices seen on switch ports under their switch, never on the seed\'s row', () => {
+    const hosts = Array.from({ length: 5 }, (_, i) => ({ device: attached({ mac: `0000.5e00.53${10 + i}`, address: `10.0.0.${20 + i}` }).device, host: 'ACC' }));
+    const t = buildTopology(
+      {
+        devices: [
+          device('CORE', '10.0.0.1', [neighbor('ACC', 'Gi1/0/1', 'Gi0/1')], { hops: 0 }),
+          device('ACC', '10.0.0.2', [], { hops: 1 }),
+        ],
+        notVisited: [],
+      },
+      'p',
+      { attached: hosts },
+    );
+    const y = (label: string) => t.nodes.find((n) => (n.data as DeviceNodeData).label === label)!.position.y;
+    const seen = t.nodes.filter((n) => (n.data as DeviceNodeData).tags?.includes('attached'));
+    expect(seen).toHaveLength(5);
+    for (const n of seen) {
+      expect(n.position.y, `${(n.data as DeviceNodeData).label} is below ACC`).toBeGreaterThan(y('ACC'));
+      expect(n.position.y, `${(n.data as DeviceNodeData).label} is not on CORE's row`).not.toBe(y('CORE'));
+    }
+  });
+
   it('hangs a silent device off the port it was learned on', () => {
     const t = buildTopology(
       { devices: [device('CORE-SW', '10.0.0.1', [])], notVisited: [] },

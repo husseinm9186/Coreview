@@ -40,12 +40,55 @@ pub struct ViewOptions {
     pub vlan: Option<String>,
     /// Only this VRF's routes (`default` for the global table).
     pub vrf: Option<String>,
+    /// LT-605: the run's seeds (addresses or names), where hop 0 is. Empty,
+    /// the first collected device is the seed.
+    pub seeds: Vec<String>,
 }
 
 impl Default for ViewOptions {
     fn default() -> Self {
-        ViewOptions { collapse_bundles: true, collapse_stacks: true, placeholders: true, min_confidence: 0.0, vlan: None, vrf: None }
+        ViewOptions { collapse_bundles: true, collapse_stacks: true, placeholders: true, min_confidence: 0.0, vlan: None, vrf: None, seeds: Vec::new() }
     }
+}
+
+/// LT-605: each node's distance from the seeds over the graph's links, which
+/// is the row the page draws it on. A node no link reaches sits one past the
+/// furthest reached.
+fn hops_from_seeds(graph: &Graph, seeds: &[String]) -> BTreeMap<String, usize> {
+    let is_seed = |n: &Node| {
+        seeds.iter().any(|s| {
+            let s = s.trim();
+            n.mgmt_ip.as_deref() == Some(s) || n.addresses.iter().any(|(ip, _, _, _)| ip == s) || n.device_ids.iter().any(|d| d == s) || n.name.eq_ignore_ascii_case(s)
+        })
+    };
+    let mut adjacent: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for l in &graph.links {
+        adjacent.entry(l.a.node.as_str()).or_default().push(l.b.node.as_str());
+        adjacent.entry(l.b.node.as_str()).or_default().push(l.a.node.as_str());
+    }
+    let mut starts: Vec<&str> = graph.nodes.iter().filter(|n| is_seed(n)).map(|n| n.id.as_str()).collect();
+    if starts.is_empty() {
+        // No seed named: the best-connected collected device is the middle of the picture.
+        starts.extend(graph.nodes.iter().filter(|n| n.kind == NodeKind::Collected).max_by_key(|n| adjacent.get(n.id.as_str()).map(Vec::len).unwrap_or(0)).map(|n| n.id.as_str()));
+    }
+    let mut hops: BTreeMap<String, usize> = BTreeMap::new();
+    let mut queue: std::collections::VecDeque<(&str, usize)> = starts.iter().map(|s| (*s, 0)).collect();
+    while let Some((id, h)) = queue.pop_front() {
+        if hops.contains_key(id) {
+            continue;
+        }
+        hops.insert(id.to_string(), h);
+        for next in adjacent.get(id).into_iter().flatten() {
+            if !hops.contains_key(*next) {
+                queue.push_back((next, h + 1));
+            }
+        }
+    }
+    let unreached = if hops.is_empty() { 0 } else { hops.values().copied().max().unwrap_or(0) + 1 };
+    for n in &graph.nodes {
+        hops.entry(n.id.clone()).or_insert(unreached);
+    }
+    hops
 }
 
 fn class_of(node: &Node) -> DeviceClass {
@@ -172,6 +215,7 @@ pub fn view_with(graph: &Graph, opts: &ViewOptions) -> CrawlView {
     for e in &graph.endpoints {
         *population.entry((e.switch.clone(), e.port.clone())).or_default() += 1;
     }
+    let hops = hops_from_seeds(graph, &opts.seeds);
     let mut devices = Vec::new();
     for node in graph.nodes.iter().filter(|n| n.kind == NodeKind::Collected) {
         let mut neighbors = Vec::new();
@@ -261,7 +305,7 @@ pub fn view_with(graph: &Graph, opts: &ViewOptions) -> CrawlView {
             serial: node.serials.iter().next().cloned(),
             version: node.version.clone(),
             neighbors,
-            hops: 0,
+            hops: hops.get(&node.id).copied().unwrap_or(0),
             reached_by: ReachedBy::Ssh,
             attached,
             port_channels,

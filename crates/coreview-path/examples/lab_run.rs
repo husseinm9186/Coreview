@@ -284,7 +284,8 @@ fn report(devices: &[DeviceIn], out: &std::path::Path, traces: &[(String, String
     let graph = coreview_topology::build(devices);
     // What the app hands the review screen from the same graph (LT-576).
     let started = std::time::Instant::now();
-    let view = coreview_topology::crawl_view::view_with(&graph, &Default::default());
+    let seeds: Vec<String> = devices.first().map(|d| vec![d.host.clone()]).unwrap_or_default();
+    let view = coreview_topology::crawl_view::view_with(&graph, &coreview_topology::crawl_view::ViewOptions { seeds, ..Default::default() });
     println!("crawl view: {} devices, {} not visited, in {} ms", view.devices.len(), view.not_visited.len(), started.elapsed().as_millis());
     std::fs::write(out.join("graph.json"), serde_json::to_string_pretty(&graph).unwrap()).unwrap();
     println!("\ngraph: {} nodes, {} links ({} both ends), {} l3, {} overlays, {} endpoints, {} findings",

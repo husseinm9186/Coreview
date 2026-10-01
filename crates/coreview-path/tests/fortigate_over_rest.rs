@@ -56,6 +56,9 @@ fn fortigate() -> DeviceIn {
         row("get_system_interface", &[("interface", "internal"), ("ip", "192.0.2.1"), ("prefixlen", "255.255.255.0")]),
         row("get_system_interface", &[("interface", "wan2"), ("ip", "203.0.113.2"), ("prefixlen", "255.255.255.0")]),
     ]);
+    // Every interface, as `get system interface` lists them — the policies name
+    // two that carry no address here (LT-639).
+    t.insert("interface".into(), ["internal", "wan2", "netMGMT", "Printers", "internal5"].iter().map(|i| row("get_system_interface", &[("name", i)])).collect());
     t.insert("route".into(), vec![
         row("get_router_info_routing_table_all", &[("prefix", "0.0.0.0/0"), ("proto", "S"), ("next_hop", "203.0.113.1"), ("interface", "wan2")]),
         row("get_router_info_routing_table_all", &[("prefix", "192.0.2.0/24"), ("proto", "C"), ("interface", "internal")]),

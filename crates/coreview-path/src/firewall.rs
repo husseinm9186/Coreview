@@ -361,15 +361,32 @@ pub fn svc_match(list: &[String], proto: Option<u8>, port: Option<u16>) -> Tri {
 }
 
 fn zone_match(list: &[String], candidates: &[String]) -> Tri {
+    zone_match_on(None, list, candidates)
+}
+
+/// LT-639: a zone the box's tables cannot place is not a miss. A name that
+/// is one of the box's own interfaces, or a zone it defines, decides; a
+/// zone it never defined — PAN-OS policies collected without the zone
+/// table — is unknown, and an empty candidate list (no arriving
+/// interface) is unknown too.
+fn zone_match_on(b: Option<&Box_>, list: &[String], candidates: &[String]) -> Tri {
     if list.is_empty() || list.iter().any(|z| is_any(z)) {
         return Tri::Yes;
     }
+    if candidates.is_empty() {
+        return Tri::Unknown("the interface the packet arrives or leaves on is not known".into());
+    }
     let want: Vec<String> = candidates.iter().map(|c| key(c)).collect();
     if list.iter().any(|z| want.contains(&key(z))) {
-        Tri::Yes
-    } else {
-        Tri::No
+        return Tri::Yes;
     }
+    if let Some(b) = b {
+        let placed = |z: &String| b.zones.contains_key(z) || b.zones.keys().any(|k| key(k) == key(z)) || b.ifaces.contains(&key(z)) || b.addrs.iter().any(|a| a.iface.as_deref().map(key) == Some(key(z)));
+        if let Some(z) = list.iter().find(|z| !placed(z)) {
+            return Tri::Unknown(format!("the zone \"{z}\" is not in the collected tables"));
+        }
+    }
+    Tri::No
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -427,6 +444,12 @@ pub fn verdict(b: &Box_, k: Kind, flow: &Flow) -> FwVerdict {
     if k == Kind::Asa && b.has_table("fw_binding") {
         return asa_verdict(b, flow, out);
     }
+    // LT-639: a trace that starts at the firewall is its own traffic, which
+    // its forward policy does not govern; what does is not collected.
+    if flow.zones_in.is_empty() {
+        out.reason = format!("The traffic is {}'s own; a firewall's forward policy does not apply to its own traffic, and what does is not collected.", b.name);
+        return out;
+    }
     // LT-585: the source's MAC, as this firewall's ARP has it, for MAC objects.
     let src_names: Vec<String> = b.arp_for(flow.src).map(|a| vec![format!("mac:{}", mac_hex(&a.mac))]).unwrap_or_default();
     for p in b.fw.iter().filter(|p| p.enabled) {
@@ -438,8 +461,8 @@ pub fn verdict(b: &Box_, k: Kind, flow: &Flow) -> FwVerdict {
             Tri::Yes
         };
         let m = bound_here
-            .and(zone_match(&p.src_zones, flow.zones_in))
-            .and(zone_match(&p.dst_zones, flow.zones_out))
+            .and(zone_match_on(Some(b), &p.src_zones, flow.zones_in))
+            .and(zone_match_on(Some(b), &p.dst_zones, flow.zones_out))
             .and(addr_match(&p.src_addr, flow.src, &src_names))
             .and(addr_match(&p.dst_addr, flow.dst, flow.dst_names))
             .and(svc_match(&p.services, flow.proto, flow.port));

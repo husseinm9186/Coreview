@@ -88,12 +88,17 @@ pub fn neighbor_links(devices: &[DeviceIn], graph: &mut Graph, ids: &mut Identit
         let far_port_key = c.to_port.as_deref().map(key);
         // A claim whose far port is unknown matches the reverse claim on the
         // near port, if the other end spoke about it.
+        // LT-642: a link already made from the other end whose end on this
+        // side is this claim's near port, or unknown, and whose far end is
+        // this claim's far port, or unknown — one cable, whichever end spoke first.
+        let fits = |end: &End, node: &str, port: &Option<String>| end.node == node && (end.port.is_none() || port.as_ref().map(|p| end.port.as_deref().map(key) == Some(p.clone())).unwrap_or(true));
+        let half_known = |links: &[Link]| links.iter().position(|l| (fits(&l.a, &c.from, &Some(near.1.clone())) && fits(&l.b, &c.to, &far_port_key)) || (fits(&l.b, &c.from, &Some(near.1.clone())) && fits(&l.a, &c.to, &far_port_key)));
         let existing = match &far_port_key {
             Some(fk) => {
                 let (a, b) = order(near.clone(), (c.to.clone(), fk.clone()));
-                by_key.get(&(a.0, a.1, b.0, b.1)).copied()
+                by_key.get(&(a.0, a.1, b.0, b.1)).copied().or_else(|| half_known(&links))
             }
-            None => links.iter().position(|l| (l.a.node == c.to && l.b.node == c.from && l.b.port.as_deref().map(key) == Some(near.1.clone())) || (l.b.node == c.to && l.a.node == c.from && l.a.port.as_deref().map(key) == Some(near.1.clone()))),
+            None => half_known(&links),
         };
         match existing {
             Some(i) => {
@@ -103,12 +108,19 @@ pub fn neighbor_links(devices: &[DeviceIn], graph: &mut Graph, ids: &mut Identit
                     l.both_directions = true;
                     l.confidence = 1.0;
                 }
-                // Fill a port the first claim did not know.
-                if l.a.node == c.to && l.a.port.is_none() {
-                    l.a.port = c.to_port.clone();
+                // Fill a port the first claim did not know, at either end.
+                for end in [&mut l.a, &mut l.b] {
+                    if end.port.is_none() {
+                        if end.node == c.to {
+                            end.port = c.to_port.clone();
+                        } else if end.node == c.from {
+                            end.port = Some(c.from_port.clone());
+                        }
+                    }
                 }
-                if l.b.node == c.to && l.b.port.is_none() {
-                    l.b.port = c.to_port.clone();
+                if let Some(fk) = &far_port_key {
+                    let (a, b) = order(near.clone(), (c.to.clone(), fk.clone()));
+                    by_key.entry((a.0, a.1, b.0, b.1)).or_insert(i);
                 }
                 l.evidence.push(c.evidence);
             }
@@ -146,7 +158,9 @@ fn order(a: (String, String), b: (String, String)) -> ((String, String), (String
 /// A neighbour nobody collected: drawn from what its neighbour said of it.
 fn placeholder(graph: &mut Graph, ids: &mut Identities, r: &Row, name: Option<&str>, chassis: Option<&str>, ip: Option<&str>, serial: Option<String>) -> String {
     let label = name.map(|n| n.split('(').next().unwrap_or(n).trim().to_string()).or_else(|| ip.map(str::to_string)).or_else(|| chassis.map(str::to_string)).unwrap_or_else(|| "unnamed neighbour".into());
-    let id = format!("p-{}", name.map(name_key).filter(|k| !k.is_empty()).or_else(|| chassis.and_then(mac)).or_else(|| ip.map(str::to_string)).unwrap_or_else(|| label.clone()));
+    // LT-641: the chassis first — two `ap1.<site>` names share a first label
+    // and are two devices — then the address, then the name.
+    let id = format!("p-{}", chassis.and_then(mac).or_else(|| ip.map(str::to_string)).or_else(|| name.map(name_key).filter(|k| !k.is_empty())).unwrap_or_else(|| label.clone()));
     if graph.nodes.iter().any(|n| n.id == id) {
         return id;
     }

@@ -1007,3 +1007,97 @@ fn a_switch_with_only_a_management_address_in_the_subnet_is_not_its_gateway() {
     assert_eq!(f.source.as_ref().map(|s| s.starts.clone()), Some(vec!["FGT1".to_string()]), "{:?}", f.source);
     assert_eq!(routers(&f.paths[0]), vec!["FGT1"], "{:?}", f.paths);
 }
+
+// ------------------------------------------------- the sweep's findings (LT-603)
+
+/// LT-637: a full-tunnel branch — a default route by the WAN and one by
+/// the VPN. Looking up the tunnel's far end finds the same default route,
+/// whose tunnel branch looked up the far end again, without end.
+#[test]
+fn a_tunnel_reached_through_itself_does_not_recurse() {
+    let fgt = device(
+        "FGT1",
+        "192.0.2.1",
+        "fortios",
+        "firewall",
+        "FGTFAKE0000001",
+        vec![
+            ("ip_address", vec![addr("internal", "192.0.2.1", "24"), addr("wan1", "203.0.113.2", "24")]),
+            ("route", vec![route("0.0.0.0", "0", "S", "203.0.113.1", "wan1"), route("0.0.0.0", "0", "S", "", "VPN-HQ"), route("192.0.2.0", "24", "C", "", "internal"), route("203.0.113.0", "24", "C", "", "wan1")]),
+            ("tunnel", vec![row("show_vpn_ipsec_phase1_interface", &[("name", "VPN-HQ"), ("kind", "ipsec"), ("local_ip", "203.0.113.2"), ("remote_ip", "198.51.100.9")])]),
+            ("arp", vec![arp("192.0.2.50", "0000.0000.0050", "internal")]),
+        ],
+    );
+    let f = run(&[fgt], &req("192.0.2.50", "8.8.8.8")).forward;
+    assert!(!f.paths.is_empty());
+    assert!(f.paths.iter().all(|p| p.hops.len() <= 4), "{:?}", f.paths);
+}
+
+/// LT-638: the firewall is the gateway; the access switch has two SVIs and
+/// a management default route, and learns the host's MAC. The firewall has
+/// no MAC table, and must not lose the choice of first router for that.
+#[test]
+fn a_switch_that_only_switches_the_frame_does_not_hide_the_firewall() {
+    let fgt = device(
+        "FGT1",
+        "192.0.2.1",
+        "fortios",
+        "firewall",
+        "FGTFAKE0000001",
+        vec![
+            ("ip_address", vec![addr("internal", "192.0.2.1", "24"), addr("wan1", "203.0.113.2", "24")]),
+            ("route", vec![route("0.0.0.0", "0", "S", "203.0.113.1", "wan1"), route("192.0.2.0", "24", "C", "", "internal"), route("203.0.113.0", "24", "C", "", "wan1")]),
+            ("arp", vec![arp("192.0.2.50", "0000.0000.0050", "internal")]),
+        ],
+    );
+    let sw = device(
+        "SW1",
+        "192.0.2.7",
+        "cisco_ios",
+        "switch",
+        "FAKESW0007",
+        vec![
+            ("ip_address", vec![addr("Vlan1", "192.0.2.7", "24"), addr("Vlan99", "10.99.0.7", "24")]),
+            ("route", vec![route("0.0.0.0", "0", "S", "10.99.0.1", ""), route("192.0.2.0", "24", "C", "", "Vlan1"), route("10.99.0.0", "24", "C", "", "Vlan99")]),
+            ("mac_table", vec![mac("1", "0000.0000.0050", "Gi1/0/5")]),
+        ],
+    );
+    let f = run(&[fgt, sw], &req("192.0.2.50", "8.8.8.8")).forward;
+    let starts = f.source.as_ref().map(|s| s.starts.clone()).unwrap_or_default();
+    assert!(starts.iter().any(|s| s == "FGT1"), "{starts:?}");
+}
+
+/// LT-639: no zone knowledge is not a Deny. A trace from the firewall
+/// itself has no arriving interface; a PAN-OS with policies but no zone
+/// table cannot place a zone. Both are Undetermined, with the reason.
+#[test]
+fn missing_zone_knowledge_is_undetermined_not_denied() {
+    let mut r = req("FGT1", "203.0.113.50");
+    r.protocol = Some("tcp".into());
+    r.port = Some(443);
+    let own = run(&fortigate(forti_policies()), &r).forward;
+    let fw = own.paths[0].hops[0].firewall.clone().expect("a decision line");
+    assert_eq!(fw.verdict, Verdict::Undetermined, "{}", fw.reason);
+    assert!(fw.reason.contains("own traffic") || fw.reason.contains("arriv"), "{}", fw.reason);
+
+    let pan = device(
+        "PA1",
+        "192.0.2.1",
+        "panos",
+        "firewall",
+        "FAKEPA0001",
+        vec![
+            ("ip_address", vec![addr("ethernet1/2", "192.0.2.1", "24"), addr("ethernet1/1", "203.0.113.2", "24")]),
+            ("route", vec![route("0.0.0.0", "0", "S", "203.0.113.1", "ethernet1/1"), route("192.0.2.0", "24", "C", "", "ethernet1/2"), route("203.0.113.0", "24", "C", "", "ethernet1/1")]),
+            ("arp", vec![arp("192.0.2.50", "0000.0000.0050", "ethernet1/2")]),
+            ("fw_policy", vec![row("show_running_security_policy", &[("seq", "1"), ("name", "out"), ("src_zones", "trust"), ("dst_zones", "untrust"), ("src_addr", "any"), ("dst_addr", "any"), ("services", "any"), ("action", "allow")])]),
+        ],
+    );
+    let mut r = req("192.0.2.50", "8.8.8.8");
+    r.protocol = Some("tcp".into());
+    r.port = Some(443);
+    let f = run(&[pan], &r).forward;
+    let fw = f.paths[0].hops[0].firewall.clone().expect("a decision line");
+    assert_eq!(fw.verdict, Verdict::Undetermined, "{}", fw.reason);
+    assert!(fw.reason.contains("zone"), "{}", fw.reason);
+}

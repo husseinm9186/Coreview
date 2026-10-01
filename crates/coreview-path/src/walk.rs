@@ -216,6 +216,10 @@ struct Ctx<'a> {
     paths: Vec<Path>,
     warnings: std::cell::RefCell<Vec<String>>,
     truncated: bool,
+    /// LT-637: walking a tunnel's underlay, where another tunnel is never
+    /// entered — a full-tunnel default route would otherwise lead back into
+    /// the same tunnel without end.
+    in_underlay: bool,
 }
 
 #[derive(Clone)]
@@ -811,6 +815,12 @@ impl Ctx<'_> {
                     }
                 }
                 Toward::Tunnel(t) => {
+                    if self.in_underlay {
+                        let mut hs = hops.clone();
+                        hs.push(h);
+                        self.paths.push(Path { hops: hs, ending: Ending::Insufficient { at: Some(name.clone()), reason: format!("{}'s far end is reached only through {} — a tunnel inside a tunnel's underlay, which is not followed.", name, t.name) } });
+                        continue;
+                    }
                     let Some(remote) = t.remote_ip else {
                         let mut hs = hops.clone();
                         hs.push(h);
@@ -878,7 +888,7 @@ impl Ctx<'_> {
     /// The devices a tunnel's packets cross to reach its far end, in the
     /// global table — the first path only, and never another tunnel.
     fn underlay(&self, from: usize, remote: IpAddr) -> Vec<String> {
-        let mut sub = Ctx { net: self.net, return_of: None, proto: None, port: None, down: self.down.clone(), down_links: self.down_links.clone(), paths: vec![], warnings: Default::default(), truncated: false };
+        let mut sub = Ctx { net: self.net, return_of: None, proto: None, port: None, down: self.down.clone(), down_links: self.down_links.clone(), paths: vec![], warnings: Default::default(), truncated: false, in_underlay: true };
         let src = self.net.boxes[from].addrs.first().map(|a| a.ip).unwrap_or(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
         sub.step(At { b: from, vrf: "default".into(), in_if: None, src, dst: remote, ttl: 16, seen: vec![] }, vec![]);
         sub.paths.first().map(|p| p.hops.iter().map(|h| h.device.clone()).collect()).unwrap_or_default()
@@ -999,8 +1009,10 @@ fn locate(ctx: &Ctx, from: &str, vrf: Option<&str>) -> Result<(Vec<Start>, Sourc
             how = format!("The subnet has the FHRP address {}, and no collected device reported itself active for it.", subnet_vips[0]);
         }
     }
-    // Anycast, VARP, active-gateway, vPC: prefer where the MAC is learned locally.
-    if gws.len() > 1 {
+    // Anycast, VARP, active-gateway, vPC: prefer where the MAC is learned
+    // locally — LT-638: only between boxes that each have a MAC table; a
+    // firewall with none must not lose the choice for that.
+    if gws.len() > 1 && gws.iter().all(|(i, _, _)| !net.boxes[*i].macs.is_empty()) {
         if let Some(m) = &src_mac {
             let local: Vec<(usize, String, Option<String>)> = gws.iter().filter(|(i, _, _)| net.boxes[*i].port_for(m, None).map(|e| net.across(*i, &e.iface).map(|(n, _)| !net.by_node.contains_key(&n)).unwrap_or(true)).unwrap_or(false)).cloned().collect();
             if local.len() == 1 {
@@ -1046,6 +1058,7 @@ pub fn trace(net: &Net, req: &Request) -> Trace {
         paths: vec![],
         warnings: Default::default(),
         truncated: false,
+        in_underlay: false,
     };
     for d in &req.down_devices {
         match net.find_box(d) {

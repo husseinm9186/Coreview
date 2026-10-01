@@ -105,7 +105,7 @@ export const collectionInput = (o: object) => {
 };
 
 /** `ViewOptions` in `coreview-topology/src/crawl_view.rs` (LT-527). */
-export const topologyViewOptions = (o: object) => pickAll(o, ['collapseBundles', 'collapseStacks', 'placeholders', 'minConfidence', 'vlan', 'vrf']);
+export const topologyViewOptions = (o: object) => pickAll(o, ['collapseBundles', 'collapseStacks', 'placeholders', 'minConfidence', 'vlan', 'vrf', 'seeds']);
 
 /** `Request` and `DownLink` in `coreview-path/src/walk.rs` (LT-531). */
 export const pathRequest = (o: object) => {
