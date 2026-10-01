@@ -110,7 +110,9 @@ more useful than a blanket "nothing leaves the machine", which would be false:
 | Ping sweep | Only when you run one, over a range you type | The range you typed |
 | Reverse DNS (PTR) | During a sweep, for addresses that answered | Your OS resolver — this is what `ping -a` does, so a swept host arrives named rather than numbered |
 | `traceroute` | Only when you click Traceroute | The target you chose |
-| SSH | Only when you start a device crawl or a config backup | Only the devices you listed |
+| SSH | Only when you start a crawl, a backup, a Tracert from a device, a Path check or Path-Trace check from a device, or an SSH tab | Only the devices you listed |
+| HTTPS to a device's own API | Only when you pick a saved API login for a run | That device (or its FMC), on the port saved with the login; the certificate is pinned on first use |
+| HTTPS to the Meraki Dashboard | Only when you start a Meraki backup, health check or discovery with your own key | `api.meraki.com` and its regional hosts, nothing else (D-056, D-057) |
 | SNMP (read-only) | Only during a crawl, and only if you supply SNMP credentials | Only the devices you listed |
 | Telnet | Only when you explicitly choose it for a run | Only the devices you listed |
 | Opening a link | Only when you click a hyperlink you added | Your OS browser, `http(s)` only — the Rust command rejects `file://`, `javascript:` and anything else, with tests covering it |
@@ -121,11 +123,13 @@ which is why it is never selected automatically — a run has to ask for it, and
 the interface says plainly what it costs. Prefer SSH wherever the equipment
 allows it.
 
-**On SNMP:** read-only, and deliberately narrow — the system group (which names
-and describes the device) and the interface table. It earns its place because a
-read-only community is far easier to get approved than shell access, and plenty
-of equipment answers SNMP while refusing a login. Everything else you might
-want from SNMP belongs in a monitoring system, not a diagram tool.
+**On SNMP:** read-only, and only what a diagram needs — the system group
+(which names and describes the device), the interface table, and the LLDP,
+CDP, bridge, forwarding and entity tables a crawl reads for neighbours and
+attached hosts. It earns its place because a read-only community is far easier
+to get approved than shell access, and plenty of equipment answers SNMP while
+refusing a login. Everything else you might want from SNMP belongs in a
+monitoring system, not a diagram tool.
 
 Everything in that table is **operator-initiated and operator-addressed**.
 Nothing runs on a timer you did not start, nothing scans a range you did not
@@ -133,10 +137,12 @@ type, and nothing contacts an address that is not in your own project. Probes
 run only between **Start validation** and **Stop validation**, and only for the
 project that is open.
 
-There is no general-purpose HTTP client in the app. HTTP/HTTPS probes open a
-plain `TcpStream` and speak the request themselves (`crates/coreview-probe`),
-with `rustls` for TLS. There is no library sitting there that could be pointed
-at an arbitrary URL.
+Two crates carry an HTTP client (`coreview-collect`, for a device's own REST
+API, and `coreview-meraki`); each is used only against a host whose login you
+saved — a device, its FMC, or Meraki's dashboard — never against a URL the
+interface can name, and the collectors pin the device's certificate on first
+use. HTTP/HTTPS probes open a plain `TcpStream` and speak the request
+themselves (`crates/coreview-probe`), with `rustls` for TLS.
 
 ### Where your data lives
 
@@ -343,9 +349,21 @@ not say — a switch that has gone, a link that now lands on a different port �
 because folding those in silently would turn change detection back into
 drawing.
 
-**Which devices it can log into.** Each platform is a dialect: one reading
-of the version banner decides every command a device is sent, and a
-platform is asked only its own spellings. Verified against real hardware:
+**Two engines.** By default a crawl runs the catalog-driven collector: one
+YAML per OS under `resources/catalog/` names the fingerprint, the read-only
+commands, what each feeds, and whether it is verified on hardware, from
+documentation, or not yet. It follows CDP/LLDP neighbours, the next hop of
+every route and neighbours known only from ARP, within the limits you set; a
+FortiGate is read over SSH and, with an API login, over REST — policies,
+addresses, FQDN resolutions, managed FortiSwitches and FortiAPs. In this
+release its SSH session is driven by a bundled Python sidecar (scrapli),
+installed beside the app, which never writes a file and takes a secret only
+on stdin; it is being replaced by Rust. The classic crawler below stays
+selectable while the collector meets the rest of an estate.
+
+**Which devices the classic crawler can log into.** Each platform is a
+dialect: one reading of the version banner decides every command a device is
+sent, and a platform is asked only its own spellings. Verified against real hardware:
 Cisco IOS/IOS-XE, NX-OS, FortiOS (FortiGate and FortiSwitch), ArubaOS-Switch.
 Built from vendor documentation and honest about it — each reports itself
 unverified until real output replaces its test data: Junos, Arista EOS,

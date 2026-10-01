@@ -32,7 +32,7 @@ watches them.
 | --- | --- |
 | `CLAUDE.md` | Standing rules. Non-negotiable. |
 | `docs/ROADMAP.md` | Every request, with stable IDs. The answer to "what's left". |
-| `docs/DECISIONS.md` | 56 decisions (and counting) with what was rejected and why. Append-only. |
+| `docs/DECISIONS.md` | 62 decisions (and counting) with what was rejected and why. Append-only. |
 | `docs/OPEN-QUESTIONS.md` | What is not yours to decide. |
 | This file | The shape of the code and the traps in it. |
 
@@ -61,12 +61,21 @@ src/
   theme.ts        Every colour the canvas paints with, for both grounds.
   styles.css      Every colour the chrome paints with. Three token blocks.
 crates/
-  coreview-discover  Crawling. SSH (russh), telnet, CDP, LLDP, FortiOS, SNMP,
-                     ARP, MAC tables, OUI lookup. 300+ tests.
+  coreview-discover  The classic crawler. SSH (russh), telnet, CDP, LLDP,
+                     FortiOS, SNMP, ARP, MAC tables, OUI lookup. 600+ tests.
   coreview-probe     ICMP/TCP/DNS probing. Tauri-free on purpose.
+  coreview-meraki    The Meraki Dashboard API, read-only (D-056).
+  coreview-catalog   The discovery catalog: YAML in, plan and allowlist out.
+  coreview-collect   The collector: sidecar client, readers, follow, REST.
+  coreview-topology  P2: tables in, graph out, and the review's view of it.
+  coreview-path      P3: where a packet goes, with firewall verdicts.
+  coreview-formats   Import and export formats.
+sidecar/          The Python bridge the collector drives (scrapli, TextFSM).
 src-tauri/        Commands, SQLite, the credential vault, icon library scan.
-scripts/          Stencil/shape importers. Run by hand, not by the app.
-e2e/              Playwright harnesses that drive the real app.
+scripts/          Stencil/shape importers, the catalog's tooling, and
+                  revert-point.sh. Run by hand, not by the app.
+e2e/              Playwright harnesses that drive the real app — the list in
+                  CLAUDE.md is the one kept current.
 ```
 
 **The pattern that matters:** anything with logic in it goes in `src/lib/` as a
@@ -154,6 +163,10 @@ and documented where they are used.
   screenshot.
 - Commit after each piece of work with a real message. Roadmap and decision
   changes go in the same commit as the code they describe.
+- Before a push run `scripts/revert-point.sh` (LT-602): a bundle of every
+  branch and a tar of the tree go under `~/coreview-backups/` (or
+  `$COREVIEW_BACKUPS`), named by date and commit; restore with
+  `git clone <name>.bundle`.
 
 ### The commit style
 
@@ -228,6 +241,11 @@ The single most common failure here.
 - **The document is stored as `serde_json::Value` and must stay that way**
   (D-002). A typed struct would silently drop every field the frontend adds
   afterwards.
+- **A serde enum with named fields needs `rename_all_fields = "camelCase"`.**
+  `rename_all` renames only the variants; `CollectionEvent` reached the page
+  as `run_id` and the Discover panel ignored every event (LT-595). The browser
+  harnesses stub camelCase, so they stayed green — a Rust test in
+  `collection.rs` serialises every event and fails on a snake_case key.
 - **`-D warnings` in CI.** An import used only by a `cfg`-gated test is an
   unused import on other platforms. Windows CI went red for a day over this.
 - **A new command is three edits, and the tests say which you forgot**
@@ -354,20 +372,37 @@ Real hardware the operator tests against. **Credentials are his and are not in
 this repository** — they live in the app's encrypted vault, and any that
 appeared in conversation should be treated as compromised and rotated.
 
-| Device | Address | What it proved |
-| --- | --- | --- |
-| Cisco C2960CX | 192.168.77.7 | CDP, LLDP, config backup, SNMP v2c and v3 |
-| FortiSwitch 224E | 192.168.77.203 | FortiOS command set, chassis-id→ARP resolution |
-| FortiGate 60F 7.6.7 | 192.168.77.1 | `$` prompt, DHCP lease list, FortiLink, FortiAP LLDP |
-| Ubiquiti USL8L | 192.168.77.112 | SNMP only; found via a FortiAP's LLDP |
-| Palo Alto PA-220 | 192.168.77.206 | SNMP v2c identity |
+The addresses are the operator's and stay out of this file (D-027); the
+roadmap items name what each box proved.
 
-**Parsers are written against captured output, never against documentation.**
+| Device | What it proved |
+| --- | --- |
+| Cisco C2960CX | CDP, LLDP, config backup, SNMP v2c and v3; the collector's IOS catalog (LT-558) |
+| FortiSwitch 224E | FortiOS command set, chassis-id→ARP resolution; its own catalog and readers (LT-565) |
+| FortiGate 60F 7.6.7 | `$` prompt, DHCP lease list, FortiLink, FortiAP LLDP; the collector over SSH and REST — policy, addresses, FQDN resolutions, managed switch and APs (LT-571, LT-578–LT-585, LT-596) |
+| Ubiquiti USL8L | SNMP only; found via a FortiAP's LLDP |
+| Palo Alto PA-220 | SNMP v2c identity; logs in over SSH (LT-600) — the box ends a second session with "Invalid user", still open |
+| Aruba CX 6200F | Identity over SSH (LT-490); its own LLDP and MAC readings (LT-635) wait on his next crawl |
+| Mellanox SN2010 ×2 | Named by the 6200's LLDP; OS not yet known (LT-649) |
+
+**Parsers are written against captured output, never against documentation**
+— with the exceptions CLAUDE.md records (D-026, D-051, D-058), each marked
+in its own doc comment and `verified: docs` in the catalog until a capture
+replaces its fixtures.
 `crates/coreview-discover/examples/try_commands.rs` runs a list of commands
 against a real device and reports which were understood;
 `examples/raw_login.rs` dumps exactly what a device sends after login. Both
 exist because guessing from docs produces a crawler that fails silently on
-hardware nobody tested.
+hardware nobody tested. `try_commands` takes `CV_PORT`, `CV_ENABLE`,
+`CV_CONNECT` (seconds to wait for the SSH banner — a PA-220 took 15),
+`CV_TIMEOUT` (seconds per command; a traceroute wants minutes) and
+`CV_WATCH=1` (each chunk as it arrives, and what a timed-out command had
+printed). `crates/coreview-path/examples/lab_run.rs` is the collector's
+own run: `--user/--out` and hosts, `--follow <hops> [--subnet]`,
+`--api-user` (key from `COREVIEW_LAB_API_KEY`, port from
+`COREVIEW_LAB_API_PORT`), and `--replay <dir>` to reread an earlier run —
+or the app's own `collection-<stamp>` diagnostic — through today's code
+with no device and no password.
 
 The biggest single win on this project came from `raw_login.rs`: a FortiGate
 was completely unreachable because FortiOS ends its prompt in `$` for any
@@ -450,10 +485,11 @@ trust the summary below over that file; it is a signpost and it will rot.
   the API collectors with certificate pinning), `src-tauri/collection.rs`
   and `collection_db.rs` (schema 6, the commands, offline import), and
   the Collect tab. Everything ran against `examples/fake_sidecar.rs` and
-  the stubbed page; nothing has met the operator's lab yet. The dev
+  the stubbed page then; the lab run (LT-558, `lab_run.rs`) collected all
+  three lab boxes on 29–30 September, and the API collectors have their
+  command (LT-518) — the FortiGate's policy is read over REST. The dev
   sidecar is a venv under `sidecar/.venv` (or `COREVIEW_SIDECAR_PYTHON`);
-  the installer's copy is LT-519. The API collectors have no command yet
-  (LT-518).
+  the installer's copy is LT-519.
 - **Later on 29 September 2026 (LT-519–LT-527).** The installer now carries
   the sidecar: `sidecar/build/windows.ps1` lays it, `sign.ps1` signs it,
   `tauri.sidecar.conf.json` ships it (Windows bundle only). The read-only
@@ -508,6 +544,21 @@ trust the summary below over that file; it is a signpost and it will rot.
   builder takes it despite the SSH failure; the allowlist is three copies
   (Rust, JS, Python) pinned by `allowlist-cases.json` — change all three and
   the fixture together (LT-556, LT-557 were both found that way).
+- **30 September 2026 (LT-558–LT-649, D-062).** The lab run found and
+  fixed some forty bugs, each with a failing test first; the collector
+  became the default engine of "Discover devices" (D-062,
+  `coreview-collect::follow`, the Discover panel), its run kept in the
+  store so a tab change does not lose it (`src/lib/discoverRun.ts`);
+  FortiOS backups read `show full-configuration` with no `enable`
+  (`capture.rs`); Tracert streams a device's hops on `coreview://tracert`
+  (`ssh.rs` `watch`/`take_partial`, `discovery.rs`); the FortiGate's policy
+  is read over REST on the port saved with the API login (`api/`,
+  `vault_commands.rs`); the sidecar waits for a slow SSH banner, closes a
+  session a timeout killed, and refuses an unlisted VDOM (`session.py`);
+  `lab_run --replay` rereads an app diagnostic with no device;
+  `scripts/revert-point.sh` precedes a push. The sweep's reviews
+  (LT-603) are items LT-605–LT-648 — read them before touching the
+  topology or path builders.
 
 - **Shipped 2026-09-18, after the mission:** LT-285 the address register (the
   **Addresses** tab; `src/lib/ipam.ts` is the arithmetic, `e2e/ipam.mjs` drives

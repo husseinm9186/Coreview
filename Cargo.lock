@@ -1017,7 +1017,7 @@ dependencies = [
 
 [[package]]
 name = "coreview"
-version = "2.4.9"
+version = "2.5.0"
 dependencies = [
  "base64 0.22.1",
  "coreview-catalog",
@@ -1051,7 +1051,7 @@ dependencies = [
 
 [[package]]
 name = "coreview-catalog"
-version = "2.4.9"
+version = "2.5.0"
 dependencies = [
  "fancy-regex 0.19.2",
  "regex",
@@ -1064,7 +1064,7 @@ dependencies = [
 
 [[package]]
 name = "coreview-collect"
-version = "2.4.9"
+version = "2.5.0"
 dependencies = [
  "base64 0.22.1",
  "coreview-catalog",
@@ -1089,7 +1089,7 @@ dependencies = [
 
 [[package]]
 name = "coreview-discover"
-version = "2.4.9"
+version = "2.5.0"
 dependencies = [
  "argon2 0.5.3",
  "async-trait",
@@ -1112,7 +1112,7 @@ dependencies = [
 
 [[package]]
 name = "coreview-formats"
-version = "2.4.9"
+version = "2.5.0"
 dependencies = [
  "base64 0.22.1",
  "flate2",
@@ -1124,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "coreview-meraki"
-version = "2.4.9"
+version = "2.5.0"
 dependencies = [
  "rustls",
  "rustls-pki-types",
@@ -1138,7 +1138,7 @@ dependencies = [
 
 [[package]]
 name = "coreview-path"
-version = "2.4.9"
+version = "2.5.0"
 dependencies = [
  "coreview-catalog",
  "coreview-collect",
@@ -1150,7 +1150,7 @@ dependencies = [
 
 [[package]]
 name = "coreview-probe"
-version = "2.4.9"
+version = "2.5.0"
 dependencies = [
  "dns-lookup",
  "proptest",
@@ -1167,7 +1167,7 @@ dependencies = [
 
 [[package]]
 name = "coreview-topology"
-version = "2.4.9"
+version = "2.5.0"
 dependencies = [
  "coreview-catalog",
  "coreview-collect",

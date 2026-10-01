@@ -1273,3 +1273,9 @@ readers, topology, paths — was invisible in the workflow he uses, and the
 older crawler sends Cisco commands to a FortiSwitch. Keeping it selectable
 costs nothing and leaves a way back while the new path meets the rest of
 his estate (LT-559).
+*What shipped differs (the same day):* the default route's next hop and
+neighbours known only from ARP are followed as well as CDP/LLDP — but a next
+hop outside the private ranges only when a subnet limit names it (LT-612); a
+range seed is refused by the collector; the panel offers the project's API
+login (LT-598) and one saved SNMP login (LT-620); the run lives in the store
+so a tab change does not lose it (LT-619).

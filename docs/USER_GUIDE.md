@@ -367,6 +367,19 @@ A sweep only sees hosts on this segment for MAC purposes — ARP does not cross
 a router — so a routed sweep shows a dash rather than the gateway's address.
 That is the correct answer, not a gap.
 
+**Discover devices has two engines.** The default, **Coreview collector**,
+recognises each device, sends it only its own OS's read-only commands from the
+catalog, and follows its CDP and LLDP neighbours, the next hop of every route
+it holds, and the neighbours it knows only from its ARP table — within the hop,
+device and subnet limits. It takes one SSH login (saved or typed), one API
+login for a FortiGate's or AOS-CX switch's own REST API, and one saved SNMP
+login for devices that refuse SSH. Its result fills the same table and review
+below. **Classic crawler** is the older engine, kept while the collector meets
+the rest of your estate; the rest of this section describes it, and the
+controls it alone reads — Telnet, the second login, the device classes, typed
+SNMP rows, retries, Dry run, Also read from each device — are disabled under
+the collector and say so.
+
 **Discover devices** logs into switches and routers and reads what they know:
 CDP and LLDP neighbours, MAC address tables, port channels, whether the box is
 a stack or a chassis pair, and where it sends traffic it has no other route
@@ -506,12 +519,16 @@ stops a fault from scanning a network in a loop.
 
 ## Run a crawl the way your estate needs
 
-**Seeds.** **Seed devices** takes several at once: addresses, hostnames, or ranges
-up to a /20, separated by commas. A range is first narrowed to the addresses that
-accept a connection on the login port. **From CSV…** adds the address column of
-a spreadsheet.
+**Seeds.** **Seed devices** takes several at once: addresses or hostnames,
+separated by commas. With the collector a seed is a device; a range is refused,
+with a pointer to Ping sweep or the classic crawler, because the collector
+visits one device at a time. The classic crawler also takes ranges up to a /20,
+first narrowed to the addresses that accept a connection on the login port.
+**From CSV…** adds the address column of a spreadsheet.
 
-**How it runs.** **At once** sets how many devices are worked on together,
+**How it runs** — the classic crawler's controls; with the collector only the
+hop limit, the subnets and the logins named above apply, and the header counts
+the devices as it goes, naming the last command each answered. **At once** sets how many devices are worked on together,
 **Give up after** how long one device may take, and **Retries** how often a device
 that did not answer is tried again — a refused login is never retried. **Stop**
 stops at once. **Devices this run** shows every device live: queued, probing,
@@ -575,6 +592,15 @@ login for the whole project: **Save** puts it in the encrypted vault, **Replace*
 types a new one over it, and **Wipe** takes it out of the vault altogether.
 **Every device with no login of its own uses it**, so a whole estate needs one
 password typed once.
+
+**An API login.** A **Device or FMC API login** in the vault is a token, or a
+username and password, for a device's own HTTPS API — a FortiGate, an AOS-CX
+switch, or the FMC that manages FTDs. Leave the username blank for a token, and
+set the **HTTPS port** only when it is not 443 (a FortiGate's admin port is
+often moved). Pick it on Discover devices or the Collect tab and the firewall's
+policies, addresses and FQDN resolutions are read over it. The certificate is
+pinned the first time; **Forget this key** in Settings is how a replaced box is
+trusted again.
 
 **A login for one device.** **Its own username and password**, further down the
 same inspector, is where you type one instead of choosing one. SSH takes a
@@ -653,6 +679,13 @@ saying what could not be resolved.
 **Compare.** **Tools ▸ Compare** puts two validation sessions, or two crawls,
 side by side — availability and response times that got worse; firmware, ports,
 neighbours and routes that changed — and saves the comparison as Markdown or CSV.
+
+**Tracert.** The **Tracert** tab runs a real traceroute now, from this machine
+or by a device over SSH, and names each hop by the crawled device that answered.
+A device's trace can take minutes — it waits on every silent hop and many look
+up a name for each — so the hops are shown as the device prints them, with the
+seconds counted. At 180 s it stops; what arrived is kept and marked cut short.
+**Create a page from it** to draw the path.
 
 ## Find your way around a big diagram
 
@@ -737,6 +770,13 @@ first: ASA/FTD, Palo Alto, Aruba/HP, Juniper, Huawei/H3C. FortiOS has no
 session-only pager command — its only one is a saved configuration change —
 so Coreview answers its `--More--` prompts instead of changing the device.
 
+**A FortiGate or FortiSwitch** is backed up with `show full-configuration` —
+every setting, defaults included; `show` alone gives only what differs from
+them. No `enable` is sent: FortiOS has none, and a read-only profile at the `$`
+prompt reads what it may. FortiOS keeps one configuration, so a startup backup
+is noted and skipped. Each command may take up to 300 s, because a FortiGate's
+whole configuration took half a minute in the lab.
+
 **Only commands that read are ever sent.** A command must be a `show`,
 `display` or `get` (or a paging command). Anything else — `reload`,
 `configure terminal`, `copy`, `write`, `clear` — and any show piped into
@@ -746,7 +786,7 @@ whole run before a single connection opens, and the message names the command.
 A command a device does not recognise is kept in the file and marked, because
 "this platform has no such command" is itself worth knowing. Commands that need
 privilege still run on a device that refused enable; the file says it ran in
-user mode.
+user mode. FortiOS is never asked to enable.
 
 The list and the paging choice are remembered between sessions. Coreview ships
 with no commands filled in — the list is yours.

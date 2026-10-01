@@ -1,6 +1,6 @@
 [package]
 name = "coreview-formats"
-version = "2.4.9"
+version = "2.5.0"
 authors = ["Mohammed Almoola <https://www.linkedin.com/in/malmoola>"]
 edition = "2021"
 # The same floor as the other crates, so clippy holds every crate to one Rust.

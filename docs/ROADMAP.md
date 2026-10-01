@@ -147,48 +147,6 @@ CLI answers "Invalid user. Please login using a valid account." and closes.
 Waiting on the operator: whether the account changed, or the box limits
 an admin's sessions.
 
-
-### LT-588 — **bug** Discover with the collector "never finishes": one stuck device held the run for minutes and then ended it — 2026-09-30
-**Source:** the operator, 2026-09-30, with screenshots, testing the
-collector on "Discover devices": "it never finishes". The header stood at
-"Collecting <the FortiGate's address> · 1 of 6" — the Catalyst done, the FortiGate in
-progress, four waiting. What the code does when a command stalls: the
-sidecar request waits its limit plus 15 s (135 s for a heavy command), the
-session's close then waits 45 s on a sidecar still busy with the stuck
-command, and the device's failure `sidecar` ends the **whole run** — the
-devices still waiting are never collected. Why the FortiGate stalls on the
-operator's Windows machine and not from Linux (5–35 s in four lab runs) is
-not known yet. **Fix:** a device whose sidecar stops answering is ended at
-once — no close sent to a sidecar that cannot answer it — the sidecar is
-killed and a fresh one started, and the run goes on to the next device;
-the Discover panel names the last command a device answered, so a stall
-says where. **Needs from the operator:** the run's diagnostic folder, to
-find the command that stalls. **Shipped 2026-09-30, the cause still open:**
-the device ends and the run goes on, the sidecar replaced
-(`coreview-collect::collector::SidecarSlot`; a fake sidecar that dies on
-one device, and the next device is collected with a fresh one, in under
-20 s), and the Discover panel says "last answered: <command>". Stays here
-until the stall on the operator's machine is found.
-
-### LT-603 — The sweep: every open bug fixed, the engine reviewed by agents, everything checked before one push — 2026-09-30
-**Source:** the same message: "fix all bugs, validate everything with
-MCPs and AI Agents, enhance everything and make sure we have a solid
-working Coreview per the app documentations. make sure everything is good
-before you push an update … continue working until everything is good."
-What it means here: five review agents over the collector, the topology
-and path builders, the interface, the sidecar and the documentation, each
-finding reproduced with a test before its fix (D-020) and filed as its
-own item; the e2e harnesses and every check run before a single push. The
-MCP servers available to this session (Claude Docs, Google Drive) do not
-reach a device or the app, so validation is by tests, harnesses and the
-lab, not by them.
-
-### LT-604 — The documentation says what the app now does — 2026-09-30
-**Source:** the same message: "a solid working Coreview per the app
-documentations". Since D-062 the Discover panel, the Tracert tab, backups
-of Fortinet boxes and the vault's API logins changed; HANDOVER.md, the
-README, the Help text and the catalog's NOTICE are read against the app
-and corrected where they say otherwise.
 ### LT-649 — The lab's Mellanox SN2010 switches, found and collected — 2026-09-30
 **Source:** the operator, 2026-09-30: "what about the other switch it was
 on the network but never crawled" — a Mellanox SN2010. His own capture of
@@ -1031,6 +989,51 @@ go through it.
 **Found by the same review.** One was an endpoint, three a crowd, two
 nothing. **Fix:** fewer than a crowd are endpoints, each.
 **Run:** the same scenario: two strangers on a port are two endpoints (failed before).
+
+### LT-603 — The sweep: every open bug fixed, the engine reviewed by agents, everything checked before one push — 2026-09-30, done the same day
+**Source:** the same message: "fix all bugs, validate everything with
+MCPs and AI Agents, enhance everything and make sure we have a solid
+working Coreview per the app documentations. make sure everything is good
+before you push an update … continue working until everything is good."
+What it means here: five review agents over the collector, the topology
+and path builders, the interface, the sidecar and the documentation, each
+finding reproduced with a test before its fix (D-020) and filed as its
+own item; the e2e harnesses and every check run before a single push. The
+MCP servers available to this session (Claude Docs, Google Drive) do not
+reach a device or the app, so validation is by tests, harnesses and the
+lab, not by them.
+**What ran:** five review agents (collector, topology and path, interface, sidecar, documentation), 54 findings, 41 fixed with a failing test first (LT-605–LT-645 less the ones left as items), the rest filed as items; every check and the e2e harnesses before the one push. The agents reviewed; the tests and the lab decided.
+
+### LT-604 — The documentation says what the app now does — 2026-09-30, done the same day
+**Source:** the same message: "a solid working Coreview per the app
+documentations". Since D-062 the Discover panel, the Tracert tab, backups
+of Fortinet boxes and the vault's API logins changed; HANDOVER.md, the
+README, the Help text and the catalog's NOTICE are read against the app
+and corrected where they say otherwise.
+**What shipped:** USER_GUIDE (the two engines, seeds, which controls apply, a Tracert section, Fortinet backups, API logins), README (the traffic table's HTTPS rows, the HTTP clients, SNMP's scope, the two engines), HANDOVER (counts, crates, revert point, the serde mine, the lab table without addresses, the lab tools, a 30 September entry), D-062's what-shipped note, CLAUDE.md's scripts line, and five strings.
+
+### LT-588 — **bug** Discover with the collector "never finishes": one stuck device held the run for minutes and then ended it — 2026-09-30, closed 2026-09-30
+**Source:** the operator, 2026-09-30, with screenshots, testing the
+collector on "Discover devices": "it never finishes". The header stood at
+"Collecting <the FortiGate's address> · 1 of 6" — the Catalyst done, the FortiGate in
+progress, four waiting. What the code does when a command stalls: the
+sidecar request waits its limit plus 15 s (135 s for a heavy command), the
+session's close then waits 45 s on a sidecar still busy with the stuck
+command, and the device's failure `sidecar` ends the **whole run** — the
+devices still waiting are never collected. Why the FortiGate stalls on the
+operator's Windows machine and not from Linux (5–35 s in four lab runs) is
+not known yet. **Fix:** a device whose sidecar stops answering is ended at
+once — no close sent to a sidecar that cannot answer it — the sidecar is
+killed and a fresh one started, and the run goes on to the next device;
+the Discover panel names the last command a device answered, so a stall
+says where. **Needs from the operator:** the run's diagnostic folder, to
+find the command that stalls. **Shipped 2026-09-30, the cause still open:**
+the device ends and the run goes on, the sidecar replaced
+(`coreview-collect::collector::SidecarSlot`; a fake sidecar that dies on
+one device, and the next device is collected with a fresh one, in under
+20 s), and the Discover panel says "last answered: <command>". Stays here
+until the stall on the operator's machine is found.
+**Closed:** the operator's diagnostic of the same run shows it completed on all three devices in 22 s — what he saw was LT-595. The guard stays: a stuck device ends at its limit and the run goes on (LT-589's tests).
 
 ### LT-601 — **bug** A device slow to send its SSH banner could not be collected — 2026-09-30, fixed the same day
 **Found checking LT-600:** the lab's Palo Alto sends `SSH-2.0-OpenSSH_8.0`
