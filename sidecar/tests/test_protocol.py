@@ -83,4 +83,6 @@ def test_a_refused_command_never_reaches_a_session():
         json.dumps({"op": "quit", "id": 3}),
     ])
     by = {g.get("id"): g for g in got if "id" in g}
-    assert by[2]["status"] in ("error", "refused")
+    # LT-634: the verdict comes before the session lookup, so this is the
+    # allowlist's answer and not "no such session".
+    assert by[2]["status"] == "refused", by[2]

@@ -231,49 +231,6 @@ only the fields the kind shows are sent.
 ### LT-625 — **bug** "1 devices" on the Collect tab's hand-over — 2026-09-30
 **Found by the same review.** `collect.handedOver` was a hard-coded plural.
 **Fix:** the catalogue's `plural.device`.
-
-### LT-627 — **bug** A command that timed out closed the SSH session, and the sidecar kept reporting it alive — 2026-09-30
-**Found by the sweep's sidecar review (LT-603).** Scrapli closes the
-transport on every `timeout_ops`; the sidecar answered `timeout` and left
-the session registered, so each later step came back `error:
-ScrapliConnectionNotOpened` with a traceback, the plan ran to its end
-reporting dozens of them, and FortiOS's console mode was never restored.
-**Fix:** a timed-out session is reported closed: the reply says so, the
-session is dropped, and the collector ends the device there.
-
-### LT-628 — **bug** An `open` that failed after the SSH session was up never closed it — 2026-09-30
-**Found by the same review.** A host-key mismatch, a refused login or a
-timeout in the context or paging checks left the paramiko thread and the
-device's VTY line open until the process ended. **Fix:** the connection is
-closed on every failure past the handshake.
-
-### LT-629 — **bug** A catalog's `escalate` step reached the device unchecked — 2026-09-30
-**Found by the same review.** The one catalog literal sent without the
-session vocabulary or the allowlist: an edited catalog could put
-`configure terminal` there. **Fix:** it passes the vocabulary like every
-other step.
-
-### LT-630 — **bug** FortiOS paging was restored from inside a VDOM, where it cannot be — 2026-09-30
-**Found by the same review.** `close()` ran the restore without leaving the
-current context first, and `_disable_paging` entered global without
-checking it; the console mode the sidecar changed stayed changed.
-**Fix:** leave the context, then restore; the same on the way in.
-
-### LT-631 — **bug** A context name the device had not listed went into `edit {vdom}` — 2026-09-30
-**Found by the same review.** When the VDOM list regex matched nothing, any
-name was accepted; on FortiOS `config vdom` / `edit <new>` / `end` makes a
-VDOM. **Fix:** a name the device did not list is refused.
-
-### LT-632 — **bug** A private key given as text would be echoed in an error — 2026-09-30
-**Found by the same review.** Scrapli takes `auth_private_key` as a file
-path and names the unresolved "path" — the key — in its error. Latent:
-nothing sends one today. **Fix:** the sidecar refuses a key that is not a
-path to a file it may read, without quoting it.
-
-### LT-634 — **bug** A sidecar test of the allowlist never reached it — 2026-09-30
-**Found by the same review.** `dispatch` looked the session up before the
-verdict, so the test's "refused or error" passed on "no such session".
-**Fix:** the verdict comes first, and the test accepts `refused` only.
 ### LT-649 — The lab's Mellanox SN2010 switches, found and collected — 2026-09-30
 **Source:** the operator, 2026-09-30: "what about the other switch it was
 on the network but never crawled" — a Mellanox SN2010. His own capture of
@@ -926,6 +883,56 @@ reason "no address to reach it on".
 **Found by the same review.** The device was reported done with no
 commands and no failure. **Fix:** it is the device's failure, in its log.
 **Run:** by reading — a `persist_device` error is the device's failure `store`, in its log.
+
+### LT-627 — **bug** A command that timed out closed the SSH session, and the sidecar kept reporting it alive — 2026-09-30, fixed the same day
+**Found by the sweep's sidecar review (LT-603).** Scrapli closes the
+transport on every `timeout_ops`; the sidecar answered `timeout` and left
+the session registered, so each later step came back `error:
+ScrapliConnectionNotOpened` with a traceback, the plan ran to its end
+reporting dozens of them, and FortiOS's console mode was never restored.
+**Fix:** a timed-out session is reported closed: the reply says so, the
+session is dropped, and the collector ends the device there.
+**Run:** a sidecar test (failed, passes): the session closes on a timeout and every later op says so; `dispatch` drops it. A fake-sidecar test: the device ends as `timeout` with what it had, nothing after is asked, and the next device uses the same sidecar.
+
+### LT-628 — **bug** An `open` that failed after the SSH session was up never closed it — 2026-09-30, fixed the same day
+**Found by the same review.** A host-key mismatch, a refused login or a
+timeout in the context or paging checks left the paramiko thread and the
+device's VTY line open until the process ended. **Fix:** the connection is
+closed on every failure past the handshake.
+**Run:** a sidecar test: a context check that times out closes the connection and the open fails as `timeout`.
+
+### LT-629 — **bug** A catalog's `escalate` step reached the device unchecked — 2026-09-30, fixed the same day
+**Found by the same review.** The one catalog literal sent without the
+session vocabulary or the allowlist: an edited catalog could put
+`configure terminal` there. **Fix:** it passes the vocabulary like every
+other step.
+**Run:** a sidecar test: `configure terminal` as an escalate step is refused and nothing is sent.
+
+### LT-630 — **bug** FortiOS paging was restored from inside a VDOM, where it cannot be — 2026-09-30, fixed the same day
+**Found by the same review.** `close()` ran the restore without leaving the
+current context first, and `_disable_paging` entered global without
+checking it; the console mode the sidecar changed stayed changed.
+**Fix:** leave the context, then restore; the same on the way in.
+**Run:** a sidecar test: after a switch into a VDOM, close sends `end` first, then `config global` and the restore.
+
+### LT-631 — **bug** A context name the device had not listed went into `edit {vdom}` — 2026-09-30, fixed the same day
+**Found by the same review.** When the VDOM list regex matched nothing, any
+name was accepted; on FortiOS `config vdom` / `edit <new>` / `end` makes a
+VDOM. **Fix:** a name the device did not list is refused.
+**Run:** a sidecar test: with VDOMs detected and none listed, a made-up name is refused and `edit` never sent.
+
+### LT-632 — **bug** A private key given as text would be echoed in an error — 2026-09-30, fixed the same day
+**Found by the same review.** Scrapli takes `auth_private_key` as a file
+path and names the unresolved "path" — the key — in its error. Latent:
+nothing sends one today. **Fix:** the sidecar refuses a key that is not a
+path to a file it may read, without quoting it.
+**Run:** a sidecar test: a key given as text is refused as `auth` without the text in the message.
+
+### LT-634 — **bug** A sidecar test of the allowlist never reached it — 2026-09-30, fixed the same day
+**Found by the same review.** `dispatch` looked the session up before the
+verdict, so the test's "refused or error" passed on "no such session".
+**Fix:** the verdict comes first, and the test accepts `refused` only.
+**Run:** `test_protocol.py` now accepts `refused` only, and passes.
 
 ### LT-635 — **bug** The classic crawler sent an ArubaOS-CX switch the Cisco and AOS-S spellings — 2026-09-30, fixed the same day
 **Source:** the operator, 2026-09-30, with a debug zip and a screenshot:

@@ -94,6 +94,13 @@ class Sidecar:
             info = s.open()
             self.sessions[sid] = s
             return Response(rid, "ok", session=sid, device=req["host"], extra=info)
+        # LT-634: the allowlist's answer before anything else — a write verb
+        # is refused whether or not a session exists.
+        if op == "run":
+            v = verdict(req["cmd"])
+            if v != "ok":
+                self.emit("log", sid, level="error", msg=f"refused {req['cmd']!r}: {v}")
+                return Response(rid, "refused", session=sid, cmd=req["cmd"], error=v)
         s = self.sessions.get(sid)
         if s is None:
             return Response(rid, "error", session=sid, error="no such session")
@@ -111,8 +118,12 @@ class Sidecar:
                 self.emit("log", sid, level="error", msg=f"refused {cmd!r}: {v}")
                 return Response(rid, "refused", session=sid, device=s.host, cmd=cmd, error=v)
             status, raw, ms = s.run(cmd, int(req.get("timeout_ms") or 30000))
+            if status == "timeout":
+                # LT-627: the transport is closed; the session is gone with it.
+                del self.sessions[sid]
+                return Response(rid, status, session=sid, device=s.host, cmd=cmd, raw=raw, duration_ms=ms, error="timed out; the session is closed")
             if status != "ok":
-                return Response(rid, status, session=sid, device=s.host, cmd=cmd, raw=raw, duration_ms=ms, error="rejected by device" if status == "unsupported" else "timed out")
+                return Response(rid, status, session=sid, device=s.host, cmd=cmd, raw=raw, duration_ms=ms, error="rejected by device")
             parser = req.get("parser") or "none"
             try:
                 rows = parse(parser, raw, req.get("also") or [])

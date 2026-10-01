@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import os
 import re
 import time
 from typing import Any, Optional
@@ -111,6 +112,15 @@ class Session:
         connect_s = max(1, int(timeouts.get("connect_ms", 8000))) / 1000
         auth_s = max(1, int(timeouts.get("auth_ms", 20000))) / 1000
         _PatientTransport.banner_wait = max(30.0, auth_s)
+        # LT-632: scrapli takes the key as a file path and would name an
+        # unresolved "path" — the key itself — in its error. Only a path to
+        # a file this process may read is passed on; the text is never quoted.
+        key_path = auth.get("private_key") or ""
+        if key_path and not (len(key_path) < 1024 and "\n" not in key_path and os.path.isfile(key_path) and os.access(key_path, os.R_OK)):
+            raise SessionError("auth", "the private key must be the path of a key file this process may read")
+        # LT-627: set once a command timed out — scrapli closes the transport
+        # then, and every later op must say so instead of failing one by one.
+        self.dead: Optional[str] = None
         common: dict[str, Any] = {
             "host": host,
             "port": port,
@@ -185,6 +195,30 @@ class Session:
             raise SessionError("error", f"the SSH handshake failed: {cause or type(cause).__name__}") from None
         except (ScrapliConnectionError, OSError) as e:
             raise SessionError("error", str(e)) from None
+        # LT-628: a failure past the handshake must not leave the device's
+        # VTY line and the paramiko thread open until the process ends.
+        try:
+            self._prepare()
+        except BaseException as e:
+            try:
+                self.conn.close()
+            except Exception:  # noqa: BLE001 — the reason to report is the first one
+                pass
+            if isinstance(e, ScrapliTimeout):
+                raise SessionError("timeout", str(e)) from None
+            if isinstance(e, (ScrapliConnectionError, ScrapliConnectionNotOpened, OSError)):
+                raise SessionError("error", str(e)) from None
+            raise
+        return {
+            "prompt": self._prompt(),
+            "contexts": self.contexts,
+            "context_kind": self.context_kind,
+            "host_key": self.presented_key,
+            "host_key_first_seen": not self.known_key,
+        }
+
+    def _prepare(self) -> None:
+        """Everything after the SSH session is up: paging, privilege, contexts."""
         if self.generic:
             if self.os == "generic":
                 # LT-561: the pass that recognises a device knows nothing of it
@@ -198,17 +232,13 @@ class Session:
             self._generic_on_open()
         self._detect_contexts()
         self._disable_paging()
-        return {
-            "prompt": self._prompt(),
-            "contexts": self.contexts,
-            "context_kind": self.context_kind,
-            "host_key": self.presented_key,
-            "host_key_first_seen": not self.known_key,
-        }
 
     def close(self) -> None:
         try:
-            self._restore_paging()
+            # LT-630: FortiOS refuses `config system console` inside a VDOM.
+            if not self.dead:
+                self._leave_context()
+                self._restore_paging()
         except Exception:  # noqa: BLE001 — closing must not fail on a device that already went away
             pass
         try:
@@ -241,6 +271,9 @@ class Session:
         want = self.spec.get("default_privilege")
         lvl = levels.get(want) if want else None
         if lvl and lvl.get("escalate"):
+            # LT-629: the one catalog literal that reached the device unchecked.
+            if not SESSION_STEP.match(lvl["escalate"]):
+                raise SessionError("refused", f"escalate step {lvl['escalate']!r} is outside the session vocabulary")
             prompt = self._prompt()
             if not re.search(lvl["pattern"], prompt):
                 self.conn.send_interactive(
@@ -316,6 +349,8 @@ class Session:
 
     def switch(self, context: dict) -> dict:
         """Enter a VDOM / vsys / ASA context, `global`, or `system` (none)."""
+        if self.dead:
+            raise SessionError("error", self.dead)
         ctx = self.spec.get("contexts")
         if not ctx:
             raise SessionError("unsupported", f"{self.os} has no contexts")
@@ -326,7 +361,9 @@ class Session:
         if name == "global":
             self._enter_global()
             return {"context": "global"}
-        if self.has_contexts and self.contexts and name not in self.contexts:
+        # LT-631: only a name the device listed; on FortiOS `config vdom` /
+        # `edit <new>` / `end` would make one.
+        if self.has_contexts and name not in self.contexts:
             raise SessionError("unsupported", f"no {self.context_kind} named {name!r}")
         for step in ctx.get("enter") or []:
             self._step(_fill(step, name, ctx.get("kind", "context")))
@@ -354,10 +391,18 @@ class Session:
         v = verdict(cmd)
         if v != "ok":
             raise SessionError("refused", v)
+        if self.dead:
+            raise SessionError("error", self.dead)
         started = time.monotonic()
         try:
             r = self.conn.send_command(cmd, timeout_ops=max(1, timeout_ms) / 1000, failed_when_contains=self._failed_when())
         except ScrapliTimeout:
+            # LT-627: scrapli has closed the transport; say so from now on.
+            self.dead = f"the session closed after {cmd!r} timed out"
+            try:
+                self.conn.close()
+            except Exception:  # noqa: BLE001 — already gone
+                pass
             return "timeout", "", int((time.monotonic() - started) * 1000)
         except (ScrapliConnectionError, OSError) as e:
             raise SessionError("error", f"connection lost: {e}") from None
