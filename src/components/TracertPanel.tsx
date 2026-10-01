@@ -97,12 +97,15 @@ export function TracertPanel() {
   // LT-577: a device's hops as it prints them.
   useEffect(() => {
     if (!busy || !fromDevice) return;
+    // LT-622: `listen` resolves after a dynamic import; a cleanup that runs
+    // first must still remove the listener when it arrives.
     let off: (() => void) | undefined;
+    let gone = false;
     void ipc.onTracertProgress((e) => {
       setHops(hopsFromDevice(e.hops));
       setComplete(true);
-    }).then((f) => { off = f; });
-    return () => off?.();
+    }).then((f) => { if (gone) f(); else off = f; });
+    return () => { gone = true; off?.(); };
   }, [busy, fromDevice]);
   const [problem, setProblem] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -161,7 +164,19 @@ export function TracertPanel() {
             if (!address) return Promise.reject(new Error(t('trace.noSourceAddress', { device: source })));
             return ipc.tracerouteFromDevice(address, credentialId, to).then((r) => finish(hopsFromDevice(r.hops), r.complete, t('trace.measured', { platform: r.platform, command: r.command })));
           })();
-    void work.catch((e: unknown) => setProblem(e instanceof Error ? e.message : String(e))).finally(() => setBusy(false));
+    void work
+      .catch((e: unknown) => {
+        setProblem(e instanceof Error ? e.message : String(e));
+        // LT-623: hops a device had printed before it failed stay, marked cut
+        // short; the previous run's summary does not describe them.
+        if (source !== 'machine') {
+          setComplete(false);
+          setRan(null);
+          setHadPrevious(false);
+          setChanged(new Set());
+        }
+      })
+      .finally(() => setBusy(false));
   };
 
   const application = (): Application => ({

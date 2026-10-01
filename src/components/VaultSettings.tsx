@@ -108,9 +108,11 @@ export function VaultSettings() {
         .saveCredential({
           label: label.trim(),
           kind,
-          username: username.trim(),
+          // LT-624: only what the kind shows — a Meraki key has no user, and
+          // an API login no second secret.
+          username: kind === 'meraki' ? '' : username.trim(),
           secret,
-          secondSecret: secondSecret || undefined,
+          secondSecret: kind === 'ssh' || kind === 'snmp' ? secondSecret || undefined : undefined,
           detail: kind === 'api' && apiPort.trim() ? apiPort.trim() : undefined,
         })
         .then(() => {

@@ -501,8 +501,11 @@ interface Store {
   panelRequest: string | null;
   /** LT-527: a topology built from a collection run, waiting for the Discover
    *  panel to open it in its review — as it opens SNMP walk files. */
-  pendingCrawlResult: { devices: CrawledDevice[]; notVisited: Neighbor[]; label: string } | null;
-  setPendingCrawlResult: (r: { devices: CrawledDevice[]; notVisited: Neighbor[]; label: string } | null) => void;
+  pendingCrawlResult: { devices: CrawledDevice[]; notVisited: Neighbor[]; label: string; failures?: { address: string; reason: string }[] } | null;
+  setPendingCrawlResult: (r: { devices: CrawledDevice[]; notVisited: Neighbor[]; label: string; failures?: { address: string; reason: string }[] } | null) => void;
+  /** LT-619: a Discover run on the collector, which outlives the panel. */
+  discoverRun: { runId: string; status: string; failures: { address: string; reason: string }[] } | null;
+  setDiscoverRun: (r: { runId: string; status: string; failures: { address: string; reason: string }[] } | null) => void;
   /** LT-232, LT-233: what is dimmed. View state, not saved with the project. */
   canvasFilter: CanvasFilter | null;
   setCanvasFilter: (f: CanvasFilter | null) => void;
@@ -1120,6 +1123,7 @@ export const useStore = create<Store>((set, get) => ({
   printing: false,
   panelRequest: null,
   pendingCrawlResult: null,
+  discoverRun: null,
   canvasFilter: null,
   collapsed: [],
   focus: null,
@@ -1436,6 +1440,9 @@ export const useStore = create<Store>((set, get) => ({
 
   setPendingCrawlResult(r) {
     set({ pendingCrawlResult: r });
+  },
+  setDiscoverRun(r) {
+    set({ discoverRun: r });
   },
   requestPanelTab(tab) {
     set({ panelRequest: tab, ...(tab ? { panelOpen: true } : {}) });

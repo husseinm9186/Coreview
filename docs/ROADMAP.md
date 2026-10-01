@@ -189,48 +189,6 @@ documentations". Since D-062 the Discover panel, the Tracert tab, backups
 of Fortinet boxes and the vault's API logins changed; HANDOVER.md, the
 README, the Help text and the catalog's NOTICE are read against the app
 and corrected where they say otherwise.
-
-### LT-619 — **bug** A collector run on "Discover devices" was lost when the tab changed — 2026-09-30
-**Found by the sweep's interface review (LT-603)** — and what the operator
-met: "I have to switch screens". The run's id lived in the panel, which
-unmounts on a tab change; back on the tab the form was idle and the result
-never arrived. The classic crawler's result arrives whatever the tab.
-**Fix:** the run in progress and its result live in the store; the panel
-shows them whenever it is mounted.
-
-### LT-620 — **bug** With the collector, most of the Discover form was ignored and said nothing — 2026-09-30
-**Found by the same review.** Telnet, the second login, the device classes,
-the SNMP rows, the Duo tick, "Also read from each device", reverse DNS,
-retries and Dry run are the classic crawler's; the collector took none of
-them and the controls stayed live. **Fix:** the saved SNMP login travels to
-the collector's fallback (LT-549); the controls the collector does not use
-are disabled under it and say so; the seed field's title names what each
-engine takes.
-
-### LT-621 — **bug** With the collector, why a device failed was thrown away — 2026-09-30
-**Found by the same review.** `deviceDone.failure` was counted and
-dropped; the grouped failure list and live table were the classic
-crawler's only. **Fix:** each failed device is in the list with its reason;
-the live table is cleared when a run starts.
-
-### LT-622 — **bug** An event listener leaked when a panel closed before `listen` resolved — 2026-09-30
-**Found by the same review.** The `let off; then(f => off = f)` pattern in
-three panels; in development's StrictMode every mount leaked one. **Fix:**
-a cancelled flag, and the listener removed if it arrives after cleanup.
-
-### LT-623 — **bug** A device trace that failed part-way kept the previous run's summary line — 2026-09-30
-**Found by the same review.** Streamed hops stayed, under "Ran from …" and
-"same path" lines about the earlier run. **Fix:** on a failure the hops
-stay, marked cut short, and the earlier run's summary is cleared.
-
-### LT-624 — **bug** The vault form sent fields its kind had hidden — 2026-09-30
-**Found by the same review.** An enable password typed before switching
-the kind to "API login" was saved as that login's second secret. **Fix:**
-only the fields the kind shows are sent.
-
-### LT-625 — **bug** "1 devices" on the Collect tab's hand-over — 2026-09-30
-**Found by the same review.** `collect.handedOver` was a hard-coded plural.
-**Fix:** the catalogue's `plural.device`.
 ### LT-649 — The lab's Mellanox SN2010 switches, found and collected — 2026-09-30
 **Source:** the operator, 2026-09-30: "what about the other switch it was
 on the network but never crawled" — a Mellanox SN2010. His own capture of
@@ -883,6 +841,55 @@ reason "no address to reach it on".
 **Found by the same review.** The device was reported done with no
 commands and no failure. **Fix:** it is the device's failure, in its log.
 **Run:** by reading — a `persist_device` error is the device's failure `store`, in its log.
+
+### LT-619 — **bug** A collector run on "Discover devices" was lost when the tab changed — 2026-09-30, fixed the same day
+**Found by the sweep's interface review (LT-603)** — and what the operator
+met: "I have to switch screens". The run's id lived in the panel, which
+unmounts on a tab change; back on the tab the form was idle and the result
+never arrived. The classic crawler's result arrives whatever the tab.
+**Fix:** the run in progress and its result live in the store; the panel
+shows them whenever it is mounted.
+**Run:** `e2e/crawling.mjs` — a collector run started, the Collect tab shown while a device event arrives, back on Discover: Stop and the latest progress are there, and the finished run fills the table. The harness's stub now delivers an event to every listener, as Tauri does.
+
+### LT-620 — **bug** With the collector, most of the Discover form was ignored and said nothing — 2026-09-30, fixed the same day
+**Found by the same review.** Telnet, the second login, the device classes,
+the SNMP rows, the Duo tick, "Also read from each device", reverse DNS,
+retries and Dry run are the classic crawler's; the collector took none of
+them and the controls stayed live. **Fix:** the saved SNMP login travels to
+the collector's fallback (LT-549); the controls the collector does not use
+are disabled under it and say so; the seed field's title names what each
+engine takes.
+**Run:** `e2e/crawling.mjs` — At once and the device classes are disabled under the collector and the note is shown; the saved SNMP login travels as `snmpCredentialId`.
+
+### LT-621 — **bug** With the collector, why a device failed was thrown away — 2026-09-30, fixed the same day
+**Found by the same review.** `deviceDone.failure` was counted and
+dropped; the grouped failure list and live table were the classic
+crawler's only. **Fix:** each failed device is in the list with its reason;
+the live table is cleared when a run starts.
+**Run:** `e2e/crawling.mjs` — a device that failed `auth` is listed by address with "the login was refused" when the run ends.
+
+### LT-622 — **bug** An event listener leaked when a panel closed before `listen` resolved — 2026-09-30, fixed the same day
+**Found by the same review.** The `let off; then(f => off = f)` pattern in
+three panels; in development's StrictMode every mount leaked one. **Fix:**
+a cancelled flag, and the listener removed if it arrives after cleanup.
+**Run:** by reading — the three panels keep a `gone` flag and remove a listener that arrives after cleanup; the Discover listener now lives outside the panel altogether.
+
+### LT-623 — **bug** A device trace that failed part-way kept the previous run's summary line — 2026-09-30, fixed the same day
+**Found by the same review.** Streamed hops stayed, under "Ran from …" and
+"same path" lines about the earlier run. **Fix:** on a failure the hops
+stay, marked cut short, and the earlier run's summary is cleared.
+**Run:** by reading — on a device trace's failure the hops stay marked cut short and the earlier run's summary is cleared; `e2e/tracert.mjs` passes.
+
+### LT-624 — **bug** The vault form sent fields its kind had hidden — 2026-09-30, fixed the same day
+**Found by the same review.** An enable password typed before switching
+the kind to "API login" was saved as that login's second secret. **Fix:**
+only the fields the kind shows are sent.
+**Run:** by reading — `save()` sends a username only for kinds that show one and a second secret only for SSH and SNMP; `e2e/credentials.mjs` and `security.mjs` pass.
+
+### LT-625 — **bug** "1 devices" on the Collect tab's hand-over — 2026-09-30, fixed the same day
+**Found by the same review.** `collect.handedOver` was a hard-coded plural.
+**Fix:** the catalogue's `plural.device`.
+**Run:** the catalogue's `plural.device`; `e2e/collection.mjs` passes.
 
 ### LT-627 — **bug** A command that timed out closed the SSH session, and the sidecar kept reporting it alive — 2026-09-30, fixed the same day
 **Found by the sweep's sidecar review (LT-603).** Scrapli closes the

@@ -79,15 +79,16 @@ await page.addInitScript(({ p }) => {
   const listeners = {}, callbacks = {};
   let next = 1;
   window.__calls = [];
+  // Every listener on the event, as Tauri delivers it — a panel's and the
+  // store's (LT-619) both.
   window.__cvEmit = (event, payload) => {
-    const id = listeners[event];
-    if (id && callbacks[id]) callbacks[id]({ event, id, payload });
+    for (const id of listeners[event] ?? []) if (callbacks[id]) callbacks[id]({ event, id, payload });
   };
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
   window.__TAURI_INTERNALS__ = {
     transformCallback(cb) { const id = next++; callbacks[id] = cb; return id; },
     invoke(cmd, args) {
-      if (cmd === "plugin:event|listen") { listeners[args.event] = args.handler; return Promise.resolve(next++); }
+      if (cmd === "plugin:event|listen") { (listeners[args.event] ??= []).push(args.handler); return Promise.resolve(next++); }
       window.__calls.push({ cmd, args });
       const meta = { id: p.meta.id, name: p.meta.name, customer: "", site: "", ticket: "", engineer: "",
         description: "", created_at: p.meta.createdAt, updated_at: p.meta.updatedAt, archived: false };
@@ -134,6 +135,9 @@ check("and keeps only the id", await page.evaluate(() =>
 
 await page.locator("button", { hasText: "Discover devices" }).first().click();
 await page.waitForTimeout(400);
+// LT-620: the collector is the default, and the form below is the classic crawler's — chosen here for it.
+check("the collector is the engine by default (D-062)", (await page.locator('[data-field="discover-engine"]').inputValue()) === "collector");
+await page.locator('[data-field="discover-engine"]').selectOption("classic");
 const panel = page.locator(".cv-discover");
 
 // --------------------------------------------------- LT-209 rules
@@ -218,7 +222,6 @@ await panel.locator("button", { hasText: /^Delete profile$/ }).click();
 check("and a profile can be deleted", await page.evaluate(() => window.__cvStore.getState().doc.crawlProfiles.length) === 1);
 
 // LT-576: the classic crawler, chosen; the collector is the default.
-check("the collector is the engine by default (D-062)", (await panel.locator('[data-field="discover-engine"]').inputValue()) === "collector");
 await panel.locator('[data-field="discover-engine"]').selectOption("classic");
 await panel.locator("button", { hasText: /^Discover$/ }).click();
 await page.waitForTimeout(400);
@@ -407,12 +410,25 @@ check("and the last command the device answered", /Collecting 192\.0\.2\.10 — 
 await panel.locator("button", { hasText: /^Stop$/ }).click();
 await page.waitForTimeout(200);
 check("Stop asks the collection to stop, not the classic crawl", (await lastCall("cancel_collection")) !== undefined || (await page.evaluate(() => window.__calls.some((c) => c.cmd === "cancel_collection"))));
-await page.evaluate(() => window.__cvEmit("coreview://collection", { kind: "finished", runId: "col-9", devices: 1, failed: 0, cancelled: false }));
+// LT-620: the controls only the classic crawler reads are off under the collector, and say so.
+check("the classic-only controls are disabled under the collector", await panel.locator("label", { hasText: "At once" }).locator("select").isDisabled() && await panel.locator(".cv-login-classes button").first().isDisabled() && (await panel.locator('[data-region="discover-engine-note"]').count()) === 1);
+// LT-619: the run outlives the panel — another tab, and back.
+await page.locator(".cv-panel .cv-tabs button", { hasText: "Collect" }).click();
+await page.waitForTimeout(300);
+await page.evaluate(() => window.__cvEmit("coreview://collection", { kind: "device", runId: "col-9", deviceId: "dev-192-0-2-11", host: "192.0.2.11", phase: "connecting" }));
+await page.locator(".cv-panel .cv-tabs button", { hasText: "Discover devices" }).first().click();
+await page.waitForTimeout(400);
+check("after a tab change the run is still shown as running, with its latest progress", (await panel.locator("button", { hasText: /^Stop$/ }).count()) === 1 && /Collecting 192\.0\.2\.11/.test(await panel.textContent()));
+// LT-621: a device that failed is listed with why.
+await page.evaluate(() => window.__cvEmit("coreview://collection", { kind: "deviceDone", runId: "col-9", deviceId: "dev-192-0-2-11", host: "192.0.2.11", os: null, failure: "auth", commands: 0 }));
+await page.waitForTimeout(100);
+await page.evaluate(() => window.__cvEmit("coreview://collection", { kind: "finished", runId: "col-9", devices: 2, failed: 1, cancelled: false }));
 await page.waitForTimeout(500);
 const topo = await lastCall("collection_topology");
 check("when it finishes, the topology of that run is built", topo?.runId === "col-9", JSON.stringify(topo));
 check("and what it found fills the table the review reads", (await panel.locator("tr", { hasText: "SW-COLLECTED" }).count()) >= 1);
-check("with a status naming the run", /Collected 1 device, 0 failed — collection run col-9/.test(await panel.textContent()));
+check("with a status naming the run", /Collected 2 devices, 1 failed — collection run col-9/.test(await panel.textContent()));
+check("and the device that failed, with the reason", /192\.0\.2\.11/.test(await panel.textContent()) && /login was refused/.test(await panel.textContent()));
 
 await browser.close();
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);

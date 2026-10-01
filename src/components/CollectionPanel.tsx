@@ -122,7 +122,9 @@ export function CollectionPanel() {
   }, [selected]);
 
   useEffect(() => {
+    // LT-622: the listener is removed even when it arrives after cleanup.
     let off: (() => void) | undefined;
+    let gone = false;
     void ipc.onCollectionEvent((e) => {
       if (e.kind === 'device') hosts.set(e.deviceId, e.host);
       const line = describe(e, hosts);
@@ -132,8 +134,8 @@ export function CollectionPanel() {
         refreshRuns();
         if (e.kind === 'finished') setSelected(e.runId);
       }
-    }).then((f) => { off = f; });
-    return () => off?.();
+    }).then((f) => { if (gone) f(); else off = f; });
+    return () => { gone = true; off?.(); };
   }, [hosts, refreshRuns]);
 
   const start = (planOnly: boolean) => {
@@ -177,7 +179,7 @@ export function CollectionPanel() {
   };
   const reviewTopology = () => {
     if (!topo || !selected) return;
-    useStore.getState().setPendingCrawlResult({ devices: topo.devices, notVisited: topo.notVisited, label: t('collect.handedOver', { run: selected, devices: topo.devices.length }) });
+    useStore.getState().setPendingCrawlResult({ devices: topo.devices, notVisited: topo.notVisited, label: t('collect.handedOver', { run: selected, devices: t('plural.device', { count: topo.devices.length }) }) });
     useStore.getState().requestPanelTab('crawl');
   };
 

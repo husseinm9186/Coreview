@@ -5,6 +5,7 @@ import { EmptyState } from './EmptyState';
 import { useRovingTabindex } from './useRovingTabindex';
 import { isInfrastructure, roleCounts } from '../lib/deviceRoles';
 import { useStore } from '../state/store';
+import { startDiscoverRun, watchDiscoverRuns } from '../lib/discoverRun';
 import {
   ipc,
   isDesktop,
@@ -256,12 +257,21 @@ export function CrawlPanel({
   // credential means a crawl that identifies a fraction of what it could.
   const [snmpRows, setSnmpRows] = useState<SnmpRow[]>([blankSnmpRow()]);
 
-  const [running, setRunning] = useState(false);
+  const [runningClassic, setRunning] = useState(false);
   // LT-576 (D-062): the catalog-driven collector, following neighbours, by
   // default; the older crawler stays a choice until the new one covers it.
   const [engine, setEngine] = useState<'collector' | 'classic'>('collector');
-  const collectionRun = useRef<string | null>(null);
-  const collectionHosts = useRef<Map<string, string>>(new Map());
+  // LT-619: a collector run lives in the store, so it is still here after a
+  // tab change; LT-620: the controls only the classic crawler reads.
+  const discoverRun = useStore((s) => s.discoverRun);
+  const running = runningClassic || discoverRun !== null;
+  const classicOnly = engine === 'collector';
+  useEffect(() => {
+    watchDiscoverRuns();
+  }, []);
+  useEffect(() => {
+    if (discoverRun) setStatus(discoverRun.status);
+  }, [discoverRun]);
   // LT-598: the REST side for a FortiGate or AOS-CX, as the Collect tab has it.
   const [apiCredentialId, setApiCredentialId] = useState<string | undefined>();
   const [status, setStatus] = useState<string | null>(null);
@@ -365,57 +375,18 @@ export function CrawlPanel({
 
   const seenKeys = useRef<Set<string>>(new Set());
 
-  // LT-576: the collector's progress, and its topology when the run ends.
-  useEffect(() => {
-    let off: (() => void) | undefined;
-    void ipc.onCollectionEvent((e) => {
-      // Only the run this panel started: the Collect tab starts its own.
-      if (e.kind === 'started') {
-        if (collectionRun.current === 'pending') collectionRun.current = e.runId;
-        return;
-      }
-      if (!collectionRun.current || e.runId !== collectionRun.current) return;
-      if (e.kind === 'device') {
-        collectionHosts.current.set(e.deviceId, e.host);
-        setStatus(t('discover.collecting', { host: e.host }));
-      }
-      // LT-588: the last command a device answered, so a stall says where.
-      if (e.kind === 'step') setStatus(t('discover.collectingStep', { host: collectionHosts.current.get(e.deviceId) ?? e.deviceId, cmd: e.cmd }));
-      if (e.kind === 'deviceDone' && e.failure) setLiveFailed((n) => n + 1);
-      if (e.kind === 'failed') {
-        setRunning(false);
-        collectionRun.current = null;
-        setProblem(e.error);
-      }
-      if (e.kind === 'finished') {
-        const runId = e.runId;
-        collectionRun.current = null;
-        void ipc
-          .collectionTopology(runId, { collapseBundles: true, collapseStacks: true, placeholders: true, minConfidence: 0 })
-          .then((topo) => {
-            const built = { devices: topo.devices, notVisited: topo.notVisited };
-            seenKeys.current = new Set();
-            setRows(resultRows(built, seenKeys.current));
-            setFailures([]);
-            setResult(built);
-            setStatus(t('discover.collected', { devices: t('plural.device', { count: e.devices }), failed: e.failed, run: runId }));
-          })
-          .catch((err: unknown) => setProblem(err instanceof Error ? err.message : String(err)))
-          .finally(() => setRunning(false));
-      }
-    }).then((f) => { off = f; });
-    return () => off?.();
-  }, []);
-
   // LT-527: a topology built from a collection run opens here, in the same
-  // table and review a crawl fills — the way saved SNMP walks are read.
+  // table and review a crawl fills — the way saved SNMP walks are read; and
+  // LT-619: a Discover run on the collector ends here the same way, with
+  // the devices that failed and why (LT-621).
   const pendingCrawlResult = useStore((s) => s.pendingCrawlResult);
   useEffect(() => {
     if (!pendingCrawlResult) return;
     const built = { devices: pendingCrawlResult.devices, notVisited: pendingCrawlResult.notVisited };
     seenKeys.current = new Set();
     setRows(resultRows(built, seenKeys.current));
-    setFailures([]);
+    setFailures((pendingCrawlResult.failures ?? []).map((f) => ({ address: f.address, reason: f.reason })));
+    setLiveFailed(0);
     setResult(built);
     setStatus(pendingCrawlResult.label);
     useStore.getState().setPendingCrawlResult(null);
@@ -537,18 +508,19 @@ export function CrawlPanel({
     setPushMessage(null);
     seenKeys.current = new Set();
     setResult(null);
-    setRunning(true);
+    // LT-621: a live table left by an earlier run is not this run's.
+    setTable(new Map());
     seedRef.current = seed.trim();
     if (engine === 'collector') {
       const projectId = useStore.getState().meta?.id;
       if (!projectId) {
-        setRunning(false);
         setProblem(t('discover.needProject'));
         return;
       }
-      collectionRun.current = 'pending';
+      // LT-620: the one saved SNMP login the collector's fallback takes (LT-549).
+      const snmpSaved = snmpOpen ? (snmpForRun().savedIds[0] ?? useStore.getState().doc.credentialDefaults?.snmp?.[0]) : undefined;
       try {
-        const runId = await ipc.startCollection(
+        await startDiscoverRun(
           {
             projectId,
             targets: seed.trim(),
@@ -558,18 +530,17 @@ export function CrawlPanel({
             credentialId: credentialId ?? undefined,
             keepDiagnostic: supportCapture,
             apiCredentialId: apiCredentialId || undefined,
+            snmpCredentialId: snmpSaved || undefined,
             follow: { maxHops, maxDevices: 500, subnetLimit: subnets.join(', ') || undefined },
           },
           credentialId ? undefined : { username, password, enablePassword: enablePassword || undefined },
         );
-        if (collectionRun.current === 'pending') collectionRun.current = runId;
       } catch (err) {
-        collectionRun.current = null;
-        setRunning(false);
         setProblem(err instanceof Error ? err.message : String(err));
       }
       return;
     }
+    setRunning(true);
     try {
       await ipc.startCrawl(
         {
@@ -833,7 +804,7 @@ export function CrawlPanel({
           <span>Seed devices</span>
           <input className="cv-input" value={seed} spellCheck={false} disabled={running}
             placeholder="10.1.1.1, core-sw1, 10.1.2.0/24"
-            title="Addresses, hostnames or ranges up to a /20, separated by commas. A range is narrowed to what answers on the login port."
+            title={t('discover.seedTitle')}
             onChange={(e) => setSeed(e.target.value)} />
         </label>
         <label className="cv-btn cv-btn-small cv-seed-csv" aria-disabled={running}>
@@ -916,21 +887,21 @@ export function CrawlPanel({
         </label>
         <label className="cv-field cv-field-narrow" title="How many devices to work on at the same time. A push factor still logs in one at a time.">
           <span>At once</span>
-          <select className="cv-input" value={concurrency} disabled={running}
+          <select className="cv-input" value={concurrency} disabled={running || classicOnly}
             onChange={(e) => setConcurrency(Number(e.target.value))}>
             {[1, 2, 4, 8, 16, 32].map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </label>
         <label className="cv-field cv-field-narrow" title="How long one device may take — login and every command — before the crawl moves on">
           <span>Give up after</span>
-          <select className="cv-input" value={perHost} disabled={running}
+          <select className="cv-input" value={perHost} disabled={running || classicOnly}
             onChange={(e) => setPerHost(Number(e.target.value))}>
             {[[60, '1 min'], [120, '2 min'], [300, '5 min'], [600, '10 min']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </label>
         <label className="cv-field cv-field-narrow" title="Tries again when nothing answered. A refused login is never retried.">
           <span>Retries</span>
-          <select className="cv-input" value={retries} disabled={running}
+          <select className="cv-input" value={retries} disabled={running || classicOnly}
             onChange={(e) => setRetries(Number(e.target.value))}>
             {[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
@@ -955,7 +926,7 @@ export function CrawlPanel({
         <select
           className="cv-input"
           value={transport}
-          disabled={running}
+          disabled={running || classicOnly}
           onChange={(e) => setTransport(e.target.value as typeof transport)}
         >
           <option value="ssh">SSH only</option>
@@ -983,18 +954,18 @@ export function CrawlPanel({
         <div className="cv-discover-form">
           <label className="cv-field cv-field-narrow">
             <span>Username</span>
-            <input className="cv-input" value={backupUsername} autoComplete="off" disabled={running}
+            <input className="cv-input" value={backupUsername} autoComplete="off" disabled={running || classicOnly}
               onChange={(e) => setBackupUsername(e.target.value)} />
           </label>
           <label className="cv-field cv-field-narrow">
             <span>Password</span>
             <input className="cv-input" type="password" value={backupPassword} autoComplete="off"
-              disabled={running} onChange={(e) => setBackupPassword(e.target.value)} />
+              disabled={running || classicOnly} onChange={(e) => setBackupPassword(e.target.value)} />
           </label>
           <label className="cv-field cv-field-narrow">
             <span>Enable</span>
             <input className="cv-input" type="password" value={backupEnable} autoComplete="off"
-              disabled={running} onChange={(e) => setBackupEnable(e.target.value)} />
+              disabled={running || classicOnly} onChange={(e) => setBackupEnable(e.target.value)} />
           </label>
         </div>
         <span className="cv-help">
@@ -1018,7 +989,7 @@ export function CrawlPanel({
                 key={value}
                 type="button"
                 className={`cv-chip${on ? ' is-on' : ''}`}
-                disabled={running}
+                disabled={running || classicOnly}
                 aria-pressed={on}
                 onClick={() =>
                   setLoginClasses((prev) =>
@@ -1046,6 +1017,7 @@ export function CrawlPanel({
             <option value="classic">{t('discover.engineClassic')}</option>
           </select>
         </label>
+        {classicOnly && <span className="cv-help" data-region="discover-engine-note">{t('discover.collectorIgnores')}</span>}
         {engine === 'collector' && (
           <SavedCredentialSelect kind="api" label={t('collect.apiCredential')} value={apiCredentialId} onChange={setApiCredentialId} />
         )}
@@ -1060,7 +1032,7 @@ export function CrawlPanel({
           </button>
         )}
         {!running && (
-          <button type="button" className="cv-btn" disabled={!seed.trim()}
+          <button type="button" className="cv-btn" disabled={!seed.trim() || classicOnly}
             title="Show what this run would do, without sending anything to the network"
             onClick={() => {
               void ipc.listCredentials().catch(() => []).then((saved) => {
@@ -1090,7 +1062,7 @@ export function CrawlPanel({
           </label>
         )}
         <label className="cv-check cv-check-inline">
-          <input type="checkbox" checked={secondFactor} disabled={running}
+          <input type="checkbox" checked={secondFactor} disabled={running || classicOnly}
             onChange={(e) => setSecondFactor(e.target.checked)} />
           These devices use Duo or another push factor — log in one at a time
         </label>
@@ -1098,7 +1070,7 @@ export function CrawlPanel({
 
       <CredentialRules disabled={running} />
 
-      <fieldset className="cv-crawl-details" disabled={running}>
+      <fieldset className="cv-crawl-details" disabled={running || classicOnly}>
         <legend>Also read from each device</legend>
         {([
           ['vlans', 'Ports and VLANs', 'show interfaces status, show vlan brief, show interfaces trunk'],
