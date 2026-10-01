@@ -196,10 +196,61 @@ Windows: Get-NetIPConfiguration | ConvertTo-Json · Get-NetRoute · Get-NetNeigh
 ### snmp fallback (phase 4, when SSH is unavailable)
 LLDP-MIB lldpRemTable · CISCO-CDP-MIB cdpCacheTable · Q-BRIDGE-MIB dot1qTpFdbTable (community@vlan / vlan context) · IP-MIB ipNetToPhysicalTable · IP-FORWARD-MIB inetCidrRouteTable · IF-MIB ifTable/ifXTable · ENTITY-MIB entPhysicalTable
 
+### cisco_s300 (Small Business Sx300/Sx350/Sx500/CBS — not IOS; LT-663)
+prep: terminal datadump · terminal width 511
+fp: show version → /^SW version\s/
+always: show version · show system · show system id · show interfaces status · show interfaces description · show interfaces switchport · show ip interface · show mac address-table · show vlan · show running-config
+cap.lldp: show lldp neighbors
+
+### cisco_viptela (SD-WAN vEdge/vManage/vSmart/vBond; a cEdge is cisco_ios — LT-663)
+prep: paginate false
+fp: show system status → /Viptela|vEdge|vManage|vSmart|vBond/
+always: show system status · show interface · show arp · show running-config
+cap.sdwan: show omp peers · show control connections
+cap.routing: show ip route
+
+### aruba_os (ArubaOS Mobility controllers 7000/7200/9000 — LT-664)
+prep: enable · no paging
+fp: show version → /ArubaOS \(MODEL|Aruba Operating System/
+always: show version · show hostname · show inventory · show ip interface brief · show arp · show vlan · show running-config
+cap.wlc: show ap database long
+cap.routing: show ip route
+
+### extreme_exos (LT-666)
+prep: disable clipaging · disable cli prompting
+fp: show version → /ExtremeXOS/
+always: show version · show ports information · show ports description · show ipconfig · show fdb · show iparp · show sharing · show vlan description · show configuration
+cap.lldp: show lldp neighbors
+cap.routing: show iproute
+
+### ruckus_icx (ICX FastIron; ntc's brocade_fastiron set — LT-666)
+prep: enable · skip-page-display
+fp: show version → /ICX|FastIron/
+always: show version · show interfaces · show interfaces brief · show mac-address · show arp · show lag brief · show span · show running-config
+cap.lldp: show lldp neighbors detail
+cap.routing: show ip route
+
+### ubiquiti_edgeos (EdgeRouter — LT-666)
+prep: terminal length 0
+fp: show version → /EdgeOS|EdgeRouter/
+always: show version · show interfaces · show interfaces ethernet physical · show arp · show configuration commands
+cap.routing: show ip route · show ipv6 route
+cap.nat: show nat rules
+cap.lldp: show lldp neighbors detail
+
+### vyos (VyOS 1.2+, FRR underneath — LT-666)
+prep: set terminal length 0 · set terminal width 512
+fp: show version → /VyOS/
+always: show version · show interfaces · show arp · show configuration commands
+cap.routing: show ip route
+cap.bgp: show ip bgp summary
+cap.ospf: show ip ospf neighbor
+cap.lldp: show lldp neighbors detail
+
 ### phase-2 catalog stubs (YAML only, parsers later)
 huawei_vrp/hpe_comware: display version · display interface brief · display ip interface brief · display lldp neighbor-information verbose · display mac-address · display arp · display ip routing-table [vpn-instance X] · display ospf peer · display bgp peer · display vlan · display stp brief · display link-aggregation summary | display eth-trunk · display vrrp brief · display current-configuration
 mikrotik_routeros: /system resource print · /interface print · /ip address print · /ip route print · /ip neighbor print · /ip arp print · /interface bridge host print · /routing ospf neighbor print · /routing bgp session print
-dell_os10 · extreme_exos · ruckus_icx · ubiquiti_edgeos
+dell_os10 (ntc-templates has only the OS9 `dell_force10` set, whose layouts are not OS10's — still a stub, LT-666)
 
 ## Discovery tables (SQLite; every row has run_id, device_id, collected_at; raw output gzip'd per command)
 device: hostname fqdn vendor os os_version model serial mgmt_ip role role_override base_mac chassis_ids[] stack_members[] ha_role contexts[] (vdom/vsys/context)

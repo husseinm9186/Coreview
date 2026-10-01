@@ -1,0 +1,134 @@
+# Coreview discovery catalog — VyOS (vyos)
+#
+# LT-666, 2026-10-01: ntc-templates' `vyatta_vyos` set (fixtures vendored),
+# FRR's tables through Coreview's frr readers (VyOS 1.2+ routes with FRR),
+# the session from scrapli's vyos_vyos driver and netmiko's vyos_ssh.py —
+# `set terminal length 0` (D-058). No device met yet.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met the operator's hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — LT-511's list. Never invent a command.
+vendor: VyOS
+os: vyos
+name: VyOS
+ntc_platform: vyos
+phase: 1
+fingerprint:
+  probe: show version
+  match_regex: VyOS
+session:
+  source: scrapli_community vyos_vyos; netmiko vyos_ssh.py
+  prompt_pattern: '^[\w.\-]+@[\w.\-]+:~\$\s?$'
+  privilege_levels:
+    exec:
+      pattern: '^[\w.\-]+@[\w.\-]+:~\$\s?$'
+  default_privilege: exec
+  paging:
+    off:
+      - set terminal length 0
+      - set terminal width 512
+    source: netmiko vyos_ssh.py session_preparation
+  on_close:
+    - exit
+  failed_when_contains:
+    - "Invalid command"
+    - "Incomplete command"
+    - "Ambiguous command"
+role_hint:
+  - match: VyOS
+    role: router
+role_defaults:
+  router:
+    - routing
+    - bgp
+    - ospf
+    - nat
+    - lldp
+caps_probe: []
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: none
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_interfaces
+    cmd: show interfaces
+    gate: always
+    parser: textfsm:vyatta_vyos_show_interfaces
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_arp
+    cmd: show arp
+    gate: always
+    parser: textfsm:vyatta_vyos_show_arp
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_route
+    cmd: show ip route
+    gate: cap.routing
+    parser: reader:frr_ip_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview frr reader; FRR documentation `show ip route`, which VyOS 1.2+ prints (D-058, LT-652)
+    coreview_reader: true
+  - id: show_ip_bgp_summary
+    cmd: show ip bgp summary
+    gate: cap.bgp
+    parser: textfsm:vyatta_vyos_show_ip_bgp_summary
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_ospf_neighbor
+    cmd: show ip ospf neighbor
+    gate: cap.ospf
+    parser: reader:frr_ospf_neighbor
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview frr reader; FRR documentation `show ip ospf neighbor` (D-058, LT-652)
+    coreview_reader: true
+  - id: show_lldp_neighbors_detail
+    cmd: show lldp neighbors detail
+    gate: cap.lldp
+    parser: none
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_configuration_commands
+    cmd: show configuration commands
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+live_path: []
+note: 'LT-666: built from ntc-templates (vyatta_vyos), FRR documentation and netmiko (D-058). `show version` and the lldpd detail wait for a capture.'

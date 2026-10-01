@@ -11,7 +11,7 @@ set -euo pipefail
 src="${1:?path to an ntc-templates checkout}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 dst="$here/resources/templates"
-keep="cisco_ios cisco_xe cisco_nxos cisco_xr arista_eos juniper_junos fortinet paloalto_panos aruba_aoscx hp_procurve aruba_os cisco_asa cisco_ftd cisco_wlc_ssh huawei_vrp hp_comware mikrotik_routeros dell_os10 extreme_exos ruckus_fastiron ubiquiti_edgeswitch ubiquiti_edgerouter linux"
+keep="cisco_ios cisco_xe cisco_nxos cisco_xr arista_eos juniper_junos fortinet paloalto_panos aruba_aoscx hp_procurve aruba_os cisco_asa cisco_ftd cisco_wlc_ssh huawei_vrp hp_comware mikrotik_routeros dell_os10 extreme_exos ruckus_fastiron brocade_fastiron ubiquiti_edgeswitch ubiquiti_edgerouter vyatta_vyos cisco_s300 cisco_viptela linux"
 
 rm -rf "$dst/ntc" "$dst/tests"
 mkdir -p "$dst/ntc" "$dst/tests"

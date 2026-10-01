@@ -143,7 +143,7 @@ pub fn overlays(devices: &[DeviceIn], graph: &mut Graph, ids: &Identities) {
                 "dmvpn"
             } else if cmd.contains("crypto") || cmd.contains("ipsec") || cmd.contains("vpn") || cmd.contains("ike") {
                 "ipsec"
-            } else if cmd.contains("sdwan") || cmd.contains("virtual_wan") {
+            } else if cmd.contains("sdwan") || cmd.contains("virtual_wan") || cmd.contains("control_connections") || cmd.contains("omp") {
                 "sdwan"
             } else if cmd.contains("mpls") || cmd.contains("ldp") || cmd.contains("l2vpn") {
                 "mpls"

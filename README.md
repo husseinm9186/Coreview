@@ -359,7 +359,9 @@ addresses, FQDN resolutions, managed FortiSwitches and FortiAPs. Catalogs
 exist for Cisco IOS/IOS-XE, NX-OS, IOS-XR, ASA, AireOS, Arista EOS, Junos,
 FortiOS and FortiSwitchOS, PAN-OS, ArubaOS-CX, ArubaOS-Switch, Meraki,
 NVIDIA Onyx, Cumulus Linux (NCLU) and SONiC, HPE Comware, Huawei VRP,
-MikroTik, ESXi, Linux hosts and Windows; each says per command whether it
+MikroTik, Cisco Small Business (SG/CBS), Cisco SD-WAN (Viptela), ArubaOS
+Mobility controllers, Extreme EXOS, Ruckus ICX, Ubiquiti EdgeOS, VyOS,
+ESXi, Linux hosts and Windows; each says per command whether it
 is verified on hardware, from documentation, or not yet. In this
 release its SSH session is driven by a bundled Python sidecar (scrapli),
 installed beside the app, which never writes a file and takes a secret only

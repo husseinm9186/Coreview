@@ -573,7 +573,13 @@ trust the summary below over that file; it is a signpost and it will rot.
   LT-654–LT-662 (Junos routes dropped, names with spaces, AP columns,
   down interfaces, adjacency per VRF, the VLAN table in the L2 walk); and
   `every_routing_os_feeds_what_the_path_builder_reads` in the catalog
-  crate, which pins the six holes still open to their items.
+  crate, which pins the six holes still open to their items. Then, on
+  2026-10-01, seven more catalogs from ntc-templates' vendored sets and
+  netmiko's session rules — Cisco Small Business, Cisco SD-WAN (Viptela),
+  ArubaOS Mobility controllers, Extreme EXOS, Ruckus ICX, Ubiquiti
+  EdgeOS, VyOS — with 46 fixture directories vendored so their template
+  entries are `verified: lab`; the spec gained a section per OS, and the
+  reconciliation script learned a digit in an OS name (`cisco_s300`).
 
 - **Shipped 2026-09-18, after the mission:** LT-285 the address register (the
   **Addresses** tab; `src/lib/ipam.ts` is the arithmetic, `e2e/ipam.mjs` drives

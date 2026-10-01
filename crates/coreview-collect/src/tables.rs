@@ -25,30 +25,30 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("hostname", &["hostname", "host_name", "name", "sysname", "system_name", "device_name", "host"]),
             ("vendor", &["vendor", "manufacturer"]),
             ("os_version", &["version", "software_version", "sw_version", "os_version", "os", "software", "kickstart", "product_version", "sys_ver_str", "release"]),
-            ("model", &["model", "hardware", "platform", "chassis", "product_name", "product", "chassis_id", "pid", "device_model", "board_type"]),
-            ("serial", &["serial", "serial_number", "serialnum", "sn", "chassis_sn", "proc_board_id", "serial_no", "chassis_serial"]),
+            ("model", &["model", "hardware", "hardware_model", "platform", "chassis", "product_name", "product", "chassis_id", "pid", "device_model", "board_type", "sc_model", "device_type"]),
+            ("serial", &["serial", "serial_number", "serialnum", "sn", "chassis_sn", "proc_board_id", "serial_no", "chassis_serial", "system_serial"]),
             ("mgmt_ip", &["mgmt_ip", "management_ip", "ip_address", "ip"]),
-            ("uptime", &["uptime", "kern_uptm_days"]),
-            ("base_mac", &["mac", "mac_address", "base_mac", "system_mac", "chassis_mac"]),
+            ("uptime", &["uptime", "up_time", "kern_uptm_days"]),
+            ("base_mac", &["mac", "mac_address", "base_mac", "system_mac", "chassis_mac", "hw_mac_addr_start"]),
         ],
         "interface" => &[
             ("name", &["interface", "intf", "port", "name", "interface_name", "local_interface", "intf_name", "phys_intf", "ifname"]),
             ("admin", &["admin_state", "admin_status", "link_status", "status", "admin"]),
-            ("oper", &["oper_status", "protocol", "line_protocol", "link", "link_state", "oper", "state", "operational"]),
+            ("oper", &["oper_status", "protocol", "line_protocol", "link", "link_state", "linkstate", "oper", "state", "operational"]),
             ("speed", &["speed", "bandwidth", "eth_speed", "eth_bw"]),
             ("duplex", &["duplex", "eth_duplex"]),
             ("mac", &["mac", "mac_address", "address", "hardware_address", "bia", "eth_hw_addr", "physical_address", "macaddress"]),
             ("descr", &["description", "descr", "desc", "name_alias", "alias", "interface_description"]),
             ("mtu", &["mtu", "eth_mtu"]),
             ("vlan", &["vlan", "vlan_id", "access_vlan", "native_vlan", "vlan_tag"]),
-            ("mode", &["mode", "switchport_mode", "admin_mode", "operational_mode", "switchport", "type"]),
+            ("mode", &["mode", "switchport_mode", "interface_mode", "admin_mode", "operational_mode", "switchport", "type"]),
             ("lag_parent", &["lag", "port_channel", "channel_group", "bundle", "aggregate", "member_of", "lag_parent"]),
         ],
         "ip_address" => &[
             ("interface", &["interface", "intf", "name", "port", "intf_name", "ifname", "vlan_name", "interface_alias"]),
             ("ip", &["ip", "ip_address", "ipaddr", "address", "ipv4", "primary_ip", "ip_addr", "prefix", "ip_address_prefix", "ipv6_address", "ipaddress", "ipv4_address"]),
             ("prefixlen", &["prefix_length", "prefixlen", "mask", "netmask", "subnet", "masklen", "prefix_len", "ipv4_netmask"]),
-            ("vrf", &["vrf", "vrf_name", "routing_instance", "instance", "vpn_instance", "vrf_name_out"]),
+            ("vrf", &["vrf", "vrf_name", "routing_instance", "instance", "vpn_instance", "vrf_name_out", "vpn"]),
             ("kind", &["kind", "type", "address_type"]),
         ],
         "neighbor" => &[
@@ -70,11 +70,11 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("age", &["age", "aging"]),
         ],
         "arp" => &[
-            ("ip", &["ip", "ip_address", "address", "ipaddr", "ip_addr", "ip_addr_out", "dst", "neighbor", "ipaddress"]),
+            ("ip", &["ip", "ip_address", "address", "ipaddr", "ip_addr", "ip_addr_out", "dst", "destination", "neighbor", "ipaddress"]),
             ("mac", &["mac", "mac_address", "hardware_addr", "hw_address", "mac_addr", "hardware_address", "lladdr", "link_layer_address"]),
-            ("interface", &["interface", "intf", "port", "intf_out", "port_id", "dev", "vmknic", "interface_alias"]),
+            ("interface", &["interface", "intf", "port", "intf_out", "port_id", "dev", "vmknic", "interface_alias", "name"]),
             ("age", &["age", "age_min", "age_sec", "time_stamp"]),
-            ("vrf", &["vrf", "vrf_name", "vrf_name_out"]),
+            ("vrf", &["vrf", "vrf_name", "vrf_name_out", "vr", "vpn"]),
         ],
         "vlan" => &[
             ("vlan_id", &["vlan_id", "vlan", "id", "vlanid", "vlanshowbr_vlanid"]),
@@ -83,16 +83,16 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("ports", &["interfaces", "ports", "member_ports", "port", "untagged", "tagged", "vlanshowplist_ifidx"]),
         ],
         "lag" => &[
-            ("name", &["bundle_name", "bundle_iface", "group", "po_name", "name", "aggregate", "lag", "lag_name", "port_channel", "po", "trunk", "trunk_group", "interface", "aggregate_name", "port_channel_name"]),
-            ("proto", &["protocol", "bundle_protocol", "mode", "proto", "type"]),
-            ("members", &["member_interface", "member_intf", "interfaces", "members", "member", "ports", "port", "member_interfaces", "member_ports", "local_port"]),
+            ("name", &["bundle_name", "bundle_iface", "group", "po_name", "name", "aggregate", "lag", "lag_name", "lagnameshort", "port_channel", "po", "trunk", "trunk_group", "interface", "aggregate_name", "port_channel_name", "config_master"]),
+            ("proto", &["protocol", "bundle_protocol", "mode", "proto", "type", "lagtype"]),
+            ("members", &["member_interface", "member_intf", "interfaces", "members", "member", "ports", "port", "member_interfaces", "member_ports", "local_port", "portlist", "agg_mbr"]),
             ("state", &["bundle_status", "status", "state", "flags", "member_status"]),
         ],
         "stp" => &[
             ("instance", &["vlan_id", "vlan", "instance", "mst_id", "msti"]),
-            ("root_bridge", &["root_mac", "root_bridge_mac", "root_id", "root_bridge", "root_address"]),
-            ("root_port", &["root_port"]),
-            ("bridge_prio", &["bridge_priority", "priority", "root_priority", "bridge_prio"]),
+            ("root_bridge", &["root_mac", "root_bridge_mac", "root_id", "root_bridge", "root_address", "rootbridgeid"]),
+            ("root_port", &["root_port", "rootport"]),
+            ("bridge_prio", &["bridge_priority", "priority", "root_priority", "bridge_prio", "priorityhex"]),
             ("interface", &["interface", "port", "intf"]),
             ("role", &["role", "port_role"]),
             ("state", &["status", "state", "port_state"]),
@@ -109,7 +109,7 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("vrf", &["vrf", "vrf_name", "routing_instance", "table", "vrf_name_out", "table_name", "vr", "virtual_router"]),
             ("prefix", &["network", "prefix", "destination", "dest", "route", "network_prefix", "ipprefix", "ip_prefix", "ip_address", "dst", "destination_prefix", "ip_mask", "rt_destination"]),
             ("mask", &["mask", "prefixlen", "prefix_length", "netmask", "subnet", "masklen", "prefix_len"]),
-            ("proto", &["protocol", "type", "source_proto", "route_source", "source", "clientname", "status", "protocol_name"]),
+            ("proto", &["protocol", "type", "source_proto", "route_source", "source", "clientname", "status", "protocol_name", "code"]),
             ("ad", &["distance", "admin_distance", "ad", "preference", "pref"]),
             ("metric", &["metric", "cost", "route_metric"]),
             ("next_hop", &["nexthop_ip", "next_hop", "nexthop", "gateway", "via", "next_hop_ip", "nh", "ipnexthop", "gw", "nexthopip", "nh_to"]),
@@ -150,10 +150,10 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
             ("peer_ip", &["standby_router", "active_router", "master_router", "peer", "standby_ip", "active_ip", "sh_standby_router_addr", "sh_active_router_addr"]),
         ],
         "tunnel" => &[
-            ("name", &["name", "tunnel", "interface", "peer", "tunnel_name", "vni", "nve"]),
+            ("name", &["name", "tunnel", "interface", "peer", "tunnel_name", "vni", "nve", "system_ip"]),
             ("kind", &["kind", "type"]),
             ("local_ip", &["local_ip", "local", "local_address", "source", "src"]),
-            ("remote_ip", &["remote_ip", "remote", "peer_ip", "peer_address", "destination", "dst", "peer_ip_address"]),
+            ("remote_ip", &["remote_ip", "remote", "peer_ip", "peer_address", "destination", "dst", "peer_ip_address", "public_ip"]),
             ("state", &["state", "status"]),
         ],
         // LT-552: the ASA template's names last. Cisco writes twice NAT as
@@ -512,7 +512,7 @@ pub fn rows_for_step(step: &coreview_catalog::Step, rows: &[Value]) -> Vec<Norma
             n.columns.insert("proto".into(), proto.into());
         }
         if (n.table == "routing_neighbor" || n.table == "fhrp") && !n.columns.contains_key("proto") {
-            for p in ["ospf", "eigrp", "bgp", "isis", "rip", "standby", "hsrp", "vrrp", "glbp", "magp", "ldp"] {
+            for p in ["ospf", "eigrp", "bgp", "isis", "rip", "standby", "hsrp", "vrrp", "glbp", "magp", "ldp", "omp"] {
                 if step.cmd.contains(p) {
                     n.columns.insert("proto".into(), if p == "standby" { "hsrp".into() } else { p.into() });
                     break;

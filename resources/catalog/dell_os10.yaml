@@ -25,4 +25,4 @@ role_defaults: {}
 caps_probe: []
 commands: []
 live_path: []
-note: "Phase-2 stub: the commands are catalogued, the session block is taken from scrapli; parsers come with Phase 2 (D-060)."
+note: "Phase-2 stub (LT-666, 2026-10-01): still empty on purpose — ntc-templates has dell_force10 (OS9) templates, whose layouts are not OS10's, and no OS10 set; readers from Dell's OS10 documentation or a capture are what fills this."

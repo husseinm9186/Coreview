@@ -394,9 +394,42 @@ pub fn kernel_routes(raw: &str) -> Vec<Value> {
     out
 }
 
+/// FortiOS `show system interface`: the configuration's `config system
+/// interface` block — `edit "port1"` … `set vrf 3` … `next`. A VRF row per
+/// interface that names one (VRF 0 is the default and is not a row), so
+/// the `vrf` table knows which interfaces each VRF holds (LT-665).
+pub fn interface_vrfs(raw: &str) -> Vec<Value> {
+    let mut out = Vec::new();
+    let mut cur: Option<String> = None;
+    for line in raw.lines() {
+        let t = line.trim();
+        if let Some(name) = t.strip_prefix("edit ") {
+            cur = Some(name.trim().trim_matches('"').to_string());
+        } else if t == "next" || t == "end" {
+            cur = None;
+        } else if let Some(v) = t.strip_prefix("set vrf ") {
+            if let Some(name) = &cur {
+                let v = v.trim();
+                if v != "0" && !v.is_empty() {
+                    out.push(json!({"name": v, "interfaces": name}));
+                }
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// LT-665: the VRF an interface is in, from the configuration, with
+    /// invented names (D-027); the layout is FortiOS's own.
+    #[test]
+    fn interface_vrfs_come_off_show_system_interface() {
+        let raw = "config system interface\n    edit \"port1\"\n        set vdom \"root\"\n        set ip 192.0.2.1 255.255.255.0\n        set allowaccess ping https ssh\n        set type physical\n        set snmp-index 1\n    next\n    edit \"port2\"\n        set vdom \"root\"\n        set vrf 3\n        set ip 198.51.100.1 255.255.255.0\n        set type physical\n    next\n    edit \"port3\"\n        set vdom \"root\"\n        set vrf 3\n        set type physical\n    next\n    edit \"ssl.root\"\n        set vdom \"root\"\n        set vrf 0\n        set type tunnel\n    next\nend\n";
+        assert_eq!(interface_vrfs(raw), vec![json!({"name": "3", "interfaces": "port2"}), json!({"name": "3", "interfaces": "port3"})]);
+    }
 
     /// LT-653: the kernel table in Fortinet's documented layout, invented values.
     #[test]

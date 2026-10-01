@@ -69,12 +69,19 @@ PLATFORMS = {
     "onyx": None,
     # LT-652: SONiC's shell is bash; the catalog's prompt.
     "sonic": None,
+    # LT-663, LT-664, LT-666: no scrapli platform; the catalog's prompt and steps.
+    "cisco_s300": None,
+    "extreme_exos": None,
+    "aruba_os": None,
+    "cisco_viptela": None,
+    "vyos": "vyos_vyos",
 }
 
 # The only shapes a session step may take. A catalog is data Rust controls,
 # but a step outside this vocabulary is still refused here and reported.
 SESSION_STEP = re.compile(
-    r"^(terminal |term |set cli |no page$|config paging (disable|enable)$|screen-length|screen-width|skip-page-display$|stty cols "
+    r"^(terminal |term |set cli |no page$|no paging$|config paging (disable|enable)$|screen-length|screen-width|skip-page-display$|stty cols "
+    r"|disable clipaging$|disable cli prompting$|set terminal (length|width) \d+$|paginate false$"
     r"|config system console$|set output \S+$|end$|abort$|config global$|config vdom$|edit \S+$|changeto (context \S+|system)$"
     r"|set system setting target-vsys \S+$|enable$|exit$|logout$|quit$|a$|y$|n$|\r?$)"
 )

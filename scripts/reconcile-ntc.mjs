@@ -57,8 +57,14 @@ export const PLATFORMS = {
   mikrotik_routeros: ['mikrotik_routeros'],
   dell_os10: ['dell_os10'],
   extreme_exos: ['extreme_exos'],
-  ruckus_icx: ['ruckus_fastiron'],
+  // LT-666: ICX is FastIron; the brocade set carries LLDP, LAGs and spanning tree.
+  ruckus_icx: ['brocade_fastiron', 'ruckus_fastiron'],
   ubiquiti_edgeos: ['ubiquiti_edgerouter', 'ubiquiti_edgeswitch'],
+  // LT-663, LT-664, LT-666
+  cisco_s300: ['cisco_s300'],
+  cisco_viptela: ['cisco_viptela'],
+  aruba_os: ['aruba_os'],
+  vyos: ['vyos'],
 };
 
 /**
@@ -181,7 +187,7 @@ function readSpec() {
   const sections = [];
   let current = null;
   for (const line of body.split('\n')) {
-    const h = /^### ([a-z_]+)/.exec(line);
+    const h = /^### ([a-z0-9_]+)/.exec(line);
     if (h) {
       current = { os: h[1] === 'phase' ? 'phase2' : h[1], lines: [] };
       sections.push(current);

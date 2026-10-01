@@ -1,11 +1,10 @@
 # Coreview discovery catalog — Extreme EXOS (extreme_exos)
 #
-# First built 2026-09-29 by scripts/build-catalog.mjs from the operator's
-# specification (docs/DISCOVERY-SPEC.md), ntc-templates' index
-# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
-# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
-# named. Maintained by hand from here on; catalog.test.ts holds every
-# command to the ntc index and the read-only allowlist (LT-512).
+# Filled 2026-10-01 (LT-666): commands and parsers from ntc-templates (their
+# fixtures vendored), the session from netmiko's extreme_exos.py — `disable
+# clipaging`, `disable cli prompting`, a prompt that counts its commands
+# (`* Switch.12 #`) (D-058). No device met yet; `show lldp neighbors` and
+# `show iproute` have no template and stay unverified.
 #
 # verified: lab = a real capture parses (ntc-templates' tests, or a
 # Coreview reader that met the operator's hardware); docs = documented,
@@ -13,16 +12,149 @@
 # structured output, no capture yet — LT-511's list. Never invent a command.
 vendor: Extreme
 os: extreme_exos
-name: EXOS
+name: ExtremeXOS
 ntc_platform: extreme_exos
-phase: 2
+phase: 1
 fingerprint:
   probe: show version
   match_regex: ExtremeXOS
-session: {}
-role_hint: []
-role_defaults: {}
+session:
+  prompt_pattern: '^(\*\s?)?[\w.\-]+(\.\d+)?\s?[>#]\s?$'
+  privilege_levels:
+    exec:
+      pattern: '^(\*\s?)?[\w.\-]+(\.\d+)?\s?[>#]\s?$'
+  default_privilege: exec
+  paging:
+    off:
+      - disable clipaging
+      - disable cli prompting
+    source: netmiko extreme_exos.py session_preparation
+  on_close:
+    - exit
+  failed_when_contains:
+    - "%% Invalid input"
+    - "%% Incomplete command"
+    - "%% Ambiguous command"
+  source: netmiko extreme_exos.py; the prompt's trailing `.N` counts commands and is ignored
+role_hint:
+  - match: ExtremeXOS
+    role: l3_switch
+role_defaults:
+  l3_switch:
+    - switching
+    - routing
+    - lldp
 caps_probe: []
-commands: []
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: none
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_ports_information
+    cmd: show ports information
+    gate: always
+    parser: textfsm:extreme_exos_show_ports_information
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ports_description
+    cmd: show ports description
+    gate: always
+    parser: textfsm:extreme_exos_show_ports_description
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ipconfig
+    cmd: show ipconfig
+    gate: always
+    parser: textfsm:extreme_exos_show_ipconfig
+    feeds:
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_fdb
+    cmd: show fdb
+    gate: always
+    parser: textfsm:extreme_exos_show_fdb
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_iparp
+    cmd: show iparp
+    gate: always
+    parser: textfsm:extreme_exos_show_iparp
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_sharing
+    cmd: show sharing
+    gate: always
+    parser: textfsm:extreme_exos_show_sharing
+    feeds:
+      - lag
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_vlan_description
+    cmd: show vlan description
+    gate: always
+    parser: textfsm:extreme_exos_show_vlan_description
+    feeds:
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_lldp_neighbors
+    cmd: show lldp neighbors
+    gate: cap.lldp
+    parser: none
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_iproute
+    cmd: show iproute
+    gate: cap.routing
+    parser: none
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_configuration
+    cmd: show configuration
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
 live_path: []
-note: "Phase-2 stub: the commands are catalogued, the session block is taken from scrapli; parsers come with Phase 2 (D-060)."
+note: 'LT-666: filled from ntc-templates and netmiko (D-058). `show lldp neighbors` and `show iproute` wait for a capture.'

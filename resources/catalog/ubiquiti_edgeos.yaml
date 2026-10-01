@@ -1,11 +1,9 @@
 # Coreview discovery catalog — Ubiquiti EdgeOS (ubiquiti_edgeos)
 #
-# First built 2026-09-29 by scripts/build-catalog.mjs from the operator's
-# specification (docs/DISCOVERY-SPEC.md), ntc-templates' index
-# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
-# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
-# named. Maintained by hand from here on; catalog.test.ts holds every
-# command to the ntc index and the read-only allowlist (LT-512).
+# Filled 2026-10-01 (LT-666): ntc-templates' `ubiquiti_edgerouter` set,
+# fixtures vendored; the session is Vyatta's shell (scrapli's vyos_vyos
+# driver), `terminal length 0` (D-058). No device met yet; the lldpd detail
+# `show lldp neighbors detail` has no template and stays unverified.
 #
 # verified: lab = a real capture parses (ntc-templates' tests, or a
 # Coreview reader that met the operator's hardware); docs = documented,
@@ -13,32 +11,129 @@
 # structured output, no capture yet — LT-511's list. Never invent a command.
 vendor: Ubiquiti
 os: ubiquiti_edgeos
-name: EdgeOS
+name: EdgeOS (EdgeRouter)
 ntc_platform: ubiquiti_edgerouter
-phase: 2
+phase: 1
 fingerprint:
   probe: show version
   match_regex: EdgeOS|EdgeRouter
 session:
-  source: scrapli_community generic 'network' driver
+  source: scrapli_community vyos_vyos (Vyatta's shell); netmiko ubiquiti edge_ssh.py
+  prompt_pattern: '^[\w.\-]+@[\w.\-]+:~\$\s?$'
   privilege_levels:
-    privilege_exec:
-      pattern: ^[a-z0-9\.\--_()/:~]{1,1000}@[a-z0-9\.\--_()/:~]{1,1000}\$
-  default_privilege: privilege_exec
-  failed_when_contains:
-    - Ambiguous command
-    - Incomplete command
-    - Invalid command
-    - Invalid value
-    - Need to specify the config node to set
-    - Set failed
-  on_open:
-    - stty cols 100000
+    exec:
+      pattern: '^[\w.\-]+@[\w.\-]+:~\$\s?$'
+  default_privilege: exec
+  paging:
+    off:
+      - terminal length 0
+    source: netmiko edge_ssh.py session_preparation
   on_close:
     - exit
-role_hint: []
-role_defaults: {}
+  failed_when_contains:
+    - "Invalid command"
+    - "Incomplete command"
+    - "Ambiguous command"
+role_hint:
+  - match: EdgeOS|EdgeRouter
+    role: router
+role_defaults:
+  router:
+    - routing
+    - nat
+    - lldp
 caps_probe: []
-commands: []
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: textfsm:ubiquiti_edgerouter_show_version
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_interfaces
+    cmd: show interfaces
+    gate: always
+    parser: textfsm:ubiquiti_edgerouter_show_interfaces
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_interfaces_ethernet_physical
+    cmd: show interfaces ethernet physical
+    gate: always
+    parser: textfsm:ubiquiti_edgerouter_show_interfaces_ethernet_physical
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_arp
+    cmd: show arp
+    gate: always
+    parser: textfsm:ubiquiti_edgerouter_show_arp
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_route
+    cmd: show ip route
+    gate: cap.routing
+    parser: textfsm:ubiquiti_edgerouter_show_ip_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_ipv6_route
+    cmd: show ipv6 route
+    gate: cap.routing
+    parser: textfsm:ubiquiti_edgerouter_show_ipv6_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_nat_rules
+    cmd: show nat rules
+    gate: cap.nat
+    parser: textfsm:ubiquiti_edgerouter_show_nat_rules
+    feeds:
+      - nat_rule
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_lldp_neighbors_detail
+    cmd: show lldp neighbors detail
+    gate: cap.lldp
+    parser: none
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_configuration_commands
+    cmd: show configuration commands
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
 live_path: []
-note: "Phase-2 stub: the commands are catalogued, the session block is taken from scrapli; parsers come with Phase 2 (D-060)."
+note: 'LT-666: filled from ntc-templates (ubiquiti_edgerouter) and netmiko (D-058). The lldpd detail waits for a capture.'

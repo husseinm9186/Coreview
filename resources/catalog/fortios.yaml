@@ -768,6 +768,19 @@ commands:
     timeout: 120
     verified: docs
     evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
+  # LT-665: which interfaces each VRF holds — the configuration is the only
+  # place FortiOS says it.
+  - id: show_system_interface_vrfs
+    cmd: show system interface
+    gate: cap.vrf
+    parser: reader:fortios_interface_vrfs
+    feeds:
+      - vrf
+    weight: light
+    timeout: 60
+    verified: docs
+    evidence: Coreview fortinet reader; FortiOS `show system interface` configuration layout (`set vrf N`) (D-058, LT-665)
+    coreview_reader: true
 live_path:
   - id: get_router_info_routing_table_details_dst
     cmd: get router info routing-table details {dst}

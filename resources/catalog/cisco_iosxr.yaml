@@ -430,6 +430,16 @@ live_path:
     verified: lab
     evidence: ntc-templates tests (5 captures)
     phase: 3
+  # LT-668: which equal-cost member the hardware's hash picks for this flow.
+  - id: show_cef_ipv4_exact_route_src_dst
+    cmd: show cef ipv4 exact-route {src} {dst}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511); the reply's next hop is read by the live check
+    phase: 3
   - id: show_cef_dst
     cmd: show cef {dst}
     gate: always

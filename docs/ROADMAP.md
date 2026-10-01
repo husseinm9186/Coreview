@@ -184,6 +184,17 @@ omp peers`, `show control connections`, `show interface`, `show arp`), and
 the 9800's `show wireless client summary` / `show ap summary` / `show ap
 cdp neighbors` under cisco_ios's wlc role. The IOS, NX-OS and IOS-XR
 `unverified` entries each get a documentation fixture or are removed.
+**Shipped so far, 2026-10-01:** `cisco_s300.yaml` (the SG/CBS CLI, ten
+templates, fixtures vendored, netmiko's session — `terminal datadump`)
+and `cisco_viptela.yaml` (vEdge/vManage: interfaces per VPN, ARP, OMP
+peers as routing neighbours, control connections as SD-WAN tunnels;
+fingerprint on `show system status`, since Viptela's `show version` is
+only a number). **Run:** the catalog crate (validation and the 46 new
+fixture directories through the Rust TextFSM engine), the sidecar's
+fixture suite, the TypeScript catalog test. **Still open:** FTD's own
+CLI (the ASA catalog's fingerprint claims it today; the EVE-NG lab,
+LT-559, is where that is settled), the 9800's wireless tables, and the
+IOS/NX-OS/IOS-XR `unverified` audit.
 
 ### LT-664 — Every Aruba: Mobility controllers, Instant APs, and AOS-CX's L3 verified — 2026-09-30
 **Source:** the same message. `aruba_os` (Mobility controllers, templates
@@ -192,6 +203,11 @@ interface brief`, `show inventory`, `show version`, `show vlan`) and Aruba
 Instant (`show version`, `show ap-env`, `show clients`, `show summary`);
 AOS-CX's `fhrp` (`show vrrp`, `show vsx status`), `stp` and `lag` entries
 verified against fixtures and the operator's 6200 capture (LT-635).
+**Shipped so far, 2026-10-01:** `aruba_os.yaml` — the Mobility
+controllers: version, hostname, inventory, addresses, ARP, VLANs and
+`show ap database long` as the `ap` table, `enable` then `no paging` from
+netmiko's driver, fixtures vendored. **Still open:** Aruba Instant, and
+AOS-CX's FHRP/STP/LAG verification, which waits on the 6200's capture.
 
 ### LT-665 — Every Fortinet: SD-WAN, VRF, the kernel FIB, FortiSwitch's L3 side — 2026-09-30
 **Source:** the same message. FortiOS: `diagnose sys sdwan member` /
@@ -202,6 +218,16 @@ only if read-only is certain, policy routes verified. FortiSwitch:
 `get switch trunk`, `get switch stp instance`, `show system interface`,
 `get router info routing-table all`, `diagnose switch vlan list`. FortiAP
 stays read through its FortiGate (LT-596).
+**Shipped so far, 2026-10-01:** the VRF hole closed — `show system
+interface`'s `set vrf N` lines read into the `vrf` table by
+`fortios_interface_vrfs` (a reader; the configuration is the only place
+FortiOS says which interfaces a VRF holds), so a VRF route from the
+routing table (`Routing table for VRF=3`) finds its interfaces; the kernel
+FIB is LT-653's. SD-WAN members and health checks already come over the
+REST API; `diagnose sys sdwan service` stays unverified. **Still open:**
+FortiSwitch's L3 side (`get switch trunk`, `get switch stp instance`,
+`diagnose switch vlan list`) — the lab's FortiSwitch is the right source
+for those readers, and that is a capture to take, not documentation.
 
 ### LT-666 — The empty shells filled: Dell OS10, Extreme EXOS, Ruckus ICX, Ubiquiti EdgeOS, VyOS — 2026-09-30
 **Source:** the same message. Four catalogs exist with no commands; the
@@ -210,15 +236,18 @@ templates for all four are vendored (`dell_force10`, `extreme_exos`,
 session block exists with no catalog. Each filled from its templates and
 documentation, `verified: docs`, with device, interface, ip_address,
 neighbor, mac_table, arp, route, vlan, lag at least.
-
-### LT-668 — Which ECMP member the hardware picks: the live hash per OS — 2026-09-30
-**Source:** the same message. The walk branches over every ECMP next hop;
-the live check should say which one the device would use for this flow:
-`show ip cef exact-route {src} {dst}` (IOS), `show cef exact-route` (XR),
-`show routing-context`/`show forwarding ... ecmp` (NX-OS), `show route
-forwarding-table` + `show pfe` where it exists (Junos), `get router info
-routing-table details` (FortiOS), `test routing fib-lookup` (PAN-OS, if its
-allowlist verdict is read-only). The verify step marks the member taken.
+**Shipped so far, 2026-10-01:** Extreme EXOS (ports, addresses, FDB, ARP,
+sharing, VLANs — `disable clipaging`), Ruckus ICX on ntc's
+`brocade_fastiron` set (version, interfaces, LLDP detail, MACs, ARP, LAGs,
+spanning tree — `enable`, `skip-page-display`), Ubiquiti EdgeOS (version,
+interfaces, ARP, routes v4/v6, NAT rules), and a new `vyos.yaml`
+(interfaces, ARP, BGP summary, FRR's routes and OSPF through the frr
+readers). The sidecar's step vocabulary learned `disable clipaging`,
+`disable cli prompting`, `set terminal length/width`, `paginate false`
+and `no paging`; `scripts/vendor-ntc.sh` keeps the new platforms'
+fixtures. **Not filled:** Dell OS10 — ntc-templates has only the OS9
+(`dell_force10`) set, whose layouts are not OS10's; it needs readers from
+Dell's documentation or a capture, and says so in its note.
 
 ### LT-669 — Every Juniper: filter-based forwarding and the SRX's address books — 2026-09-30
 **Found by LT-667's matrix.** The Junos catalog sets `pbr` and the
@@ -750,6 +779,27 @@ holding the next hop and skips a longer static one. Next.
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-668 — Which ECMP member the hardware picks: the live hash per OS — 2026-09-30, done 2026-10-01
+**Source:** the same message. The walk branches over every ECMP next hop;
+the live check should say which one the device would use for this flow:
+`show ip cef exact-route {src} {dst}` (IOS), `show cef exact-route` (XR),
+`show routing-context`/`show forwarding ... ecmp` (NX-OS), `show route
+forwarding-table` + `show pfe` where it exists (Junos), `get router info
+routing-table details` (FortiOS), `test routing fib-lookup` (PAN-OS, if its
+allowlist verdict is read-only). The verify step marks the member taken.
+**Done 2026-10-01 — what shipped differs from what was asked.** The
+mechanism already existed and was not seen when the item was written: the
+live path sends `show ip cef exact-route {src} {dst}` (IOS), `show routing
+hash {src} {dst} vrf {vrf}` (NX-OS), `show route forwarding-table
+destination {dst}` (Junos), `test routing fib-lookup` (PAN-OS) and `get
+router info routing-table details {dst}` (FortiOS), and `compare::live_check`
+reads the next hop each names against the hop's modeled one — on an ECMP
+hop the path whose member the hash named agrees, the other disagrees, so
+the member taken is already marked per path. Added: IOS-XR's `show cef
+ipv4 exact-route {src} {dst}`. Not added: EOS, AOS-CX, Onyx and FortiOS
+have no per-flow lookup to send. **Run:** `cargo test -p coreview-catalog
+-p coreview-path` (the live-check test on an exact-route reply stands).
 
 ### LT-660 — EVPN is not MPLS: VXLAN routes and MAC-over-VTEP modelled — 2026-09-30, done the same day
 **Found by the builders' review.** An EVPN type-5 route takes the L3VPN

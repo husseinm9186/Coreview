@@ -1,47 +1,158 @@
-# Coreview discovery catalog — Ruckus ICX / FastIron (ruckus_icx)
+# Coreview discovery catalog — Ruckus / Brocade ICX FastIron (ruckus_icx)
 #
-# First built 2026-09-29 by scripts/build-catalog.mjs from the operator's
-# specification (docs/DISCOVERY-SPEC.md), ntc-templates' index
-# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
-# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
-# named. Maintained by hand from here on; catalog.test.ts holds every
-# command to the ntc index and the read-only allowlist (LT-512).
+# Filled 2026-10-01 (LT-666): ntc-templates' `brocade_fastiron` set (ICX is
+# FastIron; it carries LLDP, LAG and spanning tree, which the newer
+# `ruckus_fastiron` set does not), fixtures vendored; the session from
+# netmiko's ruckus_fastiron.py — `enable`, `skip-page-display` (D-058). No
+# device met yet.
 #
 # verified: lab = a real capture parses (ntc-templates' tests, or a
 # Coreview reader that met the operator's hardware); docs = documented,
 # structured, or a template with no fixture; unverified = no template, no
 # structured output, no capture yet — LT-511's list. Never invent a command.
-vendor: Ruckus
+vendor: Ruckus (CommScope)
 os: ruckus_icx
-name: ICX / FastIron
-ntc_platform: ruckus_fastiron
-phase: 2
+name: ICX FastIron
+ntc_platform: brocade_fastiron
+phase: 1
 fingerprint:
   probe: show version
   match_regex: ICX|FastIron
 session:
-  source: scrapli_community generic 'network' driver
+  prompt_pattern: '^[\w.\-@()/:]+(\(config[^)]*\))?[>#]\s?$'
   privilege_levels:
     exec:
-      pattern: ^[a-z0-9 .\-_@()/:]{1,63}>$
+      pattern: '^[\w.\-@()/:]+>\s?$'
     privilege_exec:
-      pattern: ^[a-z0-9 .\-_@/:]{1,63}#$
+      pattern: '^[\w.\-@()/:]+#\s?$'
       escalate: enable
       escalate_auth: true
-      escalate_prompt: ^[pP]assword:\s?$
+      escalate_prompt: (?i)(user name|login|password)
       previous: exec
+      source: "netmiko ruckus_fastiron.py enable: with RADIUS it may ask for the user name first"
   default_privilege: privilege_exec
-  failed_when_contains:
-    - Error -
-    - Invalid input -
-  on_open:
-    - skip-page-display
+  paging:
+    off:
+      - skip-page-display
+    source: netmiko ruckus_fastiron.py session_preparation; scrapli_community ruckus_fastiron
   on_close:
     - exit
-  ntc_platform: ruckus_fastiron
-role_hint: []
-role_defaults: {}
+    - exit
+  failed_when_contains:
+    - "Invalid input"
+    - "Incomplete command"
+    - "Ambiguous input"
+  source: scrapli_community ruckus_fastiron; netmiko ruckus_fastiron.py
+role_hint:
+  - match: ICX|FastIron
+    role: l3_switch
+role_defaults:
+  l3_switch:
+    - switching
+    - routing
+    - lldp
 caps_probe: []
-commands: []
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: textfsm:brocade_fastiron_show_version
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_interfaces
+    cmd: show interfaces
+    gate: always
+    parser: textfsm:brocade_fastiron_show_interfaces
+    feeds:
+      - interface
+      - ip_address
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_interfaces_brief
+    cmd: show interfaces brief
+    gate: always
+    parser: textfsm:brocade_fastiron_show_interfaces_brief
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+  - id: show_lldp_neighbors_detail
+    cmd: show lldp neighbors detail
+    gate: cap.lldp
+    parser: textfsm:brocade_fastiron_show_lldp_neighbors_detail
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_mac_address
+    cmd: show mac-address
+    gate: always
+    parser: textfsm:brocade_fastiron_show_mac-address
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_arp
+    cmd: show arp
+    gate: always
+    parser: textfsm:brocade_fastiron_show_arp
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_lag_brief
+    cmd: show lag brief
+    gate: always
+    parser: textfsm:brocade_fastiron_show_lag_brief
+    feeds:
+      - lag
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_span
+    cmd: show span
+    gate: always
+    parser: textfsm:brocade_fastiron_show_span
+    feeds:
+      - stp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_ip_route
+    cmd: show ip route
+    gate: cap.routing
+    parser: none
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet (LT-511)
+  - id: show_running_config
+    cmd: show running-config
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
 live_path: []
-note: "Phase-2 stub: the commands are catalogued, the session block is taken from scrapli; parsers come with Phase 2 (D-060)."
+note: 'LT-666: filled from ntc-templates (brocade_fastiron) and netmiko (D-058). `show ip route` has no template and waits for a capture.'
