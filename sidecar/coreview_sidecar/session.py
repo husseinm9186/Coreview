@@ -19,9 +19,28 @@ from typing import Any, Optional
 
 from scrapli import Scrapli
 from scrapli.driver import GenericDriver
-from scrapli.exceptions import ScrapliAuthenticationFailed, ScrapliConnectionError, ScrapliTimeout
+from scrapli.exceptions import ScrapliAuthenticationFailed, ScrapliConnectionError, ScrapliConnectionNotOpened, ScrapliTimeout
+
+from paramiko import Transport as _ParamikoTransport
+import scrapli.transport.plugins.paramiko.transport as _scrapli_paramiko
 
 from .allowlist import verdict
+
+
+class _PatientTransport(_ParamikoTransport):
+    """LT-601: paramiko waits 15 s for the SSH banner, and a PA-220's
+    management plane took up to 15.3 s in the lab. The wait is set per
+    session from its own login time, never under 30 s."""
+
+    banner_wait = 30.0
+
+    def __init__(self, sock, *args, **kwargs):
+        super().__init__(sock, *args, **kwargs)
+        self.banner_timeout = self.banner_wait
+
+
+# Scrapli builds the paramiko transport itself; this is the class it builds.
+_scrapli_paramiko._ParamikoTransport = _PatientTransport
 
 # Coreview catalog os → scrapli platform. None: GenericDriver with the catalog's prompt.
 PLATFORMS = {
@@ -91,6 +110,7 @@ class Session:
         self.presented_key: Optional[str] = None
         connect_s = max(1, int(timeouts.get("connect_ms", 8000))) / 1000
         auth_s = max(1, int(timeouts.get("auth_ms", 20000))) / 1000
+        _PatientTransport.banner_wait = max(30.0, auth_s)
         common: dict[str, Any] = {
             "host": host,
             "port": port,
@@ -158,6 +178,11 @@ class Session:
             raise SessionError("auth", str(e)) from None
         except ScrapliTimeout as e:
             raise SessionError("timeout", str(e)) from None
+        except ScrapliConnectionNotOpened as e:
+            # LT-601: scrapli's own words ("connection not opened … call
+            # open()?") hide the reason; the handshake's error is it.
+            cause = e.__cause__ or e
+            raise SessionError("error", f"the SSH handshake failed: {cause or type(cause).__name__}") from None
         except (ScrapliConnectionError, OSError) as e:
             raise SessionError("error", str(e)) from None
         if self.generic:

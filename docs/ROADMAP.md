@@ -139,6 +139,24 @@ page was made — a crawl's review, the Collect tab's hand-over (LT-527), or
 a layout run on an existing page — so the same input can be laid out again
 in a test.
 
+### LT-600 — The lab's Palo Alto, collected and checked against the PAN-OS catalog — 2026-09-30
+**Source:** the operator, 2026-09-30: "I have a palo alto on the network
+… its user is Coreview … if you want to validate it". PAN-OS's commands and
+readers were built from documentation (D-058) and are `verified: docs`;
+this is their first device. Same rules as LT-558: the login from the
+environment only, the replies outside the repository, fixtures reduced to
+invented values, read-only, no OS flipped from what it finds.
+**2026-09-30:** reachable (SSH and HTTPS open, 0.2 ms), but its SSH banner
+takes 6.6–15.3 s over five tries; the lab password was refused on the one
+attempt made — waiting on the operator for this device's password.
+With the password the operator gave, one session logged in (`Coreview@PA-220>`,
+a PA-220 on PAN-OS 10.2.10-h9, `show system info` in 3.7 s). Every session
+since — the collector's, a plain paramiko one, and the same Rust client that
+succeeded — authenticates, prints "Last login", and some 19 s later the
+CLI answers "Invalid user. Please login using a valid account." and closes.
+Waiting on the operator: whether the account changed, or the box limits
+an admin's sessions.
+
 ### LT-588 — **bug** Discover with the collector "never finishes": one stuck device held the run for minutes and then ended it — reported 2026-09-30
 **Source:** the operator, 2026-09-30, with screenshots, testing the
 collector on "Discover devices": "it never finishes". The header stood at
@@ -648,6 +666,22 @@ pulled into Phase 1.*
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-601 — **bug** A device slow to send its SSH banner could not be collected — 2026-09-30, fixed the same day
+**Found checking LT-600:** the lab's Palo Alto sends `SSH-2.0-OpenSSH_8.0`
+6.6–15.3 s after the connection opens (five tries; the network answers in
+0.2 ms), commonly the management plane's SSH server looking up the
+client's name. The collector allows 8 s to connect by default, the sidecar's
+SSH library waits 15 s for a banner, and OpenSSH's own client gave up at
+15 s once — so the collector would fail it as unreachable, or only
+sometimes. **Fix, once a login is possible to test it:** the banner gets its
+own, longer wait, apart from the TCP connect.
+**Fixed 2026-09-30:** the sidecar's paramiko transport waits for the banner
+as long as the session's login time and never under 30 s, and a failed
+handshake now says why instead of Scrapli's "connection not opened … call
+open()?". **Run:** a local server that sends its banner after 16 s — failed
+at 15 s, now passes — and against the lab's PA-220: the handshake completes
+(banner at 8.6 s, authenticated at 14 s) where it failed at 15 s before.
 
 ### LT-598 — "Discover devices" can use the project's API login — 2026-09-30, done the same day
 **Source:** the same study: the collector's result for the FortiGate has no

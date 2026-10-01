@@ -51,7 +51,8 @@ async fn main() {
     let store = Arc::new(std::sync::Mutex::new(HostKeyStore::new()));
     let options = SshOptions {
         port,
-        connect_timeout: Duration::from_secs(10),
+        // CV_CONNECT: seconds to wait for the banner; a PAN-OS management plane took 15 (LT-600).
+        connect_timeout: Duration::from_secs(std::env::var("CV_CONNECT").ok().and_then(|t| t.parse().ok()).unwrap_or(10)),
         auth_timeout: Duration::from_secs(90),
         // CV_TIMEOUT: seconds per command; a traceroute wants minutes (LT-574).
         command_timeout: Duration::from_secs(std::env::var("CV_TIMEOUT").ok().and_then(|t| t.parse().ok()).unwrap_or(45)),
