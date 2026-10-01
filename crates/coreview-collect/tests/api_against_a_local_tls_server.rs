@@ -78,6 +78,9 @@ fn answer(method: &str, path: &str, headers: &BTreeMap<String, String>, port: u1
         let p = path.split('?').next().unwrap_or(path);
         return match p {
             "/api/v2/cmdb/system/zone" => (200, vec![], json!({"results": [{"name": "lan", "interface": [{"interface-name": "port2"}]}]}).to_string()),
+            // LT-610: FortiOS answers 424 or 500 for a feature that is off.
+            "/api/v2/cmdb/firewall/vip" => (500, vec![], json!({"error": -3}).to_string()),
+            "/api/v2/monitor/router/ipv4" => (200, vec![], json!({"results": [{"ip_version": 4, "type": "static", "ip_mask": "0.0.0.0/0", "gateway": "203.0.113.1", "interface": "wan1"}]}).to_string()),
             _ => (404, vec![], String::new()),
         };
     }
@@ -200,6 +203,11 @@ async fn a_fortigates_catalog_api_commands_run_over_rest_with_its_token() {
     assert_eq!(zone.outcome.rows[0]["name"], "lan");
     // Paths the device does not answer are recorded as such, not fatal.
     assert!(run.results.iter().any(|r| r.outcome.status == "unsupported"));
+    // LT-610: one endpoint's 500 is that endpoint's row; the ones after it are still asked.
+    let vip = run.results.iter().find(|r| r.cmd == "/api/v2/cmdb/firewall/vip").expect("the vip endpoint was sent");
+    assert_eq!(vip.outcome.status, "error", "{:?}", vip.outcome.error);
+    let routes = run.results.iter().find(|r| r.cmd == "/api/v2/monitor/router/ipv4").expect("an endpoint after the failing one was still asked");
+    assert_eq!(routes.outcome.status, "ok");
 }
 
 /// LT-518/LT-541 as a collection runs it: an FTD reached over SSH, then its

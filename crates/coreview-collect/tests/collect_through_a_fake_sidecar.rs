@@ -342,3 +342,59 @@ async fn stop_ends_a_device_stuck_on_a_command_at_once() {
     assert!(started.elapsed() < std::time::Duration::from_secs(5), "Stop waited {:?}", started.elapsed());
     slot.quit().await;
 }
+
+/// LT-611: a probe that times out is not followed by a 45 s wait on a
+/// close the stuck sidecar cannot answer. The fingerprint's own wait is
+/// 20 s plus the client's 15; the close used to add 45 more.
+#[tokio::test]
+async fn a_stuck_fingerprint_probe_is_not_followed_by_a_close_wait() {
+    let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+    let mut script = catalyst_script();
+    script["show version"]["stall"] = json!(true);
+    let loc = fake_location(&script, "[]");
+    let mut sidecar = Sidecar::spawn(&loc).await.unwrap();
+    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: None, role_override: None, known_host_key: None };
+    let started = std::time::Instant::now();
+    let run = collect_device(&mut sidecar, &catalogs, &target, &auth(), &RunOptions::default(), &Quiet).await;
+    assert_eq!(run.failure.as_deref(), Some("sidecar"));
+    assert!(started.elapsed() < std::time::Duration::from_secs(60), "waited {:?}", started.elapsed());
+}
+
+/// LT-617: a sidecar that cannot be started ends the run, rather than
+/// being tried again for every device still queued.
+#[tokio::test]
+async fn a_sidecar_that_cannot_start_is_the_runs_end() {
+    use coreview_collect::collector::SidecarSlot;
+    let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+    let mut loc = fake_location(&catalyst_script(), "[]");
+    loc.python = std::path::PathBuf::from("/nonexistent/python-fixture");
+    let mut slot = SidecarSlot::new(loc);
+    let never = tokio_util::sync::CancellationToken::new();
+    let target = Target { host: "192.0.2.10".into(), port: 22, os_hint: None, role_override: None, known_host_key: None };
+    let run = slot.collect(&catalogs, &target, &auth(), &RunOptions::default(), &Quiet, &never).await.expect("a run, failed");
+    assert_eq!(run.failure.as_deref(), Some("sidecar"));
+    assert!(slot.lost(), "the slot says the sidecar is gone for good");
+    slot.quit().await;
+}
+
+/// LT-627: a command that times out takes the device's SSH session with
+/// it. The device ends there as `timeout`, with what it had; the sidecar is
+/// not the one at fault, so the next device still uses it.
+#[tokio::test]
+async fn a_timed_out_command_ends_the_device_and_keeps_the_sidecar() {
+    use coreview_collect::collector::SidecarSlot;
+    let catalogs = load_dir(&repo().join("resources/catalog")).unwrap();
+    let mut script = catalyst_script();
+    script["show cdp neighbors detail"]["status_once"] = json!("timeout");
+    let mut slot = SidecarSlot::new(fake_location(&script, "[]"));
+    let never = tokio_util::sync::CancellationToken::new();
+    let target = |h: &str| Target { host: h.into(), port: 22, os_hint: None, role_override: None, known_host_key: None };
+    let first = slot.collect(&catalogs, &target("192.0.2.10"), &auth(), &RunOptions::default(), &Quiet, &never).await.unwrap();
+    assert_eq!(first.failure.as_deref(), Some("timeout"), "{:?}", first.log);
+    assert!(first.results.iter().any(|r| r.step.cmd == "show version"), "what came before it stands");
+    assert!(!first.results.iter().any(|r| r.step.cmd == "show running-config"), "nothing after it is asked: {:?}", first.results.iter().map(|r| &r.step.cmd).collect::<Vec<_>>());
+    assert!(!slot.lost());
+    let second = slot.collect(&catalogs, &target("192.0.2.11"), &auth(), &RunOptions::default(), &Quiet, &never).await.unwrap();
+    assert_eq!(second.failure, None, "{:?}", second.log);
+    slot.quit().await;
+}

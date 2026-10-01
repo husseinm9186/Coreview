@@ -107,7 +107,7 @@ fn synonyms(table: &str) -> &'static [(&'static str, &'static [&'static str])] {
         ],
         "route" => &[
             ("vrf", &["vrf", "vrf_name", "routing_instance", "table", "vrf_name_out"]),
-            ("prefix", &["network", "prefix", "destination", "dest", "route", "network_prefix", "ipprefix", "ip_prefix", "ip_address", "dst", "destination_prefix"]),
+            ("prefix", &["network", "prefix", "destination", "dest", "route", "network_prefix", "ipprefix", "ip_prefix", "ip_address", "dst", "destination_prefix", "ip_mask"]),
             ("mask", &["mask", "prefixlen", "prefix_length", "netmask", "subnet", "masklen", "prefix_len"]),
             ("proto", &["protocol", "type", "source_proto", "route_source", "source", "clientname", "status"]),
             ("ad", &["distance", "admin_distance", "ad", "preference", "pref"]),
@@ -489,9 +489,29 @@ fn collect_json(value: &Value, key: Option<&str>, out: &mut Vec<Value>, depth: u
     }
 }
 
+/// LT-608: a field of a device's own JSON that holds a secret — by its name
+/// (`psksecret`, `password`, `auth-password-l1`, `api-key`, …) or by its
+/// value (FortiOS's `ENC …` blobs). The CLI's secrets are scrubbed by
+/// `scrub`; these never reach a row at all.
+fn is_secret_field(key: &str, value: &Value) -> bool {
+    let k = canon(key);
+    if matches!(k.as_str(), "api_key" | "private_key" | "key_string" | "ipsec_key") {
+        return true;
+    }
+    if k.split('_').any(|part| matches!(part, "password" | "passwd" | "secret" | "psk" | "psksecret" | "presharedkey" | "passphrase" | "community" | "token")) {
+        return true;
+    }
+    value.as_str().is_some_and(|v| v.starts_with("ENC "))
+}
+
 fn push_row(row: &Value, key: Option<&str>, out: &mut Vec<Value>) {
     let mut flat = Map::new();
     flatten_into(row, "", &mut flat, 0);
+    for (k, v) in flat.iter_mut() {
+        if is_secret_field(k, v) {
+            *v = Value::String("<removed-by-coreview>".into());
+        }
+    }
     if let Some(k) = key {
         if !flat.contains_key("name") {
             flat.insert("name".into(), Value::String(k.to_string()));
@@ -596,6 +616,26 @@ fn flatten_xml(node: roxmltree::Node, prefix: &str, out: &mut Map<String, Value>
 
 #[cfg(test)]
 mod tests {
+    /// LT-608: a FortiGate's REST replies carry `ENC …` blobs and
+    /// passwords in fields no column maps, which `extra` would keep.
+    #[test]
+    fn secrets_in_api_json_never_reach_a_row() {
+        let body = json!({"results": [
+            {"name": "to-branch", "interface": "wan1", "psksecret": "ENC AAAAfakefakefake==", "remote-gw": "203.0.113.9", "ike-version": "2"},
+            {"name": "wan2", "mode": "pppoe", "username": "isp-user", "password": "ENC BBBBfakefake==", "ip": "0.0.0.0 0.0.0.0"},
+            {"name": "x", "ppk-secret": "plain-fixture-value", "q_origin_key": "x", "api-key": "fixture", "token": "fixture"},
+        ]});
+        let rows = rows_from_json(&body["results"]);
+        let text = serde_json::to_string(&rows).unwrap();
+        for leaked in ["ENC AAAA", "ENC BBBB", "plain-fixture-value", "\"api-key\":\"fixture\"", "\"token\":\"fixture\""] {
+            assert!(!text.contains(leaked), "{leaked} in {text}");
+        }
+        assert_eq!(rows[0]["psksecret"], "<removed-by-coreview>");
+        assert_eq!(rows[0]["remote-gw"], "203.0.113.9", "the rest is kept");
+        assert_eq!(rows[1]["username"], "isp-user", "a username is not a secret");
+        assert_eq!(rows[2]["q_origin_key"], "x", "`key` inside another word is not a secret");
+    }
+
     use super::*;
     use serde_json::json;
 

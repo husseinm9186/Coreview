@@ -174,7 +174,10 @@ pub(crate) fn transport(e: reqwest::Error, pin: &CertPin) -> ApiError {
 /// The catalog's `parser: api` commands whose path needs nothing the
 /// collection does not know.
 fn api_commands(catalog: &coreview_catalog::Catalog) -> Vec<&coreview_catalog::Command> {
-    catalog.commands.iter().filter(|c| c.parser == "api" && c.api.as_deref().map(|p| !p.contains('{')).unwrap_or(false)).collect()
+    // LT-636: one request per endpoint — a `show` command's REST alternate
+    // and the API-only entry for the same path are the same request.
+    let mut seen = std::collections::BTreeSet::new();
+    catalog.commands.iter().filter(|c| c.parser == "api" && c.api.as_deref().map(|p| !p.contains('{')).unwrap_or(false)).filter(|c| seen.insert(c.api.clone().unwrap_or_default())).collect()
 }
 
 /// FortiOS REST or AOS-CX REST on the device itself (LT-518). The
@@ -207,9 +210,16 @@ pub async fn run_device(catalog: &coreview_catalog::Catalog, host: &str, login: 
                 };
                 match got {
                     Ok(o) => run.results.push(ApiResult { id: c.id.clone(), cmd: path, feeds: c.feeds.clone(), outcome: o }),
-                    Err(e) => {
+                    // A refused token or a changed certificate stops the phase;
+                    // LT-610: anything else is that endpoint's own error, and
+                    // the endpoints after it are still asked.
+                    Err(e @ (ApiError::Auth(_) | ApiError::PinMismatch { .. } | ApiError::Tls(_))) => {
                         run.fail(e);
                         break;
+                    }
+                    Err(e) => {
+                        run.log.push(format!("{path}: {e}"));
+                        run.results.push(ApiResult { id: c.id.clone(), cmd: path, feeds: c.feeds.clone(), outcome: ApiOutcome { status: "error".into(), error: Some(e.to_string()), ..Default::default() } });
                     }
                 }
             }
@@ -300,7 +310,15 @@ async fn fqdn_addresses(client: &ApiClient, token: &str, path: &str) -> Result<A
     let body: serde_json::Value = serde_json::from_str(&list.raw).unwrap_or_default();
     let mut out = ApiOutcome { status: "ok".into(), raw: list.raw.clone(), duration_ms: list.duration_ms, ..Default::default() };
     for name in fortios::fqdn_names(&body) {
-        let one = fortios::get(client, token, &format!("{path}?mkey={}", fortios::query_value(&name)), None).await?;
+        // LT-610: one object's error is noted; the others are still asked.
+        let one = match fortios::get(client, token, &format!("{path}?mkey={}", fortios::query_value(&name)), None).await {
+            Ok(one) => one,
+            Err(e @ (ApiError::Auth(_) | ApiError::PinMismatch { .. } | ApiError::Tls(_))) => return Err(e),
+            Err(e) => {
+                out.error = Some(format!("{}{name}: {e}", out.error.as_deref().map(|x| format!("{x}; ")).unwrap_or_default()));
+                continue;
+            }
+        };
         out.duration_ms += one.duration_ms;
         out.rows.extend(one.rows);
         out.raw.push('\n');

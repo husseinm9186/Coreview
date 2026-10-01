@@ -23,6 +23,12 @@ fn rules() -> &'static [(Regex, &'static str)] {
             (r(r"(?m)^(\s*snmp-server community) \S+(.*)$"), "$1 <removed-by-coreview>$2"),
             (r(r"(?m)^(\s*snmp-server (?:host|user) .*?(?:auth|priv|md5|sha)) .*$"), "$1 <removed-by-coreview>"),
             (r(r"(?m)^(\s*(?:tacacs-server|radius-server) key(?: \d)?) .*$"), "$1 <removed-by-coreview>"),
+            // LT-607: the community after a v1/v2c trap host, and the key on a
+            // server line — forms the rules above did not reach.
+            (r(r"(?m)^(\s*snmp-server host \S+(?: (?:informs|traps|vrf \S+|udp-port \d+))* version (?:1|2c)) \S+(.*)$"), "$1 <removed-by-coreview>$2"),
+            (r(r"(?m)^(\s*snmp-server host \S+(?: (?:informs|traps|vrf \S+))*) \S+$"), "$1 <removed-by-coreview>"),
+            (r(r"(?m)^(\s*(?:radius-server|tacacs-server) host .*? key(?: \d)?) \S+(.*)$"), "$1 <removed-by-coreview>$2"),
+            (r(r"(?m)^(\s*server-private .*? key(?: \d)?) \S+(.*)$"), "$1 <removed-by-coreview>$2"),
             (r(r"(?m)^(\s*key(?: \d)?) (?:7 )?\S+$"), "$1 <removed-by-coreview>"),
             (r(r"(?m)^(\s*key-string(?: \d)?) .*$"), "$1 <removed-by-coreview>"),
             (r(r"(?m)^(\s*crypto isakmp key) \S+( .*)$"), "$1 <removed-by-coreview>$2"),
@@ -74,7 +80,7 @@ pub fn scrub(text: &str) -> String {
 /// configuration is written anywhere.
 pub fn looks_clean(text: &str) -> bool {
     // The optional `5` / `7` / `9` before a Cisco value is the encryption type, not the secret.
-    let re = Regex::new(r"(?mi)^\s*(?:enable secret|snmp-server community|set password|set psksecret|pre-shared-key|key-string|tunnel-group .* key|encrypted-password)(?: \d)? (\S+)").unwrap();
+    let re = Regex::new(r"(?mi)^\s*(?:enable secret|snmp-server community|snmp-server host \S+(?: \S+)*? version (?:1|2c)|(?:radius-server|tacacs-server) host .*? key(?: \d)?|server-private .*? key(?: \d)?|set password|set psksecret|pre-shared-key|key-string|tunnel-group .* key|encrypted-password)(?: \d)? (\S+)").unwrap();
     let survivor = re.captures_iter(text).any(|c| !c[1].starts_with("<removed-by-coreview>"));
     !survivor && !text.contains("$9$") && !text.contains("$1$") && !text.contains("$5$") && !text.contains("$8$") && !text.contains("$6$")
 }
@@ -157,6 +163,32 @@ snmp-agent community read FAKEHUAWEICOMM
         }
         assert!(looks_clean(&out), "{out}");
         assert!(!looks_clean(CONFIG));
+    }
+
+    /// LT-607: three IOS forms that survived into a support capture.
+    #[test]
+    fn snmp_hosts_and_radius_keys_are_removed_too() {
+        let text = "snmp-server host 192.0.2.5 version 2c c0mmun1ty-fixture
+snmp-server host 192.0.2.6 informs version 2c other-fixture udp-port 1162
+snmp-server host 192.0.2.9 public-fixture
+snmp-server host 192.0.2.7 version 3 auth snmpuser
+radius-server host 192.0.2.7 auth-port 1812 acct-port 1813 key 7 0123456789ABCDEFFIXTURE
+tacacs-server host 192.0.2.8 key 0 plain-fixture
+ server-private 192.0.2.8 key 7 0123456789ABCDEFFIXTURE
+ server-private 192.0.2.9 auth-port 1812 key 0 plain-fixture
+";
+        let out = scrub(text);
+        for token in ["c0mmun1ty-fixture", "other-fixture", "public-fixture", "0123456789ABCDEFFIXTURE", "plain-fixture"] {
+            assert!(!out.contains(token), "{token} survived:\n{out}");
+        }
+        assert!(out.contains("snmp-server host 192.0.2.5 version 2c <removed-by-coreview>"), "{out}");
+        assert!(out.contains("<removed-by-coreview> udp-port 1162"), "the rest of the line stays: {out}");
+        // A v3 line is the older rule's: everything after `auth` goes, user included.
+        assert!(out.contains("snmp-server host 192.0.2.7 version 3 auth <removed-by-coreview>"), "{out}");
+        assert!(out.contains("radius-server host 192.0.2.7 auth-port 1812 acct-port 1813 key 7 <removed-by-coreview>"), "{out}");
+        assert!(out.contains(" server-private 192.0.2.8 key 7 <removed-by-coreview>"), "{out}");
+        assert!(looks_clean(&out), "{out}");
+        assert!(!looks_clean(text));
     }
 
     #[test]

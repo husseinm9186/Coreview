@@ -239,6 +239,9 @@ static PORT_CHANNELS_ARUBA: &[Reading<PortChannel>] = &[
 ];
 // LT-466: Junos, from its documentation (D-058). No CDP on this platform.
 static NO_NEIGHBOURS: &[Reading<Neighbor>] = &[];
+// LT-635: AOS-CX, from the operator's 6200 and ntc's captures.
+static LLDP_ARUBACX: &[Reading<Neighbor>] = &[Reading { command: "show lldp neighbor-info detail", parse: crate::arubacx::parse_lldp_neighbor_info_detail }];
+static MAC_ARUBACX: &[Reading<MacEntry>] = &[Reading { command: "show mac-address-table", parse: crate::arubacx::parse_mac_address_table }];
 static LLDP_JUNOS: &[Reading<Neighbor>] = &[Reading { command: "show lldp neighbors", parse: crate::junos::parse_lldp_neighbors }];
 static ARP_JUNOS: &[&str] = &["show arp no-resolve"];
 static MAC_JUNOS: &[Reading<MacEntry>] = &[Reading { command: "show ethernet-switching table", parse: crate::junos::parse_switching_table }];
@@ -359,7 +362,7 @@ impl Dialect for Chosen {
     fn cdp_readings(&self) -> &'static [Reading<Neighbor>] {
         use Family::*;
         match self.known.family {
-            Junos | AristaEos | PanOs | CiscoAsa | Gaia | Comware | HuaweiVrp | RouterOs | Vyatta | AireOs | ArubaController | Cumulus | Sonic => NO_NEIGHBOURS,
+            Junos | AristaEos | PanOs | CiscoAsa | Gaia | Comware | HuaweiVrp | RouterOs | Vyatta | AireOs | ArubaController | Cumulus | Sonic | ArubaOsCx => NO_NEIGHBOURS,
             _ => CDP,
         }
     }
@@ -367,6 +370,7 @@ impl Dialect for Chosen {
         use Family::*;
         match self.known.family {
             Junos => LLDP_JUNOS,
+            ArubaOsCx => LLDP_ARUBACX,
             AristaEos => LLDP_ARISTA,
             PanOs => LLDP_PANOS,
             Comware => LLDP_COMWARE,
@@ -385,7 +389,7 @@ impl Dialect for Chosen {
         match self.known.family {
             Junos => ARP_JUNOS,
             PanOs => ARP_PANOS,
-            CiscoAsa | Vyatta => ARP_ASA,
+            CiscoAsa | Vyatta | ArubaOsCx => ARP_ASA,
             Gaia => ARP_GAIA,
             Comware | HuaweiVrp => ARP_DISPLAY,
             RouterOs => ARP_ROUTEROS,
@@ -399,6 +403,7 @@ impl Dialect for Chosen {
         use Family::*;
         match (self.known.family, self.dell) {
             (Junos, _) => MAC_JUNOS,
+            (ArubaOsCx, _) => MAC_ARUBACX,
             (Comware | HuaweiVrp, _) => MAC_COMWARE,
             (RouterOs, _) => MAC_ROUTEROS,
             (Cumulus, _) => MAC_CUMULUS,
@@ -418,7 +423,8 @@ impl Dialect for Chosen {
             HuaweiVrp => PORT_CHANNELS_HUAWEI,
             Cumulus => PORT_CHANNELS_CUMULUS,
             Sonic => PORT_CHANNELS_SONIC,
-            PanOs | CiscoAsa | Gaia | RouterOs | Vyatta | AireOs | ArubaController => NO_PORT_CHANNELS,
+            // LT-635: AOS-CX's `show lag brief` waits on a capture.
+            PanOs | CiscoAsa | Gaia | RouterOs | Vyatta | AireOs | ArubaController | ArubaOsCx => NO_PORT_CHANNELS,
             _ if self.aruba_switch => PORT_CHANNELS_ARUBA,
             _ if self.dell.is_some() => PORT_CHANNELS_DELL,
             _ => PORT_CHANNELS,
@@ -490,7 +496,7 @@ impl Dialect for Chosen {
     }
     fn reads_cisco_details(&self) -> bool {
         use Family::*;
-        matches!(self.known.family, CiscoIos | CiscoNxOs | AristaEos | ArubaOsSwitch | ArubaOsCx | Dell | Generic)
+        matches!(self.known.family, CiscoIos | CiscoNxOs | AristaEos | ArubaOsSwitch | Dell | Generic)
     }
     fn default_class(&self) -> Option<crate::types::DeviceClass> {
         match self.known.family {
@@ -674,7 +680,7 @@ mod tests {
         ];
         for banner in banners {
             let d = dialect_for(banner);
-            if !matches!(d.family(), Family::CiscoIos | Family::CiscoNxOs | Family::FortiOs | Family::ArubaOsSwitch | Family::ArubaOsCx | Family::Dell | Family::Generic) {
+            if !matches!(d.family(), Family::CiscoIos | Family::CiscoNxOs | Family::FortiOs | Family::ArubaOsSwitch | Family::Dell | Family::Generic) {
                 // LT-466–476: their own sequences, asserted below.
                 continue;
             }

@@ -39,6 +39,10 @@ pub enum SidecarError {
     BadLine(String),
     #[error("the sidecar did not answer within {0:?}")]
     Timeout(Duration),
+    /// LT-627: a command timed out on the device and the SSH session closed
+    /// with it; the sidecar itself is fine and keeps serving.
+    #[error("the device's session closed after a command timed out")]
+    SessionGone,
     #[error("the sidecar refused: {0}")]
     Protocol(String),
 }

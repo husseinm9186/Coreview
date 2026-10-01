@@ -223,73 +223,6 @@ across the top and long curves to the switch that learned them. **Fix:**
 a device hung off a port is one row below that switch; a crowd's switch
 one below, its crowd one more.
 
-### LT-607 — **bug** Three IOS secret forms survived the scrub into a support capture — 2026-09-30
-**Found by the sweep's collector review (LT-603).** `snmp-server host …
-version 2c <community>`, `radius-server host … key 7 <key>` and
-` server-private … key 7 <key>` match no rule in `scrub.rs`, and
-`redact()`'s word list has neither `key` nor `version`, so a diagnostic
-ticked on a run kept them verbatim. **Fix:** rules for each, and
-`looks_clean` run over every kept configuration as its comment promised.
-
-### LT-608 — **bug** A FortiGate's REST replies carried `ENC …` secrets into the database — 2026-09-30
-**Found by the same review.** `/cmdb/vpn.ipsec/phase1-interface` answers
-`psksecret: "ENC …"` and `/cmdb/system/interface` a PPPoE `password`;
-`normalise` keeps every unmapped field in `extra`, which `write_row` stores.
-**Fix:** values of secret-named keys and `ENC …` blobs are removed from
-every API row before it is stored, as the CLI's are.
-
-### LT-609 — **bug** Stop waited out a device's SNMP and REST phases — 2026-09-30
-**Found by the same review.** Only the SSH phase ran under the cancel
-token; a FortiGate's dozens of GETs at 30 s each, and one per FQDN object,
-ran on after Stop. **Fix:** every phase of a device is under the token.
-
-### LT-610 — **bug** One HTTP error ended a device's whole REST phase — 2026-09-30
-**Found by the same review.** Only 404 was "unsupported"; a 424 or 500
-(FortiOS's answer for a feature turned off) or one failing `?mkey=` stopped
-every endpoint after it and marked the device `transport`. **Fix:** an
-endpoint's error is that endpoint's row; the rest are still asked. An
-authentication failure or a changed certificate still stops the phase.
-
-### LT-611 — **bug** After a timed-out probe the sidecar was asked to close, 45 s more — 2026-09-30
-**Found by the same review.** `run_steps` already skips the close on a
-sidecar that timed out (LT-588); the fingerprint and capability passes did
-not. **Fix:** the same rule in all three.
-
-### LT-612 — **bug** Following the default route would log in to the provider's router — 2026-09-30
-**Found by the same review.** Every route's next hop is queued (LT-576), and
-an edge firewall's default route points at the ISP; with no subnet limit
-typed, the collector would open SSH there and send the operator's
-username and password. **Fix:** a next hop or neighbour outside the
-private ranges is followed only when a subnet limit the operator typed
-includes it; otherwise it is listed as not followed, with that reason.
-
-### LT-613 — **bug** An OS hint given for the seeds was applied to every device followed — 2026-09-30
-**Found by the same review.** Reachable through the IPC, not today's
-panels. **Fix:** the hint and the role override apply to the seeds only.
-
-### LT-614 — **bug** A parse error's text carried a line of a device's reply, unscrubbed — 2026-09-30
-**Found by the same review.** TextFSM's "State Error … Input Line: <line>"
-and the shadow detail were stored and shown as they came. **Fix:** both
-pass through the scrub before they are stored.
-
-### LT-615 — **bug** `collection_raw` accepted a drive-absolute path — 2026-09-30
-**Found by the same review.** `C:/…` has no `..`, no leading `/` and no
-backslash, and `Path::join` with it leaves the run's folder. Local IPC
-only. **Fix:** a reply reference with `:` is refused; none legitimate has one.
-
-### LT-616 — **bug** A neighbour with no address and no ARP match was dropped without a word — 2026-09-30
-**Found by the same review.** The review's "not visited" list promises
-every neighbour named and not followed. **Fix:** it is listed, with the
-reason "no address to reach it on".
-
-### LT-617 — **bug** A sidecar that could not be restarted was retried for every remaining device — 2026-09-30
-**Found by the same review.** 500 queued devices × a 10 s hello timeout.
-**Fix:** a failed restart ends the run as failed, with the reason.
-
-### LT-618 — **bug** A database error while storing a device was swallowed — 2026-09-30
-**Found by the same review.** The device was reported done with no
-commands and no failure. **Fix:** it is the device's failure, in its log.
-
 ### LT-619 — **bug** A collector run on "Discover devices" was lost when the tab changed — 2026-09-30
 **Found by the sweep's interface review (LT-603)** — and what the operator
 met: "I have to switch screens". The run's id lived in the panel, which
@@ -374,34 +307,6 @@ path to a file it may read, without quoting it.
 **Found by the same review.** `dispatch` looked the session up before the
 verdict, so the test's "refused or error" passed on "no such session".
 **Fix:** the verdict comes first, and the test accepts `refused` only.
-
-### LT-635 — **bug** The classic crawler sent an ArubaOS-CX switch the Cisco and AOS-S spellings — 2026-09-30
-**Source:** the operator, 2026-09-30, with a debug zip and a screenshot:
-"Aruba commands are wrong — show lldp neighbor-info detail". His 6200
-(JL727A, AOS-CX 10.18) was recognised as ArubaOS-CX and then asked
-`terminal length 0`, `show cdp neighbors detail`, `show lldp neighbors
-detail`, `show lldp info remote-device`, `show mac address-table`, `show
-etherchannel summary`, `show interfaces status` and the rest of the Cisco
-detail set — every one "Invalid input"; it answered `show system`, `show
-arp`, `show ip route`, `show vsf`, `show spanning-tree` and `show
-mac-address`. So it was reached with no neighbours and no MAC table.
-**Fix:** AOS-CX asks `show lldp neighbor-info detail` (the operator's
-word, and ntc's captured fixtures for the layout), `show mac-address-table`,
-`show arp`, no CDP, and none of the Cisco detail set; bundles wait on a
-capture of `show lag brief`. The 6200 is not reachable from this VM, so
-the readers are written against ntc's captures of real AOS-CX output and
-the operator's next crawl is what earns `verified`.
-
-### LT-636 — **bug** Eleven FortiOS catalog entries called the REST API without `/api/v2`, and fed the wrong tables — 2026-09-30
-**Found by the sweep.** The API-only entries (`/monitor/system/interface`,
-`/cmdb/router/static`, …) carried their path without the `/api/v2` prefix
-every FortiGate wants, so each 404ed on every run with a token; and their
-feeds were wrong — routes into `device`, OSPF neighbours into `arp`. Two of
-them duplicate a `show` command's REST alternate, so LLDP arrived twice.
-**Fix:** the prefix on every path, the feeds by what each endpoint returns
-(checked against the lab FortiGate's replies: `/monitor/system/interface`
-carries each interface's MAC, which LT-569 wanted), and one request per
-endpoint.
 
 ### LT-637 — **bug** A tunnel whose far end is reached through the tunnel itself overflowed the stack and killed the app — 2026-09-30
 **Found by the sweep's topology/path review (LT-603), reproduced with a
@@ -991,6 +896,115 @@ of every branch and a tar of the working tree (target, node_modules and
 the venv left out) under `~/coreview-backups/`, named by date and commit;
 `scripts/revert-point.sh` makes one, and says how to restore.
 **Run:** `scripts/revert-point.sh` made `coreview-20260930-…` under `~/coreview-backups/` and `git bundle verify` passed on it.
+
+### LT-607 — **bug** Three IOS secret forms survived the scrub into a support capture — 2026-09-30, fixed the same day
+**Found by the sweep's collector review (LT-603).** `snmp-server host …
+version 2c <community>`, `radius-server host … key 7 <key>` and
+` server-private … key 7 <key>` match no rule in `scrub.rs`, and
+`redact()`'s word list has neither `key` nor `version`, so a diagnostic
+ticked on a run kept them verbatim. **Fix:** rules for each, and
+`looks_clean` run over every kept configuration as its comment promised.
+**Run:** `scrub.rs` — the three forms, with `looks_clean` agreeing; failed before.
+
+### LT-608 — **bug** A FortiGate's REST replies carried `ENC …` secrets into the database — 2026-09-30, fixed the same day
+**Found by the same review.** `/cmdb/vpn.ipsec/phase1-interface` answers
+`psksecret: "ENC …"` and `/cmdb/system/interface` a PPPoE `password`;
+`normalise` keeps every unmapped field in `extra`, which `write_row` stores.
+**Fix:** values of secret-named keys and `ENC …` blobs are removed from
+every API row before it is stored, as the CLI's are.
+**Run:** `tables.rs` — `psksecret`, a PPPoE password, `ppk-secret`, `api-key` and `token` never reach a row, a username and `q_origin_key` do; failed before.
+
+### LT-609 — **bug** Stop waited out a device's SNMP and REST phases — 2026-09-30, fixed the same day
+**Found by the same review.** Only the SSH phase ran under the cancel
+token; a FortiGate's dozens of GETs at 30 s each, and one per FQDN object,
+ran on after Stop. **Fix:** every phase of a device is under the token.
+**Run:** by reading — the SNMP and REST phases sit under the same `select!` as the SSH phase; no test drives a slow REST server under Stop yet.
+
+### LT-610 — **bug** One HTTP error ended a device's whole REST phase — 2026-09-30, fixed the same day
+**Found by the same review.** Only 404 was "unsupported"; a 424 or 500
+(FortiOS's answer for a feature turned off) or one failing `?mkey=` stopped
+every endpoint after it and marked the device `transport`. **Fix:** an
+endpoint's error is that endpoint's row; the rest are still asked. An
+authentication failure or a changed certificate still stops the phase.
+**Run:** the local TLS server answers 500 for one FortiOS endpoint; the endpoint after it is still asked and the device is not `transport` (failed before).
+
+### LT-611 — **bug** After a timed-out probe the sidecar was asked to close, 45 s more — 2026-09-30, fixed the same day
+**Found by the same review.** `run_steps` already skips the close on a
+sidecar that timed out (LT-588); the fingerprint and capability passes did
+not. **Fix:** the same rule in all three.
+**Run:** a fake sidecar that never answers `show version`: the device ends in under 60 s (it was 20 + 15 + 45); the test takes 35 s.
+
+### LT-612 — **bug** Following the default route would log in to the provider's router — 2026-09-30, fixed the same day
+**Found by the same review.** Every route's next hop is queued (LT-576), and
+an edge firewall's default route points at the ISP; with no subnet limit
+typed, the collector would open SSH there and send the operator's
+username and password. **Fix:** a next hop or neighbour outside the
+private ranges is followed only when a subnet limit the operator typed
+includes it; otherwise it is listed as not followed, with that reason.
+**Run:** `follow.rs` — a public next hop is listed as not followed unless a subnet limit names it; the lab's provider gateway shows as not followed.
+
+### LT-613 — **bug** An OS hint given for the seeds was applied to every device followed — 2026-09-30, fixed the same day
+**Found by the same review.** Reachable through the IPC, not today's
+panels. **Fix:** the hint and the role override apply to the seeds only.
+**Run:** by reading — `Target` takes the hint and role at hop 0 only.
+
+### LT-614 — **bug** A parse error's text carried a line of a device's reply, unscrubbed — 2026-09-30, fixed the same day
+**Found by the same review.** TextFSM's "State Error … Input Line: <line>"
+and the shadow detail were stored and shown as they came. **Fix:** both
+pass through the scrub before they are stored.
+**Run:** by reading — the error and shadow detail pass through `scrub` and `redact` before `write_log`.
+
+### LT-615 — **bug** `collection_raw` accepted a drive-absolute path — 2026-09-30, fixed the same day
+**Found by the same review.** `C:/…` has no `..`, no leading `/` and no
+backslash, and `Path::join` with it leaves the run's folder. Local IPC
+only. **Fix:** a reply reference with `:` is refused; none legitimate has one.
+**Run:** a unit test on `raw_ref_is_inside_the_run` with a drive path, `..`, a leading `/`, a backslash and an empty reference.
+
+### LT-616 — **bug** A neighbour with no address and no ARP match was dropped without a word — 2026-09-30, fixed the same day
+**Found by the same review.** The review's "not visited" list promises
+every neighbour named and not followed. **Fix:** it is listed, with the
+reason "no address to reach it on".
+**Run:** `follow.rs` — a neighbour with no address and no ARP match is in `not_followed` as "no address to reach it on" (failed before).
+
+### LT-617 — **bug** A sidecar that could not be restarted was retried for every remaining device — 2026-09-30, fixed the same day
+**Found by the same review.** 500 queued devices × a 10 s hello timeout.
+**Fix:** a failed restart ends the run as failed, with the reason.
+**Run:** a slot whose interpreter path does not exist: the device fails `sidecar`, the slot says `lost`, and the app's loop ends the run as failed.
+
+### LT-618 — **bug** A database error while storing a device was swallowed — 2026-09-30, fixed the same day
+**Found by the same review.** The device was reported done with no
+commands and no failure. **Fix:** it is the device's failure, in its log.
+**Run:** by reading — a `persist_device` error is the device's failure `store`, in its log.
+
+### LT-635 — **bug** The classic crawler sent an ArubaOS-CX switch the Cisco and AOS-S spellings — 2026-09-30, fixed the same day
+**Source:** the operator, 2026-09-30, with a debug zip and a screenshot:
+"Aruba commands are wrong — show lldp neighbor-info detail". His 6200
+(JL727A, AOS-CX 10.18) was recognised as ArubaOS-CX and then asked
+`terminal length 0`, `show cdp neighbors detail`, `show lldp neighbors
+detail`, `show lldp info remote-device`, `show mac address-table`, `show
+etherchannel summary`, `show interfaces status` and the rest of the Cisco
+detail set — every one "Invalid input"; it answered `show system`, `show
+arp`, `show ip route`, `show vsf`, `show spanning-tree` and `show
+mac-address`. So it was reached with no neighbours and no MAC table.
+**Fix:** AOS-CX asks `show lldp neighbor-info detail` (the operator's
+word, and ntc's captured fixtures for the layout), `show mac-address-table`,
+`show arp`, no CDP, and none of the Cisco detail set; bundles wait on a
+capture of `show lag brief`. The 6200 is not reachable from this VM, so
+the readers are written against ntc's captures of real AOS-CX output and
+the operator's next crawl is what earns `verified`.
+**Run:** two readers against ntc's captures (both LLDP layouts; the MAC table) and the dialect's selection; the 6200 itself waits on the operator's next crawl, which is what earns `verified`.
+
+### LT-636 — **bug** Eleven FortiOS catalog entries called the REST API without `/api/v2`, and fed the wrong tables — 2026-09-30, fixed the same day
+**Found by the sweep.** The API-only entries (`/monitor/system/interface`,
+`/cmdb/router/static`, …) carried their path without the `/api/v2` prefix
+every FortiGate wants, so each 404ed on every run with a token; and their
+feeds were wrong — routes into `device`, OSPF neighbours into `arp`. Two of
+them duplicate a `show` command's REST alternate, so LLDP arrived twice.
+**Fix:** the prefix on every path, the feeds by what each endpoint returns
+(checked against the lab FortiGate's replies: `/monitor/system/interface`
+carries each interface's MAC, which LT-569 wanted), and one request per
+endpoint.
+**Run:** every API-only path prefixed and its feeds set from the lab FortiGate's own replies; `api_commands` sends one request per endpoint; the TLS test asks an endpoint that was unreachable before.
 
 ### LT-601 — **bug** A device slow to send its SSH banner could not be collected — 2026-09-30, fixed the same day
 **Found checking LT-600:** the lab's Palo Alto sends `SSH-2.0-OpenSSH_8.0`

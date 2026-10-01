@@ -15,16 +15,23 @@ use crate::sidecar::{Auth, Sidecar, SidecarLocation};
 pub struct SidecarSlot {
     location: SidecarLocation,
     sidecar: Option<Sidecar>,
+    /// LT-617: a replacement could not be started; the run should end.
+    lost: bool,
 }
 
 impl SidecarSlot {
     pub fn new(location: SidecarLocation) -> Self {
-        SidecarSlot { location, sidecar: None }
+        SidecarSlot { location, sidecar: None, lost: false }
     }
 
     /// With a sidecar the caller has already started.
     pub fn started(location: SidecarLocation, sidecar: Sidecar) -> Self {
-        SidecarSlot { location, sidecar: Some(sidecar) }
+        SidecarSlot { location, sidecar: Some(sidecar), lost: false }
+    }
+
+    /// Whether a sidecar could not be started: nothing more will be collected.
+    pub fn lost(&self) -> bool {
+        self.lost
     }
 
     /// One device. `None` when the run was cancelled while it was in
@@ -38,6 +45,7 @@ impl SidecarSlot {
             match Sidecar::spawn(&self.location).await {
                 Ok(s) => self.sidecar = Some(s),
                 Err(e) => {
+                    self.lost = true;
                     let mut run = DeviceRun { host: target.host.clone(), failure: Some("sidecar".into()), ..Default::default() };
                     run.log.push(format!("the sidecar could not be started: {e}"));
                     return Some(run);

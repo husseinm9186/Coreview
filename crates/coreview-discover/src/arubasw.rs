@@ -259,7 +259,7 @@ fn capability_word(letter: &str) -> Option<&'static str> {
 /// device gave itself. Each is worth something different, so each is put
 /// where it belongs rather than all three into the label.
 #[allow(clippy::too_many_arguments)]
-fn neighbour_from(
+pub(crate) fn neighbour_from(
     id: &str,
     sys_name: &str,
     local_interface: &str,

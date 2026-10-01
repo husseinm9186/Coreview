@@ -50,6 +50,15 @@ fn inside(ip: IpAddr, (net, len): (IpAddr, u8)) -> bool {
     }
 }
 
+/// RFC 1918, the shared range (100.64/10) and IPv6 unique-local: the
+/// operator's own estate, as far as an address can say.
+fn is_private(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(a) => a.is_private() || (a.octets()[0] == 100 && (a.octets()[1] & 0xc0) == 64),
+        IpAddr::V6(a) => (a.segments()[0] & 0xfe00) == 0xfc00,
+    }
+}
+
 /// An address worth following: not unspecified, loopback, link-local or multicast.
 fn followable(ip: IpAddr) -> bool {
     match ip {
@@ -114,32 +123,65 @@ impl Frontier {
             if !followable(ip) {
                 continue;
             }
+            let named = self.limits.subnets.iter().any(|net| inside(ip, *net));
             if hop + 1 > self.limits.max_hops {
                 self.not_followed.push((n.clone(), format!("more than {} hop(s) from a seed", self.limits.max_hops)));
-            } else if !self.limits.subnets.is_empty() && !self.limits.subnets.iter().any(|net| inside(ip, *net)) {
+            } else if !self.limits.subnets.is_empty() && !named {
                 let nets: Vec<String> = self.limits.subnets.iter().map(|(a, l)| format!("{a}/{l}")).collect();
                 self.not_followed.push((n.clone(), format!("outside {}", nets.join(", "))));
+            } else if !is_private(ip) && !named {
+                // LT-612: an edge firewall's default route points at the
+                // provider; the login must not be offered there unasked.
+                self.not_followed.push((n.clone(), "outside the private ranges; a subnet limit naming it would allow it".into()));
             } else {
                 self.queue.push_back((n.clone(), hop + 1));
             }
         }
     }
+
+    /// Everything one collected device told the frontier (LT-616: a
+    /// neighbour with no address is listed, not dropped).
+    pub fn learn_found(&mut self, hop: u32, found: &Found) {
+        self.learn(hop, &found.own, &found.next);
+        for name in &found.unreachable {
+            if self.seen.insert(format!("name:{name}")) {
+                self.not_followed.push((name.clone(), "no address to reach it on".into()));
+            }
+        }
+    }
+}
+
+/// What one collected device tells the frontier.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Found {
+    /// Its own addresses, the one it was reached on included.
+    pub own: Vec<String>,
+    /// Addresses to go to next.
+    pub next: Vec<String>,
+    /// Neighbours named with no address to reach them on (LT-616).
+    pub unreachable: Vec<String>,
 }
 
 /// A collected device's own addresses and the addresses of what it points
 /// at, read from its rows the way the run stores them.
-pub fn addresses_of_run(run: &DeviceRun) -> (Vec<String>, Vec<String>) {
+pub fn found_of_run(run: &DeviceRun) -> Found {
     let mut rows = Vec::new();
     for r in &run.results {
         if r.outcome.status == "ok" {
             rows.extend(rows_for_step(&r.step, &rows_of(&r.step.parser, &r.outcome)));
         }
     }
-    let (mut own, next) = addresses_from_rows(&rows);
-    if !own.contains(&run.host) {
-        own.push(run.host.clone());
+    let mut found = found_in_rows(&rows);
+    if !found.own.contains(&run.host) {
+        found.own.push(run.host.clone());
     }
-    (own, next)
+    found
+}
+
+/// `found_of_run` as (own, next).
+pub fn addresses_of_run(run: &DeviceRun) -> (Vec<String>, Vec<String>) {
+    let f = found_of_run(run);
+    (f.own, f.next)
 }
 
 fn mac_key(m: &str) -> String {
@@ -157,8 +199,15 @@ fn addresses_in(v: &str) -> impl Iterator<Item = &str> {
 /// hop, which is how a firewall that sends no LLDP is reached, as the
 /// older crawler reached it through the default route.
 pub fn addresses_from_rows(rows: &[crate::tables::Normalised]) -> (Vec<String>, Vec<String>) {
+    let f = found_in_rows(rows);
+    (f.own, f.next)
+}
+
+/// `addresses_from_rows`, with the neighbours no address reaches.
+pub fn found_in_rows(rows: &[crate::tables::Normalised]) -> Found {
     let mut own = BTreeSet::new();
     let mut next = BTreeSet::new();
+    let mut unreachable = BTreeSet::new();
     let arp: std::collections::BTreeMap<String, String> = rows
         .iter()
         .filter(|n| n.table == "arp")
@@ -173,6 +222,9 @@ pub fn addresses_from_rows(rows: &[crate::tables::Normalised]) -> (Vec<String>, 
                 if named.is_empty() {
                     named.extend(n.columns.get("rem_chassis_id").and_then(|c| arp.get(&mac_key(c))).cloned());
                 }
+                if named.is_empty() {
+                    unreachable.extend(n.columns.get("rem_sysname").map(|x| x.trim().to_string()).filter(|x| !x.is_empty()));
+                }
                 next.extend(named);
             }
             "route" => next.extend(n.columns.get("next_hop").into_iter().flat_map(|v| addresses_in(v)).map(str::to_string)),
@@ -182,7 +234,7 @@ pub fn addresses_from_rows(rows: &[crate::tables::Normalised]) -> (Vec<String>, 
     for a in &own {
         next.remove(a);
     }
-    (own.into_iter().collect(), next.into_iter().collect())
+    Found { own: own.into_iter().collect(), next: next.into_iter().collect(), unreachable: unreachable.into_iter().collect() }
 }
 
 #[cfg(test)]
@@ -220,7 +272,8 @@ mod tests {
 
     #[test]
     fn the_device_limit_stops_the_queue_and_says_why() {
-        let mut f = Frontier::new(&["192.0.2.1".into()], limits(3, 2, None));
+        // Documentation addresses are public ones; the limit names them (LT-612).
+        let mut f = Frontier::new(&["192.0.2.1".into()], limits(3, 2, Some("192.0.2.0/24")));
         f.next_device();
         f.learn(0, &[], &["192.0.2.2".into(), "192.0.2.3".into()]);
         assert_eq!(f.next_device(), Some(("192.0.2.2".into(), 1)));
@@ -260,5 +313,38 @@ mod tests {
         let (own, next) = addresses_from_rows(&rows);
         assert_eq!(own, vec!["192.0.2.7"]);
         assert_eq!(next, vec!["192.0.2.1", "192.0.2.112", "192.0.2.203"]);
+    }
+
+    /// LT-612: a next hop outside the private ranges — an edge firewall's
+    /// default route is the provider's router — is followed only when a
+    /// subnet limit the operator typed includes it.
+    #[test]
+    fn a_public_next_hop_is_not_followed_unless_a_subnet_limit_names_it() {
+        let mut f = Frontier::new(&["192.0.2.1".into()], limits(3, 10, None));
+        f.next_device();
+        f.learn(0, &["192.0.2.1".into()], &["198.51.100.1".into(), "10.0.0.2".into()]);
+        assert_eq!(f.next_device(), Some(("10.0.0.2".into(), 1)));
+        assert_eq!(f.next_device(), None);
+        assert_eq!(f.not_followed, vec![("198.51.100.1".into(), "outside the private ranges; a subnet limit naming it would allow it".into())]);
+        let mut f = Frontier::new(&["192.0.2.1".into()], limits(3, 10, Some("198.51.100.0/24")));
+        f.next_device();
+        f.learn(0, &[], &["198.51.100.1".into()]);
+        assert_eq!(f.next_device(), Some(("198.51.100.1".into(), 1)), "named by the operator, so followed");
+    }
+
+    /// LT-616: a neighbour with no address to reach it on is still listed.
+    #[test]
+    fn a_neighbour_with_no_address_is_listed_as_not_followed() {
+        let rows = vec![
+            row("neighbor", &[("local_if", "Gi0/7"), ("rem_sysname", "PC1"), ("rem_chassis_id", "0000.0000.0bad")]),
+            row("neighbor", &[("local_if", "Gi0/8"), ("rem_sysname", "AP1"), ("rem_mgmt_ip", "10.0.0.23")]),
+        ];
+        let found = found_in_rows(&rows);
+        assert_eq!(found.next, vec!["10.0.0.23"]);
+        assert_eq!(found.unreachable, vec!["PC1"]);
+        let mut f = Frontier::new(&["10.0.0.1".into()], limits(3, 10, None));
+        f.next_device();
+        f.learn_found(0, &found);
+        assert_eq!(f.not_followed, vec![("PC1".into(), "no address to reach it on".into())]);
     }
 }

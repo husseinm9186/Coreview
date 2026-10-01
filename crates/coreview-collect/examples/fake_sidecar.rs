@@ -51,6 +51,16 @@ fn main() {
                 if script.get(cmd).and_then(|e| e.get("stall")).and_then(Value::as_bool) == Some(true) {
                     std::thread::sleep(std::time::Duration::from_secs(3600));
                 }
+                // `"status_once": "timeout"`: that status the first time, the entry as written after.
+                if let Some(once) = script.get(cmd).and_then(|e| e.get("status_once")).and_then(Value::as_str) {
+                    let marker = std::path::PathBuf::from(std::env::var("FAKE_SIDECAR_SCRIPT").unwrap_or_default()).with_extension(format!("once-{}", cmd.replace(' ', "-")));
+                    if !marker.exists() {
+                        let _ = std::fs::write(&marker, "");
+                        let _ = writeln!(out, "{}", json!({"id": id, "status": once, "session": session, "cmd": cmd, "rows": [], "raw": "", "duration_ms": 1, "error": "timed out; the session is closed"}));
+                        let _ = out.flush();
+                        continue;
+                    }
+                }
                 if script.get(cmd).and_then(|e| e.get("crash_once")).and_then(Value::as_bool) == Some(true) {
                     let marker = std::path::PathBuf::from(std::env::var("FAKE_SIDECAR_SCRIPT").unwrap_or_default()).with_extension("crashed");
                     if !marker.exists() {

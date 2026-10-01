@@ -495,117 +495,117 @@ commands:
     verified: docs
     evidence: structured output (REST); field mapping from documentation
   - id: monitor_system_interface
-    cmd: /monitor/system/interface
+    cmd: /api/v2/monitor/system/interface
     gate: always
     parser: api
-    api: /monitor/system/interface
+    api: /api/v2/monitor/system/interface
     feeds:
       - interface
+      - ip_address
     weight: light
     timeout: 30
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: cmdb_system_interface
-    cmd: /cmdb/system/interface
+    cmd: /api/v2/cmdb/system/interface
     gate: always
     parser: api
-    api: /cmdb/system/interface
+    api: /api/v2/cmdb/system/interface
     feeds:
       - interface
+      - ip_address
     weight: light
     timeout: 30
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: cmdb_system_zone
-    cmd: /cmdb/system/zone
+    cmd: /api/v2/cmdb/system/zone
     gate: always
     parser: api
-    api: /cmdb/system/zone
+    api: /api/v2/cmdb/system/zone
     feeds:
       - fw_zone
     weight: light
     timeout: 30
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: monitor_network_arp
-    cmd: /monitor/network/arp
+    cmd: /api/v2/monitor/network/arp
     gate: always
     parser: api
-    api: /monitor/network/arp
+    api: /api/v2/monitor/network/arp
     feeds:
       - arp
     weight: light
     timeout: 30
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: monitor_network_lldp_neighbors
-    cmd: /monitor/network/lldp/neighbors
+    cmd: /api/v2/monitor/network/lldp/neighbors
     gate: always
     parser: api
-    api: /monitor/network/lldp/neighbors
+    api: /api/v2/monitor/network/lldp/neighbors
     feeds:
-      - arp
       - neighbor
     weight: light
     timeout: 30
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: cmdb_firewall_policy
-    cmd: /cmdb/firewall/policy
+    cmd: /api/v2/cmdb/firewall/policy
     gate: always
     parser: api
-    api: /cmdb/firewall/policy
+    api: /api/v2/cmdb/firewall/policy
     feeds:
-      - device
+      - fw_policy
     weight: light
     timeout: 30
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: cmdb_firewall_vip
-    cmd: /cmdb/firewall/vip
+    cmd: /api/v2/cmdb/firewall/vip
     gate: always
     parser: api
-    api: /cmdb/firewall/vip
+    api: /api/v2/cmdb/firewall/vip
     feeds:
       - nat_rule
     weight: light
     timeout: 30
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: monitor_vpn_ipsec
-    cmd: /monitor/vpn/ipsec
+    cmd: /api/v2/monitor/vpn/ipsec
     gate: always
     parser: api
-    api: /monitor/vpn/ipsec
+    api: /api/v2/monitor/vpn/ipsec
     feeds:
       - tunnel
     weight: light
     timeout: 30
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: monitor_virtual_wan_members
-    cmd: /monitor/virtual-wan/members
+    cmd: /api/v2/monitor/virtual-wan/members
     gate: always
     parser: api
-    api: /monitor/virtual-wan/members
+    api: /api/v2/monitor/virtual-wan/members
     feeds:
       - tunnel
     weight: light
     timeout: 30
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: monitor_system_ha_peer
-    cmd: /monitor/system/ha-peer
+    cmd: /api/v2/monitor/system/ha-peer
     gate: always
     parser: api
-    api: /monitor/system/ha-peer
+    api: /api/v2/monitor/system/ha-peer
     feeds:
       - ha_pair
-      - routing_neighbor
     weight: light
     timeout: 30
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: diagnose_ip_route_list
     cmd: diagnose ip route list
     gate: always
@@ -713,62 +713,60 @@ commands:
     verified: lab
     evidence: ntc-templates tests (1 captures)
   - id: monitor_router_ipv4
-    cmd: /monitor/router/ipv4
+    cmd: /api/v2/monitor/router/ipv4
     gate: always
     parser: api
-    api: /monitor/router/ipv4
+    api: /api/v2/monitor/router/ipv4
     feeds:
-      - device
+      - route
     weight: heavy
     timeout: 120
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: cmdb_router_static
-    cmd: /cmdb/router/static
+    cmd: /api/v2/cmdb/router/static
     gate: always
     parser: api
-    api: /cmdb/router/static
+    api: /api/v2/cmdb/router/static
     feeds:
-      - device
+      - route
     weight: heavy
     timeout: 120
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: cmdb_router_policy
-    cmd: /cmdb/router/policy
+    cmd: /api/v2/cmdb/router/policy
     gate: always
     parser: api
-    api: /cmdb/router/policy
+    api: /api/v2/cmdb/router/policy
     feeds:
-      - device
+      - policy_route
     weight: heavy
     timeout: 120
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: monitor_router_ospf_neighbors
-    cmd: /monitor/router/ospf/neighbors
+    cmd: /api/v2/monitor/router/ospf/neighbors
     gate: always
     parser: api
-    api: /monitor/router/ospf/neighbors
+    api: /api/v2/monitor/router/ospf/neighbors
     feeds:
-      - arp
       - routing_neighbor
     weight: heavy
     timeout: 120
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
   - id: monitor_router_bgp_neighbors
-    cmd: /monitor/router/bgp/neighbors
+    cmd: /api/v2/monitor/router/bgp/neighbors
     gate: always
     parser: api
-    api: /monitor/router/bgp/neighbors
+    api: /api/v2/monitor/router/bgp/neighbors
     feeds:
-      - arp
       - routing_neighbor
     weight: heavy
     timeout: 120
     verified: docs
-    evidence: structured output (REST); field mapping from documentation
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7 (LT-636)
 live_path:
   - id: get_router_info_routing_table_details_dst
     cmd: get router info routing-table details {dst}

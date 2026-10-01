@@ -380,10 +380,11 @@ fn persist_device(state: &AppState, run_id: &str, run: &DeviceRun, diagnostic: O
             duration_ms: r.outcome.duration_ms as i64,
             rows: rows.len() as i64,
             raw_ref,
-            error: r.outcome.error.clone(),
+            // LT-614: a parse error quotes the line it stopped on, and the shadow detail a value.
+            error: r.outcome.error.as_deref().map(|e| coreview_discover::support::redact(&coreview_collect::scrub::scrub(e), secrets).trim_end().to_string()),
             verified: Some(format!("{:?}", r.step.verified).to_lowercase()),
             shadow: r.outcome.shadow.as_ref().map(|s| s.verdict.clone()),
-            shadow_detail: r.outcome.shadow.as_ref().and_then(|s| s.detail.clone()),
+            shadow_detail: r.outcome.shadow.as_ref().and_then(|s| s.detail.as_deref().map(|d| coreview_discover::support::redact(&coreview_collect::scrub::scrub(d), secrets).trim_end().to_string())),
             engine: r.outcome.engine.clone(),
         };
         cdb::write_log(&conn, run_id, &device_id, seq, &e).map_err(db_err)?;
@@ -531,24 +532,46 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
             let _ = app2.emit("coreview://collection", &CollectionEvent::Device { run_id: run_id2.clone(), device_id: device_id.clone(), host: host.clone(), phase: "connecting".into() });
             let sink = Emit { app: app2.clone(), run_id: run_id2.clone(), device_id: device_id.clone() };
             let known_host_key = host_keys.lock().ok().and_then(|k| k.known(host, port));
-            let target = Target { host: host.clone(), port, os_hint: os_hint.clone(), role_override: role_override.clone(), known_host_key };
+            // LT-613: the hint and the role override are for what the operator named, not what was followed.
+            let target = Target { host: host.clone(), port, os_hint: (hop == 0).then(|| os_hint.clone()).flatten(), role_override: (hop == 0).then(|| role_override.clone()).flatten(), known_host_key };
             // LT-589: Stop ends the device in progress at once.
             let Some(mut run) = slot.collect(&catalogs, &target, &auth, &options, &sink, &token).await else {
                 cancelled = true;
                 break;
             };
-            if let (Some(snmp), true) = (&snmp_auth, snmp_eligible(&run)) {
-                let read = coreview_discover::snmp_collect::read_for_collection(host, 161, snmp, std::time::Duration::from_secs(5)).await;
-                apply_snmp_fallback(&mut run, read, &sink);
+            if slot.lost() {
+                // LT-617: a sidecar that cannot be started again ends the run, not every device after it.
+                let reason = run.log.last().cloned().unwrap_or_else(|| "the sidecar could not be started".into());
+                let _ = persist_device(&state_arc, &run_id2, &run, diagnostic.as_deref(), &secrets);
+                if let Ok(conn) = state_arc.db.lock() {
+                    let _ = cdb::finish_run(&conn, &run_id2, "failed");
+                }
+                let _ = app2.emit("coreview://collection", &CollectionEvent::Failed { run_id: run_id2.clone(), error: reason });
+                slot.quit().await;
+                return;
             }
-            if let Some(login) = &api_login {
-                // LT-518: the REST side, its certificate pinned in the same store as SSH host keys.
-                let known = |h: &str, p: u16| host_keys.lock().ok().and_then(|k| k.known(h, p));
-                if let Some(first) = coreview_collect::api::collect_for(&mut run, &catalogs, login, fmc_host.as_deref(), known, &sink).await {
-                    if let Ok(mut k) = host_keys.lock() {
-                        k.remember(&first.host, first.port, &first.fingerprint);
+            // LT-609: Stop ends the SNMP and REST phases at once as well.
+            let rest = async {
+                if let (Some(snmp), true) = (&snmp_auth, snmp_eligible(&run)) {
+                    let read = coreview_discover::snmp_collect::read_for_collection(host, 161, snmp, std::time::Duration::from_secs(5)).await;
+                    apply_snmp_fallback(&mut run, read, &sink);
+                }
+                if let Some(login) = &api_login {
+                    // LT-518: the REST side, its certificate pinned in the same store as SSH host keys.
+                    let known = |h: &str, p: u16| host_keys.lock().ok().and_then(|k| k.known(h, p));
+                    if let Some(first) = coreview_collect::api::collect_for(&mut run, &catalogs, login, fmc_host.as_deref(), known, &sink).await {
+                        if let Ok(mut k) = host_keys.lock() {
+                            k.remember(&first.host, first.port, &first.fingerprint);
+                        }
+                        crate::discovery::persist_host_keys(&app2, &host_keys);
                     }
-                    crate::discovery::persist_host_keys(&app2, &host_keys);
+                }
+            };
+            tokio::select! {
+                _ = rest => {}
+                _ = token.cancelled() => {
+                    cancelled = true;
+                    break;
                 }
             }
             if let (true, Some(key)) = (run.host_key_first_seen, run.host_key.clone()) {
@@ -558,10 +581,19 @@ pub async fn start_collection(app: AppHandle, state: State<'_, AppState>, input:
                 crate::discovery::persist_host_keys(&app2, &host_keys);
                 run.log.push(format!("host key seen for the first time and now remembered: {key}"));
             }
-            let commands = persist_device(&state_arc, &run_id2, &run, diagnostic.as_deref(), &secrets).unwrap_or(0);
+            let commands = match persist_device(&state_arc, &run_id2, &run, diagnostic.as_deref(), &secrets) {
+                Ok(n) => n,
+                Err(e) => {
+                    // LT-618: a device that could not be stored is a failed device, and says so.
+                    run.failure.get_or_insert_with(|| "store".into());
+                    run.log.push(format!("the device could not be stored: {e}"));
+                    0
+                }
+            };
             if following {
-                let (own, neighbours) = coreview_collect::follow::addresses_of_run(&run);
-                frontier.learn(hop, &own, &neighbours);
+                // LT-616: neighbours with no address to reach them on are listed, not dropped.
+                let found = coreview_collect::follow::found_of_run(&run);
+                frontier.learn_found(hop, &found);
             }
             devices += 1;
             if run.failure.is_some() {
@@ -632,11 +664,18 @@ pub fn collection_raw(state: State<'_, AppState>, run_id: String, raw_ref: Strin
         cdb::list_runs(&conn, &project).map_err(db_err)?.into_iter().find(|r| r.id == run_id).and_then(|r| r.diagnostic_dir)
     };
     let Some(dir) = dir else { return Err("This run kept no replies (the diagnostic was not ticked).".into()) };
-    if raw_ref.contains("..") || raw_ref.starts_with('/') || raw_ref.contains('\\') {
+    if !raw_ref_is_inside_the_run(&raw_ref) {
         return Err("Not a reply of this run.".into());
     }
     let path = Path::new(&dir).join(&raw_ref);
     std::fs::read_to_string(&path).map_err(|e| format!("That reply could not be read: {e}"))
+}
+
+/// LT-615: a reply reference is `<host>/<NNN-command>.txt`, as
+/// `persist_device` writes it; anything that could leave the run's folder
+/// — `..`, a leading `/`, a backslash, a `:` (a Windows drive) — is refused.
+fn raw_ref_is_inside_the_run(raw_ref: &str) -> bool {
+    !(raw_ref.is_empty() || raw_ref.contains("..") || raw_ref.starts_with('/') || raw_ref.contains('\\') || raw_ref.contains(':'))
 }
 
 // -------------------------------------------------------- offline import
@@ -834,6 +873,15 @@ async fn import_one(sidecar: &mut Sidecar, catalogs: &[Catalog], host: &str, fil
 
 #[cfg(test)]
 mod tests {
+    /// LT-615: what `collection_raw` lets through.
+    #[test]
+    fn a_reply_reference_stays_inside_the_run() {
+        assert!(raw_ref_is_inside_the_run("192.0.2.1/004-show-version.txt"));
+        for bad in ["../x", "/etc/passwd", "a\\b", "C:/Users/x/file", "c:\\x", ""] {
+            assert!(!raw_ref_is_inside_the_run(bad), "{bad}");
+        }
+    }
+
     /// LT-595: what the interface reads is what Rust sends — `runId`,
     /// `deviceId`, not `run_id`. Every variant, every key.
     #[test]
@@ -1154,9 +1202,15 @@ pub struct TopologyBuilt {
 
 #[tauri::command(async)]
 pub fn collection_topology(state: State<'_, AppState>, run_id: String, options: Option<coreview_topology::crawl_view::ViewOptions>) -> CmdResult<TopologyBuilt> {
-    let options = options.unwrap_or_default();
+    let mut options = options.unwrap_or_default();
     let conn = state.db.lock().map_err(db_err)?;
     let project = cdb::run_project(&conn, &run_id).map_err(db_err)?.ok_or("That collection run no longer exists.")?;
+    // LT-605: hop 0 is the run's seeds — what the operator typed — unless the page said otherwise.
+    if options.seeds.is_empty() {
+        if let Some(run) = cdb::list_runs(&conn, &project).map_err(db_err)?.into_iter().find(|r| r.id == run_id) {
+            options.seeds = split_targets(&run.seed);
+        }
+    }
     let input = cdb::topology_input(&conn, &run_id).map_err(db_err)?;
     if input.is_empty() {
         return Err("That run reached no device, so there is nothing to draw.".into());

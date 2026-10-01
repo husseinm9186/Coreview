@@ -341,7 +341,10 @@ pub async fn collect_device(sidecar: &mut Sidecar, catalogs: &[Catalog], target:
             Err(e) => {
                 run.failure = Some("sidecar".into());
                 run.log.push(e.to_string());
-                let _ = sidecar.close(&session).await;
+                // LT-611: a sidecar that timed out or closed cannot answer a close.
+                if !matches!(e, SidecarError::Timeout(_) | SidecarError::Closed) {
+                    let _ = sidecar.close(&session).await;
+                }
                 return run;
             }
         };
@@ -370,7 +373,8 @@ pub async fn collect_device(sidecar: &mut Sidecar, catalogs: &[Catalog], target:
             break;
         }
         if let Err(e) = run_steps(sidecar, &session, catalog, &steps, &mut run, &mut ran, sink, options).await {
-            run.failure = Some("sidecar".into());
+            // LT-627: the device's session went, not the sidecar.
+            run.failure = Some(if matches!(e, SidecarError::SessionGone) { "timeout" } else { "sidecar" }.into());
             run.log.push(e.to_string());
             // LT-588: a sidecar that timed out is still busy with the stuck
             // command, and one that closed is gone; asking either to close
@@ -443,7 +447,9 @@ async fn fingerprint(sidecar: &mut Sidecar, catalogs: &[Catalog], target: &Targe
             Ok(r) => r,
             Err(e) => {
                 run.log.push(e.to_string());
-                let _ = sidecar.close(&session).await;
+                if !matches!(e, SidecarError::Timeout(_) | SidecarError::Closed) {
+                    let _ = sidecar.close(&session).await;
+                }
                 return Err("sidecar".into());
             }
         };
@@ -489,7 +495,17 @@ async fn run_steps(sidecar: &mut Sidecar, session: &str, catalog: &Catalog, step
         let also: Vec<String> = catalog.commands.iter().find(|c| c.id == step.id).map(|c| c.also.clone()).unwrap_or_default();
         let parser = sidecar_parser(step, catalog, options);
         let reply = sidecar.run(session, &step.cmd, &parser, &also, u64::from(step.timeout) * 1000).await?;
+        // LT-627: a timed-out command took the SSH session with it; what was
+        // collected before it stands, and nothing after it is asked.
+        let gone = reply.status == "timeout";
         let mut outcome: CommandOutcome = reply.into();
+        if gone {
+            ran.insert(step_key(step));
+            let sr = StepResult { step: step.clone(), outcome };
+            sink.event(RunEvent::Step(&sr));
+            run.results.push(sr);
+            return Err(SidecarError::SessionGone);
+        }
         settle(&mut outcome, step, catalog, &also, options);
         if step.parser == "raw" || step.feeds.iter().any(|t| t == "raw_config") {
             outcome.raw = scrub(&outcome.raw);
