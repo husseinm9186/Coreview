@@ -186,7 +186,10 @@ const libItem = page.locator(".cv-palette-item", { hasText: /^\s*Lab LB\s*$/ });
 check("a described stencil is offered in the palette", (await libItem.count()) === 1, `${await libItem.count()}`);
 if ((await libItem.count()) === 1) {
   const had = new Set((await nodes()).map((n) => n.id));
-  await libItem.dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 900, y: 420 } });
+  // A point inside the pane, measured: the rail's width decides where the
+  // pane ends (LT-680 made it 62 px, and 900 was then past the edge).
+  const paneBox = await page.locator(".react-flow__pane").boundingBox();
+  await libItem.dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: Math.min(900, paneBox.width - 60), y: 420 } });
   await page.waitForTimeout(500);
   const lb = (await nodes()).find((n) => !had.has(n.id));
   check("dropping it makes a device of the class its manifest names", lb?.deviceType === "load-balancer",

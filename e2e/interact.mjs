@@ -1835,7 +1835,24 @@ await dismissRecovery();
     // still-selected devices for the mouse half.
     // The glyph's own pixels, not a corner offset: below the old 0.5x fit
     // floor (LT-047) the corner of one node can sit under a neighbour.
-    await byName(two[0]).locator(".cv-glyph-node").click({ button: "right" });
+    // Selected first, and only these two: React Flow raises a selected node
+    // above the rest, and after the align a bystander that rode along from
+    // the menu step can sit over this glyph (LT-680's wider rail moved the
+    // fit by a few pixels and it did).
+    await page.evaluate((names) => {
+      const s = window.__cvStore.getState();
+      const pg = s.doc.pages ? s.doc.pages.find((p) => p.id === s.doc.activePageId) ?? s.doc.pages[0] : s.doc;
+      s.onNodesChange(pg.nodes.map((n) => ({ type: "select", id: n.id, selected: names.includes(n.data?.label) })));
+    }, two);
+    await page.waitForTimeout(250);
+    // Right-click whichever of the two has its glyph on top.
+    const onTop = async (name) => byName(name).locator(".cv-glyph-node").evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
+      return !!hit && el.contains(hit);
+    });
+    const menuOn = (await onTop(two[0])) ? two[0] : two[1];
+    await byName(menuOn).locator(".cv-glyph-node").click({ button: "right" });
     await page.waitForTimeout(300);
     const xOf = (n) => byName(n).evaluate((el) => {
       const m = /translate\((-?[\d.]+)px/.exec(el.style.transform ?? "");

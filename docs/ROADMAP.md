@@ -827,6 +827,29 @@ I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
 
+### LT-680 — The rail clipped "Addresses", and the dock's strip was cut off on Windows — 2026-10-02, done the same day
+**Source:** the operator, 2026-10-02, a screenshot of the Windows build
+after LT-679: the rail's "Addresses" label ran past the rail, and the
+dock's bottom strip — the clock — was half hidden under the window's
+bottom edge while the rail's Settings item was whole.
+**Done 2026-10-02.** The rail is 62 px (`4.76923077rem`) rather than the
+44 it was: at the rail's type size "Addresses" needs 46 px inside the
+padding and borders, and a label now clips with an ellipsis rather than
+widening the rail, measured in `interact`'s browser at every label. The
+strip: Chromium showed no overflow at 988, 960, 900 or 820 px tall, so
+what hid it is a page-level scrollbar, which WebView2 draws 17 px tall
+over the bottom of the page where Chromium overlays a thin one — the page
+is now `overflow: hidden` on `body`, since every screen scrolls inside its
+own box (`.cv-welcome`, the panels, the inspector) and the workspace
+already hid its overflow. The wider rail moved the pane by 18 px, which
+two harnesses had assumed: `interact`'s keyboard-align block right-clicked
+a glyph that the align had put under a bystander (it now selects the two
+through the store and right-clicks whichever is on top), and `shapes`
+dropped a stencil 900 px into a pane that is now 890 wide (it measures the
+pane). **Run:** the stylesheet guards, tsc, and all 41 harnesses. The strip's
+fix is reasoned from the symptom, not reproduced here: WebView2 is not
+on this machine, and the operator's next screenshot is the test.
+
 ### LT-679 — Phase 5: Paths with one question row, and the project screen — 2026-10-02, done the same day
 **Source:** LT-672. Path-Trace, Path check, Tracert and Where is behind
 one from/to/application row, hops saying forwarding or routing table;
