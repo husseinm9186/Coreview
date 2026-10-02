@@ -28,6 +28,7 @@ import { useStore } from '../state/store';
  * whole machine.
  */
 export function SettingsView() {
+  const uiScale = useStore((s) => s.settings.uiScale);
   const projectDefaults = useStore((s) => s.doc.credentialDefaults);
   // LT-452: only what the scope reads.
   const pages = useStore((s) => s.doc.pages);
@@ -135,6 +136,16 @@ export function SettingsView() {
         <FolderSettings />
       </section>
 
+      <section className="cv-settings-block" data-region="display">
+        <h2>{t('settings.display')}</h2>
+        <p className="cv-help">{t('settings.displayHint')}</p>
+        <label className="cv-field cv-field-narrow">
+          <span>{t('settings.uiScale')}</span>
+          <select className="cv-input" value={String(uiScale)} onChange={(e) => useStore.getState().setSettings({ uiScale: Number(e.target.value) })}>
+            {[0.85, 1, 1.15, 1.3, 1.4].map((v) => <option key={v} value={String(v)}>{Math.round(v * 100)} %</option>)}
+          </select>
+        </label>
+      </section>
       <section className="cv-settings-block">
         <h2>{t('settings.terminal')}</h2>
         <p className="cv-help">{t('settings.terminalHint')}</p>

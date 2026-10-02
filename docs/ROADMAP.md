@@ -26,6 +26,10 @@ then **LT-125**, then **LT-124**, then **LT-134's second half** (IF-MIB,
 LLDP-MIB, BRIDGE-MIB). One at a time, in that order. **Not** LT-110's
 Lucidchart path — "don't do it we don't want this"; see LT-110 in Done.
 
+**The redesign, approved 2026-10-02 (LT-672, D-064)** — Graphite theme and
+scaling sizes first (LT-673, LT-674), then five phases (LT-675–LT-679), one
+at a time, each pushed green. The proposal page is the picture.
+
 **Mandate set 2026-09-30** — "make this app the best in the world": every
 vendor a network engineer meets collected by the engine, and the path trace
 answered from the forwarding table, not a guess. LT-651–LT-668 are its
@@ -96,6 +100,51 @@ security (R-29–R-36). Each names what was verified in the code rather than
 assumed; anything the report marked *suspected* is reproduced before it is
 fixed (D-020). One conflicts with a logged decision and says so: LT-425 amends
 D-056.
+
+### LT-672 — The interface reorganised: rail, one-row top bar, floating canvas toolbar, tabbed inspector, grouped dock — approved 2026-10-02
+**Source:** the operator, 2026-10-02, on the proposal page
+(claude.ai/artifact/5iaQ6MydaVkPGWKYvV6kUy): "Lets do it and i pick your
+recommendation." D-064 records the design and what it keeps. Five phases,
+each its own item below, each pushed only with every harness green, each
+stoppable: LT-675 frame and top bar, LT-676 the dock, LT-677 the inspector,
+LT-678 Discover as a mode, LT-679 Paths and the project screen. Before
+them, the two foundations the operator chose with it: the Graphite theme
+(LT-673) and sizes that scale (LT-674). Nothing is removed; the table on
+the proposal page is where every control goes.
+
+### LT-675 — Phase 1: the rail, the one-row top bar, the floating canvas toolbar, preferences in Settings — 2026-10-02
+**Source:** LT-672. The left rail names the modes (Diagram, Discover,
+Monitor, Paths, Backups, Addresses, Racks, Terminal, Settings); Addresses
+and Tools are reached from it, their screens as they are. The top bar
+becomes one row: project and saved state; Start validation and the four
+pills; search (the command palette), Export, Help and an overflow menu.
+Save/Undo/Redo keep their shortcuts and sit in the overflow. The canvas
+gets a floating toolbar (select, pen, eraser, fit, zoom, snap, page
+ground, filter, layers); Overview becomes the minimap's toggle. Reduce
+motion, high contrast and the clock move to Settings. Every harness that
+finds these controls is updated with it.
+
+### LT-676 — Phase 2: the dock — grouped tabs with counts, the job strip, pop-out — 2026-10-02
+**Source:** LT-672. The same twelve tabs under Monitor, Discover, Paths and
+Ops; counts kept; the JobsBar becomes the strip along the dock's bottom;
+Pop out sends the dock to the right half. No panel's contents change.
+
+### LT-677 — Phase 3: the inspector in tabs — 2026-10-02
+**Source:** LT-672. Status first (reachability, last check, what it is
+plugged into, platform and serial from the crawl), then Identity (today's
+form), Ports, Checks, Notes; one action row (SSH, Backup, Where is,
+Drawer).
+
+### LT-678 — Phase 4: Discover as a mode — 2026-10-02
+**Source:** LT-672. Four steps (seeds, logins, options, Advanced); the
+classic crawler and the engine's own view (today's Collect tab) under
+Advanced; the hand-over to Review; Ping sweep as its second tab.
+
+### LT-679 — Phase 5: Paths with one question row, and the project screen — 2026-10-02
+**Source:** LT-672. Path-Trace, Path check, Tracert and Where is behind
+one from/to/application row, hops saying forwarding or routing table;
+the project screen with folders, project cards carrying a health line,
+samples on the right.
 
 ### LT-558 — The lab run: FortiGate, FortiSwitch and Catalyst collected by Coreview itself — 2026-09-29
 **Source:** the operator, 2026-09-29: "you should be able to run the lab you
@@ -811,6 +860,48 @@ holding the next hop and skips a longer static one. Next.
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-674 — Sizes that scale with the screen and the person — 2026-10-02, done the same day
+**Source:** LT-672. One root size, `clamp(13px, 0.25vw + 9px, 16px)` —
+13 px up to a 1600-wide window (today's sizes exactly), 16 px on a 4K
+screen — times a scale the operator sets in Settings (85–140 %, kept as a
+setting). Every chrome size in `styles.css` becomes a multiple of the root:
+the type and spacing tokens in rem, and the fixed pixel paddings, heights,
+widths and gaps converted at 13 px to the pixel, so nothing moves at a
+laptop width. Borders stay 1 px. The canvas's own zoom is not touched.
+`typeScale.test.ts` keeps every font size a token.
+**Done 2026-10-02.** `html { font-size: calc(clamp(13px, 0.25vw + 9px,
+16px) * var(--ui-scale)) }`; the type and spacing tokens in rem; 915 fixed
+pixel paddings, heights, widths and gaps converted at 13 px — written to
+eight decimals, because at four the sum of the roundings moved the
+canvas by 0.1 px and "Tidy the layout" packed two nodes onto one spot
+(found by `interact.mjs`, measured under both trees). Borders, outlines
+and shadows stay in px. The canvas is pinned: `.cv-canvas` sets its own
+pixel size and everything drawn on it reads `--canvas-text-*` pixels, so
+only the chrome follows the root. `uiScale` is a machine preference
+(Settings ▸ Display ▸ Interface size, 85–140 %), set on the root element
+by App. `typeScale.test.ts` now also holds the chrome scale to rem, the
+canvas scale to px, and the root rule to its form. **Run:** the guards,
+`interact.mjs` (passes), the full suite below.
+
+### LT-673 — The Graphite theme: a neutral chrome, status colours left to mean something — 2026-10-02, done the same day
+**Source:** LT-672 — "i pick your recommendation". The chrome's tokens in
+`styles.css` move from the green-tinted set to cool neutral greys with a
+faint blue bias (`#0f1216` ground, `#161b22` panel, `#2a323e` lines,
+`#e6ebf2` text, `#5ea1ff` accent); the dark canvas ground follows to a
+neutral dark so the desk does not sit green inside grey chrome; the white
+page on the light-brown desk is untouched (LT-046). Healthy, warning,
+down, unknown keep their hues. High contrast re-derived on the new base.
+`groundTokens.test.ts` and `nativeControls.test.ts` hold.
+**Done 2026-10-02.** The chrome tokens in `:root` are the Graphite set;
+the dark canvas ground followed to a neutral dark (`--desk #0b0e12`,
+`--page #10141a`, grid lines to match) and `theme.ts`'s export paper with
+it; the white page on the light-brown desk is untouched. `interact.mjs`'s
+four chrome-on-ground checks carry the new literals (what they hold —
+the chrome does not follow the ground — is unchanged). **Run:** the
+guards (`groundTokens`, `nativeControls`, `cssVariables`, `typeScale`),
+`diagram.test.ts` (paper colour), screenshots at 1600 and 2560 wide, and
+the whole harness suite with LT-674.
 
 ### LT-650 — **bug** `e2e/showcommands.mjs` fails at its last step, a fresh page load — 2026-09-30, done 2026-10-01
 **Found by the sweep's full run (LT-603).** After 44 checks pass, the

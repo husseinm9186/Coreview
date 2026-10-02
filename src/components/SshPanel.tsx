@@ -102,7 +102,7 @@ function themeFromChrome(): Record<string, string> {
   const css = getComputedStyle(document.documentElement);
   const token = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
   return {
-    background: token('--bg-raised', '#0f1a16'),
+    background: token('--bg-raised', '#13171d'),
     foreground: token('--text', '#e8eee9'),
     cursor: token('--accent', '#4da3ff'),
     // No `--selection` token exists; the accent at a third is what the rest

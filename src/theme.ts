@@ -294,7 +294,7 @@ export function sheetFor(ground: Ground): Sheet {
       }
     : {
         ground,
-        paper: '#0a120f',
+        paper: '#0b0e12',
         ink: '#e6f7ee',
         inkDim: '#8eb5a2',
         surface: '#111f18',
@@ -325,7 +325,7 @@ export const DEFAULTS = {
   /** The accent, for a picker that needs somewhere to start. */
   accent: DEVICE_TINT_DARK.router,
   /** The paper an exported sheet is printed on when nothing says otherwise. */
-  exportPaper: '#0a120f',
+  exportPaper: '#0b0e12',
   /** Where a label's colour and background pickers start (LT-181). */
   labelInk: '#1f2933',
   labelBackground: '#ffffff',

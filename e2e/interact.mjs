@@ -2049,9 +2049,10 @@ await dismissRecovery();
       (await page.locator(".react-flow__background").count()) === 0);
 
   // The chrome does not follow the ground: dark panels around a light canvas.
-  // LT-306: the dark ground is green. What these checks are about is unchanged
-  // — the chrome does not follow the ground — only the colour it is.
-  const darkChrome = "rgb(18, 33, 27)";
+  // LT-306 had the dark ground green; LT-673 (D-064) made the chrome the
+  // Graphite greys. What these checks are about is unchanged — the chrome
+  // does not follow the ground — only the colour it is.
+  const darkChrome = "rgb(22, 27, 34)";
   check("the top bar stays dark chrome on the white ground",
     (await read(".cv-topbar", "backgroundColor")) === darkChrome,
     await read(".cv-topbar", "backgroundColor"));
@@ -2066,7 +2067,7 @@ await dismissRecovery();
   await toggle.click();
   await page.waitForTimeout(600);
   check("the dark ground moves the same tokens",
-    (await read(".react-flow__pane", "backgroundColor")) === "rgb(10, 18, 15)" &&
+    (await read(".react-flow__pane", "backgroundColor")) === "rgb(11, 14, 18)" &&
       (await page.locator(".cv-page").count()) === 1,
     await read(".react-flow__pane", "backgroundColor"));
   check("and the chrome never moved at all",

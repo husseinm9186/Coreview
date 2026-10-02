@@ -210,6 +210,9 @@ export interface AppSettings {
    *  appears without anybody having to go and find it. */
   registerHiddenColumns: string[];
   highContrast: boolean;
+  /** LT-674: the chrome's size, as a multiple of the root size the screen
+   *  sets (0.85–1.4). A machine preference. The canvas's zoom is its own. */
+  uiScale: number;
   /** The overview box, bottom-right. A view preference for this machine, like
    *  which panels are open — not part of any project. */
   minimap: boolean;
@@ -1098,6 +1101,14 @@ export const useStore = create<Store>((set, get) => ({
         return false;
       }
     })()),
+    uiScale: (() => {
+      try {
+        const v = Number(localStorage.getItem('coreview.view.uiScale'));
+        return v >= 0.85 && v <= 1.4 ? v : 1;
+      } catch {
+        return 1;
+      }
+    })(),
     minimap: viewPref('minimap'),
     timeFormat: readTimeFormat(),
     registerHiddenColumns: readHiddenColumns(),
@@ -3399,6 +3410,13 @@ export const useStore = create<Store>((set, get) => ({
     if (patch.minimap !== undefined) rememberView('minimap', patch.minimap);
     // LT-242: a machine preference, kept like the others.
     if (patch.highContrast !== undefined) rememberView('highContrast', patch.highContrast);
+    if (patch.uiScale !== undefined) {
+      try {
+        localStorage.setItem('coreview.view.uiScale', String(patch.uiScale));
+      } catch {
+        /* private mode — the choice lasts this session */
+      }
+    }
     if (patch.registerHiddenColumns !== undefined) {
       try {
         localStorage.setItem('coreview.view.registerHiddenColumns', JSON.stringify(patch.registerHiddenColumns));

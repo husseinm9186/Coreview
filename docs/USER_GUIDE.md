@@ -742,6 +742,11 @@ comments carries a badge.
 panel's tabs move with the arrow keys. Every control has a name a screen reader
 reads out. **?** lists every shortcut.
 
+**Interface size.** The interface already follows the screen: its text and
+spacing are 13 px on a laptop and grow to 16 px on a 4K monitor. On top of
+that, **Tools ▸ Settings ▸ Display ▸ Interface size** sets it from 85 % to
+140 % for this machine. The diagram keeps its own zoom either way.
+
 **High contrast.** Tick **High contrast** in the top bar for black and white
 with strong status colours and a bold yellow focus ring. It starts on by itself
 when the system asks for more contrast.

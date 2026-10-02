@@ -1298,3 +1298,28 @@ program, a CEF adjacency that resolves differently, a kernel entry FRR
 could not install — the packet follows the FIB, so the path must. The
 disagreement is the finding an engineer wants named, not hidden by
 choosing one table in silence (LT-653).
+
+### D-064 — The interface reorganised, on a neutral chrome that scales — 2026-10-02
+**Decision:** one left rail names the modes (Diagram, Discover, Monitor,
+Paths, Backups, Addresses, Racks, Terminal, Settings); the top bar is one
+row about the project; controls that act on the canvas live on the canvas
+in a floating toolbar; preferences live in Settings; the inspector is
+tabbed with status first; the bottom dock keeps every tab, grouped, with
+the job strip along its bottom. The chrome is the Graphite palette — cool
+neutral greys with a faint blue bias — so the only hues on screen are the
+ones that mean something; it stays dark (LT-046 stands). Every chrome size
+is a multiple of one root size that follows the screen and a scale the
+operator sets; the canvas's zoom is its own. Nothing is removed: the
+proposal's table maps every control to its new place.
+**Rejected:** a light chrome (LT-046, and the native-control rule of
+LT-328 depends on the dark scheme); an amber accent (it is the warning
+colour); scaling the chrome with `zoom` per region (it distorts pointer
+maths under the canvas and scales borders); doing all five phases in one
+push.
+**Why:** the operator, 2026-10-02: "Lets do it and i pick your
+recommendation", after a proposal that showed today's screens beside the
+drawn frame and listed what the change costs — habit, 52 px of width, the
+harnesses, the documentation. The green chrome tinted every pill and
+border so the status colours fought the ground; twelve flat tabs and a
+two-row top bar of twenty equal controls hid the workflow. Phases are
+gated one at a time so the operator can stop after any of them.

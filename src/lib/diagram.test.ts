@@ -299,16 +299,16 @@ describe('the ground the sheet is printed on', () => {
     // A diagram prepared for a document used to come out as a black rectangle
     // in the middle of a white page.
     expect(sheet('light')).toContain('fill="#ffffff"');
-    expect(sheet('light')).not.toContain('fill="#0a120f"');
+    expect(sheet('light')).not.toContain('fill="#0b0e12"');
   });
 
   it('still prints dark when that is what is on screen', () => {
-    expect(sheet('dark')).toContain('fill="#0a120f"');
+    expect(sheet('dark')).toContain('fill="#0b0e12"');
   });
 
   it('stays dark for a caller that has not said', () => {
     // Every existing caller and test predates the option.
-    expect(sheet()).toContain('fill="#0a120f"');
+    expect(sheet()).toContain('fill="#0b0e12"');
   });
 
   it('uses the colours chosen for that ground, not the other one', () => {

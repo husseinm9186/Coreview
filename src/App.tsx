@@ -22,6 +22,7 @@ import { useStore } from './state/store';
 export default function App() {
   const meta = useStore((s) => s.meta);
   const highContrast = useStore((s) => s.settings.highContrast);
+  const uiScale = useStore((s) => s.settings.uiScale);
   const ground = useStore((s) => s.settings.ground);
   const applyEngineEvent = useStore((s) => s.applyEngineEvent);
   // Read above the early return: a hook after one is called conditionally,
@@ -36,6 +37,11 @@ export default function App() {
   const registerOpen = useStore((s) => s.registerOpen);
   const helpOpen = useStore((s) => s.helpOpen);
   const toolsOpen = useStore((s) => s.toolsOpen);
+
+  // LT-674: the chrome's scale, on the root element so every rem follows it.
+  useEffect(() => {
+    document.documentElement.style.setProperty('--ui-scale', String(uiScale));
+  }, [uiScale]);
 
   // LT-193: presentation takes the whole screen where the window can go full
   // screen, and leaving full screen by the system's own means leaves
