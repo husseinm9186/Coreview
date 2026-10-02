@@ -11,7 +11,6 @@ import { useRovingTabindex } from './useRovingTabindex';
 import { eventsToCsv } from '../lib/csv';
 import { saveExport, slug } from '../lib/exports';
 import { DiscoverPanel } from './DiscoverPanel';
-import { CollectionPanel } from './CollectionPanel';
 import { CrawlPanel } from './CrawlPanel';
 import { BackupPanel } from './BackupPanel';
 import { PathCheckPanel } from './PathCheckPanel';
@@ -100,7 +99,9 @@ const ObjectRows = memo(function ObjectRows({
 /** LT-676: the dock's tabs by what they answer. Every tab is here once. */
 const DOCK_GROUPS: { key: 'monitor' | 'discover' | 'paths' | 'ops'; tabs: DockTab[] }[] = [
   { key: 'monitor', tabs: ['objects', 'events'] },
-  { key: 'discover', tabs: ['crawl', 'discover', 'collect'] },
+  // LT-678: Collect is Discover devices ▸ Advanced now; the tab id stays so
+  // whatever asks for it still lands there.
+  { key: 'discover', tabs: ['crawl', 'discover'] },
   { key: 'paths', tabs: ['trace', 'path', 'tracert', 'whereis'] },
   { key: 'ops', tabs: ['backup', 'ssh'] },
 ];
@@ -147,6 +148,10 @@ export function StatusPanel() {
       // LT-319: these four are a screen now. Anything still asking for the tab
       // gets the screen, opened on the view it asked for.
       useStore.getState().setToolsOpen(true, panelRequest);
+    } else if (panelRequest === 'collect') {
+      // LT-678: the engine's own view is under Discover devices ▸ Advanced.
+      setTab('crawl');
+      useStore.getState().setDiscoverAdvanced(true);
     } else {
       setTab(panelRequest as typeof tab);
     }
@@ -436,7 +441,7 @@ export function StatusPanel() {
       <div className="cv-panel-body">
         {tab === 'discover' ? (
           <DiscoverPanel />
-        ) : tab === 'crawl' ? (
+        ) : tab === 'crawl' || tab === 'collect' ? (
           <CrawlPanel
             onBackup={(targets) => {
               setHandedOver(targets);
@@ -449,8 +454,6 @@ export function StatusPanel() {
           <PathCheckPanel />
         ) : tab === 'trace' ? (
           <PathTracePanel />
-        ) : tab === 'collect' ? (
-          <CollectionPanel />
         ) : tab === 'tracert' ? (
           <TracertPanel />
         ) : tab === 'whereis' ? (

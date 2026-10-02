@@ -113,8 +113,12 @@ export function CollectionPanel() {
     }
     setTopo(null);
     void ipc.collectionRun(selected).then((d) => {
-      setDetail(d);
-      setDevice(d.devices[0]?.deviceId ?? null);
+      // A run with no device list is no run to show: the view lives under
+      // Discover's Advanced step now (LT-678), beside a crawl that may still
+      // be running, and one bad answer must not take the whole dock down.
+      const run = d && Array.isArray((d as { devices?: unknown }).devices) ? d : null;
+      setDetail(run);
+      setDevice(run?.devices[0]?.deviceId ?? null);
       setTable(null);
       setRows([]);
       setRaw(null);

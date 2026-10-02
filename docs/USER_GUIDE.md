@@ -153,7 +153,7 @@ the drawing tools (Types, Pen, Eraser) float on the canvas below it.
 
 **The dock.** The panel under the canvas keeps every tab it had, in four
 groups: **Monitor** (Monitored objects, Event timeline, with their counts),
-**Discover** (Discover devices, Ping sweep, Collect), **Paths** (Path-Trace,
+**Discover** (Discover devices, Ping sweep), **Paths** (Path-Trace,
 Path check, Tracert, Where is) and **Ops** (Backups, SSH). The arrow keys
 still walk the tabs. Along its bottom runs a strip with every job that is
 running — a crawl, a backup, a sweep — with its progress and a **Cancel**,
@@ -408,6 +408,20 @@ A sweep only sees hosts on this segment for MAC purposes — ARP does not cross
 a router — so a routed sweep shows a dash rather than the gateway's address.
 That is the correct answer, not a gap.
 
+**Discover devices is four steps**, in the order you decide them. **1 Where
+to start**: the seeds (typed, from a CSV, or filled from this project), how
+many hops to follow, which address to probe a device on, the subnets to stay
+inside, and what to log in to. **2 How to log in**: the SSH login or a saved
+credential, the port, SSH or telnet, a second login, the rules that pick a
+credential by subnet or vendor, SNMP for devices that refuse SSH, and the
+API login the collector uses. **3 What to read and keep**: how many devices
+at once, how long to give one, retries, what else to read from each device,
+reverse DNS, and the diagnostic tick. **4 Advanced** is folded: the engine,
+a dry run, SNMP walks saved on another machine, and the engine's own view —
+the plan preview, the command log, the shadow report and the topology it
+built, with **Review and draw** — which used to be a tab called Collect.
+**Discover** comes after the steps. Ping sweep is Discover's other tab.
+
 **Discover devices has two engines.** The default, **Coreview collector**,
 recognises each device, sends it only its own OS's read-only commands from the
 catalog, and follows its CDP and LLDP neighbours, the next hop of every route
@@ -638,7 +652,7 @@ password typed once.
 username and password, for a device's own HTTPS API — a FortiGate, an AOS-CX
 switch, or the FMC that manages FTDs. Leave the username blank for a token, and
 set the **HTTPS port** only when it is not 443 (a FortiGate's admin port is
-often moved). Pick it on Discover devices or the Collect tab and the firewall's
+often moved). Pick it on Discover devices, or under its Advanced step, and the firewall's
 policies, addresses and FQDN resolutions are read over it. The certificate is
 pinned the first time; **Forget this key** in Settings is how a replaced box is
 trusted again.

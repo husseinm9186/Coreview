@@ -94,6 +94,12 @@ const arpRows = [
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+// LT-678: Discover's form is four steps; the engine, a dry run, the SNMP walks
+// and the engine's own view (the old Collect tab) are under Advanced, folded.
+const advanced = async () => {
+  const d = page.locator("details.cv-discover-advanced");
+  if (!(await d.evaluate((el) => el.open))) { await d.locator("summary").click(); await page.waitForTimeout(200); }
+};
 await page.addInitScript(({ p, r, d, a, sh, tp, rd }) => {
   let next = 1;
   window.__calls = [];
@@ -134,7 +140,8 @@ page.on("pageerror", (e) => console.log("PAGE EXCEPTION:", String(e).slice(0, 30
 await page.goto(URL, { waitUntil: "networkidle" });
 await page.locator(".cv-project-open").first().click();
 await page.waitForTimeout(900);
-await page.locator(".cv-panel .cv-tabs button", { hasText: "Collect" }).click();
+await page.locator(".cv-panel .cv-tabs button", { hasText: "Discover devices" }).click();
+await advanced();
 await page.waitForSelector('[data-region="collect"]');
 const region = page.locator('[data-region="collect"]');
 check("the Collect tab opens with its help and a run to pick", await region.locator("p.cv-help").first().isVisible() && (await region.locator('[data-region="collect-runs"] select option').count()) === 3);
@@ -230,7 +237,7 @@ await topoRegion.getByRole("button", { name: "Review and draw" }).click();
 await page.waitForTimeout(600);
 const crawlPanelText = (await page.locator(".cv-panel").textContent()) ?? "";
 check("Review and draw opens Discover devices with the built devices", crawlPanelText.includes("Topology from collection run col-1: 2 devices") && crawlPanelText.includes("SW-A") && crawlPanelText.includes("SW-B"));
-await page.locator(".cv-panel .cv-tabs button", { hasText: "Collect" }).click();
+await advanced();
 await page.waitForSelector('[data-region="collect"]');
 await region.locator('[data-region="collect-runs"] select').selectOption("col-1");
 await page.waitForSelector('[data-region="collect-log"]');

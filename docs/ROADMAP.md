@@ -112,11 +112,6 @@ them, the two foundations the operator chose with it: the Graphite theme
 (LT-673) and sizes that scale (LT-674). Nothing is removed; the table on
 the proposal page is where every control goes.
 
-### LT-678 — Phase 4: Discover as a mode — 2026-10-02
-**Source:** LT-672. Four steps (seeds, logins, options, Advanced); the
-classic crawler and the engine's own view (today's Collect tab) under
-Advanced; the hand-over to Review; Ping sweep as its second tab.
-
 ### LT-679 — Phase 5: Paths with one question row, and the project screen — 2026-10-02
 **Source:** LT-672. Path-Trace, Path check, Tracert and Where is behind
 one from/to/application row, hops saying forwarding or routing table;
@@ -837,6 +832,41 @@ holding the next hop and skips a longer static one. Next.
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-678 — Phase 4: Discover as a mode — 2026-10-02, done the same day
+**Source:** LT-672. Four steps (seeds, logins, options, Advanced); the
+classic crawler and the engine's own view (today's Collect tab) under
+Advanced; the hand-over to Review; Ping sweep as its second tab.
+**Done 2026-10-02.** Discover devices is four numbered steps
+(`.cv-step[data-step]` in `CrawlPanel`): **1 Where to start** — the seeds,
+From CSV, Fill from this project, Hops, Probe address, the subnets to
+stay inside, and what to log in to; **2 How to log in** — the SSH login
+with its saved credentials, Port, Reach devices over, the second login,
+the push-factor tick, the credential rules, SNMP, and the collector's API
+login; **3 What to read and keep** — At once, Give up after, Retries,
+Also read from each device, reverse DNS, and the diagnostic tick;
+**4 Advanced**, a `<details>` folded by default (`discoverAdvanced` in
+the store, so it stays as left across the dock's tabs) — the engine
+choice, Dry run, Open SNMP walks, and the engine's own view, which was
+the Collect tab: `CollectionPanel` renders under it, with its plan
+preview, command log, shadow report and topology hand-over to Review
+unchanged. The Discover button follows the steps. The dock's Discover
+group is Discover devices and Ping sweep; the `collect` tab id stays,
+and asking for it (the rail, the palette, a hand-over) opens Discover
+devices with Advanced unfolded. Every control keeps its label, so the
+harnesses that type into the form are untouched; `crawling`, `endtoend`
+and `collection` unfold Advanced before the engine select, Dry run and
+the engine's view, and `crawling`'s tab-change check goes to Monitored
+objects and back instead of Collect. One guard in `CollectionPanel`: a run
+answer with no device list is treated as no run, because the view now sits
+beside a crawl that may still be running and one bad answer took the whole
+dock down under `crawling`'s stub. `dock.mjs` counts ten tabs now and
+Discover's two. **Run:** `e2e/discovermode.mjs` (new: the
+group, the rail, the four steps and what each holds, the button after
+them, Advanced folded then unfolded with the engine, Dry run, walks and
+the Collect view, a request for Collect landing there, the state kept
+across a tab change), the six harnesses that drive the form, vitest,
+tsc, eslint, and the full suite.
 
 ### LT-677 — Phase 3: the inspector in tabs — 2026-10-02, done the same day
 **Source:** LT-672. Status first (reachability, last check, what it is

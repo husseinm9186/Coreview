@@ -66,13 +66,14 @@ check("named Monitor, Discover, Paths and Ops, in that order",
 const under = async (group) => page.locator(`.cv-tab-group[data-group="${group}"] button[role="tab"]`).allInnerTexts();
 check("Monitor holds the objects and the timeline, with their counts",
   JSON.stringify(await under("monitor")) === JSON.stringify(["Monitored objects (2)", "Event timeline (0)"]), (await under("monitor")).join(" | "));
-check("Discover holds the crawler, the ping sweep and Collect",
-  JSON.stringify(await under("discover")) === JSON.stringify(["Discover devices", "Ping sweep", "Collect"]), (await under("discover")).join(" | "));
+// LT-678: Collect is under Discover devices ▸ Advanced now.
+check("Discover holds the crawler and the ping sweep",
+  JSON.stringify(await under("discover")) === JSON.stringify(["Discover devices", "Ping sweep"]), (await under("discover")).join(" | "));
 check("Paths holds the four answers to where it goes",
   JSON.stringify(await under("paths")) === JSON.stringify(["Path-Trace", "Path check", "Tracert", "Where is"]), (await under("paths")).join(" | "));
 check("Ops holds Backups and SSH",
   JSON.stringify(await under("ops")) === JSON.stringify(["Backups", "SSH"]), (await under("ops")).join(" | "));
-check("every tab is there exactly once", (await page.locator('.cv-panel button[role="tab"]').count()) === 11);
+check("every tab is there exactly once", (await page.locator('.cv-panel button[role="tab"]').count()) === 10);
 
 // LT-240's arrows still walk the tabs, past the group headings.
 await page.locator('.cv-panel button[role="tab"]', { hasText: "Monitored objects" }).focus();
@@ -140,7 +141,7 @@ check("Pop out puts the dock down the right of the window",
 check("the full height of the body", right.panel.height > 800, `${right.panel.height}`);
 check("without the inspector running under it", right.inspector.x + right.inspector.width <= right.panel.x + 1, JSON.stringify(right));
 check("and the button now reads Dock below", (await side.innerText()) === "Dock below");
-check("the tabs still answer", (await page.locator('.cv-panel button[role="tab"]').count()) === 11);
+check("the tabs still answer", (await page.locator('.cv-panel button[role="tab"]').count()) === 10);
 
 // F5 hides the dock wherever it is (LT-192).
 await page.locator(".react-flow__pane").click({ position: { x: 60, y: 60 } });

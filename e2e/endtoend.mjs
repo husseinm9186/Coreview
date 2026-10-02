@@ -46,6 +46,12 @@ const crawled = {
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+// LT-678: Discover's form is four steps; the engine, a dry run, the SNMP walks
+// and the engine's own view (the old Collect tab) are under Advanced, folded.
+const advanced = async () => {
+  const d = page.locator("details.cv-discover-advanced");
+  if (!(await d.evaluate((el) => el.open))) { await d.locator("summary").click(); await page.waitForTimeout(200); }
+};
 await page.addInitScript(({ p, inventory }) => {
   const listeners = {}, callbacks = {};
   let next = 1;
@@ -136,6 +142,7 @@ await panel.getByPlaceholder("10.1.1.1, core-sw1, 10.1.2.0/24").fill("192.0.2.10
 await panel.locator("label", { hasText: /^Username/ }).locator("input").first().fill("reader");
 await panel.locator("label", { hasText: /^Password/ }).locator("input").first().fill("not-a-real-password");
 // LT-576: this walk-through is the classic crawler's; the collector has its own checks.
+await advanced();
 await panel.locator('[data-field="discover-engine"]').selectOption("classic");
 await panel.locator("button", { hasText: /^Discover$/ }).click();
 await page.waitForTimeout(300);

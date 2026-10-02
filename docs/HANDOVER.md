@@ -113,6 +113,7 @@ node e2e/pages.mjs                                 # page navigator, layers, pas
 node e2e/racks.mjs                                 # rack elevations, cable schedule
 node e2e/dock.mjs                                  # grouped tabs, job strip, pop out (LT-676)
 node e2e/inspector.mjs                             # the device inspector's tabs and action row (LT-677)
+node e2e/discovermode.mjs                          # Discover's four steps, Advanced, the old Collect tab (LT-678)
 node e2e/crawling.mjs                              # Phase 2 crawl: live table, bindings, review
 node e2e/validation.mjs                            # Phase 3: probes, history, path check, compare
 node e2e/workflow.mjs                              # Phase 4: palette, filter, ink, comments, a11y

@@ -20,6 +20,7 @@ import {
   type StoredSettings,
 } from '../lib/ipc';
 import { CredentialPicker, SavedCredentialSelect } from './CredentialPicker';
+import { CollectionPanel } from './CollectionPanel';
 import { bindingsFor, ruleProblem, type CredentialRule } from '../lib/credentialBindings';
 import { uid } from '../lib/id';
 import { seedsFromCsv } from '../lib/seeds';
@@ -261,6 +262,10 @@ export function CrawlPanel({
   // LT-576 (D-062): the catalog-driven collector, following neighbours, by
   // default; the older crawler stays a choice until the new one covers it.
   const [engine, setEngine] = useState<'collector' | 'classic'>('collector');
+  // LT-678: Advanced, folded unless asked for — in the store, because the
+  // Collect view lives under it and the dock's old Collect tab opens it.
+  const advanced = useStore((s) => s.discoverAdvanced);
+  const setAdvanced = useStore((s) => s.setDiscoverAdvanced);
   // LT-619: a collector run lives in the store, so it is still here after a
   // tab change; LT-620: the controls only the classic crawler reads.
   const discoverRun = useStore((s) => s.discoverRun);
@@ -798,6 +803,12 @@ export function CrawlPanel({
   return (
     <div className="cv-discover">
       <CrawlProfiles disabled={running} current={currentProfile} apply={applyProfile} />
+
+      {/* LT-678: four decisions, in order. Everything else has a default and
+          is one disclosure away under Advanced. */}
+      {/* 1 — where to start: the seeds, how far to go, and what to log in to. */}
+      <section className="cv-step" data-step="seeds" aria-labelledby="cv-step-seeds">
+        <h4 className="cv-step-head" id="cv-step-seeds"><b>1</b> {t('discover.step.seeds')}</h4>
       <div className="cv-discover-form">
         {/* LT-207: one seed or several — addresses, hostnames, ranges — or a CSV. */}
         <label className="cv-field">
@@ -847,24 +858,8 @@ export function CrawlPanel({
           }}>
           Fill from this project
         </button>
-        <CredentialPicker kind="ssh" disabled={running} chosen={credentialId} onChoose={setCredentialId}
-          remember typed={{ username, secret: password, secondSecret: enablePassword }}>
-          <label className="cv-field cv-field-narrow">
-            <span>Username</span>
-            <input className="cv-input" value={username} autoComplete="off" disabled={running}
-              onChange={(e) => setUsername(e.target.value)} />
-          </label>
-          <label className="cv-field cv-field-narrow">
-            <span>Password</span>
-            <input className="cv-input" type="password" value={password} autoComplete="off"
-              disabled={running} onChange={(e) => setPassword(e.target.value)} />
-          </label>
-          <label className="cv-field cv-field-narrow">
-            <span>Enable</span>
-            <input className="cv-input" type="password" value={enablePassword} autoComplete="off"
-              disabled={running} onChange={(e) => setEnablePassword(e.target.value)} />
-          </label>
-        </CredentialPicker>
+      </div>
+      <div className="cv-discover-form">
         <label className="cv-field cv-field-narrow">
           <span>Hops</span>
           <select className="cv-input" value={maxHops} disabled={running}
@@ -885,38 +880,74 @@ export function CrawlPanel({
             <option value="first">First found</option>
           </select>
         </label>
-        <label className="cv-field cv-field-narrow" title="How many devices to work on at the same time. A push factor still logs in one at a time.">
-          <span>At once</span>
-          <select className="cv-input" value={concurrency} disabled={running || classicOnly}
-            onChange={(e) => setConcurrency(Number(e.target.value))}>
-            {[1, 2, 4, 8, 16, 32].map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </label>
-        <label className="cv-field cv-field-narrow" title="How long one device may take — login and every command — before the crawl moves on">
-          <span>Give up after</span>
-          <select className="cv-input" value={perHost} disabled={running || classicOnly}
-            onChange={(e) => setPerHost(Number(e.target.value))}>
-            {[[60, '1 min'], [120, '2 min'], [300, '5 min'], [600, '10 min']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-        </label>
-        <label className="cv-field cv-field-narrow" title="Tries again when nothing answered. A refused login is never retried.">
-          <span>Retries</span>
-          <select className="cv-input" value={retries} disabled={running || classicOnly}
-            onChange={(e) => setRetries(Number(e.target.value))}>
-            {[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </label>
+      </div>
+      <SubnetList label="Stay inside these subnets" subnets={subnets} onChange={setSubnets}
+        disabled={running} placeholder="10.1.0.0/16" />
+
+      {/* Chosen before the run, because a connection attempt to a phone or a
+          camera is what sets off an intrusion alert, and by then it has
+          happened. Everything discovered is drawn either way — this decides
+          only what gets logged into. */}
+      <div className="cv-login-classes">
+        <span className="cv-subnets-label">Log in to</span>
+        <div className="cv-class-chips">
+          {LOGIN_CHOICES.map(({ value, label }) => {
+            const on = loginClasses.includes(value);
+            return (
+              <button
+                key={value}
+                type="button"
+                className={`cv-chip${on ? ' is-on' : ''}`}
+                disabled={running || classicOnly}
+                aria-pressed={on}
+                onClick={() =>
+                  setLoginClasses((prev) =>
+                    prev.includes(value) ? prev.filter((c) => c !== value) : [...prev, value],
+                  )
+                }
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <span className="cv-help">
+          Everything found is drawn, including whatever is not ticked here. Unticking something
+          means Coreview will not try to log in to it — nothing more.
+        </span>
+      </div>
+
+      </section>
+
+      {/* 2 — how to log in: the login, the port and the transport, a second
+          login, the rules, SNMP, and the API side the collector reads. */}
+      <section className="cv-step" data-step="logins" aria-labelledby="cv-step-logins">
+        <h4 className="cv-step-head" id="cv-step-logins"><b>2</b> {t('discover.step.logins')}</h4>
+      <div className="cv-discover-form">
+        <CredentialPicker kind="ssh" disabled={running} chosen={credentialId} onChoose={setCredentialId}
+          remember typed={{ username, secret: password, secondSecret: enablePassword }}>
+          <label className="cv-field cv-field-narrow">
+            <span>Username</span>
+            <input className="cv-input" value={username} autoComplete="off" disabled={running}
+              onChange={(e) => setUsername(e.target.value)} />
+          </label>
+          <label className="cv-field cv-field-narrow">
+            <span>Password</span>
+            <input className="cv-input" type="password" value={password} autoComplete="off"
+              disabled={running} onChange={(e) => setPassword(e.target.value)} />
+          </label>
+          <label className="cv-field cv-field-narrow">
+            <span>Enable</span>
+            <input className="cv-input" type="password" value={enablePassword} autoComplete="off"
+              disabled={running} onChange={(e) => setEnablePassword(e.target.value)} />
+          </label>
+        </CredentialPicker>
         <label className="cv-field cv-field-narrow">
           <span>Port</span>
           <input className="cv-input" type="number" value={port} disabled={running}
             onChange={(e) => setPort(Number(e.target.value) || 22)} />
         </label>
-
       </div>
-
-      <SubnetList label="Stay inside these subnets" subnets={subnets} onChange={setSubnets}
-        disabled={running} placeholder="10.1.0.0/16" />
-
       {/* Telnet is never chosen for anyone. It puts every credential and every
           byte of output on the wire in clear text, which is not a flaw in the
           implementation — it is what the protocol is — so the run has to ask
@@ -975,165 +1006,14 @@ export function CrawlPanel({
         </span>
       </details>
 
-      {/* Chosen before the run, because a connection attempt to a phone or a
-          camera is what sets off an intrusion alert, and by then it has
-          happened. Everything discovered is drawn either way — this decides
-          only what gets logged into. */}
-      <div className="cv-login-classes">
-        <span className="cv-subnets-label">Log in to</span>
-        <div className="cv-class-chips">
-          {LOGIN_CHOICES.map(({ value, label }) => {
-            const on = loginClasses.includes(value);
-            return (
-              <button
-                key={value}
-                type="button"
-                className={`cv-chip${on ? ' is-on' : ''}`}
-                disabled={running || classicOnly}
-                aria-pressed={on}
-                onClick={() =>
-                  setLoginClasses((prev) =>
-                    prev.includes(value) ? prev.filter((c) => c !== value) : [...prev, value],
-                  )
-                }
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-        <span className="cv-help">
-          Everything found is drawn, including whatever is not ticked here. Unticking something
-          means Coreview will not try to log in to it — nothing more.
-        </span>
-      </div>
-
-      <div className="cv-discover-run">
-        <label className="cv-field cv-field-narrow" title={t('discover.engineHelp')}>
-          <span>{t('discover.engine')}</span>
-          <select className="cv-input" data-field="discover-engine" value={engine} disabled={running}
-            onChange={(e) => setEngine(e.target.value as 'collector' | 'classic')}>
-            <option value="collector">{t('discover.engineCollector')}</option>
-            <option value="classic">{t('discover.engineClassic')}</option>
-          </select>
-        </label>
-        {classicOnly && <span className="cv-help" data-region="discover-engine-note">{t('discover.collectorIgnores')}</span>}
-        {engine === 'collector' && (
-          <SavedCredentialSelect kind="api" label={t('collect.apiCredential')} value={apiCredentialId} onChange={setApiCredentialId} />
-        )}
-        {running ? (
-          <button type="button" className="cv-btn cv-btn-stop" onClick={() => void (engine === 'collector' ? ipc.cancelCollection() : ipc.cancelCrawl())}>
-            Stop
-          </button>
-        ) : (
-          <button type="button" className="cv-btn cv-btn-start" onClick={() => void start()}
-            disabled={!seed.trim() || (!credentialId && (!username || !password))}>
-            Discover
-          </button>
-        )}
-        {!running && (
-          <button type="button" className="cv-btn" disabled={!seed.trim() || classicOnly}
-            title="Show what this run would do, without sending anything to the network"
-            onClick={() => {
-              void ipc.listCredentials().catch(() => []).then((saved) => {
-                const label = (id: string) => saved.find((c) => c.id === id)?.label ?? 'a credential no longer saved';
-                const runLogin = credentialId ? `${label(credentialId)} (chosen above)` : username ? `${username} (typed above)` : 'no login given';
-                const snmp = snmpForRun();
-                setPlan(dryRun({
-                  seed, subnets, maxHops, maxDevices: 500, port, details, reverseDns, concurrency,
-                  perHostTimeoutSecs: perHost, retries, secondFactor, transport,
-                  bindings: bindingsFor(useStore.getState().doc),
-                  snmpCount: snmp.typed.length + snmp.savedIds.length,
-                }, label, runLogin));
-              });
-            }}>
-            Dry run
-          </button>
-        )}
-        {!running && (
-          <label className="cv-btn" title="Files saved from snmpwalk on another machine, one device each — with MIB names, -On, or no MIBs">
-            Open SNMP walks…
-            <input type="file" multiple accept=".txt,.walk,.snmpwalk,text/plain" hidden aria-label="Open SNMP walk files"
-              onChange={(e) => {
-                const files = [...(e.target.files ?? [])];
-                e.target.value = '';
-                if (files.length) void readWalks(files);
-              }} />
-          </label>
-        )}
+      <div className="cv-discover-form">
         <label className="cv-check cv-check-inline">
           <input type="checkbox" checked={secondFactor} disabled={running || classicOnly}
             onChange={(e) => setSecondFactor(e.target.checked)} />
           These devices use Duo or another push factor — log in one at a time
         </label>
       </div>
-
       <CredentialRules disabled={running} />
-
-      <fieldset className="cv-crawl-details" disabled={running || classicOnly}>
-        <legend>Also read from each device</legend>
-        {([
-          ['vlans', 'Ports and VLANs', 'show interfaces status, show vlan brief, show interfaces trunk'],
-          ['spanningTree', 'Spanning tree', 'show spanning-tree'],
-          ['routes', 'Routing table', 'show ip route, show ipv6 route'],
-          // LT-347: two more read-only commands, off until asked for. Their
-          // parsers were built from vendor documentation and have met no
-          // hardware (D-051), so the tooltip says so rather than leaving
-          // somebody to find out from an empty result.
-          ['vrfs', 'Per-VRF routing tables', 'show vrf, then show ip route vrf <name>. Not yet tested against a device with VRFs.'],
-          ['overlay', 'VXLAN and EVPN', 'show nve vni, show nve peers, show bgp l2vpn evpn. Not yet tested against a fabric.'],
-        ] as const).map(([key, label, commands]) => (
-          <label key={key} className="cv-check cv-check-inline" title={commands}>
-            <input type="checkbox" checked={details[key]}
-              onChange={(e) => setDetails((d) => ({ ...d, [key]: e.target.checked }))} />
-            {label}
-          </label>
-        ))}
-        <label className="cv-check cv-check-inline" title="A PTR lookup for each address found, where nothing else named it">
-          <input type="checkbox" checked={reverseDns} onChange={(e) => setReverseDns(e.target.checked)} />
-          Names from reverse DNS
-        </label>
-      </fieldset>
-
-      {/* LT-499: one tick, one folder. The debug log — every command, login
-          and decision, with timings, and which reply file each command went
-          to; never a password, a community or any device output (D-055) —
-          beside the replies themselves, redacted (LT-481, D-058). It is the
-          diagnostic to send with a report. */}
-      <label className="cv-check cv-check-inline cv-support-capture" title={t('crawl.diagnostic.title')}>
-        <input
-          type="checkbox"
-          checked={debugLog && supportCapture}
-          disabled={running}
-          onChange={(e) => {
-            setDebugLog(e.target.checked);
-            setSupportCapture(e.target.checked);
-          }}
-        />
-        {t('crawl.diagnostic.tick')}
-      </label>
-      {(supportResult || debugLogPath) && (() => {
-        // The folder holding both, where both were kept; the log's own
-        // folder otherwise.
-        const folder = supportResult ? supportResult.folder.replace(/[\\/]replies[\\/]?$/, '') : (debugLogPath ?? '').replace(/[\\/][^\\/]*$/, '');
-        return (
-          <div className="cv-failure-log cv-support-result">
-            <span className="cv-help">
-              {supportResult
-                ? t('crawl.diagnostic.written', { count: supportResult.files })
-                : t('crawl.diagnostic.logOnly')}
-              {supportResult?.problem ? ` — ${supportResult.problem}` : ''}
-            </span>
-            <code className="cv-failure-log-path">{folder}</code>
-            <button type="button" className="cv-btn cv-btn-small" onClick={() => void navigator.clipboard.writeText(folder)}>
-              {t('crawl.support.copyPath')}
-            </button>
-            <button type="button" className="cv-btn cv-btn-small" onClick={() => void ipc.openAttachment(folder, true)}>
-              {t('crawl.support.openFolder')}
-            </button>
-          </div>
-        );
-      })()}
 
       <details className="cv-snmp" open={snmpOpen}
         onToggle={(e) => setSnmpOpen((e.target as HTMLDetailsElement).open)}>
@@ -1240,6 +1120,171 @@ export function CrawlPanel({
           cannot report its neighbours, so it appears without links.
         </p>
       </details>
+
+      <div className="cv-discover-form">
+        {engine === 'collector' && (
+          <SavedCredentialSelect kind="api" label={t('collect.apiCredential')} value={apiCredentialId} onChange={setApiCredentialId} />
+        )}
+      </div>
+      </section>
+
+      {/* 3 — what to read and keep: how hard to push, what else to ask each
+          device, and the diagnostic. */}
+      <section className="cv-step" data-step="options" aria-labelledby="cv-step-options">
+        <h4 className="cv-step-head" id="cv-step-options"><b>3</b> {t('discover.step.options')}</h4>
+      <div className="cv-discover-form">
+        <label className="cv-field cv-field-narrow" title="How many devices to work on at the same time. A push factor still logs in one at a time.">
+          <span>At once</span>
+          <select className="cv-input" value={concurrency} disabled={running || classicOnly}
+            onChange={(e) => setConcurrency(Number(e.target.value))}>
+            {[1, 2, 4, 8, 16, 32].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+        <label className="cv-field cv-field-narrow" title="How long one device may take — login and every command — before the crawl moves on">
+          <span>Give up after</span>
+          <select className="cv-input" value={perHost} disabled={running || classicOnly}
+            onChange={(e) => setPerHost(Number(e.target.value))}>
+            {[[60, '1 min'], [120, '2 min'], [300, '5 min'], [600, '10 min']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </label>
+        <label className="cv-field cv-field-narrow" title="Tries again when nothing answered. A refused login is never retried.">
+          <span>Retries</span>
+          <select className="cv-input" value={retries} disabled={running || classicOnly}
+            onChange={(e) => setRetries(Number(e.target.value))}>
+            {[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+      </div>
+      <fieldset className="cv-crawl-details" disabled={running || classicOnly}>
+        <legend>Also read from each device</legend>
+        {([
+          ['vlans', 'Ports and VLANs', 'show interfaces status, show vlan brief, show interfaces trunk'],
+          ['spanningTree', 'Spanning tree', 'show spanning-tree'],
+          ['routes', 'Routing table', 'show ip route, show ipv6 route'],
+          // LT-347: two more read-only commands, off until asked for. Their
+          // parsers were built from vendor documentation and have met no
+          // hardware (D-051), so the tooltip says so rather than leaving
+          // somebody to find out from an empty result.
+          ['vrfs', 'Per-VRF routing tables', 'show vrf, then show ip route vrf <name>. Not yet tested against a device with VRFs.'],
+          ['overlay', 'VXLAN and EVPN', 'show nve vni, show nve peers, show bgp l2vpn evpn. Not yet tested against a fabric.'],
+        ] as const).map(([key, label, commands]) => (
+          <label key={key} className="cv-check cv-check-inline" title={commands}>
+            <input type="checkbox" checked={details[key]}
+              onChange={(e) => setDetails((d) => ({ ...d, [key]: e.target.checked }))} />
+            {label}
+          </label>
+        ))}
+        <label className="cv-check cv-check-inline" title="A PTR lookup for each address found, where nothing else named it">
+          <input type="checkbox" checked={reverseDns} onChange={(e) => setReverseDns(e.target.checked)} />
+          Names from reverse DNS
+        </label>
+      </fieldset>
+
+      {/* LT-499: one tick, one folder. The debug log — every command, login
+          and decision, with timings, and which reply file each command went
+          to; never a password, a community or any device output (D-055) —
+          beside the replies themselves, redacted (LT-481, D-058). It is the
+          diagnostic to send with a report. */}
+      <label className="cv-check cv-check-inline cv-support-capture" title={t('crawl.diagnostic.title')}>
+        <input
+          type="checkbox"
+          checked={debugLog && supportCapture}
+          disabled={running}
+          onChange={(e) => {
+            setDebugLog(e.target.checked);
+            setSupportCapture(e.target.checked);
+          }}
+        />
+        {t('crawl.diagnostic.tick')}
+      </label>
+      {(supportResult || debugLogPath) && (() => {
+        // The folder holding both, where both were kept; the log's own
+        // folder otherwise.
+        const folder = supportResult ? supportResult.folder.replace(/[\\/]replies[\\/]?$/, '') : (debugLogPath ?? '').replace(/[\\/][^\\/]*$/, '');
+        return (
+          <div className="cv-failure-log cv-support-result">
+            <span className="cv-help">
+              {supportResult
+                ? t('crawl.diagnostic.written', { count: supportResult.files })
+                : t('crawl.diagnostic.logOnly')}
+              {supportResult?.problem ? ` — ${supportResult.problem}` : ''}
+            </span>
+            <code className="cv-failure-log-path">{folder}</code>
+            <button type="button" className="cv-btn cv-btn-small" onClick={() => void navigator.clipboard.writeText(folder)}>
+              {t('crawl.support.copyPath')}
+            </button>
+            <button type="button" className="cv-btn cv-btn-small" onClick={() => void ipc.openAttachment(folder, true)}>
+              {t('crawl.support.openFolder')}
+            </button>
+          </div>
+        );
+      })()}
+
+      </section>
+
+      {/* 4 — Advanced, folded: which engine, a dry run, walks saved
+          elsewhere, and the engine's own view — the plan preview, the
+          command log, the shadow report and the topology it built, which
+          was the Collect tab (LT-514, LT-517, LT-527). */}
+      <details className="cv-step cv-discover-advanced" data-step="advanced" open={advanced}
+        onToggle={(e) => setAdvanced((e.currentTarget as HTMLDetailsElement).open)}>
+        <summary className="cv-step-head"><b>4</b> {t('discover.step.advanced')}</summary>
+      <div className="cv-discover-form">
+        <label className="cv-field cv-field-narrow" title={t('discover.engineHelp')}>
+          <span>{t('discover.engine')}</span>
+          <select className="cv-input" data-field="discover-engine" value={engine} disabled={running}
+            onChange={(e) => setEngine(e.target.value as 'collector' | 'classic')}>
+            <option value="collector">{t('discover.engineCollector')}</option>
+            <option value="classic">{t('discover.engineClassic')}</option>
+          </select>
+        </label>
+        {classicOnly && <span className="cv-help" data-region="discover-engine-note">{t('discover.collectorIgnores')}</span>}
+        {!running && (
+          <button type="button" className="cv-btn" disabled={!seed.trim() || classicOnly}
+            title="Show what this run would do, without sending anything to the network"
+            onClick={() => {
+              void ipc.listCredentials().catch(() => []).then((saved) => {
+                const label = (id: string) => saved.find((c) => c.id === id)?.label ?? 'a credential no longer saved';
+                const runLogin = credentialId ? `${label(credentialId)} (chosen above)` : username ? `${username} (typed above)` : 'no login given';
+                const snmp = snmpForRun();
+                setPlan(dryRun({
+                  seed, subnets, maxHops, maxDevices: 500, port, details, reverseDns, concurrency,
+                  perHostTimeoutSecs: perHost, retries, secondFactor, transport,
+                  bindings: bindingsFor(useStore.getState().doc),
+                  snmpCount: snmp.typed.length + snmp.savedIds.length,
+                }, label, runLogin));
+              });
+            }}>
+            Dry run
+          </button>
+        )}
+        {!running && (
+          <label className="cv-btn" title="Files saved from snmpwalk on another machine, one device each — with MIB names, -On, or no MIBs">
+            Open SNMP walks…
+            <input type="file" multiple accept=".txt,.walk,.snmpwalk,text/plain" hidden aria-label="Open SNMP walk files"
+              onChange={(e) => {
+                const files = [...(e.target.files ?? [])];
+                e.target.value = '';
+                if (files.length) void readWalks(files);
+              }} />
+          </label>
+        )}
+      </div>
+        {advanced && <CollectionPanel />}
+      </details>
+
+      <div className="cv-discover-run">
+        {running ? (
+          <button type="button" className="cv-btn cv-btn-stop" onClick={() => void (engine === 'collector' ? ipc.cancelCollection() : ipc.cancelCrawl())}>
+            Stop
+          </button>
+        ) : (
+          <button type="button" className="cv-btn cv-btn-start" onClick={() => void start()}
+            disabled={!seed.trim() || (!credentialId && (!username || !password))}>
+            Discover
+          </button>
+        )}
+      </div>
 
       {pushMessage && (
         <p className="cv-discover-push" role="status">

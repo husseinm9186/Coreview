@@ -75,6 +75,12 @@ const project = {
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1700, height: 1100 } });
+// LT-678: Discover's form is four steps; the engine, a dry run, the SNMP walks
+// and the engine's own view (the old Collect tab) are under Advanced, folded.
+const advanced = async () => {
+  const d = page.locator("details.cv-discover-advanced");
+  if (!(await d.evaluate((el) => el.open))) { await d.locator("summary").click(); await page.waitForTimeout(200); }
+};
 // LT-677: a device's inspector is tabbed; the control a check wants is under
 // its tab, and the choice holds across selections.
 const inspectorTab = async (name) => {
@@ -143,6 +149,7 @@ check("and keeps only the id", await page.evaluate(() =>
 await page.locator("button", { hasText: "Discover devices" }).first().click();
 await page.waitForTimeout(400);
 // LT-620: the collector is the default, and the form below is the classic crawler's — chosen here for it.
+await advanced();
 check("the collector is the engine by default (D-062)", (await page.locator('[data-field="discover-engine"]').inputValue()) === "collector");
 await page.locator('[data-field="discover-engine"]').selectOption("classic");
 const panel = page.locator(".cv-discover");
@@ -395,7 +402,8 @@ await page.waitForTimeout(200);
 await panel.locator('[data-field="discover-engine"]').selectOption("collector");
 await panel.locator("label", { hasText: "Seed devices" }).locator("input").first().fill("192.0.2.10");
 // LT-598: the REST side, as the Collect tab has it.
-await panel.locator(".cv-discover-run select").filter({ has: page.locator('option[value="cred-api"]') }).selectOption("cred-api");
+// The form's own API login (the engine's view under Advanced has one too).
+await panel.locator('.cv-step[data-step="logins"]').getByLabel("API login").selectOption("cred-api");
 await panel.locator("button", { hasText: /^Discover$/ }).click();
 await page.waitForTimeout(400);
 const collected = await lastCall("start_collection");
@@ -420,8 +428,9 @@ await page.waitForTimeout(200);
 check("Stop asks the collection to stop, not the classic crawl", (await lastCall("cancel_collection")) !== undefined || (await page.evaluate(() => window.__calls.some((c) => c.cmd === "cancel_collection"))));
 // LT-620: the controls only the classic crawler reads are off under the collector, and say so.
 check("the classic-only controls are disabled under the collector", await panel.locator("label", { hasText: "At once" }).locator("select").isDisabled() && await panel.locator(".cv-login-classes button").first().isDisabled() && (await panel.locator('[data-region="discover-engine-note"]').count()) === 1);
-// LT-619: the run outlives the panel — another tab, and back.
-await page.locator(".cv-panel .cv-tabs button", { hasText: "Collect" }).click();
+// LT-619: the run outlives the panel — another tab, and back. (Monitored
+// objects: this stub does not answer what the sweep's subnet list asks.)
+await page.locator(".cv-panel .cv-tabs button", { hasText: "Monitored objects" }).click();
 await page.waitForTimeout(300);
 await page.evaluate(() => window.__cvEmit("coreview://collection", { kind: "device", runId: "col-9", deviceId: "dev-192-0-2-11", host: "192.0.2.11", phase: "connecting" }));
 await page.locator(".cv-panel .cv-tabs button", { hasText: "Discover devices" }).first().click();

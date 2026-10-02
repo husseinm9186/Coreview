@@ -370,6 +370,10 @@ interface Store {
    *  crawl — the inspector's Backup button. The panel takes them and clears it. */
   backupHandover: { address: string; name: string }[] | null;
   requestBackup: (targets: { address: string; name: string }[] | null) => void;
+  /** LT-678: whether Discover's Advanced step is unfolded. The Collect view
+   *  lives under it, so a request for that view opens it. */
+  discoverAdvanced: boolean;
+  setDiscoverAdvanced: (open: boolean) => void;
   /** LT-677: a question for Where is, asked from the inspector. */
   whereIsRequest: string | null;
   requestWhereIs: (query: string | null) => void;
@@ -1157,6 +1161,7 @@ export const useStore = create<Store>((set, get) => ({
   dockTab: 'objects',
   inspectorTab: 'status',
   backupHandover: null,
+  discoverAdvanced: false,
   whereIsRequest: null,
   commandPaletteRequest: false,
   // Which panels are open is a view preference for this machine, not part of
@@ -1504,6 +1509,9 @@ export const useStore = create<Store>((set, get) => ({
   requestBackup(targets) {
     set({ backupHandover: targets });
     if (targets) get().requestPanelTab('backup');
+  },
+  setDiscoverAdvanced(open) {
+    set({ discoverAdvanced: open });
   },
   requestWhereIs(query) {
     set({ whereIsRequest: query });

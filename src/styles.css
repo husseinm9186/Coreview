@@ -748,6 +748,14 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   font-size: var(--text-lg); margin: 0 0 0.92307692rem;
   display: flex; align-items: center; justify-content: space-between; gap: 0.61538462rem;
 }
+/* LT-678: Discover's four steps. */
+.cv-step { border-top: 1px solid var(--line); padding: 0.61538462rem 0 0.30769231rem; margin-top: 0.61538462rem; }
+.cv-step-head { display: flex; align-items: center; gap: 0.61538462rem; margin: 0 0 0.46153846rem; font-size: var(--text-md); font-weight: 600; color: var(--text); }
+.cv-step-head b { display: inline-flex; align-items: center; justify-content: center; width: 1.38461538rem; height: 1.38461538rem; border-radius: 50%; background: var(--panel-2); border: 1px solid var(--line-strong); color: var(--text-dim); font-size: var(--text-xs); font-weight: 600; }
+details.cv-discover-advanced > summary { cursor: pointer; list-style: none; }
+details.cv-discover-advanced > summary::-webkit-details-marker { display: none; }
+details.cv-discover-advanced > summary::after { content: '▸'; color: var(--text-faint); margin-left: auto; }
+details.cv-discover-advanced[open] > summary::after { content: '▾'; }
 /* LT-677: the device inspector's action row, its tabs, and the Status tab's list. */
 .cv-inspector-actions { display: flex; flex-wrap: wrap; gap: 0.30769231rem; margin: 0 0 0.76923077rem; }
 .cv-inspector-tabs { margin: 0 0 0.92307692rem; padding-bottom: 0.46153846rem; border-bottom: 1px solid var(--line); gap: 0.15384615rem; }
