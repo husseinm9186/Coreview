@@ -125,7 +125,16 @@ check("the moved end forgets the old device's port", e1?.targetPortLabel === "",
 check("and the other end keeps its own", e1?.sourcePortLabel === "Gi1/0/1", JSON.stringify(e1));
 check("no link is added or lost", (await edgeCount()) === startEdges, `${startEdges} -> ${await edgeCount()}`);
 
-await page.mouse.click(1400, 80);
+// A bare spot on the pane, to put the selection down without touching a
+// device. (1400, 80) used to be the top bar's empty second row; the one-row
+// bar of LT-675 puts the inspector's first field there instead, and a click
+// on a field label focuses its input and takes the keyboard with it.
+const bareSpot = async () => {
+  const pane = await page.locator(".react-flow__pane").boundingBox();
+  return { x: pane.x + pane.width - 260, y: pane.y + pane.height - 200 };
+};
+const clickBare = async () => { const at = await bareSpot(); await page.mouse.click(at.x, at.y); };
+await clickBare();
 await page.keyboard.press("Control+z");
 await page.waitForTimeout(400);
 e1 = await edge("e1");
@@ -158,7 +167,7 @@ await page.evaluate(() => {
   st.selectNone();
 });
 await page.waitForTimeout(300);
-await page.mouse.click(1400, 80);
+await clickBare();
 // Clear of the minimap in the corner, which would otherwise take the press.
 {
   const pane = await page.locator(".react-flow__pane").boundingBox();
@@ -186,7 +195,7 @@ await page.waitForTimeout(400);
 const n3Moved = await posOf("n3");
 check("the device was dragged", JSON.stringify(n3Moved) !== JSON.stringify(n3From), JSON.stringify({ n3From, n3Moved }));
 check("a drag takes exactly one undo step", (await undoDepth()) === depthBefore + 1, `${depthBefore} -> ${await undoDepth()}`);
-await page.mouse.click(1400, 80);
+await clickBare();
 await page.keyboard.press("Control+z");
 await page.waitForTimeout(300);
 check("one undo puts the dragged device back", JSON.stringify(await posOf("n3")) === JSON.stringify(n3From),
@@ -227,7 +236,7 @@ check("the group member dragged moved", JSON.stringify(await posOf("n2")) !== JS
   JSON.stringify({ n2From, now: await posOf("n2") }));
 check("and carried the rest of its group", JSON.stringify(await posOf("n1")) !== JSON.stringify(n1From),
   JSON.stringify({ n1From, now: await posOf("n1") }));
-await page.mouse.click(1400, 80);
+await clickBare();
 await page.keyboard.press("Control+z");
 await page.waitForTimeout(300);
 check("and one undo brings the whole group back",
@@ -240,11 +249,8 @@ const viewport = () => page.locator(".react-flow__viewport").evaluate((el) => {
   const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
   return { x: m.e, y: m.f };
 });
-const bare = async () => {
-  const pane = await page.locator(".react-flow__pane").boundingBox();
-  return { x: pane.x + pane.width - 260, y: pane.y + pane.height - 200 };
-};
-await page.mouse.click(1400, 80);
+const bare = bareSpot;
+await clickBare();
 await page.waitForTimeout(200);
 
 // Unchanged: space first, then the button.
@@ -391,7 +397,7 @@ if (hasField) {
 // or drag — must end that: a diagram left faded for the whole pan flickered,
 // and on a large page re-fading cost most of every frame.
 await page.keyboard.press("Escape");
-await page.mouse.click(1400, 80);
+await clickBare();
 await page.keyboard.press("f");
 await page.waitForTimeout(600);
 // TraceFade's own rule; the app stylesheet mentions the class too.

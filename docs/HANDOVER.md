@@ -302,6 +302,15 @@ The single most common failure here.
   Fixed in the app, but it is the kind of thing to watch for.
 - Where a node lands relative to the pointer depends on the zoom. Do not
   predict it — move, measure, correct, then release.
+- **A fixed window coordinate is a bet on the layout.** `canvasfix.mjs`
+  clicked (1400, 80) to put the selection down; that was the old two-row
+  top bar's empty second row, and after LT-675's one-row bar it was the
+  inspector's first field label — which focused the input and took Ctrl+Z,
+  Space and `f` with it, three failures with no obvious link to the change.
+  Click a measured bare spot on the pane (`bareSpot()` there) instead. And
+  nothing may float over the pane's top-left band: the lassos, drops and
+  pane clicks the harnesses make start there, which is why the canvas
+  toolbar is docked above the pane rather than on it.
 
 ### 6.7 Verifying the desktop app by hand under Xvfb
 

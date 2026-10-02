@@ -112,18 +112,6 @@ them, the two foundations the operator chose with it: the Graphite theme
 (LT-673) and sizes that scale (LT-674). Nothing is removed; the table on
 the proposal page is where every control goes.
 
-### LT-675 — Phase 1: the rail, the one-row top bar, the floating canvas toolbar, preferences in Settings — 2026-10-02
-**Source:** LT-672. The left rail names the modes (Diagram, Discover,
-Monitor, Paths, Backups, Addresses, Racks, Terminal, Settings); Addresses
-and Tools are reached from it, their screens as they are. The top bar
-becomes one row: project and saved state; Start validation and the four
-pills; search (the command palette), Export, Help and an overflow menu.
-Save/Undo/Redo keep their shortcuts and sit in the overflow. The canvas
-gets a floating toolbar (select, pen, eraser, fit, zoom, snap, page
-ground, filter, layers); Overview becomes the minimap's toggle. Reduce
-motion, high contrast and the clock move to Settings. Every harness that
-finds these controls is updated with it.
-
 ### LT-676 — Phase 2: the dock — grouped tabs with counts, the job strip, pop-out — 2026-10-02
 **Source:** LT-672. The same twelve tabs under Monitor, Discover, Paths and
 Ops; counts kept; the JobsBar becomes the strip along the dock's bottom;
@@ -860,6 +848,52 @@ holding the next hop and skips a longer static one. Next.
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-675 — Phase 1: the rail, the one-row top bar, the canvas toolbar, preferences in Settings — 2026-10-02, done the same day
+**Source:** LT-672. The left rail names the modes (Diagram, Discover,
+Monitor, Paths, Backups, Addresses, Racks, Terminal, Settings); Addresses
+and Tools are reached from it, their screens as they are. The top bar
+becomes one row: project and saved state; Start validation and the four
+pills; search (the command palette), Export, Help and an overflow menu.
+Save/Undo/Redo keep their shortcuts and sit in the overflow. The canvas
+gets a floating toolbar (select, pen, eraser, fit, zoom, snap, page
+ground, filter, layers); Overview becomes the minimap's toggle. Reduce
+motion, high contrast and the clock move to Settings. Every harness that
+finds these controls is updated with it.
+**Done 2026-10-02, with two departures from the brief.** `NavRail`
+(`.cv-nav`, the first column of `.cv-workspace`) names Diagram, Discover,
+Monitor, Paths, Backups, Addresses, Tools, Terminal and Settings — Racks
+stays under Tools where it lives, and the Tools entry is what reaches it.
+Diagram, Addresses, Tools and Settings open their screens; the rest open
+the dock's tab through the same request the inspector uses, and the one
+showing is `aria-current`. The top bar is one row: the project on the
+left, Start validation and the four pills in the centre, Search (the
+command palette), Export, Help and ⋯ More on the right; More holds
+Save, Undo, Redo, About and Close project. **The canvas toolbar is docked,
+not floating:** a row above the pane (`.cv-canvas-col` holds it and the
+canvas) with Save, Undo, Redo, Fit view, −, +, Grid snap, the ground,
+Overview and Filter. It began as a float at the pane's top-left and that
+stole the band the lassos, drops and pane clicks land in — `interact`,
+`canvasfix` and `arrange` found it within the hour — so it sits beside
+the pane instead, and the ink strip (Types, Pen, Eraser) keeps its float
+below it. Reduce motion, High contrast and Times are Settings ▸ Display,
+beside Interface size. Store: `dockTab`/`setDockTab` (the dock's tab now
+lives in the store so the rail can mark it) and
+`requestCommandPalette`. The rail's Tools and Addresses entries keep the classes the top bar's
+buttons carried (`cv-btn-tools`, `cv-btn-register`), because nine
+harnesses reach those screens by them and they still name the same
+thing. Harnesses updated for where the controls went:
+`arrange` (grid snap), `interact` (the clock, now in Settings),
+`workflow` (high contrast), `credentials` and `ssh` (Close project under
+More), and `canvasfix`, whose bare-spot click at (1400, 80) was the old
+two-row bar's empty second row and is now the inspector's first field —
+it clicks a bare spot on the pane instead. `interact`'s shift-arrow
+nudge compared a fractional position bit-for-bit to its own sum and
+missed by one bit once in three runs; it compares to a hair now. Also
+in this commit: `lab_run.rs` loses a `&` the current stable's clippy
+refuses, which is what turned d74fccd's CI red. **Run:** clippy on the
+updated stable, cargo test (34 suites), tsc, eslint, vitest (1481),
+pytest (668) and all 37 harnesses, green.
 
 ### LT-674 — Sizes that scale with the screen and the person — 2026-10-02, done the same day
 **Source:** LT-672. One root size, `clamp(13px, 0.25vw + 9px, 16px)` —

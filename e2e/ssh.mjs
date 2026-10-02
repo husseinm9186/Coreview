@@ -509,7 +509,8 @@ check("and tells the backend to end it", (await st(() => window.__closed)).inclu
 
 // ------------------------------------ closing the project ends every shell
 
-await page.locator("button", { hasText: "Close project" }).first().click();
+await page.locator(".cv-more summary").click(); // LT-675: under More
+await page.locator(".cv-more button", { hasText: "Close project" }).first().click();
 await page.waitForTimeout(900);
 check("closing the project closes every session", (await st(() => window.__closedAll)) === 1);
 

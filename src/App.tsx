@@ -18,6 +18,8 @@ import { ipc, isDesktop } from './lib/ipc';
 /** LT-262: the keychain is asked at most once per window. */
 let keychainTried = false;
 import { useStore } from './state/store';
+import { NavRail } from './components/NavRail';
+import { CanvasToolbar } from './components/CanvasToolbar';
 
 export default function App() {
   const meta = useStore((s) => s.meta);
@@ -133,6 +135,9 @@ export default function App() {
           presenting ? ' is-presenting' : ''
         }`}
       >
+        {/* LT-675, D-064: the rail names the modes; everything else is the shell beside it. */}
+        <ErrorBoundary what="The rail"><NavRail /></ErrorBoundary>
+        <div className="cv-shell">
         <ErrorBoundary what="The toolbar"><TopBar onExit={() => undefined} /></ErrorBoundary>
         {/* LT-444: a device or a finding, at a width the rail cannot give. */}
         <ErrorBoundary what="The drawer"><DrawerHost /></ErrorBoundary>
@@ -164,7 +169,14 @@ export default function App() {
               the collapsed track — which is how the inspector ended up
               occupying the middle of the window. */}
           <ErrorBoundary what="The shape palette"><Palette /></ErrorBoundary>
-          <ErrorBoundary what="The diagram"><Canvas /></ErrorBoundary>
+          {/* LT-675: the canvas toolbar is a row docked above the pane, not a
+              float on it — a float stole the top-left band from pointer work
+              (lassos, drops, the harnesses' clicks), and the overlays measure
+              themselves against `.cv-canvas`, which must stay the pane. */}
+          <div className="cv-canvas-col">
+            <ErrorBoundary what="The canvas toolbar"><CanvasToolbar /></ErrorBoundary>
+            <ErrorBoundary what="The diagram"><Canvas /></ErrorBoundary>
+          </div>
           <ErrorBoundary what="The inspector"><Inspector /></ErrorBoundary>
 
           {/* Slim rails, so the way back is always visible. A panel that
@@ -193,6 +205,7 @@ export default function App() {
         {!registerOpen && !helpOpen && !toolsOpen && (
           <ErrorBoundary what="The monitoring panel"><StatusPanel /></ErrorBoundary>
         )}
+        </div>
       </div>
     </ReactFlowProvider>
   );

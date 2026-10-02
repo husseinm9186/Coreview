@@ -7,6 +7,7 @@ import { MerakiSettings } from './MerakiSettings';
 import { credentialsUsedBy } from '../lib/credentialScope';
 import { ipc, isDesktop, type CredentialSummary } from '../lib/ipc';
 import { useStore } from '../state/store';
+import { TIME_FORMATS, isLocalFormat, zoneLabel, type TimeFormat } from '../lib/timeFormat';
 
 /**
  * Settings, on the Tools screen (LT-327).
@@ -29,6 +30,7 @@ import { useStore } from '../state/store';
  */
 export function SettingsView() {
   const uiScale = useStore((s) => s.settings.uiScale);
+  const settings = useStore((s) => s.settings);
   const projectDefaults = useStore((s) => s.doc.credentialDefaults);
   // LT-452: only what the scope reads.
   const pages = useStore((s) => s.doc.pages);
@@ -143,6 +145,21 @@ export function SettingsView() {
           <span>{t('settings.uiScale')}</span>
           <select className="cv-input" value={String(uiScale)} onChange={(e) => useStore.getState().setSettings({ uiScale: Number(e.target.value) })}>
             {[0.85, 1, 1.15, 1.3, 1.4].map((v) => <option key={v} value={String(v)}>{Math.round(v * 100)} %</option>)}
+          </select>
+        </label>
+        {/* LT-675: the three machine preferences that lived in the top bar. */}
+        <label className="cv-check" title={t('settings.reduceMotionHint')}>
+          <input type="checkbox" checked={settings.reduceMotion} onChange={(e) => useStore.getState().setSettings({ reduceMotion: e.target.checked })} />
+          {t('settings.reduceMotion')}
+        </label>
+        <label className="cv-check" title={t('settings.highContrastHint')}>
+          <input type="checkbox" checked={settings.highContrast} onChange={(e) => useStore.getState().setSettings({ highContrast: e.target.checked })} />
+          {t('settings.highContrast')}
+        </label>
+        <label className="cv-field cv-field-narrow" title={`Times shown in ${isLocalFormat(settings.timeFormat) ? zoneLabel() : 'Zulu (UTC)'}`}>
+          <span>{t('settings.times')}</span>
+          <select className="cv-input" value={settings.timeFormat} onChange={(e) => useStore.getState().setSettings({ timeFormat: e.target.value as TimeFormat })}>
+            {TIME_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
           </select>
         </label>
       </section>

@@ -417,6 +417,9 @@ const after = await page.locator(".cv-panel .cv-tabs [role=tab][aria-selected=tr
 check("arrow keys move along the panel's tabs", tabBefore !== after && (await page.evaluate(() => document.activeElement?.getAttribute("aria-selected"))) === "true", `${tabBefore} → ${after}`);
 
 // ----------------------------------------------------- LT-242 high contrast
+// LT-675: the tick lives in Settings ▸ Display, reached from the rail.
+await page.locator(".cv-nav-item", { hasText: /^Settings$/ }).click();
+await page.waitForTimeout(400);
 await page.locator("label", { hasText: /^High contrast$/ }).locator("input").check();
 await page.waitForTimeout(200);
 const contrast = await page.evaluate(() => {
@@ -428,6 +431,8 @@ check("high contrast can be turned on, for the chrome and the canvas, and is rem
   contrast.on && contrast.text === "#ffffff" && contrast.ink === "#ffffff" && contrast.kept === "1", JSON.stringify(contrast));
 if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
 await page.locator("label", { hasText: /^High contrast$/ }).locator("input").uncheck();
+await page.locator(".cv-nav-item", { hasText: /^Diagram$/ }).click();
+await page.waitForTimeout(400);
 
 // -------------------------------------------------- LT-241 accessible names
 const devLabel = await page.locator('.react-flow__node[data-id="core"]').getAttribute("aria-label");

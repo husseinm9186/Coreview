@@ -2193,8 +2193,11 @@ await dismissRecovery();
     `${start.x} -> ${(await flowPos()).x}`);
   await page.keyboard.press("Shift+ArrowRight");
   await page.waitForTimeout(200);
-  check("shift-arrow nudges a grid step", (await flowPos()).x === start.x + 61,
-    `${(await flowPos()).x}`);
+  // Positions can be fractional after a drag, and a fractional start plus 61
+  // is not always bit-equal to the sum the store computed (1047.79 once
+  // failed against 1047.7900000000001); compare to a hair, not to a bit.
+  check("shift-arrow nudges a grid step", Math.abs((await flowPos()).x - (start.x + 61)) < 1e-6,
+    `${start.x} -> ${(await flowPos()).x}`);
   await page.keyboard.press("Shift+ArrowLeft");
   await page.keyboard.press("ArrowLeft");
   await page.waitForTimeout(200);
@@ -3125,8 +3128,14 @@ await dismissRecovery();
   const t12 = (await timeCell()).trim();
   check("a 12-hour clock says AM or PM", /(AM|PM)$/.test(t12), t12);
 
-  check("the picker is in the top bar and follows the setting",
-    (await page.locator(".cv-topbar select").filter({ hasText: "12-hour clock" }).count()) === 1);
+  // LT-675: the picker lives in Settings ▸ Display now, with the other machine preferences.
+  await page.evaluate(() => window.__cvStore.getState().setToolsOpen(true, "settings"));
+  await page.waitForTimeout(300);
+  check("the picker is in Settings and follows the setting",
+    (await page.locator("[data-region=display] select").filter({ hasText: "12-hour clock" }).count()) === 1
+      && (await page.locator("[data-region=display] select").filter({ hasText: "12-hour clock" }).inputValue()) === "local-12");
+  await page.evaluate(() => window.__cvStore.getState().setToolsOpen(false));
+  await page.waitForTimeout(300);
 
   // The choice survives a reload — it is a machine preference.
   await page.reload({ waitUntil: "networkidle" });

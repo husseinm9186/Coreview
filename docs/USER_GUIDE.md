@@ -102,7 +102,7 @@ SD-WAN, MPLS L3VPN, a wireless survey or two racks. Names and addresses are
 placeholders from the documentation ranges, and nothing is monitored until you
 add checks.
 
-**Racks.** **Tools ▸ Racks** on the toolbar draws the project's racks U by U.
+**Racks.** **Tools ▸ Racks** (Tools is on the rail) draws the project's racks U by U.
 Give devices a rack name in the inspector (**Rack / room**) and click **Build racks
 from devices**, or **Add rack** and drag devices in from the list. A box always
 lands on a whole U; a spot something else holds is refused and the message says
@@ -138,6 +138,18 @@ keys to open it, double-click or press `F2` to rename it, and drag it or press
 **Minimap by health.** **Colour the minimap by health** in the canvas menu colours
 each device in the minimap by its status; a device that is down is also outlined
 dashed and a warning one outlined solid, so the colour is not the only cue.
+
+**The window.** A rail down the left names the modes: **Diagram**,
+**Discover**, **Monitor**, **Paths**, **Backups**, **Addresses**, **Tools**,
+**Terminal**, and **Settings** at its foot. The first five open the diagram
+and the matching tab of the panel below it; Addresses and Tools are screens
+of their own, one click back to the diagram. The top bar is one row about
+the project: its name and saved state, **Start validation** with the four
+health counts in the centre, and **Search** (Ctrl+K), **Export**, **Help**
+and **⋯** (Save, Undo, Redo, About, Close project) on the right. What acts
+on the drawing — Save, Undo, Redo, Fit view, zoom, Grid snap, the page's
+ground, the Overview box and Filter — is a row along the top of the canvas;
+the drawing tools (Types, Pen, Eraser) float on the canvas below it.
 
 Autosave writes about two and a half seconds after you stop editing. The top bar
 says either *Unsaved changes* or *Saved* with a time.
@@ -282,7 +294,8 @@ unknown — a status from a stopped session is not evidence.
 | Maintenance `⚙` | Purple | Purple dashed | None |
 
 Every state has a glyph as well as a colour, so nothing depends on colour alone.
-Turn on **Reduce motion** in the top bar to stop all animation.
+Turn on **Reduce motion** under **Settings ▸ Display** (the cog at the foot of
+the rail) to stop all animation.
 
 Hover a link for the detail:
 
@@ -702,7 +715,7 @@ address or MAC matches with its dots and colons left out. Enter goes to the
 result: its page, selected, in view. Picking a shape adds one. Type `>` first
 for commands instead.
 
-**Filter.** **Filter** in the top bar dims everything that does not match —
+**Filter.** **Filter** on the canvas toolbar dims everything that does not match —
 device type, vendor, role, tag, health, how it was discovered, VLAN, subnet or
 text — so the rest stands out without anything being hidden or moved.
 
@@ -747,7 +760,7 @@ spacing are 13 px on a laptop and grow to 16 px on a 4K monitor. On top of
 that, **Tools ▸ Settings ▸ Display ▸ Interface size** sets it from 85 % to
 140 % for this machine. The diagram keeps its own zoom either way.
 
-**High contrast.** Tick **High contrast** in the top bar for black and white
+**High contrast.** Tick **High contrast** under **Settings ▸ Display** for black and white
 with strong status colours and a bold yellow focus ring. It starts on by itself
 when the system asks for more contrast.
 
@@ -983,7 +996,7 @@ Changes need two validation sessions or two crawls to compare.
 
 ## Bring in what you already have
 
-These are on the toolbar under **Tools**.
+These are under **Tools** on the rail.
 
 **A spreadsheet.** **Tools ▸ From a file** reads a CSV or an Excel workbook (`.xlsx`).
 Choose the sheet, check the header row, say whether each row is a device or a

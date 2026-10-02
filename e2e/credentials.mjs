@@ -360,7 +360,8 @@ check("this project's Settings lists the login it uses",
 // Now the other project on the same machine and the same vault.
 await page.locator(".cv-tools .cv-register-back").first().click();
 await page.waitForTimeout(300);
-await page.locator("button", { hasText: "Close project" }).first().click();
+await page.locator(".cv-more summary").click(); // LT-675: under More
+await page.locator(".cv-more button", { hasText: "Close project" }).first().click();
 await page.waitForTimeout(900);
 await page.locator(".cv-project-open", { hasText: "Other" }).first().click();
 await page.waitForTimeout(900);

@@ -255,6 +255,13 @@ export function Canvas() {
   const [help, setHelp] = useState(false);
   // LT-230: the command palette.
   const [palette, setPalette] = useState(false);
+  // LT-675: the top bar's Search opens the palette the canvas owns.
+  const paletteRequest = useStore((s) => s.commandPaletteRequest);
+  useEffect(() => {
+    if (!paletteRequest) return;
+    setPalette(true);
+    useStore.getState().requestCommandPalette(false);
+  }, [paletteRequest]);
   const [tracerouteTarget, setTracerouteTarget] = useState<string | null>(null);
   const [guides, setGuides] = useState<Guide[]>([]);
   /** Space held: the pointer becomes a hand and drags the diagram. */

@@ -124,7 +124,9 @@ export function StatusPanel() {
 
   // LT-319: Compare, Racks and the two imports left for a screen of their own.
   // What is here is what reports on the diagram while it is being worked on.
-  const [tab, setTab] = useState<'objects' | 'events' | 'discover' | 'crawl' | 'collect' | 'backup' | 'path' | 'trace' | 'tracert' | 'whereis' | 'ssh'>('objects');
+  // LT-675: the tab lives in the store, so the rail can open and name it.
+  const tab = useStore((s) => s.dockTab);
+  const setTab = useStore((s) => s.setDockTab);
   useEffect(() => {
     if (!panelRequest) return;
     // LT-300: the register moved to a screen of its own. Anything that still
@@ -140,7 +142,7 @@ export function StatusPanel() {
       setTab(panelRequest as typeof tab);
     }
     useStore.getState().requestPanelTab(null);
-  }, [panelRequest]);
+  }, [panelRequest, setTab]);
   // Devices handed over from a crawl, so a discovery can go straight to a
   // backup without being drawn first.
   const [handedOver, setHandedOver] = useState<{ address: string; name: string }[]>([]);

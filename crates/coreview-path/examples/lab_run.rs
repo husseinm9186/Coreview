@@ -159,7 +159,7 @@ async fn collected(hosts: &[String], user: &str, out: &std::path::Path, catalogs
                     e.2.push(format!("{host}: {} {}", s.verdict, s.detail.clone().unwrap_or_default()));
                 }
             }
-            steps.push(json!({"cmd": r.step.cmd, "parser": r.step.parser, "verified": format!("{:?}", r.step.verified).to_lowercase(), "status": r.outcome.status, "rows": rows.len(), "engine": r.outcome.engine, "shadow": r.outcome.shadow, "error": r.outcome.error.as_deref().map(&mask)}));
+            steps.push(json!({"cmd": r.step.cmd, "parser": r.step.parser, "verified": format!("{:?}", r.step.verified).to_lowercase(), "status": r.outcome.status, "rows": rows.len(), "engine": r.outcome.engine, "shadow": r.outcome.shadow, "error": r.outcome.error.as_deref().map(mask)}));
         }
         let summary = json!({
             "host": host, "os": run.os, "identified_by": run.identified_by, "role": run.role, "caps": run.caps,

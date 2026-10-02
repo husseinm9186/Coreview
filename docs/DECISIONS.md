@@ -1301,9 +1301,12 @@ choosing one table in silence (LT-653).
 
 ### D-064 — The interface reorganised, on a neutral chrome that scales — 2026-10-02
 **Decision:** one left rail names the modes (Diagram, Discover, Monitor,
-Paths, Backups, Addresses, Racks, Terminal, Settings); the top bar is one
-row about the project; controls that act on the canvas live on the canvas
-in a floating toolbar; preferences live in Settings; the inspector is
+Paths, Backups, Addresses, Tools, Terminal, Settings — Racks stays under
+Tools); the top bar is one
+row about the project; controls that act on the canvas live beside it, in
+a toolbar docked along its top (a float was tried first and took the
+pane's top-left band away from lassos and drops, LT-675); preferences
+live in Settings; the inspector is
 tabbed with status first; the bottom dock keeps every tab, grouped, with
 the job strip along its bottom. The chrome is the Graphite palette — cool
 neutral greys with a faint blue bias — so the only hues on screen are the

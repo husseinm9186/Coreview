@@ -1,20 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { useReactFlow } from '@xyflow/react';
 
 import { useStore } from '../state/store';
 import { ipc } from '../lib/ipc';
 import { buildMarkdownReport, saveExport, slug, svgToPng } from '../lib/exports';
 import { cableSchedule, cableScheduleCsv } from '../lib/cableSchedule';
-import { CanvasFilterMenu } from './CanvasFilterMenu';
 import { renderDiagramSvg } from '../lib/diagram';
 import { allPrinted, isPrinted, layersOf } from '../lib/layers';
-import { effectivePage } from '../lib/pageRect';
 import { PAPERS, describePage, paperById, sheetSize, sheetsFor, tileRects } from '../lib/paper';
-import { TIME_FORMATS, isLocalFormat, zoneLabel, type TimeFormat } from '../lib/timeFormat';
 import { eventsToCsv, linksToCsv, nodesToCsv } from '../lib/csv';
 import type { DeviceNodeData, HealthStatus, LinkData, NodeAddress } from '../types/domain';
 import { STATUS_LABEL } from '../types/domain';
 import { activePage, allEdges, allNodes } from '../lib/pages';
+import { effectivePage } from '../lib/pageRect';
 import { SAVE_ACK_MS, saveIndicator } from '../lib/saveIndicator';
 import { drawioFile } from '../lib/drawio';
 import { netboxJson, netboxYaml } from '../lib/netboxExport';
@@ -53,12 +50,10 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   const nodeStatus = useStore((s) => s.nodeStatus);
   const recentSamples = useStore((s) => s.recentSamples);
   const runtime = useStore((s) => s.runtime);
-  const rf = useReactFlow();
   const exportMenu = useRef<HTMLDetailsElement>(null);
   const [about, setAbout] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   // LT-170: replace imported stencils with built-in shapes in what is exported.
-  const gridSnap = useStore((s) => Boolean(s.doc.gridSnap));
   const [vendorSafe, setVendorSafe] = useState(false);
   // LT-194: greys on white, for paper.
   const [printFriendly, setPrintFriendly] = useState(false);
@@ -706,36 +701,11 @@ export function TopBar({ onExit }: { onExit: () => void }) {
         </span>
       </div>
 
-      <div className="cv-topbar-actions">
-        <button type="button" className="cv-btn" onClick={() => void useStore.getState().saveProject()}>
-          Save
-        </button>
-        <button type="button" className="cv-btn" onClick={useStore.getState().undo} title="Ctrl+Z">
-          Undo
-        </button>
-        <button type="button" className="cv-btn" onClick={useStore.getState().redo} title="Ctrl+Y">
-          Redo
-        </button>
-        <button
-          type="button"
-          className="cv-btn"
-          /* Fits the sheet, not only what is on it: fitting to the devices
-             alone puts the page edge off-screen, and the edge is the thing
-             that says where the drawing surface is. */
-          onClick={() =>
-            (pg.canvas.sheet ?? true)
-              ? (() => {
-                  const sheet = effectivePage(pg.canvas.sheetRect, pg.nodes);
-                  rf.fitBounds({ x: sheet.x, y: sheet.y, width: sheet.w, height: sheet.h }, { padding: 0.08 });
-                  if (rf.getZoom() > 2) rf.zoomTo(2);
-                })()
-              : rf.fitView({ padding: 0.2, maxZoom: 2 })
-          }
-        >
-          Fit view
-        </button>
-
-        <div className="cv-divider" />
+      {/* LT-675, D-064: one row. The centre is validation and the four
+          numbers you look at all day; the right is search, export, help and
+          the rest behind More. What acts on the canvas is on the canvas
+          (CanvasToolbar); the machine preferences are in Settings. */}
+      <div className="cv-topbar-centre">
 
         {session.state === 'running' || session.state === 'stopping' ? (
           <button
@@ -769,27 +739,13 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           ))}
         </div>
 
-        <div className="cv-divider" />
+      </div>
 
-        {/* LT-300: the register is the second job this app does, so it is a
-            place to go rather than a panel about the diagram. */}
-        <button type="button" className="cv-btn cv-btn-register"
-          title="Subnets, addresses, ranges and the planning tools, on a screen of their own"
-          onClick={() => useStore.getState().setRegisterOpen(true)}>
-          {t('register.open')}
+      <div className="cv-topbar-actions">
+        <button type="button" className="cv-btn cv-btn-search" title={t('topbar.searchTitle')}
+          onClick={() => useStore.getState().requestCommandPalette(true)}>
+          <span aria-hidden>⌕</span> {t('topbar.search')}
         </button>
-
-        {/* LT-319: and the four that are not about the diagram either — two
-            imports, the racks and the comparison — which were taking a third of
-            the bottom panel's width to say so. */}
-        <button type="button" className="cv-btn cv-btn-tools"
-          title="Settings, comparing two backup runs, rack elevations, and bringing devices in from a file or a drawing"
-          onClick={() => useStore.getState().setToolsOpen(true)}>
-          {t('tools.open')}
-        </button>
-
-        {/* LT-232. */}
-        <CanvasFilterMenu />
 
         <details className="cv-dropdown" ref={exportMenu}>
           <summary className="cv-btn">Export</summary>
@@ -957,99 +913,33 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           </div>
         </details>
 
-        {/* LT-175: whether dragging snaps to the grid, always in sight. */}
-        <button
-          type="button"
-          className={`cv-btn${gridSnap ? ' is-active' : ''}`}
-          aria-pressed={gridSnap}
-          title="Snap dragged objects to the grid where no alignment guide applies (Ctrl+Shift+G; Alt while dragging does the opposite)"
-          onClick={() => useStore.getState().setGridSnap(!gridSnap)}
-        >
-          Grid snap {gridSnap ? 'on' : 'off'}
-        </button>
-        <button
-          type="button"
-          className="cv-btn"
-          title="Draw on white — for a document, a projector, or daylight. Every colour is chosen against the ground it is on, not inverted."
-          onClick={() =>
-            useStore.getState().setSettings({ ground: settings.ground === 'light' ? 'dark' : 'light' })
-          }
-        >
-          {settings.ground === 'light' ? 'Dark background' : 'White background'}
-        </button>
-
-        <label className="cv-check cv-check-inline" title="The overview box, bottom-right">
-          <input
-            type="checkbox"
-            checked={settings.minimap}
-            onChange={(e) => useStore.getState().setSettings({ minimap: e.target.checked })}
-          />
-          Overview
-        </label>
-
-        <label className="cv-check cv-check-inline" title="Stops all packet-dot animation">
-          <input
-            type="checkbox"
-            checked={settings.reduceMotion}
-            onChange={(e) => useStore.getState().setSettings({ reduceMotion: e.target.checked })}
-          />
-          Reduce motion
-        </label>
-        {/* LT-242. */}
-        <label className="cv-check cv-check-inline" title="Stronger lines and text, and a clear focus ring">
-          <input
-            type="checkbox"
-            checked={settings.highContrast}
-            onChange={(e) => useStore.getState().setSettings({ highContrast: e.target.checked })}
-          />
-          High contrast
-        </label>
-
-        {/* LT-076: how every timestamp is written. DTG is what an operator
-            reads at a glance; a plain clock is what everyone else does. The
-            zone is named in the tooltip so nobody has to guess. */}
-        <label
-          className="cv-check cv-check-inline"
-          title={`Times shown in ${
-            isLocalFormat(settings.timeFormat) ? zoneLabel() : 'Zulu (UTC)'
-          }`}
-        >
-          Times
-          <select
-            className="cv-input cv-input-inline"
-            value={settings.timeFormat}
-            onChange={(e) => useStore.getState().setSettings({ timeFormat: e.target.value as TimeFormat })}
-          >
-            {TIME_FORMATS.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
         {/* LT-303: the guide is in the app, not only in the repository. */}
         <button type="button" className="cv-btn cv-btn-help"
           title="How to use Coreview — the whole user guide, searchable"
           onClick={() => useStore.getState().setHelpOpen(true)}>
           {t('help.open')}
         </button>
-        <button type="button" className="cv-btn" onClick={() => setAbout(true)}>
-          About
-        </button>
-        <button
-          type="button"
-          className="cv-btn"
-          onClick={() => {
-            // LT-491: leave only when it closed — a failed save keeps it open
-            // and the status line says why.
-            void useStore.getState().closeProject().then(() => {
-              if (!useStore.getState().meta) onExit();
-            });
-          }}
-        >
-          Close project
-        </button>
+        <details className="cv-dropdown cv-more">
+          <summary className="cv-btn" title={t('topbar.more')} aria-label={t('topbar.more')}>⋯</summary>
+          <div className="cv-dropdown-menu" onClick={(e) => { (e.currentTarget.parentElement as HTMLDetailsElement).open = false; }}>
+            <button type="button" onClick={() => void useStore.getState().saveProject()}>Save <kbd>Ctrl+S</kbd></button>
+            <button type="button" onClick={useStore.getState().undo}>Undo <kbd>Ctrl+Z</kbd></button>
+            <button type="button" onClick={useStore.getState().redo}>Redo <kbd>Ctrl+Y</kbd></button>
+            <button type="button" onClick={() => setAbout(true)}>About</button>
+            <button
+              type="button"
+              onClick={() => {
+                // LT-491: leave only when it closed — a failed save keeps it open
+                // and the status line says why.
+                void useStore.getState().closeProject().then(() => {
+                  if (!useStore.getState().meta) onExit();
+                });
+              }}
+            >
+              Close project
+            </button>
+          </div>
+        </details>
       </div>
 
       {about && <AboutDialog onClose={() => setAbout(false)} />}

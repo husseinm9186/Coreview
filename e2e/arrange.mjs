@@ -168,7 +168,8 @@ if (await front.count()) {
   await selectOnly();
   await page.keyboard.press("f");
   await page.waitForTimeout(500);
-  const toggle = page.locator(".cv-topbar-wrap button", { hasText: /^Grid snap (on|off)$/ });
+  // LT-675: the toggle moved from the top bar to the canvas's own toolbar.
+  const toggle = page.locator(".cv-canvas-tools button", { hasText: /^Grid snap (on|off)$/ });
   check("the toolbar always shows whether grid snap is on", (await toggle.count()) === 1 && (await toggle.innerText()) === "Grid snap off",
     (await toggle.count()) ? await toggle.innerText() : "missing");
   await page.keyboard.press("Control+Shift+G");

@@ -199,6 +199,9 @@ export interface ProjectDocument {
   ipam?: IpamState;
 }
 
+/** The dock's tabs (LT-675). */
+export type DockTab = 'objects' | 'events' | 'discover' | 'crawl' | 'collect' | 'backup' | 'path' | 'trace' | 'tracert' | 'whereis' | 'ssh';
+
 export interface AppSettings {
   reduceMotion: boolean;
   /** How timestamps are written (LT-076). A machine preference, not part of
@@ -350,6 +353,14 @@ interface Store {
    *  Cisco today — each removable to free space. */
   stencilPacks: { name: string }[];
   panelOpen: boolean;
+  /** LT-675: which of the dock's tabs is showing — held here so the rail
+   *  can name it and open it, not only the panel's own strip. */
+  dockTab: DockTab;
+  setDockTab: (tab: DockTab) => void;
+  /** LT-675: the top bar's Search asks the canvas to open the command
+   *  palette, which owns it. */
+  commandPaletteRequest: boolean;
+  requestCommandPalette: (on: boolean) => void;
   paletteOpen: boolean;
   inspectorOpen: boolean;
 
@@ -1120,6 +1131,8 @@ export const useStore = create<Store>((set, get) => ({
     terminal: TERMINAL_DEFAULTS,
   },
   panelOpen: viewPref('panelOpen'),
+  dockTab: 'objects',
+  commandPaletteRequest: false,
   // Which panels are open is a view preference for this machine, not part of
   // the project, so it lives in localStorage rather than the document (which
   // would mark it dirty and travel in an export) or the settings table.
@@ -1457,6 +1470,14 @@ export const useStore = create<Store>((set, get) => ({
   },
   requestPanelTab(tab) {
     set({ panelRequest: tab, ...(tab ? { panelOpen: true } : {}) });
+  },
+
+  setDockTab(tab) {
+    set({ dockTab: tab });
+  },
+
+  requestCommandPalette(on) {
+    set({ commandPaletteRequest: on });
   },
 
   setPrinting(on) {
