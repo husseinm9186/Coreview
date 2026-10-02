@@ -24,6 +24,13 @@ export function WhereIsPanel() {
   const [result, setResult] = useState<CrawlResult | null>(null);
   const [query, setQuery] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
+  // LT-677: a question asked from the inspector's action row.
+  const asked = useStore((s) => s.whereIsRequest);
+  useEffect(() => {
+    if (asked === null) return;
+    setQuery(asked);
+    useStore.getState().requestWhereIs(null);
+  }, [asked]);
 
   useEffect(() => {
     if (!meta) return;

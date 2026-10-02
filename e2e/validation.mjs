@@ -37,6 +37,12 @@ const project = {
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+// LT-677: a device's inspector is tabbed; the control a check wants is under
+// its tab, and the choice holds across selections.
+const inspectorTab = async (name) => {
+  const tab = page.locator('.cv-inspector-tabs button[role="tab"]', { hasText: new RegExp(`^${name}$`) });
+  if (await tab.count()) { await tab.click(); await page.waitForTimeout(150); }
+};
 await page.addInitScript(({ p }) => {
   const listeners = {}, callbacks = {};
   let next = 1;
@@ -111,6 +117,7 @@ const probes = () => st(() => window.__cvStore.getState().doc.probes);
 await select("a");
 await page.waitForTimeout(300);
 const inspector = page.locator(".cv-inspector");
+await inspectorTab("Checks");
 await inspector.locator("button", { hasText: /^Add probe$/ }).click();
 await page.waitForTimeout(300);
 const editor = inspector.locator(".cv-probe").first();

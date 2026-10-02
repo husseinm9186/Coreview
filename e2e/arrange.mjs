@@ -40,6 +40,12 @@ export const project = {
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+// LT-677: a device's inspector is tabbed; the control a check wants is under
+// its tab, and the choice holds across selections.
+const inspectorTab = async (name) => {
+  const tab = page.locator('.cv-inspector-tabs button[role="tab"]', { hasText: new RegExp(`^${name}$`) });
+  if (await tab.count()) { await tab.click(); await page.waitForTimeout(150); }
+};
 await page.addInitScript(({ p }) => {
   let next = 1;
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
@@ -349,6 +355,7 @@ if (await front.count()) {
   await selectOnly();
   await st(() => window.__cvStore.getState().select("f", null));
   await page.waitForTimeout(300);
+  await inspectorTab("Identity");
   const nameSummary = page.locator(".cv-inspector details.cv-text-style summary", { hasText: "Name text" });
   check("the device inspector offers name text styling", (await nameSummary.count()) === 1);
   await nameSummary.click();

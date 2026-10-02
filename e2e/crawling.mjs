@@ -75,6 +75,12 @@ const project = {
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1700, height: 1100 } });
+// LT-677: a device's inspector is tabbed; the control a check wants is under
+// its tab, and the choice holds across selections.
+const inspectorTab = async (name) => {
+  const tab = page.locator('.cv-inspector-tabs button[role="tab"]', { hasText: new RegExp(`^${name}$`) });
+  if (await tab.count()) { await tab.click(); await page.waitForTimeout(150); }
+};
 await page.addInitScript(({ p }) => {
   const listeners = {}, callbacks = {};
   let next = 1;
@@ -127,6 +133,7 @@ await page.evaluate(() => {
   s.select("drawn-core", null);
 });
 await page.waitForTimeout(400);
+await inspectorTab("Identity");
 const snmpFor = page.getByLabel("Saved SNMP credential for this device");
 check("a device's inspector offers the vault's saved credentials", (await snmpFor.locator("option").allTextContents()).join("|") === "None|Read-only SNMP");
 await snmpFor.selectOption("cred-snmp");
@@ -366,6 +373,7 @@ await page.evaluate(() => {
   s.select(n.id, null);
 });
 await page.waitForTimeout(400);
+await inspectorTab("Identity");
 check("its reverse DNS name is on it (LT-206)", (await page.locator(".cv-inspector .cv-field", { hasText: "DNS name" }).locator("input").inputValue()) === "core-sw1.example.test");
 const section = page.locator(".cv-inspector .cv-inventory");
 check("its inspector shows it", (await section.count()) === 1 && /up 58d 2h/.test(await section.textContent()),

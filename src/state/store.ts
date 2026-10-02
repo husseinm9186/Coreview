@@ -200,6 +200,7 @@ export interface ProjectDocument {
 }
 
 /** The dock's tabs (LT-675). */
+export type InspectorTab = 'status' | 'identity' | 'ports' | 'checks' | 'notes';
 export type DockTab = 'objects' | 'events' | 'discover' | 'crawl' | 'collect' | 'backup' | 'path' | 'trace' | 'tracert' | 'whereis' | 'ssh';
 
 export interface AppSettings {
@@ -360,6 +361,18 @@ interface Store {
    *  can name it and open it, not only the panel's own strip. */
   dockTab: DockTab;
   setDockTab: (tab: DockTab) => void;
+  /** LT-677: which of the device inspector's tabs is showing. Kept across a
+   *  change of selection, so editing the identities of several devices does
+   *  not mean choosing Identity again for each. */
+  inspectorTab: InspectorTab;
+  setInspectorTab: (tab: InspectorTab) => void;
+  /** LT-677: devices handed to the Backups tab by something other than a
+   *  crawl — the inspector's Backup button. The panel takes them and clears it. */
+  backupHandover: { address: string; name: string }[] | null;
+  requestBackup: (targets: { address: string; name: string }[] | null) => void;
+  /** LT-677: a question for Where is, asked from the inspector. */
+  whereIsRequest: string | null;
+  requestWhereIs: (query: string | null) => void;
   /** LT-675: the top bar's Search asks the canvas to open the command
    *  palette, which owns it. */
   commandPaletteRequest: boolean;
@@ -1142,6 +1155,9 @@ export const useStore = create<Store>((set, get) => ({
   },
   panelOpen: viewPref('panelOpen'),
   dockTab: 'objects',
+  inspectorTab: 'status',
+  backupHandover: null,
+  whereIsRequest: null,
   commandPaletteRequest: false,
   // Which panels are open is a view preference for this machine, not part of
   // the project, so it lives in localStorage rather than the document (which
@@ -1482,6 +1498,17 @@ export const useStore = create<Store>((set, get) => ({
     set({ panelRequest: tab, ...(tab ? { panelOpen: true } : {}) });
   },
 
+  setInspectorTab(tab) {
+    set({ inspectorTab: tab });
+  },
+  requestBackup(targets) {
+    set({ backupHandover: targets });
+    if (targets) get().requestPanelTab('backup');
+  },
+  requestWhereIs(query) {
+    set({ whereIsRequest: query });
+    if (query !== null) get().requestPanelTab('whereis');
+  },
   setDockTab(tab) {
     set({ dockTab: tab });
   },

@@ -155,6 +155,14 @@ export function StatusPanel() {
   // Devices handed over from a crawl, so a discovery can go straight to a
   // backup without being drawn first.
   const [handedOver, setHandedOver] = useState<{ address: string; name: string }[]>([]);
+  // LT-677: and from the inspector's Backup button, the same way.
+  const backupHandover = useStore((s) => s.backupHandover);
+  useEffect(() => {
+    if (!backupHandover) return;
+    setHandedOver(backupHandover);
+    setTab('backup');
+    useStore.getState().requestBackup(null);
+  }, [backupHandover, setTab]);
   // LT-320: how many shells are open, on the tab itself.
   const sshCount = useStore((s) => s.sshSessions.length);
   const [query, setQuery] = useState('');

@@ -112,6 +112,7 @@ node e2e/arrange.mjs                              # stacking, lasso, snapping (P
 node e2e/pages.mjs                                 # page navigator, layers, paste in place, templates
 node e2e/racks.mjs                                 # rack elevations, cable schedule
 node e2e/dock.mjs                                  # grouped tabs, job strip, pop out (LT-676)
+node e2e/inspector.mjs                             # the device inspector's tabs and action row (LT-677)
 node e2e/crawling.mjs                              # Phase 2 crawl: live table, bindings, review
 node e2e/validation.mjs                            # Phase 3: probes, history, path check, compare
 node e2e/workflow.mjs                              # Phase 4: palette, filter, ink, comments, a11y
@@ -312,6 +313,11 @@ The single most common failure here.
   nothing may float over the pane's top-left band: the lassos, drops and
   pane clicks the harnesses make start there, which is why the canvas
   toolbar is docked above the pane rather than on it.
+- **A device's inspector is tabbed (LT-677).** A field is under Status,
+  Identity, Ports, Checks or Notes, and a locator for it finds nothing until
+  that tab is pressed. The tab holds across selections, so one
+  `inspectorTab("Identity")` early in a block is enough; `inspector.mjs`
+  says which tab holds what.
 
 ### 6.7 Verifying the desktop app by hand under Xvfb
 

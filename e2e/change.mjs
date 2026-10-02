@@ -79,6 +79,12 @@ const check = (name, ok, detail = "") => {
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } });
+// LT-677: a device's inspector is tabbed; the control a check wants is under
+// its tab, and the choice holds across selections.
+const inspectorTab = async (name) => {
+  const tab = page.locator('.cv-inspector-tabs button[role="tab"]', { hasText: new RegExp(`^${name}$`) });
+  if (await tab.count()) { await tab.click(); await page.waitForTimeout(150); }
+};
 
 await page.addInitScript(({ p }) => {
   localStorage.setItem("coreview.projects.v1", JSON.stringify({ [p.meta.id]: p }));
@@ -190,6 +196,7 @@ if (await report.count()) {
     const title = await page.locator(".cv-inspector-title").first().innerText();
     check("clicking it selects the device the line is about",
       /Node/i.test(title), title.replace(/\n/g, " ").slice(0, 40));
+    await inspectorTab("Identity");
     const label = await page.locator(".cv-inspector input").first().inputValue();
     check("and it is the right one", label === "OLD-SW", label);
     check("going to a change still changes nothing",

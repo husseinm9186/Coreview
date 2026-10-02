@@ -164,6 +164,21 @@ inspector fold with their own handles. **Dock below** puts it back, and
 either choice is remembered on this machine. **Hide** folds the dock to one
 row that keeps the counts and the strip.
 
+**The inspector.** A device's inspector opens on **Status**: its address,
+the last check and what it said, what it is plugged into and on which
+ports, who found it, its platform and serial, and the recent-status strip —
+read, not edited. **Identity** is the form: name, type, role, vendor,
+model, hostname, serial, what discovery proved, the login to use, colours,
+tags and which views it appears on. **Ports** has the port count and
+naming, what it connects to, and its neighbours with the port at each end.
+**Checks** has its addresses and probes. **Notes** has the notes, the link,
+the comments and the attachments. The tab you choose stays chosen as you
+move from device to device, and the arrow keys walk the tabs. Above them,
+one row of what you do with a device: **SSH** (a shell in the panel),
+**Backup** (the Backups tab with this device ticked), **Where is** (the
+crawl's last sighting of its address) and **Open as drawer**. Links, notes
+and the project keep the inspector they had.
+
 Autosave writes about two and a half seconds after you stop editing. The top bar
 says either *Unsaved changes* or *Saved* with a time.
 

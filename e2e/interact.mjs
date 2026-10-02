@@ -128,6 +128,14 @@ await page.waitForTimeout(400);
 /** The recovery banner is the app being right about an unexpected reload —
  *  which long harness runs occasionally suffer. It shifts the canvas down,
  *  so any block about to measure dismisses it first. */
+// LT-677: a device's inspector opens on Status; the form is under Identity.
+// The tab is kept across selections, so one press holds until a test wants
+// another tab.
+const inspectorTab = async (name) => {
+  const tab = page.locator('.cv-inspector-tabs button[role="tab"]', { hasText: new RegExp(`^${name}$`) });
+  if (await tab.count()) { await tab.click(); await page.waitForTimeout(150); }
+};
+const identityTab = () => inspectorTab("Identity");
 const dismissRecovery = async () => {
   if (await page.locator(".cv-recovery").count()) {
     await page.locator(".cv-recovery button", { hasText: "Keep what was saved" }).click();
@@ -361,6 +369,7 @@ const dragNode = async (selector, dx, dy, witnessSelector) => {
 {
   await page.locator(".react-flow__node").first().click();
   await page.waitForTimeout(250);
+  await identityTab();
   const lockLabel = page.locator("label.cv-check", { hasText: "Lock position" }).first();
   const found = (await lockLabel.count()) > 0;
   check("the inspector offers a lock", found);
@@ -682,6 +691,7 @@ const dragNode = async (selector, dx, dy, witnessSelector) => {
   await page.waitForTimeout(200);
   await page.locator(".react-flow__node:not(:has(.cv-note))").first().click();
   await page.waitForTimeout(300);
+  await inspectorTab("Status");
 
   const strip = page.locator(".cv-history-strip");
   check("a selected device shows a status strip", (await strip.count()) === 1);
@@ -1465,6 +1475,7 @@ await dismissRecovery();
   await page.waitForTimeout(500);
   await page.locator(".react-flow__node:not(:has(.cv-note))").first().click();
   await page.waitForTimeout(350);
+  await identityTab();
   const picker = page.locator(".cv-inspector .cv-field", { hasText: "Appears on" });
   check("a device can be put on a view", (await picker.count()) === 1);
   // The inspector is a long scrollable column; the picker has to be brought
@@ -2186,22 +2197,29 @@ await dismissRecovery();
   await dev.locator(".cv-glyph-node").click();
   await page.waitForTimeout(250);
 
-  const start = await flowPos();
+  // The position from the store, not from the transform: the browser
+  // serialises `translate(1030.292px)` as 1030.29, so a device past x=1000
+  // read from the DOM is short by what the nudge is being measured in.
+  const nudgedId = await dev.getAttribute("data-id");
+  const storeX = () => page.evaluate((id) => {
+    const d = window.__cvStore.getState().doc;
+    const nodes = d.pages ? d.pages.flatMap((pg) => pg.nodes) : d.nodes;
+    return nodes.find((n) => n.id === id)?.position.x;
+  }, nudgedId);
+  const startX = await storeX();
   await page.keyboard.press("ArrowRight");
   await page.waitForTimeout(200);
-  check("an arrow nudges by one pixel", (await flowPos()).x === start.x + 1,
-    `${start.x} -> ${(await flowPos()).x}`);
+  check("an arrow nudges by one pixel", (await storeX()) === startX + 1,
+    `${startX} -> ${await storeX()}`);
   await page.keyboard.press("Shift+ArrowRight");
   await page.waitForTimeout(200);
-  // Positions can be fractional after a drag, and a fractional start plus 61
-  // is not always bit-equal to the sum the store computed (1047.79 once
-  // failed against 1047.7900000000001); compare to a hair, not to a bit.
-  check("shift-arrow nudges a grid step", Math.abs((await flowPos()).x - (start.x + 61)) < 1e-6,
-    `${start.x} -> ${(await flowPos()).x}`);
+  // A fractional start plus 61 is not always bit-equal to (start + 1) + 60.
+  check("shift-arrow nudges a grid step", Math.abs((await storeX()) - (startX + 61)) < 1e-6,
+    `${startX} -> ${await storeX()}`);
   await page.keyboard.press("Shift+ArrowLeft");
   await page.keyboard.press("ArrowLeft");
   await page.waitForTimeout(200);
-  check("and back", (await flowPos()).x === start.x);
+  check("and back", Math.abs((await storeX()) - startX) < 1e-6, `${startX} -> ${await storeX()}`);
 
   // Ctrl+D: one grid step over, selected, ready to nudge.
   const before = await nodeCount();
@@ -3367,6 +3385,7 @@ await dismissRecovery();
   await page.waitForTimeout(300);
   await page.locator('.react-flow__node[data-id="n1"]').click();
   await page.waitForTimeout(400);
+  await identityTab();
   check("a device's options include its serial number",
     (await page.getByText("Serial number", { exact: true }).count()) === 1);
   const serial = page.locator(".cv-field", { hasText: "Serial number" }).locator("input");

@@ -62,6 +62,12 @@ const other = {
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1700, height: 1100 } });
+// LT-677: a device's inspector is tabbed; the control a check wants is under
+// its tab, and the choice holds across selections.
+const inspectorTab = async (name) => {
+  const tab = page.locator('.cv-inspector-tabs button[role="tab"]', { hasText: new RegExp(`^${name}$`) });
+  if (await tab.count()) { await tab.click(); await page.waitForTimeout(150); }
+};
 
 await page.addInitScript(({ p, o }) => {
   const listeners = {}, callbacks = {};
@@ -147,6 +153,7 @@ await page.waitForTimeout(800);
 await page.locator(".cv-node, .react-flow__node").first().click();
 await page.waitForTimeout(400);
 
+await inspectorTab("Identity");
 const overrides = page.locator(".cv-cred-overrides");
 check("a device offers a login of its own", (await overrides.count()) === 1);
 await overrides.locator("summary").first().click();

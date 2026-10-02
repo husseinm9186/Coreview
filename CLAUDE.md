@@ -230,6 +230,7 @@ node e2e/tracert.mjs      # the Tracert tab: from here or a device, hops named, 
 node e2e/collection.mjs   # the Collect tab: plan preview, command log, shadow report, topology and its hand-over to review (LT-517, LT-521, LT-527)
 node e2e/collectedpath.mjs # Path-Trace over a collection run: the Rust builder's path, verdicts, way back, verify, live, exports (LT-531–LT-536)
 node e2e/dock.mjs         # the dock: grouped tabs, the job strip and clock, pop out and back (LT-676)
+node e2e/inspector.mjs    # the device inspector in tabs: Status, Identity, Ports, Checks, Notes; the action row (LT-677)
 ```
 
 Canvas performance is measured, not asserted (LT-190), against a **production**

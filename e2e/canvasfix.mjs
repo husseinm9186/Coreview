@@ -48,6 +48,12 @@ const project = {
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+// LT-677: a device's inspector is tabbed; the control a check wants is under
+// its tab, and the choice holds across selections.
+const inspectorTab = async (name) => {
+  const tab = page.locator('.cv-inspector-tabs button[role="tab"]', { hasText: new RegExp(`^${name}$`) });
+  if (await tab.count()) { await tab.click(); await page.waitForTimeout(150); }
+};
 
 await page.addInitScript(({ p }) => {
   localStorage.setItem("coreview.projects.v1", JSON.stringify({ [p.meta.id]: p }));
@@ -362,6 +368,7 @@ await page.evaluate(() => {
   st.select("n3", null);
 });
 await page.waitForTimeout(400);
+await inspectorTab("Identity");
 const field = page.locator(".cv-inspector input[type=text], .cv-inspector input:not([type])").first();
 const hasField = (await field.count()) > 0;
 check("the inspector offers a text field to focus", hasField);

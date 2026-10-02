@@ -94,6 +94,12 @@ const project = {
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1700, height: 1100 } });
+// LT-677: a device's inspector is tabbed; the control a check wants is under
+// its tab, and the choice holds across selections.
+const inspectorTab = async (name) => {
+  const tab = page.locator('.cv-inspector-tabs button[role="tab"]', { hasText: new RegExp(`^${name}$`) });
+  if (await tab.count()) { await tab.click(); await page.waitForTimeout(150); }
+};
 
 await page.addInitScript(({ p }) => {
   localStorage.setItem("coreview.projects.v1", JSON.stringify({ [p.meta.id]: p }));
@@ -290,7 +296,11 @@ check("and the VLAN", hostData?.vlan === "10", hostData?.vlan);
 // person corrects is theirs.
 await page.locator(".react-flow__node").first().click();
 await page.waitForTimeout(400);
+// Identity holds most of them; Connects to is under Ports (LT-677).
+await inspectorTab("Identity");
 const inspectorFields = await page.locator(".cv-inspector label span, .cv-field span").allTextContents();
+await inspectorTab("Ports");
+inspectorFields.push(...await page.locator(".cv-inspector label span, .cv-field span").allTextContents());
 for (const label of ["MAC address", "VLAN", "Software", "Connects to", "Open ports", "Found by"]) {
   check(`the inspector shows ${label}`, inspectorFields.includes(label),
     inspectorFields.slice(0, 30).join(" | "));

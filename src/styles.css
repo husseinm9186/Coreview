@@ -748,6 +748,15 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   font-size: var(--text-lg); margin: 0 0 0.92307692rem;
   display: flex; align-items: center; justify-content: space-between; gap: 0.61538462rem;
 }
+/* LT-677: the device inspector's action row, its tabs, and the Status tab's list. */
+.cv-inspector-actions { display: flex; flex-wrap: wrap; gap: 0.30769231rem; margin: 0 0 0.76923077rem; }
+.cv-inspector-tabs { margin: 0 0 0.92307692rem; padding-bottom: 0.46153846rem; border-bottom: 1px solid var(--line); gap: 0.15384615rem; }
+/* Five on one row at the inspector's narrowest. */
+.cv-tabs.cv-inspector-tabs button { padding: 0.23076923rem 0.53846154rem; font-size: var(--text-sm); }
+.cv-kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.30769231rem 0.76923077rem; margin: 0 0 1.07692308rem; font-size: var(--text-md); }
+.cv-kv-row { display: contents; }
+.cv-kv dt { color: var(--text-dim); white-space: nowrap; }
+.cv-kv dd { margin: 0; overflow-wrap: anywhere; }
 .cv-section { border-top: 1px solid var(--line); margin-top: 1.07692308rem; padding-top: 0.76923077rem; }
 .cv-section h3 {
   font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.07em;

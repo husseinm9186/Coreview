@@ -112,12 +112,6 @@ them, the two foundations the operator chose with it: the Graphite theme
 (LT-673) and sizes that scale (LT-674). Nothing is removed; the table on
 the proposal page is where every control goes.
 
-### LT-677 — Phase 3: the inspector in tabs — 2026-10-02
-**Source:** LT-672. Status first (reachability, last check, what it is
-plugged into, platform and serial from the crawl), then Identity (today's
-form), Ports, Checks, Notes; one action row (SSH, Backup, Where is,
-Drawer).
-
 ### LT-678 — Phase 4: Discover as a mode — 2026-10-02
 **Source:** LT-672. Four steps (seeds, logins, options, Advanced); the
 classic crawler and the engine's own view (today's Collect tab) under
@@ -843,6 +837,35 @@ holding the next hop and skips a longer static one. Next.
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-677 — Phase 3: the inspector in tabs — 2026-10-02, done the same day
+**Source:** LT-672. Status first (reachability, last check, what it is
+plugged into, platform and serial from the crawl), then Identity (today's
+form), Ports, Checks, Notes; one action row (SSH, Backup, Where is,
+Drawer).
+**Done 2026-10-02.** A device's inspector (`NodeInspector`) is five tabs
+(`InspectorTabs`, `.cv-inspector-tabs`, `inspectorTab` in the store so the
+choice holds from device to device): **Status** — `DeviceStatus`, a
+read-only list of the address, the last check and what it said (from the
+primary probe's runtime), what it is plugged into with the far port (every
+page's edges), who found it, the platform from vendor · model · software,
+and the serial, then the recent-status strip; **Identity** — the form as
+it was, less what moved; **Ports** — the port count and naming, Connects
+to, and Neighbours; **Checks** — the addresses and the probes; **Notes** —
+Notes, Link, Comments and Attachments. Above the tabs, one action row:
+SSH (the canvas menu's `openSsh`, moved to `sshActions.ts` so both call
+the same thing), Backup (`requestBackup` hands the device to the Backups
+tab ticked, the way a crawl does), Where is (`requestWhereIs` opens that
+tab with the device's address as the question) and Open as drawer. Links,
+notes, groups and the project keep the inspector they had. Eleven harnesses
+that reached a field by its label now press the tab it is under first
+(`inspectorTab("Identity")` and the like, one line each); `join` reads
+Identity and Ports both, because Connects to moved. **Run:**
+`e2e/inspector.mjs` (new, 36 checks: the five tabs on one row, Status's
+values and that an edit on Identity shows there, the arrows, the tab kept
+across a selection, each tab's contents, a probe added under Checks,
+the action row's four buttons and what each does, a link's inspector
+untouched), vitest, tsc, eslint, and the full harness suite.
 
 ### LT-676 — Phase 2: the dock — grouped tabs with counts, the job strip, pop-out — 2026-10-02, done the same day
 **Source:** LT-672. The same twelve tabs under Monitor, Discover, Paths and

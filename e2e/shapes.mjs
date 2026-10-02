@@ -46,6 +46,12 @@ const project = {
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+// LT-677: a device's inspector is tabbed; the control a check wants is under
+// its tab, and the choice holds across selections.
+const inspectorTab = async (name) => {
+  const tab = page.locator('.cv-inspector-tabs button[role="tab"]', { hasText: new RegExp(`^${name}$`) });
+  if (await tab.count()) { await tab.click(); await page.waitForTimeout(150); }
+};
 
 await page.addInitScript(({ p }) => {
   localStorage.setItem("coreview.projects.v1", JSON.stringify({ [p.meta.id]: p }));
@@ -122,8 +128,11 @@ check("its glyph is drawn", (await page.locator(`.react-flow__node[data-id="${dr
 await page.evaluate((id) => window.__cvStore.getState().select(id, null), dropped?.id);
 await page.waitForTimeout(300);
 const field = (label) => page.locator(".cv-inspector label", { hasText: new RegExp(`^${label}`) }).locator("input").first();
+await inspectorTab("Ports");
 check("the inspector shows its ports", (await field("Ports").inputValue()) === "24");
+await inspectorTab("Identity");
 check("and its rack units", (await field("Rack units").inputValue()) === "1");
+await inspectorTab("Ports");
 await field("Ports").fill("8");
 await page.waitForTimeout(200);
 check("and the ports can be changed", (await nodes()).find((n) => n.id === dropped?.id)?.portCount === 8);
@@ -209,6 +218,7 @@ check("dropping one makes a section of that kind", zone?.deviceType === "zone" &
   JSON.stringify({ t: zone?.deviceType, k: zone?.boundaryKind }));
 await page.evaluate((id) => window.__cvStore.getState().select(id, null), zone?.id);
 await page.waitForTimeout(300);
+await inspectorTab("Identity");
 const ident = page.locator(".cv-inspector label", { hasText: /^Identifier/ }).locator("input");
 check("the inspector asks for its identifier", (await ident.count()) === 1);
 await ident.fill("20");
@@ -261,6 +271,7 @@ if (await solidItem.count()) {
     `${await solidCount()} solid of ${glyphDevices.length}`);
   await page.evaluate((id) => window.__cvStore.getState().select(id, null), glyphDevices[0]);
   await page.waitForTimeout(300);
+  await inspectorTab("Identity");
   await page.locator(".cv-inspector label", { hasText: /^Glyph/ }).locator("select").selectOption("outline");
   await page.waitForTimeout(300);
   check("one device can stay an outline on a solid page",

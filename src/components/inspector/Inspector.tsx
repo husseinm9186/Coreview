@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULTS, deviceColor } from '../../theme';
 
-import { useStore } from '../../state/store';
+import { useStore, type InspectorTab } from '../../state/store';
+import { openSsh } from '../sshActions';
 import { InventorySection } from './InventorySection';
 import { whySays } from '../../lib/evidence';
 // The catalogue's `t`, aliased: this file already has a `t` of its own.
@@ -34,6 +35,7 @@ import { activePage } from '../../lib/pages';
 import type {
   DeviceNodeData,
   DeviceType,
+  HealthStatus,
   LinkData,
   LinkHealthRuleType,
   NoteNodeData,
@@ -995,6 +997,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
   const update = useStore((s) => s.updateNodeData);
   const status = useStore((s) => s.nodeStatus(nodeId));
   const ground = useStore((s) => s.settings.ground);
+  const tab = useStore((s) => s.inspectorTab);
 
   if (!node) return null;
 
@@ -1111,11 +1114,31 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
           {STATUS_GLYPH[status]} {STATUS_LABEL[status]}
         </span>
       </h2>
-      {/* LT-444: the same sections, at a width this rail cannot give. */}
-      <button type="button" className="cv-btn cv-btn-small cv-open-drawer"
-        onClick={() => useStore.getState().openDrawer({ kind: 'device', nodeId })}>
-        {tr('drawer.openDevice')}
-      </button>
+      {/* LT-677: what you do with a device, in one row. */}
+      <div className="cv-inspector-actions" role="toolbar" aria-label={tr('inspector.actions')}>
+        <button type="button" className="cv-btn cv-btn-small" title={tr('ssh.panel')}
+          onClick={() => void openSsh(nodeId, d)}>
+          {tr('ssh.title')}
+        </button>
+        <button type="button" className="cv-btn cv-btn-small" title={tr('inspector.backupHint')}
+          onClick={() => useStore.getState().requestBackup([{ address: primaryAddress(d), name: deviceLabel }])}>
+          {tr('inspector.backup')}
+        </button>
+        <button type="button" className="cv-btn cv-btn-small" title={tr('inspector.whereIsHint')}
+          onClick={() => useStore.getState().requestWhereIs(primaryAddress(d) || d.mac || deviceLabel)}>
+          {tr('whereis.find')}
+        </button>
+        {/* LT-444: the same sections, at a width this rail cannot give. */}
+        <button type="button" className="cv-btn cv-btn-small cv-open-drawer"
+          onClick={() => useStore.getState().openDrawer({ kind: 'device', nodeId })}>
+          {tr('drawer.openDevice')}
+        </button>
+      </div>
+      <InspectorTabs />
+
+      {tab === 'status' && <DeviceStatus nodeId={nodeId} data={d} status={status} />}
+
+      {tab === 'identity' && (<>
 
       <Field label={d.deviceType === 'text' || d.deviceType === 'callout' ? 'Text' : 'Display name'}>
         {d.deviceType === 'text' || d.deviceType === 'callout' ? (
@@ -1219,29 +1242,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
           />
         </Field>
       </div>
-      {/* LT-171: what the shape brought with it, all editable. The port names
-          are offered when a link's port label is typed. */}
       <div className="cv-row">
-        <Field label="Ports">
-          <input
-            className="cv-input"
-            type="number"
-            min={0}
-            value={d.portCount ?? ''}
-            onChange={(e) =>
-              update(nodeId, { portCount: e.target.value === '' ? undefined : Math.max(0, Math.floor(Number(e.target.value))) })
-            }
-          />
-        </Field>
-        <Field label="Port naming" hint="{n} is the port number">
-          <input
-            className="cv-input cv-mono"
-            value={d.portNaming ?? ''}
-            spellCheck={false}
-            placeholder="Port {n}"
-            onChange={(e) => update(nodeId, { portNaming: e.target.value })}
-          />
-        </Field>
         <Field label="Rack units" hint="0 for zero-U">
           <input
             className="cv-input"
@@ -1335,15 +1336,6 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
             onChange={(e) => update(nodeId, { osVersion: e.target.value })}
           />
         </Field>
-        <Field label="Connects to" hint="The switch and port it was learned on">
-          <input
-            className="cv-input cv-mono"
-            value={d.switchPort ?? ''}
-            spellCheck={false}
-            placeholder={tr('inspector.labCoreSw1Gi1')}
-            onChange={(e) => update(nodeId, { switchPort: e.target.value })}
-          />
-        </Field>
       </div>
       {/* LT-148: a stack is one device on a diagram and several boxes an RMA
           is raised against, so the members are shown with their own serials.
@@ -1420,11 +1412,6 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
           onChange={(id) => update(nodeId, { snmpCredentialId: id })} />
       </details>
       {d.inventory && <InventorySection inventory={d.inventory} uptimeWhy={whySays(d.evidence, 'uptime')} />}
-      {/* LT-234. */}
-      <NeighboursSection nodeId={nodeId} />
-      <AttachmentsSection nodeId={nodeId} data={d} />
-      {/* LT-239. */}
-      <CommentsSection threads={d.comments} onChange={(next, label) => useStore.getState().setComments(nodeId, next, label)} />
       {/* LT-149: commands this device gets on top of the Backups tab's global
           list. Only commands that read are ever run; anything else is refused
           before a connection opens. Deliberately no placeholder — nothing
@@ -1478,22 +1465,6 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
           }
         />
       </Field>
-      <Field label="Notes">
-        <textarea
-          className="cv-input"
-          rows={3}
-          value={d.notes ?? ''}
-          onChange={(e) => update(nodeId, { notes: e.target.value })}
-        />
-      </Field>
-      <Field label="Link" hint="A runbook, a vendor portal, a ticket — opened in the OS browser">
-        <input
-          className="cv-input cv-mono"
-          placeholder="https://…"
-          value={d.link ?? ''}
-          onChange={(e) => update(nodeId, { link: e.target.value })}
-        />
-      </Field>
 
       <div className="cv-checks">
         <label className="cv-check">
@@ -1539,9 +1510,169 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
         on={d.layers}
         onChange={(layers) => update(nodeId, { layers })}
       />
+      </>)}
+
+      {tab === 'ports' && (<>
+        {/* LT-171: what the shape brought with it, all editable. The port names
+            are offered when a link's port label is typed. */}
+        <div className="cv-row">
+          <Field label="Ports">
+            <input
+              className="cv-input"
+              type="number"
+              min={0}
+              value={d.portCount ?? ''}
+              onChange={(e) =>
+                update(nodeId, { portCount: e.target.value === '' ? undefined : Math.max(0, Math.floor(Number(e.target.value))) })
+              }
+            />
+          </Field>
+          <Field label="Port naming" hint="{n} is the port number">
+            <input
+              className="cv-input cv-mono"
+              value={d.portNaming ?? ''}
+              spellCheck={false}
+              placeholder="Port {n}"
+              onChange={(e) => update(nodeId, { portNaming: e.target.value })}
+            />
+          </Field>
+        </div>
+        <div className="cv-row">
+        <Field label="Connects to" hint="The switch and port it was learned on">
+          <input
+            className="cv-input cv-mono"
+            value={d.switchPort ?? ''}
+            spellCheck={false}
+            placeholder={tr('inspector.labCoreSw1Gi1')}
+            onChange={(e) => update(nodeId, { switchPort: e.target.value })}
+          />
+        </Field>
+        </div>
+        {/* LT-234. */}
+        <NeighboursSection nodeId={nodeId} />
+      </>)}
+
+      {tab === 'checks' && (<>
+        <AddressList nodeId={nodeId} />
+        <ProbeList objectKind="node" objectId={nodeId} />
+      </>)}
+
+      {tab === 'notes' && (<>
+      <Field label="Notes">
+        <textarea
+          className="cv-input"
+          rows={3}
+          value={d.notes ?? ''}
+          onChange={(e) => update(nodeId, { notes: e.target.value })}
+        />
+      </Field>
+      <Field label="Link" hint="A runbook, a vendor portal, a ticket — opened in the OS browser">
+        <input
+          className="cv-input cv-mono"
+          placeholder="https://…"
+          value={d.link ?? ''}
+          onChange={(e) => update(nodeId, { link: e.target.value })}
+        />
+      </Field>
+        {/* LT-239. */}
+        <CommentsSection threads={d.comments} onChange={(next, label) => useStore.getState().setComments(nodeId, next, label)} />
+        <AttachmentsSection nodeId={nodeId} data={d} />
+      </>)}
+    </>
+  );
+}
+
+const INSPECTOR_TABS: InspectorTab[] = ['status', 'identity', 'ports', 'checks', 'notes'];
+
+/** LT-677: the device inspector's tabs. Arrows and Home/End walk them (LT-240). */
+function InspectorTabs() {
+  const tab = useStore((s) => s.inspectorTab);
+  const setTab = useStore((s) => s.setInspectorTab);
+  return (
+    <div
+      className="cv-tabs cv-inspector-tabs"
+      role="tablist"
+      aria-label={tr('inspector.tabs')}
+      onKeyDown={(e) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+        const at = INSPECTOR_TABS.indexOf(tab);
+        const next = e.key === 'Home' ? 0 : e.key === 'End' ? INSPECTOR_TABS.length - 1 : (at + (e.key === 'ArrowRight' ? 1 : -1) + INSPECTOR_TABS.length) % INSPECTOR_TABS.length;
+        e.preventDefault();
+        setTab(INSPECTOR_TABS[next]!);
+        (e.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="tab"]')[next])?.focus();
+      }}
+    >
+      {INSPECTOR_TABS.map((id) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={tab === id}
+          tabIndex={tab === id ? 0 : -1}
+          className={tab === id ? 'is-active' : ''}
+          onClick={() => setTab(id)}
+        >
+          {tr(`inspector.tab.${id}`)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function primaryAddress(d: DeviceNodeData): string {
+  const list = d.addresses ?? [];
+  return (list.find((a) => a.isPrimary) ?? list[0])?.address ?? '';
+}
+
+/**
+ * The Status tab (LT-677): what you want to know first about a device, read
+ * rather than edited — its address, the last check and what it said, what it
+ * is plugged into, who said so, what it is, and its serial — then the recent
+ * status strip. Every value here is also somewhere it can be changed.
+ */
+function DeviceStatus({ nodeId, data: d, status }: { nodeId: string; data: DeviceNodeData; status: HealthStatus }) {
+  const probes = useStore((s) => s.doc.probes);
+  const runtime = useStore((s) => s.runtime);
+  const pages = useStore((s) => s.doc.pages);
+  const own = probes.filter((p) => p.objectId === nodeId);
+  const primary = own.find((p) => p.isPrimary && p.enabled) ?? own.find((p) => p.enabled);
+  const live = primary ? runtime.get(primary.id) : undefined;
+  const lastMs = Math.max(live?.lastSuccessMs ?? 0, live?.lastFailureMs ?? 0);
+  const lastCheck = own.length === 0
+    ? tr('inspector.status.noCheck')
+    : lastMs === 0
+      ? tr('inspector.status.notYet')
+      : `${shortDuration(Date.now() - lastMs)} ${tr('inspector.status.ago')}${live?.lastSummary ? ` · ${live.lastSummary}` : ''}`;
+  const plugged: string[] = [];
+  for (const page of pages) {
+    const label = new Map(page.nodes.map((n) => [n.id, (n.data as DeviceNodeData).label ?? '']));
+    for (const e of page.edges) {
+      const ld = (e.data ?? {}) as LinkData;
+      if (ld.kind === 'leader') continue;
+      if (e.source === nodeId) plugged.push(`${label.get(e.target) ?? '?'}${ld.targetPortLabel ? ` ${ld.targetPortLabel}` : ''}`);
+      else if (e.target === nodeId) plugged.push(`${label.get(e.source) ?? '?'}${ld.sourcePortLabel ? ` ${ld.sourcePortLabel}` : ''}`);
+    }
+  }
+  const platform = [d.vendor, d.model, d.osVersion].map((v) => v?.trim()).filter(Boolean).join(' · ');
+  const rows: [string, string, boolean][] = [
+    [tr('inspector.status.address'), primaryAddress(d), true],
+    [tr('inspector.status.lastCheck'), lastCheck, false],
+    [tr('inspector.status.pluggedInto'), plugged.slice(0, 6).join(' · ') + (plugged.length > 6 ? ` · +${plugged.length - 6}` : ''), false],
+    [tr('inspector.status.seenBy'), d.discoveredVia ?? '', false],
+    [tr('inspector.status.platform'), platform, false],
+    [tr('inspector.status.serial'), d.serial ?? '', true],
+  ];
+  return (
+    <>
+      <dl className="cv-kv" data-region="device-status" data-status={status}>
+        {rows.map(([k, v, mono]) => (
+          <div key={k} className="cv-kv-row">
+            <dt>{k}</dt>
+            <dd className={mono ? 'cv-mono' : undefined}>{v || '—'}</dd>
+          </div>
+        ))}
+      </dl>
       <StatusStrip nodeId={nodeId} />
-      <AddressList nodeId={nodeId} />
-      <ProbeList objectKind="node" objectId={nodeId} />
     </>
   );
 }

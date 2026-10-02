@@ -170,6 +170,12 @@ await page.keyboard.press("Escape");
 await page.waitForTimeout(300);
 check("Escape leaves focus", (await dimmed()).length === 0);
 
+// LT-677: a device's inspector is tabbed; the section a check wants is under
+// its tab. The choice holds across selections.
+const inspectorTab = async (name) => {
+  const tab = page.locator('.cv-inspector-tabs button[role="tab"]', { hasText: new RegExp(`^${name}$`) });
+  if (await tab.count()) { await tab.click(); await page.waitForTimeout(150); }
+};
 // ------------------------------------------------ LT-234 device inspector
 await st(() => {
   const s = window.__cvStore.getState();
@@ -177,9 +183,11 @@ await st(() => {
   s.select("core", null);
 });
 await page.waitForTimeout(300);
+await inspectorTab("Ports");
 const neighbours = page.locator(".cv-inspector section[aria-label=Neighbours] tbody tr");
 const nRows = await neighbours.evaluateAll((trs) => trs.map((tr) => [...tr.querySelectorAll("td")].slice(0, 3).map((td) => td.textContent).join("|")));
 check("a device lists what it is linked to, port by port", JSON.stringify(nRows) === JSON.stringify(["Gi1/0/1|EDGE-FW|port1", "Gi1/0/2|ACC-SW1|Gi0/1", "—|ACC-SW2|—"]), JSON.stringify(nRows));
+await inspectorTab("Notes");
 const attach = page.locator(".cv-inspector section[aria-label=Attachments]");
 await attach.getByLabel("Attachment path").fill("/srv/site-docs/core-rack.pdf");
 await attach.locator("button", { hasText: /^Add$/ }).click();
@@ -352,6 +360,7 @@ await st(() => {
   s.select("acc2", null);
 });
 await page.waitForTimeout(300);
+await inspectorTab("Notes");
 const comments = page.locator(".cv-inspector section[aria-label=Comments]");
 await comments.getByLabel("Your name").fill("Sam");
 await comments.getByLabel("New comment").fill("Is the uplink fibre?");
