@@ -111,6 +111,7 @@ node e2e/history.mjs                              # 200 undo steps, kept after r
 node e2e/arrange.mjs                              # stacking, lasso, snapping (Phase 1.2)
 node e2e/pages.mjs                                 # page navigator, layers, paste in place, templates
 node e2e/racks.mjs                                 # rack elevations, cable schedule
+node e2e/dock.mjs                                  # grouped tabs, job strip, pop out (LT-676)
 node e2e/crawling.mjs                              # Phase 2 crawl: live table, bindings, review
 node e2e/validation.mjs                            # Phase 3: probes, history, path check, compare
 node e2e/workflow.mjs                              # Phase 4: palette, filter, ink, comments, a11y

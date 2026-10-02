@@ -25,6 +25,7 @@ export default function App() {
   const meta = useStore((s) => s.meta);
   const highContrast = useStore((s) => s.settings.highContrast);
   const uiScale = useStore((s) => s.settings.uiScale);
+  const dockSide = useStore((s) => s.settings.dockSide);
   const ground = useStore((s) => s.settings.ground);
   const applyEngineEvent = useStore((s) => s.applyEngineEvent);
   // Read above the early return: a hook after one is called conditionally,
@@ -153,6 +154,9 @@ export default function App() {
         {helpOpen && <ErrorBoundary what="The guide"><HelpScreen /></ErrorBoundary>}
         {/* The narrow layouts show the palette or the inspector, not both,
             and which one depends on whether there is something to inspect. */}
+        {/* LT-676: the body holds the canvas and the dock, so the dock can sit
+            along the bottom or, popped out, down the right. */}
+        <div className={`cv-body${dockSide === 'right' ? ' is-dock-right' : ''}${registerOpen || helpOpen || toolsOpen ? ' is-behind' : ''}`}>
         <div
           className={[
             'cv-main',
@@ -205,6 +209,7 @@ export default function App() {
         {!registerOpen && !helpOpen && !toolsOpen && (
           <ErrorBoundary what="The monitoring panel"><StatusPanel /></ErrorBoundary>
         )}
+        </div>
         </div>
       </div>
     </ReactFlowProvider>

@@ -255,6 +255,23 @@ body {
 /* LT-675, D-064: the rail and the shell beside it. */
 .cv-workspace { display: grid; grid-template-columns: 3.38461538rem 1fr; grid-template-rows: 100%; }
 .cv-shell { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; }
+/* LT-676: the canvas and the dock; the dock along the bottom, or down the right. */
+.cv-body { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.cv-body.is-dock-right { flex-direction: row; }
+.cv-body.is-dock-right > .cv-main { flex: 1; min-width: 0; }
+/* Beside the dock the canvas gives way first: the side panels keep their
+   width and their rails fold them; a canvas track with a floor overflowed
+   into the dock instead. */
+.cv-body.is-dock-right > .cv-main:not(.palette-hidden):not(.inspector-hidden) {
+  grid-template-columns: clamp(11.53846154rem, 15vw, 16.76923077rem) minmax(0, 1fr) clamp(18.46153846rem, 22vw, 26.15384615rem);
+}
+.cv-body.is-dock-right > .cv-main.palette-hidden:not(.inspector-hidden) { grid-template-columns: minmax(0, 1fr) clamp(18.46153846rem, 22vw, 26.15384615rem); }
+.cv-body.is-dock-right > .cv-main.inspector-hidden:not(.palette-hidden) { grid-template-columns: clamp(11.53846154rem, 15vw, 16.76923077rem) minmax(0, 1fr); }
+.cv-body.is-dock-right > .cv-panel, .cv-body.is-dock-right > .cv-panel.is-tall {
+  height: auto; width: clamp(24.61538462rem, 40vw, 61.53846154rem); flex: none;
+  border-top: 0; border-left: 1px solid var(--chrome-edge);
+}
+.cv-body.is-dock-right > .cv-panel.is-collapsed { width: auto; flex-direction: column; align-items: stretch; }
 .cv-nav {
   display: flex; flex-direction: column; align-items: stretch; gap: 0.15384615rem;
   padding: 0.46153846rem 0.30769231rem; background: var(--bg); border-right: 1px solid var(--chrome-edge);
@@ -312,7 +329,7 @@ body {
 
 /* LT-193: presentation. Everything but the diagram goes; the page is what is
    being shown. */
-.cv-workspace.is-presenting > .cv-nav, .cv-workspace.is-presenting .cv-shell > :not(.cv-main), .cv-workspace.is-presenting .cv-canvas-tools { display: none; }
+.cv-workspace.is-presenting > .cv-nav, .cv-workspace.is-presenting .cv-shell > :not(.cv-body), .cv-workspace.is-presenting .cv-body > :not(.cv-main), .cv-workspace.is-presenting .cv-canvas-tools { display: none; }
 .cv-workspace.is-presenting { grid-template-columns: 1fr; }
 .cv-workspace.is-presenting .cv-main { grid-template-columns: minmax(0, 1fr); }
 .cv-workspace.is-presenting .cv-main > :not(.cv-canvas-col) { display: none; }
@@ -774,7 +791,16 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-panel-search { max-width: 24.61538462rem; }
 .cv-panel-message { padding: 0.46153846rem 0.92307692rem; background: var(--panel-2); color: var(--text-dim); font-size: var(--text-sm); }
 .cv-panel-body { flex: 1; overflow: auto; }
-.cv-tabs { display: flex; flex-wrap: wrap; gap: 0.30769231rem; }
+.cv-tabs { display: flex; flex-wrap: wrap; gap: 0.30769231rem; align-items: center; }
+/* LT-676: a group is its heading and its tabs, kept together when the row wraps. */
+.cv-tab-group { display: inline-flex; align-items: center; gap: 0.30769231rem; }
+.cv-tab-group + .cv-tab-group { margin-left: 0.61538462rem; }
+.cv-tab-group-name { color: var(--text-faint); font-size: var(--text-2xs); letter-spacing: .08em; text-transform: uppercase; margin-right: 0.15384615rem; }
+/* The strip along the dock's bottom: the jobs, and the clock on the right. */
+.cv-dock-strip { display: flex; align-items: center; gap: 0.92307692rem; padding: 0.23076923rem 0.76923077rem; border-top: 1px solid var(--line); background: var(--panel-2); font-size: var(--text-sm); min-height: 1.84615385rem; }
+.cv-dock-strip > .cv-jobs { flex: 1; }
+.cv-dock-strip.is-compact { border-top: 0; background: transparent; padding: 0; margin-left: auto; min-height: 0; }
+.cv-dock-clock { margin-left: auto; color: var(--text-dim); white-space: nowrap; }
 .cv-tabs button {
   white-space: nowrap;
   background: none; border: 1px solid transparent; color: var(--text-dim);
@@ -1200,6 +1226,9 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
   background: var(--bg); overflow: hidden;
 }
 .cv-main.is-behind { display: none; }
+/* LT-676: the body too, or an empty flex item takes half the height from
+   the screen over it (racks.mjs found it: a 42U rack lost half its scroll). */
+.cv-body.is-behind { display: none; }
 .cv-register-head {
   display: flex; align-items: center; gap: 1.23076923rem; flex-wrap: wrap;
   padding: 0.76923077rem 1.07692308rem; border-bottom: 1px solid var(--line); background: var(--panel);

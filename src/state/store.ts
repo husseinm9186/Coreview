@@ -216,6 +216,9 @@ export interface AppSettings {
   /** LT-674: the chrome's size, as a multiple of the root size the screen
    *  sets (0.85–1.4). A machine preference. The canvas's zoom is its own. */
   uiScale: number;
+  /** LT-676: where the dock sits — along the bottom, or popped out to the
+   *  right for wide tables. A view preference for this machine. */
+  dockSide: 'bottom' | 'right';
   /** The overview box, bottom-right. A view preference for this machine, like
    *  which panels are open — not part of any project. */
   minimap: boolean;
@@ -1118,6 +1121,13 @@ export const useStore = create<Store>((set, get) => ({
         return v >= 0.85 && v <= 1.4 ? v : 1;
       } catch {
         return 1;
+      }
+    })(),
+    dockSide: (() => {
+      try {
+        return localStorage.getItem('coreview.view.dockSide') === 'right' ? 'right' : 'bottom';
+      } catch {
+        return 'bottom';
       }
     })(),
     minimap: viewPref('minimap'),
@@ -3434,6 +3444,13 @@ export const useStore = create<Store>((set, get) => ({
     if (patch.uiScale !== undefined) {
       try {
         localStorage.setItem('coreview.view.uiScale', String(patch.uiScale));
+      } catch {
+        /* private mode — the choice lasts this session */
+      }
+    }
+    if (patch.dockSide !== undefined) {
+      try {
+        localStorage.setItem('coreview.view.dockSide', patch.dockSide);
       } catch {
         /* private mode — the choice lasts this session */
       }

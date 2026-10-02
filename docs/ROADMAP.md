@@ -112,11 +112,6 @@ them, the two foundations the operator chose with it: the Graphite theme
 (LT-673) and sizes that scale (LT-674). Nothing is removed; the table on
 the proposal page is where every control goes.
 
-### LT-676 — Phase 2: the dock — grouped tabs with counts, the job strip, pop-out — 2026-10-02
-**Source:** LT-672. The same twelve tabs under Monitor, Discover, Paths and
-Ops; counts kept; the JobsBar becomes the strip along the dock's bottom;
-Pop out sends the dock to the right half. No panel's contents change.
-
 ### LT-677 — Phase 3: the inspector in tabs — 2026-10-02
 **Source:** LT-672. Status first (reachability, last check, what it is
 plugged into, platform and serial from the crawl), then Identity (today's
@@ -848,6 +843,36 @@ holding the next hop and skips a longer static one. Next.
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-676 — Phase 2: the dock — grouped tabs with counts, the job strip, pop-out — 2026-10-02, done the same day
+**Source:** LT-672. The same twelve tabs under Monitor, Discover, Paths and
+Ops; counts kept; the JobsBar becomes the strip along the dock's bottom;
+Pop out sends the dock to the right half. No panel's contents change.
+**Done 2026-10-02.** The eleven tabs (twelve in the brief counted the
+register, which is a screen) sit in four groups in `StatusPanel`
+(`DOCK_GROUPS`): Monitor — Monitored objects, Event timeline, with their
+counts; Discover — Discover devices, Ping sweep, Collect; Paths —
+Path-Trace, Path check, Tracert, Where is; Ops — Backups, SSH. The group
+names are headings, not buttons, so LT-240's arrows still walk only the
+tabs; every label is the one it had, so no harness that reaches a tab by
+its text changed. The strip (`DockStrip`, `.cv-dock-strip`) runs along
+the dock's bottom, in the folded row too: `JobsBar` with every running
+job and its Cancel, and the clock in Settings ▸ Times' format — the
+first place that setting shows. The top bar's compact job line stays only
+while a screen (Addresses, Tools, Help) covers the dock. **Pop out**
+(`settings.dockSide`, `coreview.view.dockSide`) puts the dock down the
+right of the window at `clamp(24.6rem, 40vw, 61.5rem)` for the full body
+height; `.cv-body` wraps the canvas grid and the dock so either axis
+works, and beside the dock the canvas track loses its floor, because a
+floored canvas overflowed under the dock. Presenting hides it either
+way, and so does a screen over the diagram: the body hides with the
+canvas, because an empty flex item took half the height from the Tools
+screen and `racks.mjs` lost half of a 42U rack's scroll — caught by the
+suite's first run, fixed before the push. **Run:** `e2e/dock.mjs` (new, 34 checks: the groups, the arrows,
+the strip, the clock following the setting, a job injected into the
+store, the top bar's stand-in, pop out, the inspector not under it,
+presenting, remembered across a reopen, dock below), vitest, tsc,
+eslint, and the full harness suite.
 
 ### LT-675 — Phase 1: the rail, the one-row top bar, the canvas toolbar, preferences in Settings — 2026-10-02, done the same day
 **Source:** LT-672. The left rail names the modes (Diagram, Discover,

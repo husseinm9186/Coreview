@@ -151,6 +151,19 @@ on the drawing — Save, Undo, Redo, Fit view, zoom, Grid snap, the page's
 ground, the Overview box and Filter — is a row along the top of the canvas;
 the drawing tools (Types, Pen, Eraser) float on the canvas below it.
 
+**The dock.** The panel under the canvas keeps every tab it had, in four
+groups: **Monitor** (Monitored objects, Event timeline, with their counts),
+**Discover** (Discover devices, Ping sweep, Collect), **Paths** (Path-Trace,
+Path check, Tracert, Where is) and **Ops** (Backups, SSH). The arrow keys
+still walk the tabs. Along its bottom runs a strip with every job that is
+running — a crawl, a backup, a sweep — with its progress and a **Cancel**,
+and the clock on the right in the format chosen under **Settings ▸ Display ▸
+Times**. **Pop out** sends the dock down the right of the window, the full
+height, for a wide table; the canvas gives way and the palette and
+inspector fold with their own handles. **Dock below** puts it back, and
+either choice is remembered on this machine. **Hide** folds the dock to one
+row that keeps the counts and the strip.
+
 Autosave writes about two and a half seconds after you stop editing. The top bar
 says either *Unsaved changes* or *Saved* with a time.
 

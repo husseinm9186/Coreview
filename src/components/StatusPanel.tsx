@@ -4,7 +4,7 @@ import { useReactFlow } from '@xyflow/react';
 import { findNodes } from '../lib/findNodes';
 import { t } from '../i18n';
 
-import { useStore } from '../state/store';
+import { useStore, type DockTab } from '../state/store';
 import { JobsBar } from './JobsBar';
 import { EmptyState } from './EmptyState';
 import { useRovingTabindex } from './useRovingTabindex';
@@ -97,6 +97,14 @@ const ObjectRows = memo(function ObjectRows({
   );
 });
 
+/** LT-676: the dock's tabs by what they answer. Every tab is here once. */
+const DOCK_GROUPS: { key: 'monitor' | 'discover' | 'paths' | 'ops'; tabs: DockTab[] }[] = [
+  { key: 'monitor', tabs: ['objects', 'events'] },
+  { key: 'discover', tabs: ['crawl', 'discover', 'collect'] },
+  { key: 'paths', tabs: ['trace', 'path', 'tracert', 'whereis'] },
+  { key: 'ops', tabs: ['backup', 'ssh'] },
+];
+
 function missedNote(live: ProbeRuntime | undefined): string | null {
   if (!live || live.consecutiveFailures < 1) return null;
   // Only while the count still means something. Past the threshold the device
@@ -127,6 +135,7 @@ export function StatusPanel() {
   // LT-675: the tab lives in the store, so the rail can open and name it.
   const tab = useStore((s) => s.dockTab);
   const setTab = useStore((s) => s.setDockTab);
+  const dockSide = useStore((s) => s.settings.dockSide);
   useEffect(() => {
     if (!panelRequest) return;
     // LT-300: the register moved to a screen of its own. Anything that still
@@ -294,6 +303,26 @@ export function StatusPanel() {
     return acc;
   }, {});
 
+  const label = (id: DockTab): string => {
+    switch (id) {
+      case 'objects': return `Monitored objects (${rows.length})`;
+      case 'events': return `Event timeline (${events.length})`;
+      case 'discover': return 'Ping sweep';
+      case 'crawl': return 'Discover devices';
+      case 'collect': return 'Collect';
+      case 'backup': return 'Backups';
+      case 'path': return 'Path check';
+      // LT-346: where a packet would go, beside Path check, which asks whether it gets there.
+      case 'trace': return 'Path-Trace';
+      // LT-505: where it actually went, beside where it would go.
+      case 'tracert': return 'Tracert';
+      // LT-338: where a thing is, from what the crawl already found.
+      case 'whereis': return t('whereis.find');
+      // LT-320: open shells — the diagram's own devices, so the dock keeps a tab.
+      case 'ssh': return sshCount ? t('ssh.tab', { count: sshCount }) : t('ssh.title');
+    }
+  };
+
   if (!open) {
     return (
       <div className="cv-panel is-collapsed">
@@ -307,6 +336,8 @@ export function StatusPanel() {
             </span>
           ))}
         </span>
+        {/* LT-676: the strip stays in sight with the dock folded away. */}
+        <DockStrip compact />
       </div>
     );
   }
@@ -329,124 +360,27 @@ export function StatusPanel() {
             tabs[next]?.click();
           }}
         >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'objects'}
-            tabIndex={tab === 'objects' ? 0 : -1}
-            className={tab === 'objects' ? 'is-active' : ''}
-            onClick={() => setTab('objects')}
-          >
-            Monitored objects ({rows.length})
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'events'}
-            tabIndex={tab === 'events' ? 0 : -1}
-            className={tab === 'events' ? 'is-active' : ''}
-            onClick={() => setTab('events')}
-          >
-            Event timeline ({events.length})
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'discover'}
-            tabIndex={tab === 'discover' ? 0 : -1}
-            className={tab === 'discover' ? 'is-active' : ''}
-            onClick={() => setTab('discover')}
-          >
-            Ping sweep
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'crawl'}
-            tabIndex={tab === 'crawl' ? 0 : -1}
-            className={tab === 'crawl' ? 'is-active' : ''}
-            onClick={() => setTab('crawl')}
-          >
-            Discover devices
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'collect'}
-            tabIndex={tab === 'collect' ? 0 : -1}
-            className={tab === 'collect' ? 'is-active' : ''}
-            onClick={() => setTab('collect')}
-          >
-            Collect
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'backup'}
-            tabIndex={tab === 'backup' ? 0 : -1}
-            className={tab === 'backup' ? 'is-active' : ''}
-            onClick={() => setTab('backup')}
-          >
-            Backups
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'path'}
-            tabIndex={tab === 'path' ? 0 : -1}
-            className={tab === 'path' ? 'is-active' : ''}
-            onClick={() => setTab('path')}
-          >
-            Path check
-          </button>
-          {/* LT-346: where a packet would go, from the routing tables already
-              collected. Beside Path check, which asks whether it gets there. */}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'trace'}
-            tabIndex={tab === 'trace' ? 0 : -1}
-            className={tab === 'trace' ? 'is-active' : ''}
-            onClick={() => setTab('trace')}
-          >
-            Path-Trace
-          </button>
-          {/* LT-505: where it actually went — a traceroute from here or from
-              a device — beside Path-Trace's where it would go. */}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'tracert'}
-            tabIndex={tab === 'tracert' ? 0 : -1}
-            className={tab === 'tracert' ? 'is-active' : ''}
-            onClick={() => setTab('tracert')}
-          >
-            Tracert
-          </button>
-          {/* LT-338: where a thing is, from what the crawl already found. */}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'whereis'}
-            tabIndex={tab === 'whereis' ? 0 : -1}
-            className={tab === 'whereis' ? 'is-active' : ''}
-            onClick={() => setTab('whereis')}
-          >
-            {t('whereis.find')}
-          </button>
-
-          {/* LT-320: open shells. It is about the diagram in front of you —
-              these are its devices — so this one belongs in the panel. */}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'ssh'}
-            tabIndex={tab === 'ssh' ? 0 : -1}
-            className={tab === 'ssh' ? 'is-active' : ''}
-            onClick={() => setTab('ssh')}
-          >
-            {sshCount ? t('ssh.tab', { count: sshCount }) : t('ssh.title')}
-          </button>
+          {/* LT-676: the same tabs, grouped by what they answer. The labels
+              are the ones the tabs always had; the groups are headings, not
+              buttons, so the arrows above still walk only the tabs. */}
+          {DOCK_GROUPS.map((g) => (
+            <span key={g.key} className="cv-tab-group" data-group={g.key}>
+              <span className="cv-tab-group-name" aria-hidden="true">{t(`dock.group.${g.key}`)}</span>
+              {g.tabs.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === id}
+                  tabIndex={tab === id ? 0 : -1}
+                  className={tab === id ? 'is-active' : ''}
+                  onClick={() => setTab(id)}
+                >
+                  {label(id)}
+                </button>
+              ))}
+            </span>
+          ))}
         </div>
 
         {tab !== 'discover' && tab !== 'crawl' && tab !== 'collect' && tab !== 'backup' && tab !== 'path' && tab !== 'trace' && tab !== 'tracert' && tab !== 'whereis' && tab !== 'ssh' && (
@@ -474,13 +408,21 @@ export function StatusPanel() {
             </label>
           </>
         )}
+        {/* LT-676: the dock down the right for a wide table, and back. */}
+        <button
+          type="button"
+          className="cv-btn cv-btn-small"
+          data-action="dock-side"
+          title={dockSide === 'right' ? t('dock.dockBelowHint') : t('dock.popOutHint')}
+          onClick={() => useStore.getState().setSettings({ dockSide: dockSide === 'right' ? 'bottom' : 'right' })}
+        >
+          {dockSide === 'right' ? t('dock.dockBelow') : t('dock.popOut')}
+        </button>
         <button type="button" className="cv-btn cv-btn-small" onClick={() => setOpen(false)}>
           Hide
         </button>
       </div>
 
-      {/* LT-443: every running job, whichever tab started it. */}
-      <JobsBar />
       {statusMessage && <div className="cv-panel-message" role="status" aria-live="polite">{statusMessage}</div>}
 
       <div className="cv-panel-body">
@@ -627,6 +569,30 @@ export function StatusPanel() {
           </>
         )}
       </div>
+
+      {/* LT-443, LT-676: every running job, whichever tab started it, along
+          the dock's bottom, with the clock in the format Settings chose. */}
+      <DockStrip />
+    </div>
+  );
+}
+
+/**
+ * The strip along the dock's bottom (LT-676): the jobs that are running,
+ * one line each, and the clock — which is where the Times setting shows.
+ * The clock ticks once a second; nothing else here re-renders for it.
+ */
+function DockStrip({ compact = false }: { compact?: boolean }) {
+  const timeFormat = useStore((s) => s.settings.timeFormat);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, []);
+  return (
+    <div className={`cv-dock-strip${compact ? ' is-compact' : ''}`} data-region="dock-strip">
+      <JobsBar compact />
+      <span className="cv-dock-clock cv-mono" title={t('dock.clockHint')}>{formatTime(now, timeFormat, false)}</span>
     </div>
   );
 }

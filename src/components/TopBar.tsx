@@ -44,6 +44,9 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   const savedAck = useStore((s) => s.savedAck);
   const session = useStore((s) => s.session);
   const settings = useStore((s) => s.settings);
+  // LT-676: the dock's strip shows every job; this line stands in only while
+  // a screen covers the dock and the strip is off-screen with it.
+  const dockCovered = useStore((s) => s.registerOpen || s.toolsOpen || s.helpOpen);
   const doc = useStore((s) => s.doc);
   const events = useStore((s) => s.events);
   const linkStatus = useStore((s) => s.linkStatus);
@@ -685,8 +688,9 @@ export function TopBar({ onExit }: { onExit: () => void }) {
         </span>
         {meta.customer && <span className="cv-project-sub">{meta.customer}</span>}
         {meta.ticket && <span className="cv-ticket">{meta.ticket}</span>}
-        {/* LT-443: what is running, beside the save state, one line each. */}
-        <JobsBar compact />
+        {/* LT-443: what is running, beside the save state, one line each —
+            LT-676: only while a screen hides the dock and its strip. */}
+        {dockCovered && <JobsBar compact />}
         <span
           className={`cv-save-state is-${save.tone}`}
           data-tone={save.tone}
