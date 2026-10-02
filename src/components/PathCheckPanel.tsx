@@ -32,9 +32,16 @@ export function PathCheckPanel() {
     [page.nodes],
   );
   const [from, setFrom] = useState(THIS_MACHINE);
-  const [to, setTo] = useState('');
-  const [protocol, setProtocol] = useState<'icmp' | 'tcp' | 'udp'>('icmp');
-  const [port, setPort] = useState(443);
+  // LT-679: the destination, protocol and port are the shared question's.
+  // Here the destination is a drawn device, named by its address.
+  const question = useStore((s) => s.pathQuestion);
+  const setQuestion = useStore((s) => s.setPathQuestion);
+  const to = devices.find((d) => d.address === question.to.trim())?.id ?? '';
+  const setTo = (id: string) => setQuestion({ to: devices.find((d) => d.id === id)?.address ?? '' });
+  const protocol: 'icmp' | 'tcp' | 'udp' = question.protocol === 'tcp' || question.protocol === 'udp' ? question.protocol : 'icmp';
+  const setProtocol = (v: 'icmp' | 'tcp' | 'udp') => setQuestion({ protocol: v });
+  const port = Number(question.port) || 443;
+  const setPort = (n: number) => setQuestion({ port: String(n) });
   const [credentialId, setCredentialId] = useState<string | undefined>();
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);

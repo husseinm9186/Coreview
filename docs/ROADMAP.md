@@ -112,12 +112,6 @@ them, the two foundations the operator chose with it: the Graphite theme
 (LT-673) and sizes that scale (LT-674). Nothing is removed; the table on
 the proposal page is where every control goes.
 
-### LT-679 — Phase 5: Paths with one question row, and the project screen — 2026-10-02
-**Source:** LT-672. Path-Trace, Path check, Tracert and Where is behind
-one from/to/application row, hops saying forwarding or routing table;
-the project screen with folders, project cards carrying a health line,
-samples on the right.
-
 ### LT-558 — The lab run: FortiGate, FortiSwitch and Catalyst collected by Coreview itself — 2026-09-29
 **Source:** the operator, 2026-09-29: "you should be able to run the lab you
 have the access and passwords", naming the FortiGate (192.168.14.1), the
@@ -832,6 +826,41 @@ holding the next hop and skips a longer static one. Next.
 I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
+
+### LT-679 — Phase 5: Paths with one question row, and the project screen — 2026-10-02, done the same day
+**Source:** LT-672. Path-Trace, Path check, Tracert and Where is behind
+one from/to/application row, hops saying forwarding or routing table;
+the project screen with folders, project cards carrying a health line,
+samples on the right.
+**Done 2026-10-02, with one departure from the brief.** The question is
+one — `pathQuestion` in the store: destination, application, protocol,
+port, VRF — read and written by Path-Trace, Tracert and Path check (which
+names its destination as a drawn device at that address), and asked of
+Where is by a button; Path-Trace's row also gains **Measure**, which takes
+the destination to Tracert. **The row is not one row above the four tabs:**
+each tool keeps its own form with the shared values in it, because
+"from" is a different list on each (a crawl's devices, this machine or a
+device, the diagram) and a destination is an address on three and a drawn
+device on the fourth — one widget for those would have been a worse one,
+and the harnesses reach the fields by their labels in each panel. Every
+hop of a Path-Trace says which table answered (`Hop.table`): the classic
+engine's hops say routing table, the collected path's say forwarding
+table, routing table or policy from what the builder recorded (D-063),
+in a new Table column. The project screen is `.cv-proj`: folders down the
+left (All projects with its count, each top-level folder, Archived), the
+projects as cards in the middle under a search box (name, customer, site,
+ticket), the samples on the right; the crumbs, drag-and-drop, rename and
+delete of LT-485 untouched. A card's health line comes from
+`projectSummary.ts`: a count of devices, links and pages and of healthy,
+warning and down devices, written to this machine's localStorage by every
+save and forgotten on delete — never into the project, which travels —
+so a project never saved here shows no line rather than a wrong one.
+**Run:** `e2e/pathsproject.mjs` (new: the folders, the cards and the
+health line, the search, Archived, the question typed once and found on
+every tool, Path check's device chosen by address and choosing one there
+setting it for the rest, Where is and Measure carrying it), the nine
+harnesses that drive the path tools and the project screen, vitest, tsc,
+eslint, and the full suite.
 
 ### LT-678 — Phase 4: Discover as a mode — 2026-10-02, done the same day
 **Source:** LT-672. Four steps (seeds, logins, options, Advanced); the

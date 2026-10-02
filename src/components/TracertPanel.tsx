@@ -72,7 +72,9 @@ export function measuredPath(
 export function TracertPanel() {
   const meta = useStore((s) => s.meta);
   const setHighlight = useStore((s) => s.setCanvasHighlight);
-  const [target, setTarget] = useState('');
+  // LT-679: the destination is the shared question's.
+  const target = useStore((s) => s.pathQuestion.to);
+  const setTarget = (v: string) => useStore.getState().setPathQuestion({ to: v });
   const [source, setSource] = useState('machine');
   const [credentialId, setCredentialId] = useState<string | undefined>();
   const [result, setResult] = useState<CrawlResult | null>(null);

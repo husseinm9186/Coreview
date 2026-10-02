@@ -232,6 +232,7 @@ node e2e/collectedpath.mjs # Path-Trace over a collection run: the Rust builder'
 node e2e/dock.mjs         # the dock: grouped tabs, the job strip and clock, pop out and back (LT-676)
 node e2e/inspector.mjs    # the device inspector in tabs: Status, Identity, Ports, Checks, Notes; the action row (LT-677)
 node e2e/discovermode.mjs # Discover as a mode: four steps, Advanced folded with the engine's view, Ping sweep second (LT-678)
+node e2e/pathsproject.mjs # one question for the four path tools; the project screen's folders, cards and health line (LT-679)
 ```
 
 Canvas performance is measured, not asserted (LT-190), against a **production**

@@ -120,6 +120,9 @@ await field("Destination").fill("203.0.113.50");
 await field("Protocol").selectOption("tcp");
 await field("Port").fill("443");
 await go.click();
+await page.waitForTimeout(400);
+check("each hop says which table answered (LT-679)", (await panel.locator(".cv-trace-table").count()) > 0 && /^(forwarding table|routing table|policy)$/.test(await panel.locator(".cv-trace-table").first().innerText()),
+  (await panel.locator(".cv-trace-table").allInnerTexts()).join(" | "));
 await page.waitForTimeout(700);
 
 const asked = await lastCall("collection_path");

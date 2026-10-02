@@ -5,6 +5,7 @@ import { applyEdgeChanges, applyNodeChanges, type EdgeChange, type NodeChange } 
 
 import { ipc, isDesktop, type ProbeResultDto, type IconLibEntry, type StoredSettings, type JobSnapshot, type CrawledDevice, type Neighbor, setCurrentProject } from '../lib/ipc';
 import { applyJob } from '../lib/jobs';
+import { forgetSummary, rememberSummary, summarise } from '../lib/projectSummary';
 import { staleCredentials, withoutStaleCredentials } from '../lib/credentialScope';
 import { uid } from '../lib/id';
 import { newProbe } from '../lib/probes';
@@ -200,6 +201,7 @@ export interface ProjectDocument {
 }
 
 /** The dock's tabs (LT-675). */
+export type PathQuestion = { to: string; app: string; protocol: string; port: string; vrf: string };
 export type InspectorTab = 'status' | 'identity' | 'ports' | 'checks' | 'notes';
 export type DockTab = 'objects' | 'events' | 'discover' | 'crawl' | 'collect' | 'backup' | 'path' | 'trace' | 'tracert' | 'whereis' | 'ssh';
 
@@ -374,6 +376,12 @@ interface Store {
    *  lives under it, so a request for that view opens it. */
   discoverAdvanced: boolean;
   setDiscoverAdvanced: (open: boolean) => void;
+  /** LT-679: the one question the four path tools answer — where to, for
+   *  what — kept here so it is asked once and carried from tab to tab.
+   *  From stays with each tool, because each chooses it from a different
+   *  list (a crawl's devices, this machine or a device, the diagram). */
+  pathQuestion: PathQuestion;
+  setPathQuestion: (patch: Partial<PathQuestion>) => void;
   /** LT-677: a question for Where is, asked from the inspector. */
   whereIsRequest: string | null;
   requestWhereIs: (query: string | null) => void;
@@ -1162,6 +1170,7 @@ export const useStore = create<Store>((set, get) => ({
   inspectorTab: 'status',
   backupHandover: null,
   discoverAdvanced: false,
+  pathQuestion: { to: '', app: '', protocol: 'tcp', port: '', vrf: '' },
   whereIsRequest: null,
   commandPaletteRequest: false,
   // Which panels are open is a view preference for this machine, not part of
@@ -1373,6 +1382,8 @@ export const useStore = create<Store>((set, get) => ({
     await ipc.saveProject({ meta: updated, documentVersion: 1, document: doc });
     // The save is real, so the crash slot for it is stale.
     clearRecovery(meta.id);
+    // LT-679: what the project card says about it, as of now, on this machine.
+    rememberSummary(meta.id, summarise(doc, get().nodeStatus, updated.updatedAt));
     // LT-380: an explicit save says so; autosave stays quiet, because a
     // flash on its own schedule would answer no press in particular.
     set({
@@ -1409,6 +1420,7 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   async deleteProject(id) {
+    forgetSummary(id);
     if (get().meta?.id === id) await get().closeProject();
     await ipc.deleteProject(id);
     await deleteHistory(id);
@@ -1509,6 +1521,9 @@ export const useStore = create<Store>((set, get) => ({
   requestBackup(targets) {
     set({ backupHandover: targets });
     if (targets) get().requestPanelTab('backup');
+  },
+  setPathQuestion(patch) {
+    set((s) => ({ pathQuestion: { ...s.pathQuestion, ...patch } }));
   },
   setDiscoverAdvanced(open) {
     set({ discoverAdvanced: open });

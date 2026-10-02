@@ -1326,3 +1326,11 @@ harnesses, the documentation. The green chrome tinted every pill and
 border so the status colours fought the ground; twelve flat tabs and a
 two-row top bar of twenty equal controls hid the workflow. Phases are
 gated one at a time so the operator can stop after any of them.
+**Shipped 2026-10-02, all five phases (LT-675–LT-679), each pushed with
+every harness green.** Four departures from the drawing, each recorded on
+its item: the canvas toolbar is docked above the pane rather than floating
+on it (a float took the band the lassos and drops land in); Racks stays
+under Tools; the path tools share one question in the store but keep their
+own forms, because "from" and the destination are different things on each;
+and a project card's health line is a summary this machine writes at every
+save, never part of the project. Nothing was removed.

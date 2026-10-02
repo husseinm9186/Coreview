@@ -132,6 +132,11 @@ export interface Hop {
   metric: number | null;
   /** In one sentence, why this route and not another. */
   why: string;
+  /** LT-679: which of the device's tables answered — the forwarding table
+   *  (CEF/FIB, what it really forwards by), its routing table, or a policy.
+   *  The classic engine walks routing tables; the collected path says
+   *  which it had (D-063). Absent for a step that is not a lookup. */
+  table?: 'forwarding' | 'routing' | 'policy';
   /** Recursive resolution: a BGP next-hop resolved through the IGP, and so
    *  on. Empty when the next hop was directly connected. */
   via: { prefix: string; protocol: string; nextHop: string | null }[];
@@ -774,6 +779,7 @@ export function tracePath(request: TraceRequest): TraceResult {
           device: device.hostname,
           prefix: route.prefix,
           protocol: route.protocol,
+          table: 'routing',
           nextHop: null,
           outInterface: route.interface ?? null,
           distance: route.distance ?? null,
@@ -801,6 +807,7 @@ export function tracePath(request: TraceRequest): TraceResult {
           device: device.hostname,
           prefix: route.prefix,
           protocol: route.protocol,
+          table: 'routing',
           nextHop: null,
           outInterface: route.interface ?? null,
           distance: route.distance ?? null,
@@ -874,6 +881,7 @@ export function tracePath(request: TraceRequest): TraceResult {
         device: device.hostname,
         prefix: route.prefix,
         protocol: route.protocol,
+        table: 'routing',
         nextHop,
         outInterface: route.interface ?? out,
         distance: route.distance ?? null,

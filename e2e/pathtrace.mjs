@@ -156,6 +156,9 @@ check("the panel reads a saved crawl run rather than the network",
 await field("Source").selectOption({ label: "EDGE" });
 await field("Destination").fill("10.40.50.9");
 await go.click();
+await page.waitForTimeout(400);
+check("each hop says it was looked up in the routing table (LT-679)", (await panel.locator(".cv-trace-table").count()) > 0 && (await panel.locator(".cv-trace-table").first().innerText()) === "routing table",
+  (await panel.locator(".cv-trace-table").allInnerTexts()).join(" | "));
 await page.waitForTimeout(600);
 
 const rows = () => page.locator('[data-region="trace-path"] tbody tr');

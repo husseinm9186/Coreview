@@ -164,6 +164,25 @@ inspector fold with their own handles. **Dock below** puts it back, and
 either choice is remembered on this machine. **Hide** folds the dock to one
 row that keeps the counts and the strip.
 
+**Paths.** Path-Trace, Path check, Tracert and Where is answer one
+question, so it is asked once: the destination, the application, its
+protocol and port, and the VRF typed on any of them are there on the
+others. Where to start from stays with each tool, because each chooses it
+from a different list — a crawl's devices, this machine or a device, the
+drawn diagram. Beside **Run Path-Trace** sit **Measure**, which takes the
+same destination to Tracert, and **Where is**, which asks the crawl where
+it last saw that address. Each hop of a trace says which table answered:
+the **forwarding table** (what the device really forwards by, where one was
+collected), its **routing table**, or a **policy**.
+
+**The project screen.** Folders run down the left — All projects, each
+top-level folder with its count, Archived. Projects are cards in the
+middle, under a search box that narrows them by name, customer, site or
+ticket; a card carries a health line — healthy, warning and down, devices
+and pages — as of the last time the project was saved on this machine, so
+a project never saved here has none. The samples are on the right. The
+crumbs, drag-and-drop between folders, rename and delete are as before.
+
 **The inspector.** A device's inspector opens on **Status**: its address,
 the last check and what it said, what it is plugged into and on which
 ports, who found it, its platform and serial, and the recent-status strip —

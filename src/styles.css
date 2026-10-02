@@ -847,7 +847,27 @@ details.cv-discover-advanced[open] > summary::after { content: '▾'; }
 /* ---------------------------------------------------------------- welcome */
 
 .cv-welcome { flex: 1; overflow-y: auto; background: radial-gradient(84.61538462rem 38.46153846rem at 50% -10%, var(--welcome-glow) 0%, var(--desk) 62%); }
-.cv-welcome-inner { max-width: 69.23076923rem; margin: 0 auto; padding: 4.30769231rem 1.84615385rem 4.92307692rem; }
+.cv-welcome-inner { max-width: 92.30769231rem; margin: 0 auto; padding: 4.30769231rem 1.84615385rem 4.92307692rem; }
+/* LT-679: folders down the left, the projects as cards, the samples on the right. */
+.cv-proj { display: grid; grid-template-columns: 12.30769231rem minmax(0, 1fr) 18.46153846rem; gap: 1.84615385rem; margin-top: 2.61538462rem; align-items: start; }
+.cv-proj-side { display: flex; flex-direction: column; gap: 0.15384615rem; padding-top: 0.30769231rem; }
+.cv-proj-side-item { display: flex; justify-content: space-between; gap: 0.61538462rem; text-align: left; background: none; border: 1px solid transparent; color: var(--text-dim); padding: 0.38461538rem 0.61538462rem; border-radius: var(--radius); cursor: pointer; font: inherit; }
+.cv-proj-side-item:hover { background: var(--hover); color: var(--text); }
+.cv-proj-side-item.is-current { background: var(--panel-2); border-color: var(--line-strong); color: var(--text); }
+.cv-proj-side-count { color: var(--text-faint); font-size: var(--text-xs); }
+.cv-proj-main > .cv-welcome-section, .cv-proj-samples > .cv-welcome-section { margin-top: 0; }
+.cv-proj-search { max-width: 24.61538462rem; margin-bottom: 0.92307692rem; }
+.cv-proj-samples .cv-sample-grid { grid-template-columns: 1fr; }
+.cv-project-health { display: block; color: var(--text-dim); font-size: var(--text-sm); margin-top: 0.23076923rem; }
+.cv-project-health-part { white-space: nowrap; }
+.cv-health-dot { display: inline-block; width: 0.53846154rem; height: 0.53846154rem; border-radius: 50%; vertical-align: middle; margin-right: 0.15384615rem; }
+@media (max-width: 1100px) {
+  .cv-proj { grid-template-columns: 1fr; }
+  .cv-proj-side { flex-direction: row; flex-wrap: wrap; }
+}
+/* LT-679: which table a hop was looked up in. */
+.cv-trace-table { display: inline-block; padding: 0.07692308rem 0.46153846rem; border-radius: var(--radius); border: 1px solid var(--line-strong); color: var(--text-dim); font-size: var(--text-xs); white-space: nowrap; }
+.cv-trace-table.is-forwarding { border-color: var(--accent); color: var(--accent); }
 .cv-welcome-head h1 { font-size: var(--text-display); letter-spacing: 0.02em; margin: 0 0 0.61538462rem; }
 .cv-welcome-head p { color: var(--text-dim); max-width: 47.69230769rem; line-height: 1.6; margin: 0; }
 .cv-welcome-actions { display: flex; align-items: center; gap: 0.76923077rem; margin: 2rem 0 0.61538462rem; }

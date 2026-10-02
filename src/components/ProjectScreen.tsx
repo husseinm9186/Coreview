@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 
 import { useStore, type ProjectDocument } from '../state/store';
 import { SAMPLES } from '../lib/samples';
+import { readSummary } from '../lib/projectSummary';
+import { STATUS_COLOR } from './edges/LiveEdge';
 import { TEMPLATES, templateById } from '../lib/templates';
 import { ipc, isDesktop } from '../lib/ipc';
 import { FolderSettings } from './FolderSettings';
@@ -57,6 +59,12 @@ export function ProjectScreen() {
   const [folderProblem, setFolderProblem] = useState<string | null>(null);
   const live = projects.filter((p) => !p.archived);
   const visible = showArchived ? projects.filter((p) => p.archived) : projectsIn(tree, live, here);
+  // LT-679: a search across what is shown — name, customer, site, ticket.
+  const [search, setSearch] = useState('');
+  const needle = search.trim().toLowerCase();
+  const shown = needle
+    ? visible.filter((p) => [p.name, p.customer, p.site, p.ticket].some((v) => (v ?? '').toLowerCase().includes(needle)))
+    : visible;
   const folders = showArchived ? [] : childFolders(tree, here);
   const crumbs = pathTo(tree, here);
 
@@ -268,6 +276,39 @@ export function ProjectScreen() {
 
         {vaultNote && <p className="cv-help cv-hostkey-message">{vaultNote}</p>}
 
+        {/* LT-679: folders down the left, the projects as cards, the samples
+            on the right. The crumbs, drag-and-drop, rename and delete of
+            LT-485 are as they were, inside the middle column. */}
+        <div className="cv-proj">
+        <aside className="cv-proj-side" aria-label={t('projectScreen.folders')} data-region="project-folders">
+          <button type="button" className={`cv-proj-side-item${!showArchived && here === null ? ' is-current' : ''}`}
+            aria-current={!showArchived && here === null ? 'true' : undefined}
+            onClick={() => { setShowArchived(false); setHere(null); }}>
+            <span>{t('projectScreen.allProjects')}</span>
+            <span className="cv-proj-side-count">{live.length}</span>
+          </button>
+          {childFolders(tree, null).map((f) => {
+            const current = !showArchived && (here === f.id || crumbs.some((c) => c.id === f.id));
+            return (
+              <button key={f.id} type="button" className={`cv-proj-side-item${current ? ' is-current' : ''}`}
+                aria-current={current ? 'true' : undefined}
+                onClick={() => { setShowArchived(false); setHere(f.id); }}>
+                <span><span className="cv-pfolder-glyph" aria-hidden="true">▸</span> {f.name}</span>
+                <span className="cv-proj-side-count">{projectCountWithin(tree, live, f.id)}</span>
+              </button>
+            );
+          })}
+          <button type="button" className={`cv-proj-side-item${showArchived ? ' is-current' : ''}`}
+            aria-current={showArchived ? 'true' : undefined}
+            onClick={() => setShowArchived(true)}>
+            <span>{t('projectScreen.archived')}</span>
+            <span className="cv-proj-side-count">{projects.filter((p) => p.archived).length}</span>
+          </button>
+        </aside>
+        <div className="cv-proj-main">
+        <input className="cv-input cv-proj-search" type="search" value={search} placeholder={t('projectScreen.search')}
+          aria-label={t('projectScreen.search')} title={t('projectScreen.searchHint')}
+          onChange={(e) => setSearch(e.target.value)} />
         <section className="cv-welcome-section" data-region="projects">
           <div className="cv-pfolder-head">
             <h2>{showArchived ? 'Archived projects' : crumbs.length ? crumbs[crumbs.length - 1]!.name : 'Recent projects'}</h2>
@@ -380,8 +421,11 @@ export function ProjectScreen() {
                   </div>
                 </li>
               ))}
-              {visible.map((p) => (
-                <li key={p.id} data-project={p.id}
+              {needle && shown.length === 0 && (
+                <li className="cv-help">{t('projectScreen.noMatch')}</li>
+              )}
+              {shown.map((p) => (
+                <li key={p.id} data-project={p.id} className="cv-project-card"
                   draggable={!showArchived && tree.folders.length > 0}
                   onDragStart={(e) => {
                     e.dataTransfer.setData('application/x-coreview-project', p.id);
@@ -397,6 +441,8 @@ export function ProjectScreen() {
                       {[p.customer, p.site, p.ticket].filter(Boolean).join(' · ') || 'No metadata'}
                       {showArchived && tree.placement[p.id] && ` · ${t('folders.in', { path: pathLabel(tree, tree.placement[p.id]!) })}`}
                     </span>
+                    {/* LT-679: how it stood when it was last saved here. */}
+                    <ProjectHealth id={p.id} />
                     <span className="cv-project-date">
                       Modified {new Date(p.updatedAt).toLocaleString()}
                     </span>
@@ -446,7 +492,9 @@ export function ProjectScreen() {
             </ul>
           )}
         </section>
+        </div>
 
+        <aside className="cv-proj-samples">
         <section className="cv-welcome-section">
           <h2>{t('projectScreen.startFromASample')}</h2>
           <p className="cv-help">
@@ -471,6 +519,8 @@ export function ProjectScreen() {
             ))}
           </div>
         </section>
+        </aside>
+        </div>
 
         <FolderSettings />
 
@@ -535,6 +585,29 @@ export function ProjectScreen() {
         </div>
       )}
     </div>
+  );
+}
+
+/** LT-679: the card's health line — devices, pages, and how the checks stood at the last save. */
+function ProjectHealth({ id }: { id: string }) {
+  const s = readSummary(id);
+  if (!s) return null;
+  const dot = (status: 'healthy' | 'warning' | 'down', n: number) => (
+    <span className="cv-project-health-part">
+      <i className="cv-health-dot" style={{ background: STATUS_COLOR[status] }} aria-hidden="true" /> {n} {status}
+    </span>
+  );
+  return (
+    <span className="cv-project-health" data-region="project-health">
+      {s.devices > 0 ? (
+        <>
+          {dot('healthy', s.healthy)} · {dot('warning', s.warning)} · {dot('down', s.down)} ·{' '}
+          {t('projectScreen.counts', { count: s.devices })} · {t('projectScreen.pages', { count: s.pages })}
+        </>
+      ) : (
+        <>{t('projectScreen.counts', { count: 0 })} · {t('projectScreen.pages', { count: s.pages })}</>
+      )}
+    </span>
   );
 }
 

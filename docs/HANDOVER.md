@@ -114,6 +114,7 @@ node e2e/racks.mjs                                 # rack elevations, cable sche
 node e2e/dock.mjs                                  # grouped tabs, job strip, pop out (LT-676)
 node e2e/inspector.mjs                             # the device inspector's tabs and action row (LT-677)
 node e2e/discovermode.mjs                          # Discover's four steps, Advanced, the old Collect tab (LT-678)
+node e2e/pathsproject.mjs                          # the shared path question; the project screen's cards (LT-679)
 node e2e/crawling.mjs                              # Phase 2 crawl: live table, bindings, review
 node e2e/validation.mjs                            # Phase 3: probes, history, path check, compare
 node e2e/workflow.mjs                              # Phase 4: palette, filter, ink, comments, a11y
@@ -433,6 +434,19 @@ non-super_admin profile and the prompt finder only accepted `#` and `>`.
 **Now** section is again a list of open work rather than a history. Do not
 trust the summary below over that file; it is a signpost and it will rot.
 
+- **2 October 2026: the interface reorganised (LT-672–LT-679, D-064).**
+  Graphite chrome, sizes that scale with the screen and a setting
+  (`--ui-scale`), a rail (`NavRail.tsx`), a one-row top bar, the canvas
+  toolbar docked above the pane (`CanvasToolbar.tsx`), the dock's tabs in
+  four groups with a job strip and Pop out (`StatusPanel.tsx`, `.cv-body`),
+  the device inspector in five tabs with an action row (`Inspector.tsx`,
+  `sshActions.ts`), Discover as four steps with the old Collect tab under
+  Advanced (`CrawlPanel.tsx`), one path question in the store
+  (`pathQuestion`), and the project screen as folders, cards and samples
+  with a local health line (`projectSummary.ts`). Four harnesses are new
+  (`dock`, `inspector`, `discovermode`, `pathsproject`); eleven older ones
+  press a tab before reaching a field, and `interact`'s nudge check reads
+  the store, not the transform. The traps it taught are in §6.6.
 - **The audit of 2026-09-25 (LT-423–LT-458)** shipped the same day, all but
   one: LT-453 (level of detail on the canvas) is built, off by default, and
   waits for a benchmark on a quiet machine — the run was stopped for memory,

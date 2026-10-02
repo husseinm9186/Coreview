@@ -54,6 +54,7 @@ function asHop(h: PathHop): Hop {
     metric: h.matched?.metric ?? null,
     why: why(h),
     via: h.via.map((v) => ({ prefix: v.prefix, protocol: v.kind, nextHop: v.nextHop })),
+    ...(h.matched?.table ? { table: h.matched.table } : {}),
     ...(segment ? { segment } : {}),
     ...(h.vrf && h.vrf !== 'default' ? { vrf: h.vrf } : {}),
     ...(h.ecmp > 1 ? { ecmp: h.ecmp } : {}),

@@ -126,12 +126,20 @@ export function PathTracePanel() {
   const [runId, setRunId] = useState('');
   const [result, setResult] = useState<CrawlResult | null>(null);
   const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [vrf, setVrf] = useState('');
+  // LT-679: the question is the store's, shared with Tracert, Path check and Where is.
+  const question = useStore((s) => s.pathQuestion);
+  const setQuestion = useStore((s) => s.setPathQuestion);
+  const to = question.to;
+  const setTo = (v: string) => setQuestion({ to: v });
+  const vrf = question.vrf;
+  const setVrf = (v: string) => setQuestion({ vrf: v });
   // LT-348: what the flow is, for the generated page and the report.
-  const [appName, setAppName] = useState('');
-  const [protocol, setProtocol] = useState('tcp');
-  const [port, setPort] = useState('');
+  const appName = question.app;
+  const setAppName = (v: string) => setQuestion({ app: v });
+  const protocol = question.protocol;
+  const setProtocol = (v: string) => setQuestion({ protocol: v });
+  const port = question.port;
+  const setPort = (v: string) => setQuestion({ port: v });
   const [note, setNote] = useState<string | null>(null);
   const [down, setDown] = useState<Set<string>>(new Set());
   // Everything any trace has gone through since the last fresh one. It only
@@ -437,6 +445,15 @@ export function PathTracePanel() {
           onClick={() => { setDown(new Set()); setCandidates([]); trace(); }}>
           {t('trace.go')}
         </button>
+        {/* LT-679: the same question, answered by measuring, or by the crawl's last sighting. */}
+        <button type="button" className="cv-btn cv-btn-small" disabled={!to.trim()} title={t('trace.measureHint')}
+          onClick={() => useStore.getState().requestPanelTab('tracert')}>
+          {t('trace.measureLink')}
+        </button>
+        <button type="button" className="cv-btn cv-btn-small" disabled={!to.trim()} title={t('trace.whereIsHint')}
+          onClick={() => useStore.getState().requestWhereIs(to.trim())}>
+          {t('whereis.find')}
+        </button>
         {traced && (
           <>
             <button type="button" className="cv-btn" onClick={createPage}>{t('trace.makePage')}</button>
@@ -483,6 +500,7 @@ export function PathTracePanel() {
                 <th>{t('trace.colNextHop')}</th>
                 <th>{t('trace.colOut')}</th>
                 <th>{t('trace.colMetric')}</th>
+                <th>{t('trace.colTable')}</th>
               </tr>
             </thead>
             <tbody>
@@ -519,6 +537,8 @@ export function PathTracePanel() {
                   <td className="cv-mono">
                     {hop.distance ?? '—'}/{hop.metric ?? '—'}
                   </td>
+                  {/* LT-679: which table answered — the forwarding table is what the device forwards by. */}
+                  <td>{hop.table ? <span className={`cv-trace-table is-${hop.table}`} data-table={hop.table}>{t(`trace.table.${hop.table}`)}</span> : '—'}</td>
                 </tr>
               ))}
             </tbody>
