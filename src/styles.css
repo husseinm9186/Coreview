@@ -2664,18 +2664,19 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-racks-stage {
   flex: 1; min-width: 0; min-height: 24rem; overflow: auto; position: relative;
   border: 1px solid var(--line); border-radius: var(--radius);
-  background-color: var(--desk);
+  /* LT-697: a step above the panels, not the desk, so the racks stand out of it rather than sink into it. */
+  background-color: color-mix(in srgb, var(--text) 4%, var(--panel));
   background-image:
-    linear-gradient(to bottom, transparent 0, transparent 92%, color-mix(in srgb, var(--text) 6%, transparent) 100%),
-    radial-gradient(color-mix(in srgb, var(--text) 9%, transparent) 1px, transparent 1px);
+    linear-gradient(to bottom, transparent 0, transparent 92%, color-mix(in srgb, var(--text) 8%, transparent) 100%),
+    radial-gradient(color-mix(in srgb, var(--text) 16%, transparent) 1px, transparent 1px);
   background-size: 100% 100%, 1.84615385rem 1.84615385rem;
 }
 .cv-racks-zoom { transform-origin: top left; padding: 1.23076923rem; display: flex; flex-direction: column; gap: 1.84615385rem; width: max-content; min-width: 100%; }
 .cv-racks-empty { position: absolute; inset: 0; margin: auto; height: max-content; text-align: center; max-width: 24.61538462rem; }
 .cv-racks-place { display: flex; flex-direction: column; gap: 0.61538462rem; }
-.cv-racks-place-head { margin: 0; font-size: var(--text-sm); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
+.cv-racks-place-head { margin: 0; font-size: var(--text-sm); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
 .cv-racks-row { display: flex; align-items: flex-start; gap: 3.69230769rem; }
-.cv-rack { flex: none; width: 26.15384615rem; display: flex; flex-direction: column; gap: 0.30769231rem; padding: 0.61538462rem; border-radius: 6px; border: 1px solid transparent; }
+.cv-rack { flex: none; width: 26.15384615rem; display: flex; flex-direction: column; gap: 0.30769231rem; padding: 0.61538462rem; border-radius: 6px; border: 1px solid var(--line); background: color-mix(in srgb, var(--text) 3%, var(--panel-2)); box-shadow: 0 2px 10px var(--shadow); }
 .cv-rack.is-target { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .cv-rack-head { display: flex; gap: 0.30769231rem; align-items: center; }
 .cv-rack-name { flex: 1; min-width: 0; font-weight: 600; }
@@ -2684,17 +2685,17 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-rack-frame { display: flex; align-items: flex-start; position: relative; }
 .cv-rack-numbers {
   list-style: none; margin: 0; padding: 0; width: 1.69230769rem;
-  color: var(--text-faint); font-size: var(--text-2xs); font-variant-numeric: tabular-nums;
+  color: var(--text-dim); font-size: var(--text-2xs); font-variant-numeric: tabular-nums;
 }
 .cv-rack-numbers.is-left { text-align: right; padding-right: 0.23076923rem; }
 .cv-rack-numbers.is-right { text-align: left; padding-left: 0.23076923rem; }
 .cv-rack-numbers li { display: flex; align-items: center; }
 .cv-rack-numbers.is-left li { justify-content: flex-end; }
-.cv-rack-numbers li.is-fifth { color: var(--text-dim); font-weight: 600; }
+.cv-rack-numbers li.is-fifth { color: var(--text); font-weight: 600; }
 /* The posts: a strip of mounting holes, three a U. */
 .cv-rack-post {
-  flex: none; width: 0.61538462rem; background: var(--panel-2); border: 1px solid var(--line-strong);
-  background-image: radial-gradient(circle at 50% 50%, var(--line-strong) 1.2px, transparent 1.6px);
+  flex: none; width: 0.61538462rem; background: color-mix(in srgb, var(--text) 14%, var(--panel-2)); border: 1px solid color-mix(in srgb, var(--text) 22%, var(--line-strong));
+  background-image: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--text) 45%, var(--panel-2)) 1.2px, transparent 1.6px);
   background-size: 100% calc(14px / 3);
 }
 .cv-rack-post.is-left { border-right: 0; border-radius: 3px 0 0 3px; }
@@ -2702,10 +2703,10 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-rack-slots {
   /* LT-692: how many zero-U strips stand in the right-hand column; the panel sets it per rack. */
   --zerou: 0;
-  position: relative; flex: 1; box-sizing: content-box; border-top: 2px solid var(--line-strong); border-bottom: 2px solid var(--line-strong); background: var(--bg);
-  background-image: repeating-linear-gradient(to bottom, transparent 0 13px, var(--line) 13px 14px);
+  position: relative; flex: 1; box-sizing: content-box; border-top: 2px solid color-mix(in srgb, var(--text) 22%, var(--line-strong)); border-bottom: 2px solid color-mix(in srgb, var(--text) 22%, var(--line-strong)); background: var(--panel);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 13px, var(--line-strong) 13px 14px);
 }
-.cv-rack-base { height: 0.46153846rem; margin: 0 1.4rem; border-radius: 0 0 4px 4px; background: var(--panel-2); border: 1px solid var(--line-strong); border-top: 0; }
+.cv-rack-base { height: 0.46153846rem; margin: 0 1.4rem; border-radius: 0 0 4px 4px; background: color-mix(in srgb, var(--text) 14%, var(--panel-2)); border: 1px solid color-mix(in srgb, var(--text) 22%, var(--line-strong)); border-top: 0; }
 /* LT-683: the cables run from the right post out into the gap between racks, over the right-hand numbers. */
 .cv-rack-cables { position: absolute; left: calc(100% - 1.69230769rem); top: 0; overflow: visible; pointer-events: none; }
 .cv-rack-cables path { stroke-linecap: round; }
@@ -2713,7 +2714,7 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-rack-item {
   /* LT-692: a zero-U strip takes a column of its own on the right, so a faceplate stops short of it. */
   position: absolute; left: 0.15384615rem; right: calc(0.15384615rem + var(--zerou) * 0.76923077rem); display: flex; align-items: center; gap: 0.30769231rem;
-  background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 2px;
+  background: color-mix(in srgb, var(--text) 10%, var(--panel-2)); border: 1px solid color-mix(in srgb, var(--text) 22%, var(--line-strong)); border-radius: 2px;
   color: var(--text); font: inherit; font-size: var(--text-xs); padding: 0 0.30769231rem 0 0; cursor: grab; overflow: hidden;
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 10%, transparent), inset 0 -1px 0 color-mix(in srgb, #000 35%, transparent);
 }
@@ -2733,7 +2734,7 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-rack-air.is-in { color: var(--accent); }
 .cv-rack-air.is-out { color: var(--down); }
 .cv-rack-air.is-side, .cv-rack-air.is-passive { color: var(--text-faint); }
-.cv-rack-item.is-furniture { background: var(--panel); color: var(--text-dim); padding-left: 0.30769231rem; }
+.cv-rack-item.is-furniture { background: color-mix(in srgb, var(--text) 6%, var(--panel-2)); color: var(--text-dim); padding-left: 0.30769231rem; }
 .cv-rack-item.is-furniture.is-blank { background: repeating-linear-gradient(90deg, var(--panel) 0 6px, var(--panel-2) 6px 7px); }
 .cv-rack-item.is-furniture.is-shelf { background: linear-gradient(to bottom, var(--panel-2), var(--panel)); border-top-width: 2px; }
 .cv-rack-item.is-furniture.is-reserved { background: repeating-linear-gradient(-45deg, transparent 0 5px, color-mix(in srgb, var(--warning) 22%, transparent) 5px 8px); border: 1px dashed var(--warning); color: var(--text); }
@@ -2803,7 +2804,7 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-rack-side-rail { position: absolute; bottom: -1.2rem; font-size: var(--text-2xs); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
 .cv-rack-side-rail.is-front { left: 0; }
 .cv-rack-side-rail.is-rear { right: 0; }
-.cv-rack-side-item { position: absolute; display: flex; align-items: center; gap: 0.3rem; padding: 0 0.3rem; background: var(--panel-2); border: 1px solid var(--line-strong); border-left: 3px solid var(--rack-item-colour); border-radius: 2px; color: var(--text); font: inherit; font-size: var(--text-xs); overflow: hidden; cursor: pointer; box-shadow: inset 0 -1px 0 color-mix(in srgb, #000 35%, transparent); }
+.cv-rack-side-item { position: absolute; display: flex; align-items: center; gap: 0.3rem; padding: 0 0.3rem; background: color-mix(in srgb, var(--text) 10%, var(--panel-2)); border: 1px solid var(--line-strong); border-left: 3px solid var(--rack-item-colour); border-radius: 2px; color: var(--text); font: inherit; font-size: var(--text-xs); overflow: hidden; cursor: pointer; box-shadow: inset 0 -1px 0 color-mix(in srgb, #000 35%, transparent); }
 .cv-rack-side-item.is-front { left: 0.15384615rem; }
 .cv-rack-side-item.is-rear { right: calc(0.15384615rem + var(--zerou) * 0.76923077rem); border-left: 1px solid var(--line-strong); border-right: 3px solid var(--rack-item-colour); flex-direction: row-reverse; }
 .cv-rack-side-item.is-reserved { background: repeating-linear-gradient(-45deg, transparent 0 5px, color-mix(in srgb, var(--warning) 22%, transparent) 5px 8px); border-style: dashed; }

@@ -827,6 +827,20 @@ I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
 
+### LT-697 — The racks stage and the racks a little lighter — 2026-10-03, done the same day
+**Source:** the operator, 2026-10-03: "What about the space where the
+racks and the background can we design its them to look a little
+lighter". The stage stood on the desk tone, the darkest in the palette,
+and the racks sank into it. The stage, the rack bodies, the posts and
+the faceplates come up a few steps, inside the dark chrome (D-064).
+**Done 2026-10-03.** The stage is a step above the panel tone, not the
+desk, with brighter dots; each rack is a card on it with a faint edge and
+shadow; the posts, the U numbers (every fifth in full text), the slots'
+lines and the faceplates are each mixed a few per cent of the text
+colour into what they were, so the drawing reads without leaving the dark
+chrome (D-064). **Run:** the stylesheet guards, `rackroom.mjs`,
+`racks.mjs` and `interact.mjs`.
+
 ### LT-692 — **bug** A PDU or console server dragged into a rack is not there — 2026-10-03, done the same day
 **Source:** the operator, 2026-10-03, with a photo of the racks screen:
 "The PDUs in the rack and console server have bug they dont show in the
