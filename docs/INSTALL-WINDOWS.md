@@ -104,6 +104,25 @@ If the SmartScreen prompt itself must go away for machines nobody manages,
 that takes a certificate from a public authority; the decision on record
 (2026-09-29) is to stay on the Coreview certificate.
 
+- **Chrome may refuse the download outright** — "This file is dangerous",
+  with no *Keep* button. That is Google Safe Browsing's download
+  protection, which judges an installer by the reputation of its signing
+  certificate and finds none for a private one; it is the same verdict a
+  public certificate would cure, and nothing in the build changes it. Each
+  build has passed VirusTotal before it was published, so it is not a
+  detection. Three ways past it, from best to worst:
+  1. Fetch the artifact without a browser. From a terminal with the GitHub
+     CLI signed in: `gh run download <run id> -n coreview-windows -R
+     <owner>/<repo>` (the run id is in the Actions URL). Nothing is
+     flagged, and the file arrives without the Mark of the Web.
+  2. Download with Edge, which warns but offers *Keep*.
+  3. In Chrome, *chrome://settings/security* → Safe Browsing → *No
+     protection* for the one download, then put it back. Do not leave it off.
+  Google takes false-positive reports at
+  https://safebrowsing.google.com/safebrowsing/report_error/; they do not
+  change the verdict quickly, and only a public certificate changes it for
+  good.
+
 ## 4. Install
 
 Run the installer (per-machine; it asks for elevation). It installs the

@@ -14669,6 +14669,19 @@ internal COREVIEW-FGT-Root-CA cannot and never will.
 
 ## Icebox
 
+### LT-691 — Chrome blocks the Windows installer as "dangerous" — 2026-10-02
+**Source:** the operator, 2026-10-02, with Chrome's download bubble for
+`coreview-windows (7).zip`: "This file is dangerous", no Keep. Google
+Safe Browsing judges the installer by its signing certificate's
+reputation, and the Coreview certificate — an internal CA by the decision
+of 2026-09-29 (`docs/SIGNING.md`) — has none and cannot earn any; the
+build passes VirusTotal before it is published, so it is not a detection.
+**Blocked on that decision:** the only fix is a certificate from a
+public authority (Azure Trusted Signing is the cheapest that fits the
+existing `sign-windows` action), which the operator declined. The ways
+round it — the GitHub CLI, Edge, Safe Browsing off for one download —
+are in `docs/INSTALL-WINDOWS.md` §3. Reopen if the decision changes.
+
 ### LT-690 — Duplicate a rack, and print one rack per page — 2026-10-02
 **Source:** LT-689's recommendations, the two not shipped with it.
 
