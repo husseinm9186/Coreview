@@ -827,6 +827,77 @@ I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
 
+### LT-692 — **bug** A PDU or console server dragged into a rack is not there — 2026-10-03, done the same day
+**Source:** the operator, 2026-10-03, with a photo of the racks screen:
+"The PDUs in the rack and console server have bug they dont show in the
+racks when dragged". Their default mounting is the rear, and the front
+was showing, so they landed on the face the operator could not see; a
+zero-U PDU had no drawing at all, only a line under the rack. A dropped
+or clicked item lands on the face being looked at, and a zero-U item is
+drawn as a strip down the post.
+**Done 2026-10-03.** `addFurniture` takes the face it was dropped or
+clicked on, and the panel passes the face being viewed, so a PDU or
+console server added while the front shows is on the front; a zero-U item
+is drawn as a strip down the post (`.cv-rack-zerou`) on its face, in a
+column of its own that the faceplates stop short of.
+
+### LT-693 — Colour on a rack item — 2026-10-03, done the same day
+**Source:** the operator, 2026-10-03: "i want to color the items if
+possible". A swatch row on the chosen bar colours a device's or an
+item's faceplate; a device keeps its class colour until one is chosen.
+**Done 2026-10-03.** Nine swatches and × on the chosen bar set
+`rackColour` on a device or `colour` on furniture; the faceplate's strip,
+border and glyph take it, the side view's bar too; × returns a device to
+its class colour.
+
+### LT-694 — The stack editor wastes the column — 2026-10-03, done the same day
+**Source:** the operator, 2026-10-03: "some wasted space when i tru to
+setup the stacking" — the editor stretched down the whole side column
+with its fields spread apart. It becomes a card across the top of the
+stage, members in a row.
+**Done 2026-10-03.** The editor is a card under the bar, across the
+stage, its fields in a row and the members as chips with ↑ and ×; the
+global `.cv-field { flex: 1 }` that had spread it down the column is
+overridden inside it.
+
+### LT-695 — A side view of the rack, with depth — 2026-10-03, done the same day
+**Source:** the operator, 2026-10-03: "I also cant see the sizes and
+width in the racks from side view is that possible". A third face, Side:
+the rack in profile, each box a bar as deep as it is — its depth in
+millimetres where given, full or half depth otherwise — from the rail it
+is mounted on, and the rack's own depth under Where.
+**Done 2026-10-03.** A third view, Side: every placed box as a bar
+`depthFraction` wide — its `depthMm` against the rack's `depthMm`, else
+0.85 for full and 0.4 for half depth, marked ½ — from the front rail or the
+rear rail by its mounting; `widthMm` and `depthMm` on the rack under Where,
+shown under the rack's name; a depth field on the chosen bar for any box.
+Drops are not taken in the side view. `rackFurniture.test.ts` holds the
+fraction.
+
+### LT-696 — The faceplates, drawn properly — 2026-10-03, done the same day
+**Source:** the operator, 2026-10-03: "make it really good design and
+add some colors and shapes and go through it and make it very good".
+Each class and each kind of furniture gets a faceplate of its own —
+port blocks, uplinks and status LEDs on a switch, drive bays on a
+server, drives on storage, outlets on a PDU, numbered jacks on a patch
+panel, a battery on a UPS — on the class colour, with the status light
+following validation.
+**Done 2026-10-03.** `Fascia` draws each class and kind: port blocks of
+eight with four uplinks on a switch, ports in fours and three LEDs on a
+router, firewall, WAF, load balancer, VPN or controller, drive bays on a
+server or host, a grid of drives on storage, blades on a chassis, jacks in
+sixes on a patch panel, fibre cassettes, outlets on a PDU, a battery on a
+UPS, fingers on a cable manager, ribs on a blank, a plate on a shelf, a
+screen on a drawer; fans and power supplies on the rear of a device,
+outlets on the rear of a PDU. A status light on every device follows
+validation. Racks are a little wider for it.
+**Run, for LT-692–LT-696 together:** `rackroom.mjs` grown to 61 checks,
+`racks.mjs` untouched, the guards, vitest (1499), tsc, eslint, clippy,
+cargo test, pytest and all 43 harnesses, green. The stylesheet guard
+caught the zero-U column's variable read with a fallback before it was
+declared; it is declared on the slots now.
+
+
 ### LT-681 — Racks on the rail — 2026-10-02, done the same day
 **Source:** the operator, 2026-10-02, with a screenshot of Tools ▸ Racks:
 "to the tools, Rack I need you to move it to the side pannel". The rail

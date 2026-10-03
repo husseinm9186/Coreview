@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { airflowOf, furnitureRackables, groupRacks, placeOf, placementProblem, usageOf, type Rack } from './rack';
+import { airflowOf, depthFraction, furnitureRackables, groupRacks, placeOf, placementProblem, usageOf, type Rack } from './rack';
 import { FURNITURE, furnitureProblem, furnitureSpec, newFurniture } from './rackFurniture';
 
 describe('rack furniture (LT-682, LT-686, D-065)', () => {
@@ -73,5 +73,16 @@ describe('airflow and budgets (LT-684, LT-689)', () => {
       { id: 'z', label: 'z', rackUnits: 0, kind: 'furniture', furniture: 'pdu-vertical', powerW: 0, weightKg: 3 },
     ]);
     expect(u).toEqual({ used: 3, reserved: 3, free: 6, powerW: 150, weightKg: 7.5, unknownPower: 1 });
+  });
+});
+
+describe('the side view (LT-695)', () => {
+  it('sizes a box against the rack: millimetres where given, most of the rack for full depth, well under half for half', () => {
+    expect(depthFraction({ depthMm: 730 }, { depthMm: 1000 })).toBeCloseTo(0.73);
+    expect(depthFraction({ depthMm: 730 }, { depthMm: 800 })).toBeCloseTo(0.9125);
+    expect(depthFraction({ depthMm: 2000 }, {})).toBe(1);
+    expect(depthFraction({ rackDepth: 'full' }, {})).toBe(0.85);
+    expect(depthFraction({ rackDepth: 'half' }, {})).toBe(0.4);
+    expect(depthFraction({}, {})).toBe(0.85);
   });
 });

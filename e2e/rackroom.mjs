@@ -89,12 +89,14 @@ check("Tools still offers it as a tab", (await page.locator(".cv-tools .cv-tabs 
 
 check("racks are grouped under where they stand", (await page.locator(".cv-racks-place-head").textContent()) === "HQ · Floor 2 · Room 2.14", await page.locator(".cv-racks-place-head").textContent());
 check("in row and position order", JSON.stringify(await page.locator(".cv-rack-name").evaluateAll((els) => els.map((e) => e.value))) === JSON.stringify(["RACK-01", "RACK-02"]));
-check("and each rack says its place", (await rackNamed("RACK-01").locator('[data-region="rack-place"]').innerText()) === "HQ · Floor 2 · Room 2.14 · Row B · 03");
+check("and each rack says its place", (await rackNamed("RACK-01").locator('[data-region="rack-place"]').innerText()).startsWith("HQ · Floor 2 · Room 2.14 · Row B · 03"), await rackNamed("RACK-01").locator('[data-region="rack-place"]').innerText());
 await rackNamed("RACK-02").locator("button", { hasText: /^Where$/ }).click();
 await rackNamed("RACK-02").getByLabel("Row of rack RACK-02").fill("C");
 await rackNamed("RACK-02").getByLabel("Row of rack RACK-02").blur();
 await page.waitForTimeout(200);
 check("the place is edited on the rack", (await racks()).find((r) => r.id === "r2").row === "C");
+await rackNamed("RACK-02").locator("button", { hasText: /^Where$/ }).click();
+await page.waitForTimeout(100);
 await page.getByLabel("Filter by building, floor, room or rack").fill("RACK-02");
 await page.waitForTimeout(200);
 check("a filter narrows to one rack", (await page.locator(".cv-rack").count()) === 1);
@@ -105,12 +107,12 @@ await page.waitForTimeout(200);
 
 const sw1 = item("sw1");
 check("a switch is drawn with its class glyph, a colour strip and a port row",
-  (await sw1.locator(".cv-rack-item-glyph").count()) === 1 && (await sw1.locator(".cv-rack-item-strip").count()) === 1 && (await sw1.locator(".cv-rack-ports").getAttribute("data-ports")) === "48");
+  (await sw1.locator(".cv-rack-item-glyph").count()) === 1 && (await sw1.locator(".cv-rack-item-strip").count()) === 1 && (await sw1.locator(".cv-fascia.is-ports").getAttribute("data-count")) === "48");
 check("the U numbers run down both posts, every fifth marked",
   (await page.locator('.cv-rack-slots[data-rack="RACK-01"]').locator("..").locator(".cv-rack-numbers.is-right li").count()) === 42 && (await page.locator(".cv-rack-numbers.is-left li.is-fifth").first().innerText()) === "40");
 await page.locator(".cv-seg button", { hasText: "Rear" }).click();
 await page.waitForTimeout(200);
-check("from the rear a device shows its power supplies, not its ports", (await sw1.locator(".cv-rack-psus").count()) === 1 && (await sw1.locator(".cv-rack-ports").count()) === 0);
+check("from the rear a device shows its power supplies, not its ports", (await sw1.locator(".cv-fascia.is-psus").count()) === 1 && (await sw1.locator(".cv-fascia.is-ports").count()) === 0);
 await page.locator(".cv-seg button", { hasText: "Front" }).click();
 await page.waitForTimeout(200);
 
@@ -132,7 +134,7 @@ await page.locator('.cv-racks-furniture-item[data-kind="patch-panel"]').click();
 await page.waitForTimeout(250);
 let items = (await racks()).find((r) => r.id === "r1").items ?? [];
 check("a patch panel is added to the chosen rack at the first free U from the top", items.length === 1 && items[0].kind === "patch-panel" && items[0].u === 39, JSON.stringify(items));
-check("drawn as a row of jacks", (await page.locator('.cv-rack-item[data-kind="patch-panel"] .cv-rack-ports').getAttribute("data-ports")) === "24");
+check("drawn as a row of jacks", (await page.locator('.cv-rack-item[data-kind="patch-panel"] .cv-fascia.is-jacks').getAttribute("data-count")) === "24");
 await page.locator('.cv-racks-furniture-item[data-kind="reserved"]').click();
 await page.waitForTimeout(250);
 const reservation = page.locator('.cv-rack-item[data-kind="reserved"]');
@@ -225,6 +227,86 @@ check("a drop while zoomed lands on the U under the pointer", (await st(() => wi
 await page.locator(".cv-racks-zoomvalue").click();
 await page.waitForTimeout(200);
 check("and 100 % comes back", (await page.locator(".cv-racks-zoomvalue").innerText()) === "100%");
+
+// ------------------------------------------------------------- LT-692 a drop lands on the face you see
+
+await page.locator(".cv-seg button", { hasText: "Front" }).click();
+await page.waitForTimeout(200);
+await rackNamed("RACK-02").locator(".cv-rack-name").click();
+await page.locator('.cv-racks-furniture-item[data-kind="pdu"]').click();
+await page.waitForTimeout(200);
+const pdu = (await racks()).find((r) => r.id === "r2").items.find((f) => f.kind === "pdu");
+check("a PDU added while the front shows is mounted on the front, and is there", pdu?.face === "front" && (await page.locator('.cv-rack-item[data-kind="pdu"]').count()) === 1, JSON.stringify(pdu));
+await page.locator('.cv-racks-furniture-item[data-kind="console-server"]').click();
+await page.waitForTimeout(200);
+check("and so is a console server", (await page.locator('.cv-rack-item[data-kind="console-server"]').isVisible()));
+await page.locator('.cv-racks-furniture-item[data-kind="pdu-vertical"]').click();
+await page.waitForTimeout(200);
+check("a zero-U PDU is drawn as a strip down the post", (await rackNamed("RACK-02").locator('[data-region="rack-zerou"] .cv-rack-zerou-item').count()) === 1);
+await page.locator(".cv-seg button", { hasText: "Rear" }).click();
+await page.waitForTimeout(200);
+check("mounted on the front, the strip is not on the rear", (await rackNamed("RACK-02").locator('[data-region="rack-zerou"] .cv-rack-zerou-item').count()) === 0);
+await page.locator(".cv-seg button", { hasText: "Front" }).click();
+await page.waitForTimeout(200);
+
+// ------------------------------------------------------------- LT-693 colour
+
+await page.locator('.cv-rack-item[data-kind="pdu"]').click();
+await page.locator('[data-region="rack-colour"] .cv-swatch').nth(3).click();
+await page.waitForTimeout(200);
+check("a swatch colours a piece of furniture", (await racks()).find((r) => r.id === "r2").items.find((f) => f.kind === "pdu").colour === "#e4564a" && (await page.locator('.cv-rack-item[data-kind="pdu"] .cv-rack-item-strip').count()) === 1);
+await item("srv").click();
+await page.locator('[data-region="rack-colour"] .cv-swatch').nth(4).click();
+await page.waitForTimeout(200);
+check("and a device, replacing its class colour", (await st(() => window.__cvStore.getState().doc.pages[0].nodes.find((n) => n.id === "srv").data.rackColour)) === "#b07ff0" && (await item("srv").evaluate((el) => getComputedStyle(el).getPropertyValue("--rack-item-colour").trim())) === "#b07ff0");
+await page.locator('[data-region="rack-colour"] .cv-swatch.is-none').click();
+await page.waitForTimeout(200);
+check("× takes the colour away again", (await st(() => window.__cvStore.getState().doc.pages[0].nodes.find((n) => n.id === "srv").data.rackColour)) === undefined);
+
+// ------------------------------------------------------------- LT-696 faceplates
+
+check("a switch's faceplate carries port blocks, uplinks and a status light",
+  (await item("sw1").locator(".cv-fascia.is-ports").getAttribute("data-count")) === "48" && (await item("sw1").locator(".cv-fascia.is-uplinks").count()) === 1 && (await item("sw1").locator(".cv-rack-led").count()) === 1);
+check("a server's carries drive bays", (await item("srv").locator(".cv-fascia.is-bays").count()) === 1);
+check("a PDU's carries outlets and a patch panel's jacks", (await page.locator('.cv-rack-item[data-kind="pdu"] .cv-fascia.is-outlets').count()) === 1 && (await page.locator('.cv-rack-item[data-kind="patch-panel"] .cv-fascia.is-jacks').count()) === 1);
+await page.locator(".cv-seg button", { hasText: "Rear" }).click();
+await page.waitForTimeout(200);
+check("and the rear of a device shows fans and power supplies", (await item("sw1").locator(".cv-fascia.is-psus").count()) === 1 && (await item("sw1").locator(".cv-fascia.is-fans").count()) === 1);
+await page.locator(".cv-seg button", { hasText: "Front" }).click();
+
+// ------------------------------------------------------------- LT-694 the editor is a card
+
+await page.locator(".cv-racks-stack button", { hasText: "ACCESS-STACK" }).click();
+await page.waitForTimeout(200);
+const editor = await page.locator('[data-region="stack-editor"]').boundingBox();
+const stage = await page.locator('[data-region="rack-stage"]').boundingBox();
+check("the stack editor is a card across the top, above the stage, not down the column", editor.width > 900 && editor.y + editor.height <= stage.y + 1 && editor.height < 260, JSON.stringify({ editor, stage }));
+await page.locator('[data-region="stack-editor"] button', { hasText: /^Cancel$/ }).click();
+
+// ------------------------------------------------------------- LT-695 the side view
+
+await page.locator(".cv-seg button", { hasText: "Side" }).click();
+await page.waitForTimeout(300);
+const sideOf = (id) => page.locator(`.cv-rack-side-item[data-device="${id}"]`);
+check("the side view draws every placed box as a bar", (await page.locator(".cv-rack-side-item").count()) >= 6);
+check("a full-depth box reaches most of the way, a half-depth one well under half",
+  (await sideOf("sw1").getAttribute("data-depth")) === "85" && (await page.locator('.cv-rack-side-item[data-depth="40"]').count()) >= 1);
+check("from the front rail for a front-mounted box", (await sideOf("sw1").boundingBox()).x < (await rackNamed("RACK-01").locator(".cv-rack-slots").boundingBox()).x + 6);
+await sideOf("srv").click();
+await page.getByLabel("Depth of SRV-1 in millimetres").fill("730");
+await page.getByLabel("Depth of SRV-1 in millimetres").blur();
+await page.waitForTimeout(250);
+check("a depth in millimetres sizes the bar against the rack's depth", (await sideOf("srv").getAttribute("data-depth")) === "73" && /730 mm/.test(await sideOf("srv").innerText()), await sideOf("srv").getAttribute("data-depth"));
+await rackNamed("RACK-02").locator("button", { hasText: /^Where$/ }).click();
+await rackNamed("RACK-02").getByLabel("Depth of rack RACK-02 in millimetres").fill("800");
+await rackNamed("RACK-02").getByLabel("Depth of rack RACK-02 in millimetres").blur();
+await page.waitForTimeout(250);
+check("and the rack's own depth, set under Where, rescales it", (await sideOf("srv").getAttribute("data-depth")) === "91", await sideOf("srv").getAttribute("data-depth"));
+await rackNamed("RACK-02").locator("button", { hasText: /^Where$/ }).click();
+await page.waitForTimeout(100);
+check("the rack says its size", /800 mm deep · 600 mm wide/.test(await rackNamed("RACK-02").locator('[data-region="rack-place"]').innerText()));
+await page.locator(".cv-seg button", { hasText: "Front" }).click();
+await page.waitForTimeout(200);
 
 // ------------------------------------------------------------- the export carries it all
 

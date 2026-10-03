@@ -111,15 +111,27 @@ whole U; a spot something else holds is refused and the message says what is
 there. Click a box to move it a U at a time with `↑`/`↓`, mount it on the rear,
 make it half depth (a patch panel, so something else can use the same U on the
 other face), set its **airflow**, its watts and kilograms, or take it out.
-**Front** and **Rear** switch faces; a full-depth box shows hatched from
-behind. Zoom with **Ctrl+wheel** or **−**, **+**, **Fit** and the percentage,
-which puts it back to 100 %. **Export … as SVG** or **as PNG** saves the
-elevations. Nothing on the diagram moves.
+**Front**, **Rear** and **Side** switch views; a full-depth box shows hatched
+from behind. Whatever you add or drop lands on the face you are looking at.
+A zero-U item — a vertical PDU — is a strip down the post on that face.
+**Side** is the rack in profile: each box a bar as deep as it is, from the
+rail it is mounted on — its depth in millimetres where you have typed one on
+the chosen bar, otherwise most of the rack for full depth and well under half
+for half depth, marked ½ — against the rack's own depth and width, set under
+**Where** and shown under its name. Zoom with **Ctrl+wheel** or **−**, **+**,
+**Fit** and the percentage, which puts it back to 100 %. **Export … as SVG**
+or **as PNG** saves the elevations. Nothing on the diagram moves.
 
 Each box is drawn as what it is: the class glyph and colour the palette uses,
-its name, a row of ports where it has a port count (power supplies from the
-rear), an airflow arrow — into the face it breathes from, out of the other —
-and, in a stack, its member number.
+a status light that follows validation, its name, and a fascia of its kind —
+port blocks of eight with the uplinks apart on a switch, a few ports and
+LEDs on a router or firewall, drive bays on a server, a grid of drives on
+storage, outlets on a PDU, jacks in sixes on a patch panel, cassettes on a
+fibre enclosure, a battery on a UPS, fingers on a cable manager, ribs on a
+blank; fans and power supplies from the rear — an airflow arrow, into the
+face it breathes from and out of the other, and, in a stack, its member
+number. The swatches on the chosen bar give any box a colour of its own;
+× takes it back to the class colour.
 
 **What a rack holds that is not on the diagram.** Under **Add to a rack**,
 click a patch panel, fibre enclosure, PDU (horizontal, or vertical zero-U),

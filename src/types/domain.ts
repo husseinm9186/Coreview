@@ -256,6 +256,10 @@ export interface DeviceNodeData extends Record<string, unknown> {
   /** LT-689: what it draws and weighs, for the rack's budgets. */
   powerW?: number;
   weightKg?: number;
+  /** LT-693: a colour chosen for its faceplate in the rack; the class colour until then. */
+  rackColour?: string;
+  /** LT-695: how deep it is, for the side view. Full or half depth stands in when unset. */
+  depthMm?: number;
   /** LT-239: threaded comments on this device. */
   comments?: CommentThread[];
   /** LT-234: files about this device — photos, configs, contracts — by their

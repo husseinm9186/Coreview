@@ -1,19 +1,22 @@
 /**
- * Rack elevations (LT-195–197, and LT-681–LT-689): the project's racks drawn
- * U by U on a canvas of their own, from the front or the rear, with the
+ * Rack elevations (LT-195–197, LT-681–LT-696): the project's racks drawn U by
+ * U on a canvas of their own, from the front, the rear or the side, with the
  * devices on the diagram placed in them and the furniture a rack holds that
  * is not on the diagram — patch panels, PDUs, UPSs, shelves, blanks, and
  * reservations (D-065) — beside them.
  *
  * A device or a piece of furniture is dragged into a rack, or moved within or
  * between racks, and always lands on a whole U — there is no free placement
- * to turn off (the D-013 amendment). A move into space something else holds
- * is refused with what is in the way. The selected box moves a U at a time
- * with the arrow keys. Each box is drawn as what it is: the class glyph and
- * colour, a port row, an airflow arrow, its stack member number; a stack's
- * cables run down the side of the rack the way the vendor's guide draws them
- * (LT-683). Racks stand where they are — building, floor, room, row — and
- * the page groups them so (LT-685). Zoom with Ctrl+wheel or the buttons.
+ * to turn off (the D-013 amendment) — and on the face being looked at
+ * (LT-692). A move into space something else holds is refused with what is
+ * in the way. The selected box moves a U at a time with the arrow keys. Each
+ * box is drawn as what it is (LT-696): the class glyph and colour, port
+ * blocks, bays, outlets or jacks, a status light, an airflow arrow, its
+ * stack member number; a chosen colour replaces the class colour (LT-693).
+ * A stack's cables run down the side of the rack the way the vendor's guide
+ * draws them (LT-683). The side view (LT-695) shows each box as deep as it
+ * is. Racks stand where they are — building, floor, room, row — and the page
+ * groups them so (LT-685). Zoom with Ctrl+wheel or the buttons.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -21,9 +24,12 @@ import { saveExport, slug } from '../lib/exports';
 import { allNodes } from '../lib/pages';
 import {
   AIRFLOWS,
+  DEFAULT_RACK_DEPTH_MM,
   DEFAULT_RACK_UNITS,
+  DEFAULT_RACK_WIDTH_MM,
   MAX_RACK_UNITS,
   airflowOf,
+  depthFraction,
   elevation,
   firstFreeU,
   furnitureRackables,
@@ -31,6 +37,7 @@ import {
   placeOf,
   placementProblem,
   rackableOf,
+  spanOf,
   takesSpace,
   uAt,
   usageOf,
@@ -53,6 +60,10 @@ export const UNIT_PX = 14;
 const DRAG_TYPE = 'application/x-coreview-device';
 const DRAG_FURNITURE = 'application/x-coreview-furniture';
 const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2];
+/** LT-693: the colours a box can be given. */
+const SWATCHES = ['#5ea1ff', '#3fb66a', '#e8a33d', '#e4564a', '#b07ff0', '#2cc6c6', '#f06fae', '#c9a227', '#98a3b3'];
+
+type View = RackFace | 'side';
 
 /** Which device or item is being dragged. `dataTransfer` cannot be read
  *  during dragover, only on drop, so the preview needs its own note of it. */
@@ -62,6 +73,9 @@ const sameRack = (a: string | undefined, b: string) => (a ?? '').trim().toLowerC
 
 /** The colour a stack's cables are drawn in: one per stack, from the wheel. */
 const stackColour = (index: number) => GROUP_WHEEL_DARK[index % GROUP_WHEEL_DARK.length]!;
+
+/** The face a drop on this view lands on: the side view mounts on the front. */
+const faceOfView = (view: View): RackFace => (view === 'rear' ? 'rear' : 'front');
 
 export function RackPanel() {
   // LT-452: the racks and the pages, not the whole document.
@@ -73,7 +87,8 @@ export function RackPanel() {
   const ground = useStore((s) => s.settings.ground);
   const nodeStatus = useStore((s) => s.nodeStatus);
   const store = useStore.getState;
-  const [face, setFace] = useState<RackFace>('front');
+  const [view, setView] = useState<View>('front');
+  const face = faceOfView(view);
   const [selected, setSelected] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newUnits, setNewUnits] = useState(String(DEFAULT_RACK_UNITS));
@@ -194,9 +209,10 @@ export function RackPanel() {
     const spec = furnitureSpec(kind);
     const label = kind === 'reserved' ? 'Reserved' : spec.label;
     // Clicked rather than dropped: the first free U from the top, like a
-    // device built into a rack; a zero-U item has no U.
+    // device built into a rack; a zero-U item has no U. Either way it lands
+    // on the face being looked at (LT-692).
     if (u === undefined && spec.units > 0) {
-      const probe: Rackable = { id: '\u0000new', label, rack: rack.name, rackUnits: spec.units, rackFace: spec.face, rackDepth: spec.depth, kind: 'furniture', furniture: kind };
+      const probe: Rackable = { id: '\u0000new', label, rack: rack.name, rackUnits: spec.units, rackFace: face, rackDepth: spec.depth, kind: 'furniture', furniture: kind };
       const free = firstFreeU(rack, allFor(rack), probe);
       if (free === null) {
         setMessage(`No room in ${rack.name} for ${label}.`);
@@ -204,7 +220,7 @@ export function RackPanel() {
       }
       u = free;
     }
-    const problem = store().addFurniture(rack.id, kind, label, undefined, u);
+    const problem = store().addFurniture(rack.id, kind, label, undefined, u, face);
     say(problem, `${label} added to ${rack.name}${u !== undefined ? ` at U${u}` : ''}.`);
     if (!problem) {
       const added = (store().doc.racks ?? []).find((r) => r.id === rack.id)?.items?.at(-1);
@@ -213,6 +229,8 @@ export function RackPanel() {
   };
 
   const stackOf = (id: string) => stacks.find((s) => s.id === id);
+  const openStackEditor = (s: Stack) =>
+    setStackEditor({ id: s.id, name: s.name, technology: s.technology, topology: s.topology, members: s.members.map((m) => m.nodeId) });
 
   return (
     <div
@@ -230,9 +248,9 @@ export function RackPanel() {
     >
       <div className="cv-racks-bar">
         <div className="cv-seg" role="group" aria-label={t('rackPanel.rackFace')}>
-          {(['front', 'rear'] as const).map((f) => (
-            <button key={f} type="button" className={face === f ? 'is-on' : ''} aria-pressed={face === f} onClick={() => setFace(f)}>
-              {f === 'front' ? 'Front' : 'Rear'}
+          {(['front', 'rear', 'side'] as const).map((f) => (
+            <button key={f} type="button" className={view === f ? 'is-on' : ''} aria-pressed={view === f} title={f === 'side' ? t('rackPanel.sideHint') : undefined} onClick={() => setView(f)}>
+              {f === 'front' ? 'Front' : f === 'rear' ? 'Rear' : t('rackPanel.side')}
             </button>
           ))}
         </div>
@@ -306,8 +324,19 @@ export function RackPanel() {
           rack={chosenRack}
           stack={chosen.stack ? stackOf(chosen.stack.id) : undefined}
           say={say}
-          onEditStack={(s) => setStackEditor({ id: s.id, name: s.name, technology: s.technology, topology: s.topology, members: s.members.map((m) => m.nodeId) })}
+          onEditStack={openStackEditor}
           onRemoved={() => setSelected(null)}
+        />
+      )}
+
+      {/* LT-694: the stack editor is a card across the top, not a column. */}
+      {stackEditor && (
+        <StackEditor
+          draft={stackEditor}
+          devices={devices}
+          onChange={setStackEditor}
+          onClose={() => setStackEditor(null)}
+          say={say}
         />
       )}
 
@@ -331,7 +360,7 @@ export function RackPanel() {
                 onClick={() => setSelected(d.id)}
               >
                 <span className="cv-racks-device-name">
-                  <DeviceGlyph type={(d.deviceType ?? 'generic') as DeviceType} className="cv-racks-device-glyph" style={{ color: deviceColor(d.deviceType ?? 'generic', 'unknown', ground) }} />
+                  <DeviceGlyph type={(d.deviceType ?? 'generic') as DeviceType} className="cv-racks-device-glyph" style={{ color: d.colour ?? deviceColor(d.deviceType ?? 'generic', 'unknown', ground) }} />
                   {d.label}
                 </span>
                 <span className="cv-racks-units">
@@ -379,7 +408,7 @@ export function RackPanel() {
               return (
                 <li key={s.id} className="cv-racks-stack">
                   <i className="cv-racks-stack-swatch" style={{ background: stackColour(i) }} aria-hidden="true" />
-                  <button type="button" className="cv-link-button" onClick={() => setStackEditor({ id: s.id, name: s.name, technology: s.technology, topology: s.topology, members: s.members.map((m) => m.nodeId) })}>
+                  <button type="button" className="cv-link-button" onClick={() => openStackEditor(s)}>
                     {s.name}
                   </button>
                   <span className="cv-help">
@@ -392,18 +421,9 @@ export function RackPanel() {
           <button type="button" className="cv-btn cv-btn-small" onClick={() => setStackEditor({ name: '', technology: 'cisco-stackwise-480', topology: 'ring', members: [] })}>
             {t('rackPanel.newStack')}
           </button>
-          {stackEditor && (
-            <StackEditor
-              draft={stackEditor}
-              devices={devices}
-              onChange={setStackEditor}
-              onClose={() => setStackEditor(null)}
-              say={say}
-            />
-          )}
         </aside>
 
-        <div className="cv-racks-stage" ref={stageRef} data-region="rack-stage" onClick={(e) => { if (e.target === e.currentTarget) setSelected(null); }}>
+        <div className="cv-racks-stage" ref={stageRef} data-region="rack-stage" data-view={view} onClick={(e) => { if (e.target === e.currentTarget) setSelected(null); }}>
           {racks.length === 0 && (
             <p className="cv-help cv-racks-empty">
               No racks yet. Add one, or give devices a rack name in the inspector (Rack / room) and build racks from them.
@@ -418,7 +438,7 @@ export function RackPanel() {
                     <RackView
                       key={rack.id}
                       rack={rack}
-                      face={face}
+                      view={view}
                       items={allFor(rack)}
                       stacks={stacks}
                       ground={ground}
@@ -459,7 +479,7 @@ export function RackPanel() {
                             say(store().placeFurniture(rack.id, item.id, u, face), `${item.label} moved to U${u}.`);
                           } else {
                             const f = from.items!.find((x) => x.id === item.id)!;
-                            const problem = store().addFurniture(rack.id, f.kind, f.label, f.units, u);
+                            const problem = store().addFurniture(rack.id, f.kind, f.label, f.units, u, face);
                             if (!problem) store().removeFurniture(from.id, item.id);
                             say(problem, `${item.label} moved to ${rack.name} at U${u}.`);
                           }
@@ -491,10 +511,10 @@ export function RackPanel() {
 /* ----------------------------------------------------------------- a rack */
 
 function RackView({
-  rack, face, items, stacks, ground, selected, hover, isTarget, onSelect, say, onDragOver, onDragLeave, onDrop, onItemDragStart, onItemDragEnd,
+  rack, view, items, stacks, ground, selected, hover, isTarget, onSelect, say, onDragOver, onDragLeave, onDrop, onItemDragStart, onItemDragEnd,
 }: {
   rack: Rack;
-  face: RackFace;
+  view: View;
   items: Rackable[];
   stacks: Stack[];
   ground: 'light' | 'dark';
@@ -510,17 +530,22 @@ function RackView({
   onItemDragEnd: () => void;
 }) {
   const store = useStore.getState;
-  const view = elevation(rack, items, face);
+  const face = faceOfView(view);
+  const elev = elevation(rack, items, face);
   const members = items.filter((d) => sameRack(d.rack, rack.name));
   const usage = usageOf(rack, members);
   const air = airflowOf(members.filter((d) => d.rackU !== undefined && takesSpace(d)));
   const [where, setWhere] = useState(false);
   const place = placeOf(rack);
+  // LT-695: the side view shows every placed box, from the rail it is mounted on.
+  const sideItems = useMemo(() => members.map((d) => ({ device: d, span: spanOf(d) })).filter((x): x is { device: Rackable; span: { bottom: number; top: number } } => x.span !== null && x.span.top <= rack.units), [members, rack.units]);
+  const zeroHere = elev.zeroU.filter((d) => view === 'side' || (d.rackFace === 'rear') === (face === 'rear'));
 
   // LT-683: the cables of every stack with a member placed in this rack, on
   // the face its ports are on.
   const cables = useMemo(() => {
     const out: { stack: Stack; colour: string; index: number; preset: ReturnType<typeof stackPreset>; lines: { fromId: string; toId: string; fromPort: string; toPort: string; kind: string; elsewhere?: string }[] }[] = [];
+    if (view === 'side') return out;
     stacks.forEach((stack, index) => {
       const preset = stackPreset(stack.technology);
       const portsOn = preset?.portsOn ?? 'rear';
@@ -540,10 +565,20 @@ function RackView({
       out.push({ stack, colour: stackColour(index), index, preset, lines });
     });
     return out;
-  }, [stacks, items, rack.name, face]);
+  }, [stacks, items, rack.name, face, view]);
+
+  const numbers = (side: 'left' | 'right') => (
+    <ol className={`cv-rack-numbers is-${side}`} aria-hidden="true">
+      {Array.from({ length: rack.units }, (_, i) => (
+        <li key={i} style={{ height: UNIT_PX }} className={(rack.units - i) % 5 === 0 ? 'is-fifth' : ''}>
+          {rack.units - i}
+        </li>
+      ))}
+    </ol>
+  );
 
   return (
-    <section className={`cv-rack${isTarget ? ' is-target' : ''}`} aria-label={`Rack ${rack.name}`} data-rack-id={rack.id} onClick={() => onSelect(selected)}>
+    <section className={`cv-rack${isTarget ? ' is-target' : ''} is-view-${view}`} aria-label={`Rack ${rack.name}`} data-rack-id={rack.id} onClick={() => onSelect(selected)}>
       <header className="cv-rack-head">
         <input
           className="cv-input cv-rack-name"
@@ -577,7 +612,12 @@ function RackView({
           ×
         </button>
       </header>
-      {place && !where && <div className="cv-rack-place" data-region="rack-place">{place}</div>}
+      {!where && (
+        <div className="cv-rack-place" data-region="rack-place">
+          {place || ' '}
+          <span className="cv-rack-size">{t('rackPanel.sideLabel', { depth: rack.depthMm ?? DEFAULT_RACK_DEPTH_MM, width: rack.widthMm ?? DEFAULT_RACK_WIDTH_MM })}</span>
+        </div>
+      )}
       {where && (
         <div className="cv-rack-wherefields" data-region="rack-where">
           {([['building', 'Building'], ['floor', 'Floor'], ['room', 'Room'], ['row', 'Row'], ['position', 'Position']] as const).map(([k, label]) => (
@@ -587,6 +627,16 @@ function RackView({
                 onBlur={(e) => { if ((e.target.value.trim() || undefined) !== rack[k]) say(store().updateRack(rack.id, { [k]: e.target.value }), `${rack.name}: ${label.toLowerCase()} set.`); }} />
             </label>
           ))}
+          <label className="cv-field cv-field-narrow">
+            <span>{t('rackPanel.rackWidth')}</span>
+            <input className="cv-input" type="number" min={0} placeholder={String(DEFAULT_RACK_WIDTH_MM)} defaultValue={rack.widthMm ?? ''} aria-label={`Width of rack ${rack.name} in millimetres`}
+              onBlur={(e) => say(store().updateRack(rack.id, { widthMm: Number(e.target.value) || 0 }), `${rack.name}: width set.`)} />
+          </label>
+          <label className="cv-field cv-field-narrow">
+            <span>{t('rackPanel.rackDepth')}</span>
+            <input className="cv-input" type="number" min={0} placeholder={String(DEFAULT_RACK_DEPTH_MM)} defaultValue={rack.depthMm ?? ''} aria-label={`Depth of rack ${rack.name} in millimetres`}
+              onBlur={(e) => say(store().updateRack(rack.id, { depthMm: Number(e.target.value) || 0 }), `${rack.name}: depth set.`)} />
+          </label>
           <label className="cv-field cv-field-narrow">
             <span>{t('rackPanel.powerLimit')}</span>
             <input className="cv-input" type="number" min={0} defaultValue={rack.powerLimitW ?? ''} aria-label={`Power limit of rack ${rack.name}`}
@@ -600,24 +650,18 @@ function RackView({
         </div>
       )}
       <div className="cv-rack-frame">
-        <ol className="cv-rack-numbers is-left" aria-hidden="true">
-          {Array.from({ length: rack.units }, (_, i) => (
-            <li key={i} style={{ height: UNIT_PX }} className={(rack.units - i) % 5 === 0 ? 'is-fifth' : ''}>
-              {rack.units - i}
-            </li>
-          ))}
-        </ol>
+        {numbers('left')}
         <div className="cv-rack-post is-left" aria-hidden="true" style={{ height: rack.units * UNIT_PX }} />
         <div
           className="cv-rack-slots"
           data-rack={rack.name}
-          style={{ height: rack.units * UNIT_PX }}
+          style={{ height: rack.units * UNIT_PX, ['--zerou' as string]: zeroHere.length }}
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
           onDrop={onDrop}
           onClick={(e) => { if (e.target === e.currentTarget) onSelect(null); }}
         >
-          {view.items.map((item) => (
+          {view !== 'side' && elev.items.map((item) => (
             <Faceplate
               key={item.device.id}
               item={item}
@@ -633,7 +677,46 @@ function RackView({
               onDragEnd={onItemDragEnd}
             />
           ))}
-          {hover && (
+          {view === 'side' && (
+            <>
+              <span className="cv-rack-side-rail is-front" aria-hidden="true">{t('rackPanel.front')}</span>
+              <span className="cv-rack-side-rail is-rear" aria-hidden="true">{t('rackPanel.rear')}</span>
+              {sideItems.map(({ device: d, span }) => {
+                const fraction = depthFraction(d, rack);
+                const rear = d.rackFace === 'rear';
+                const colour = d.colour ?? (d.kind === 'furniture' ? undefined : deviceColor(d.deviceType ?? 'generic', d.status ?? 'unknown', ground));
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    data-device={d.id}
+                    data-depth={Math.round(fraction * 100)}
+                    className={`cv-rack-side-item${rear ? ' is-rear' : ' is-front'}${selected === d.id ? ' is-selected' : ''}${d.furniture === 'reserved' ? ' is-reserved' : ''}`}
+                    style={{ top: (rack.units - span.top) * UNIT_PX, height: (span.top - span.bottom + 1) * UNIT_PX, width: `${fraction * 100}%`, ...(colour ? { ['--rack-item-colour' as string]: colour } : {}) }}
+                    title={`${d.label} — U${span.bottom}${span.top > span.bottom ? `–${span.top}` : ''} · ${d.depthMm ? `${d.depthMm} mm` : d.rackDepth === 'half' ? 'half depth' : 'full depth'} · mounted ${rear ? 'rear' : 'front'}`}
+                    onClick={(e) => { e.stopPropagation(); onSelect(d.id); }}
+                  >
+                    <span className="cv-rack-item-label">{d.label}</span>
+                    <span className="cv-rack-side-depth">{d.depthMm ? `${d.depthMm} mm` : d.rackDepth === 'half' ? '½' : ''}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+          {/* LT-692: a zero-U item is a strip down the post, on the face it is mounted on. */}
+          {zeroHere.length > 0 && (
+            <div className={`cv-rack-zerou${view === 'side' ? ' is-side' : ''}`} data-region="rack-zerou">
+              {zeroHere.map((d) => (
+                <button key={d.id} type="button" data-device={d.id} className={`cv-rack-zerou-item is-${d.furniture ?? 'device'}${selected === d.id ? ' is-selected' : ''}`}
+                  style={d.colour ? { ['--rack-item-colour' as string]: d.colour } : undefined}
+                  title={`${d.label} — zero-U, down the ${d.rackFace === 'rear' ? 'rear' : 'front'} post`}
+                  onClick={(e) => { e.stopPropagation(); onSelect(d.id); }}>
+                  <span>{d.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {hover && view !== 'side' && (
             <div
               className={`cv-rack-ghost${hover.problem ? ' is-refused' : ''}`}
               style={{ top: (rack.units - (hover.u + hover.units - 1)) * UNIT_PX, height: hover.units * UNIT_PX }}
@@ -642,14 +725,8 @@ function RackView({
           )}
         </div>
         <div className="cv-rack-post is-right" aria-hidden="true" style={{ height: rack.units * UNIT_PX }} />
-        <ol className="cv-rack-numbers is-right" aria-hidden="true">
-          {Array.from({ length: rack.units }, (_, i) => (
-            <li key={i} style={{ height: UNIT_PX }} className={(rack.units - i) % 5 === 0 ? 'is-fifth' : ''}>
-              {rack.units - i}
-            </li>
-          ))}
-        </ol>
-        {cables.length > 0 && <StackCablesOverlay rack={rack} view={view} cables={cables} />}
+        {numbers('right')}
+        {cables.length > 0 && <StackCablesOverlay rack={rack} view={elev} cables={cables} />}
       </div>
       <div className="cv-rack-base" aria-hidden="true" />
       {/* LT-689: what the rack carries. */}
@@ -681,10 +758,10 @@ function RackView({
           ))}
         </div>
       )}
-      {(view.zeroU.length > 0 || view.unplaced.length > 0) && (
+      {(elev.zeroU.length > 0 || elev.unplaced.length > 0) && (
         <footer className="cv-rack-foot">
-          {view.zeroU.length > 0 && <div>Zero-U: {view.zeroU.map((d) => d.label).join(', ')}</div>}
-          {view.unplaced.length > 0 && <div>Not placed: {view.unplaced.map((d) => d.label).join(', ')}</div>}
+          {elev.zeroU.length > 0 && <div>Zero-U: {elev.zeroU.map((d) => d.label).join(', ')}</div>}
+          {elev.unplaced.length > 0 && <div>Not placed: {elev.unplaced.map((d) => d.label).join(', ')}</div>}
         </footer>
       )}
     </section>
@@ -693,7 +770,7 @@ function RackView({
 
 /* ------------------------------------------------------------ a faceplate */
 
-/** What the elevation draws for one placed box (LT-687). */
+/** What the elevation draws for one placed box (LT-687, LT-696). */
 function Faceplate({ item, top, face, ground, selected, onSelect, onDragStart, onDragEnd }: {
   item: RackItem;
   top: number;
@@ -708,7 +785,7 @@ function Faceplate({ item, top, face, ground, selected, onSelect, onDragStart, o
   const height = (item.top - item.bottom + 1) * UNIT_PX;
   const isFurniture = d.kind === 'furniture';
   const reserved = d.furniture === 'reserved';
-  const colour = isFurniture ? undefined : deviceColor(d.deviceType ?? 'generic', d.status ?? 'unknown', ground);
+  const colour = d.colour ?? (isFurniture ? undefined : deviceColor(d.deviceType ?? 'generic', d.status ?? 'unknown', ground));
   const air = airOn(d.airflow, face);
   const title = [
     `${d.label} — U${item.bottom}${item.top > item.bottom ? `–${item.top}` : ''}`,
@@ -725,7 +802,8 @@ function Faceplate({ item, top, face, ground, selected, onSelect, onDragStart, o
       draggable={item.seen === 'face'}
       data-device={d.id}
       data-kind={isFurniture ? d.furniture : 'device'}
-      className={`cv-rack-item is-${item.seen}${item.clash ? ' is-clash' : ''}${selected ? ' is-selected' : ''}${isFurniture ? ` is-furniture is-${d.furniture}` : ' is-device'}${height <= UNIT_PX ? ' is-1u' : ''}`}
+      data-class={d.deviceType ?? undefined}
+      className={`cv-rack-item is-${item.seen}${item.clash ? ' is-clash' : ''}${selected ? ' is-selected' : ''}${isFurniture ? ` is-furniture is-${d.furniture}` : ' is-device'}${height <= UNIT_PX ? ' is-1u' : ''}${colour ? ' has-colour' : ''}`}
       style={{ top, height, ...(colour ? { ['--rack-item-colour' as string]: colour } : {}) }}
       title={title}
       onDragStart={onDragStart}
@@ -734,7 +812,8 @@ function Faceplate({ item, top, face, ground, selected, onSelect, onDragStart, o
       data-bottom={item.bottom}
       data-top={item.top}
     >
-      {!isFurniture && <span className="cv-rack-item-strip" aria-hidden="true" />}
+      {colour && <span className="cv-rack-item-strip" aria-hidden="true" />}
+      {!isFurniture && <i className={`cv-rack-led is-${d.status ?? 'unknown'}`} aria-hidden="true" title={d.status} />}
       {!isFurniture && (
         <DeviceGlyph type={(d.deviceType ?? 'generic') as DeviceType} className="cv-rack-item-glyph" style={{ color: colour }} />
       )}
@@ -745,7 +824,8 @@ function Faceplate({ item, top, face, ground, selected, onSelect, onDragStart, o
           {d.stack.member}
         </span>
       )}
-      {!reserved && <Ports item={d} face={face} />}
+      {/* The back of a full-depth box is what the rear shows, even when it is mounted from the front. */}
+      {!reserved && (item.seen === 'face' || face === 'rear') && <Fascia item={d} face={face} tall={height > UNIT_PX} />}
       {air && <span className={`cv-rack-air is-${air.kind}`} title={air.title} aria-label={air.title}>{air.glyph}</span>}
     </button>
   );
@@ -762,25 +842,80 @@ function airOn(airflow: Airflow | undefined, face: RackFace): { kind: 'in' | 'ou
     : { kind: 'out', glyph: '⇤', title: `${airflow}: this face blows out` };
 }
 
-/** A row of ports, jacks or outlets, for what has them (LT-687). */
-function Ports({ item, face }: { item: Rackable; face: RackFace }) {
+/**
+ * LT-696: the fascia — what the front of this kind of box is covered with,
+ * and what its back carries. Ports in blocks of eight with the uplinks
+ * apart on a switch, a few ports and LEDs on a router or firewall, drive
+ * bays on a server, a grid of drives on storage, outlets on a PDU, jacks in
+ * sixes on a patch panel, cassettes on a fibre enclosure, a battery on a
+ * UPS, fingers on a cable manager, ribs on a blank; power supplies on the
+ * rear of anything that has them.
+ */
+function Fascia({ item, face, tall }: { item: Rackable; face: RackFace; tall: boolean }) {
+  const kind = item.kind === 'furniture' ? item.furniture! : (item.deviceType ?? 'generic');
   const spec = item.kind === 'furniture' ? furnitureSpec(item.furniture!) : undefined;
-  const count = item.kind === 'furniture' ? (spec?.ports ?? 0) : (item.portCount ?? 0);
-  // PSUs are on the rear of a network device; its ports on the front.
-  if (item.kind !== 'furniture' && face === 'rear') {
+  const cells = (n: number, cls: string, group = 0) => (
+    <span className={`cv-fascia ${cls}${tall ? ' is-tall' : ''}`} aria-hidden="true" data-count={n}>
+      {Array.from({ length: n }, (_, i) => <i key={i} className={group && (i + 1) % group === 0 ? 'is-gap' : undefined} />)}
+    </span>
+  );
+  if (face === 'rear') {
+    if (item.kind === 'furniture') {
+      if (kind === 'pdu') return cells(Math.min(spec?.ports ?? 8, 16), 'is-outlets');
+      if (kind === 'ups') return <span className="cv-fascia is-psus" aria-hidden="true"><i /><i /><i /></span>;
+      if (kind === 'console-server' || kind === 'kvm') return cells(Math.min(spec?.ports ?? 8, 16), 'is-ports');
+      return null;
+    }
+    // A network device's back: fans, and one or two power supplies.
     return (
-      <span className="cv-rack-psus" aria-hidden="true">
-        <i /><i />
+      <span className="cv-fascia is-rear" aria-hidden="true">
+        <span className="cv-fascia is-fans"><i /><i /><i /></span>
+        <span className="cv-fascia is-psus"><i /><i /></span>
       </span>
     );
   }
-  if (!count) return null;
-  const shown = Math.min(count, 48);
-  return (
-    <span className={`cv-rack-ports${count > 24 ? ' is-dense' : ''}`} aria-hidden="true" data-ports={count}>
-      {Array.from({ length: shown }, (_, i) => <i key={i} />)}
-    </span>
-  );
+  switch (kind) {
+    case 'core-switch': case 'distribution-switch': case 'access-switch': case 'l2-switch': case 'l3-switch':
+      return (
+        <span className="cv-fascia is-switch" aria-hidden="true">
+          {cells(Math.min(item.portCount ?? 24, 48), 'is-ports', 8)}
+          {cells(4, 'is-uplinks')}
+        </span>
+      );
+    case 'router': case 'firewall': case 'waf': case 'load-balancer': case 'vpn': case 'wireless-controller':
+      return (
+        <span className="cv-fascia is-router" aria-hidden="true">
+          {cells(Math.min(item.portCount ?? 8, 16), 'is-ports', 4)}
+          {cells(3, 'is-leds')}
+        </span>
+      );
+    case 'server': case 'vm-host': case 'database': case 'application':
+      return cells(tall ? 8 : 4, 'is-bays');
+    case 'storage':
+      return cells(tall ? 12 : 6, 'is-drives');
+    case 'blade-chassis':
+      return cells(8, 'is-blades');
+    case 'patch-panel':
+      return cells(Math.min(spec?.ports ?? 24, 48), 'is-jacks', 6);
+    case 'fibre-panel':
+      return cells(Math.min(spec?.ports ?? 12, 24), 'is-fibre', 6);
+    case 'pdu': case 'pdu-vertical':
+      return cells(Math.min(spec?.ports ?? 8, 16), 'is-outlets');
+    case 'ups':
+      return <span className="cv-fascia is-battery" aria-hidden="true"><i style={{ width: '70%' }} /></span>;
+    case 'kvm': case 'console-server':
+      return cells(Math.min(spec?.ports ?? 8, 16), 'is-ports', 4);
+    case 'cable-manager':
+      return cells(10, 'is-fingers');
+    case 'blank':
+      return cells(14, 'is-ribs');
+    case 'shelf':
+      return <span className="cv-fascia is-plate" aria-hidden="true" />;
+    case 'monitor-drawer':
+      return <span className="cv-fascia is-screen" aria-hidden="true"><i /></span>;
+    default:
+      return item.portCount ? cells(Math.min(item.portCount, 24), 'is-ports', 8) : null;
+  }
 }
 
 /** What the palette and a faceplate draw for a kind of furniture: strokes of our own (D-019). */
@@ -874,11 +1009,15 @@ function ChosenBar({ chosen, rack, stack, say, onEditStack, onRemoved }: {
     say(store().setRackDetails(chosen.id, patch), done);
   const setItem = (patch: Parameters<ReturnType<typeof useStore.getState>['updateFurniture']>[2], done: string) =>
     rack ? say(store().updateFurniture(rack.id, chosen.id, patch), done) : undefined;
+  const setColour = (c: string | undefined) => {
+    if (isFurniture) setItem({ colour: c }, c ? 'Coloured.' : 'Colour cleared.');
+    else setDevice({ rackColour: c }, c ? 'Coloured.' : 'Colour cleared.');
+  };
   return (
     <div className="cv-racks-chosen" data-region="rack-chosen">
       <strong>{chosen.label}</strong>
       <span>
-        {chosen.rackU !== undefined ? `U${chosen.rackU}${chosen.rackUnits! > 1 ? `–${chosen.rackU + chosen.rackUnits! - 1}` : ''}` : 'not placed'} ·{' '}
+        {chosen.rackU !== undefined ? `U${chosen.rackU}${chosen.rackUnits! > 1 ? `–${chosen.rackU + chosen.rackUnits! - 1}` : ''}` : chosen.rackUnits === 0 ? 'zero-U' : 'not placed'} ·{' '}
         {chosen.rackUnits}U · mounted {chosen.rackFace === 'rear' ? 'rear' : 'front'} · {chosen.rackDepth === 'half' ? 'half' : 'full'} depth
         {isFurniture ? ` · ${furnitureSpec(chosen.furniture!).label}` : ''}
       </span>
@@ -904,6 +1043,13 @@ function ChosenBar({ chosen, rack, stack, say, onEditStack, onRemoved }: {
       >
         Make {chosen.rackDepth === 'half' ? 'full' : 'half'} depth
       </button>
+      {/* LT-693: a colour of its own. */}
+      <span className="cv-racks-swatches" role="group" aria-label={t('rackPanel.colourOf', { name: chosen.label })} data-region="rack-colour">
+        {SWATCHES.map((c) => (
+          <button key={c} type="button" className={`cv-swatch${chosen.colour === c ? ' is-on' : ''}`} style={{ background: c }} aria-label={`${t('rackPanel.colour')} ${c}`} aria-pressed={chosen.colour === c} onClick={() => setColour(c)} />
+        ))}
+        <button type="button" className={`cv-swatch is-none${!chosen.colour ? ' is-on' : ''}`} aria-label={t('rackPanel.noColour')} aria-pressed={!chosen.colour} title={t('rackPanel.noColour')} onClick={() => setColour(undefined)}>×</button>
+      </span>
       {/* LT-684: which way it breathes. */}
       <label className="cv-field cv-field-inline">
         <span>{t('rackPanel.airflow')}</span>
@@ -921,7 +1067,7 @@ function ChosenBar({ chosen, rack, stack, say, onEditStack, onRemoved }: {
           {AIRFLOWS.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
       </label>
-      {/* LT-689: what it draws and weighs. */}
+      {/* LT-689, LT-695: what it draws and weighs, and how deep it is. */}
       <label className="cv-field cv-field-inline">
         <span>W</span>
         <input className="cv-input cv-input-narrow" type="number" min={0} aria-label={t('rackPanel.powerOf', { name: chosen.label })} defaultValue={chosen.powerW ?? ''}
@@ -931,6 +1077,11 @@ function ChosenBar({ chosen, rack, stack, say, onEditStack, onRemoved }: {
         <span>kg</span>
         <input className="cv-input cv-input-narrow" type="number" min={0} step="0.1" aria-label={t('rackPanel.weightOf', { name: chosen.label })} defaultValue={chosen.weightKg ?? ''}
           onBlur={(e) => { const v = Number(e.target.value) || undefined; if (isFurniture) setItem({ weightKg: v }, 'Weight noted.'); else setDevice({ weightKg: v }, 'Weight noted.'); }} />
+      </label>
+      <label className="cv-field cv-field-inline">
+        <span>{t('rackPanel.depth')}</span>
+        <input className="cv-input cv-input-narrow" type="number" min={0} step="10" aria-label={t('rackPanel.depthOf', { name: chosen.label })} defaultValue={chosen.depthMm ?? ''}
+          onBlur={(e) => { const v = Number(e.target.value) || undefined; if (isFurniture) setItem({ depthMm: v }, 'Depth noted.'); else setDevice({ depthMm: v }, 'Depth noted.'); }} />
       </label>
       {isFurniture && (
         <>
@@ -1000,32 +1151,37 @@ function StackEditor({ draft, devices, onChange, onClose, say }: {
   });
   return (
     <div className="cv-racks-stackeditor" data-region="stack-editor">
-      <label className="cv-field">
-        <span>{t('rackPanel.stackName')}</span>
-        <input className="cv-input" aria-label={t('rackPanel.stackName')} value={draft.name} placeholder="CORE-STACK" onChange={(e) => onChange({ ...draft, name: e.target.value })} />
-      </label>
-      <label className="cv-field">
-        <span>{t('rackPanel.technology')}</span>
-        <select className="cv-input" aria-label={t('rackPanel.technology')} value={draft.technology}
-          onChange={(e) => {
-            const p = stackPreset(e.target.value);
-            onChange({ ...draft, technology: e.target.value, topology: p?.topologies[0] ?? draft.topology });
-          }}>
-          {STACK_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.vendor} — {p.name}</option>)}
-          <option value="custom">{t('rackPanel.customStack')}</option>
-        </select>
-      </label>
-      {preset && (
-        <p className="cv-help cv-racks-stacknote">
-          {preset.note} <em>{t('rackPanel.fromGuideLong', { source: preset.source })}</em>
-        </p>
-      )}
-      <label className="cv-field">
-        <span>{t('rackPanel.topology')}</span>
-        <select className="cv-input" aria-label={t('rackPanel.topology')} value={draft.topology} onChange={(e) => onChange({ ...draft, topology: e.target.value as StackTopology })}>
-          {(preset?.topologies ?? ['ring', 'chain', 'pair']).map((tp) => <option key={tp} value={tp}>{tp}</option>)}
-        </select>
-      </label>
+      <div className="cv-racks-stackeditor-row">
+        <label className="cv-field">
+          <span>{t('rackPanel.stackName')}</span>
+          <input className="cv-input" aria-label={t('rackPanel.stackName')} value={draft.name} placeholder="CORE-STACK" onChange={(e) => onChange({ ...draft, name: e.target.value })} />
+        </label>
+        <label className="cv-field">
+          <span>{t('rackPanel.technology')}</span>
+          <select className="cv-input" aria-label={t('rackPanel.technology')} value={draft.technology}
+            onChange={(e) => {
+              const p = stackPreset(e.target.value);
+              onChange({ ...draft, technology: e.target.value, topology: p?.topologies[0] ?? draft.topology });
+            }}>
+            {STACK_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.vendor} — {p.name}</option>)}
+            <option value="custom">{t('rackPanel.customStack')}</option>
+          </select>
+        </label>
+        <label className="cv-field cv-field-narrow">
+          <span>{t('rackPanel.topology')}</span>
+          <select className="cv-input" aria-label={t('rackPanel.topology')} value={draft.topology} onChange={(e) => onChange({ ...draft, topology: e.target.value as StackTopology })}>
+            {(preset?.topologies ?? ['ring', 'chain', 'pair']).map((tp) => <option key={tp} value={tp}>{tp}</option>)}
+          </select>
+        </label>
+        <label className="cv-field">
+          <span>{t('rackPanel.addMember')}</span>
+          <select className="cv-input" aria-label={t('rackPanel.addMember')} value=""
+            onChange={(e) => { if (e.target.value) onChange({ ...draft, members: [...draft.members, e.target.value] }); }}>
+            <option value="">{t('rackPanel.addMember')}</option>
+            {candidates.map((d) => <option key={d.id} value={d.id}>{d.label}{d.rack ? ` · ${d.rack}` : ''}</option>)}
+          </select>
+        </label>
+      </div>
       <ol className="cv-racks-stackmembers" aria-label={t('rackPanel.members')}>
         {members.map((m, i) => (
           <li key={m.id}>
@@ -1036,12 +1192,13 @@ function StackEditor({ draft, devices, onChange, onClose, say }: {
               onClick={() => onChange({ ...draft, members: draft.members.filter((x) => x !== m.id) })}>×</button>
           </li>
         ))}
+        {members.length === 0 && <li className="cv-help">{t('rackPanel.members')}: —</li>}
       </ol>
-      <select className="cv-input" aria-label={t('rackPanel.addMember')} value=""
-        onChange={(e) => { if (e.target.value) onChange({ ...draft, members: [...draft.members, e.target.value] }); }}>
-        <option value="">{t('rackPanel.addMember')}</option>
-        {candidates.map((d) => <option key={d.id} value={d.id}>{d.label}{d.rack ? ` · ${d.rack}` : ''}</option>)}
-      </select>
+      {preset && (
+        <p className="cv-help cv-racks-stacknote">
+          {preset.note} <em>{t('rackPanel.fromGuideLong', { source: preset.source })}</em>
+        </p>
+      )}
       <div className="cv-row cv-row-tight">
         <button type="button" className="cv-btn cv-btn-small cv-btn-start"
           onClick={() => {

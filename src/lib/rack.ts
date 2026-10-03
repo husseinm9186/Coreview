@@ -39,6 +39,9 @@ export interface Rack {
   /** LT-689: what the rack may carry, for the budgets. */
   powerLimitW?: number;
   weightLimitKg?: number;
+  /** LT-695: the rack's own size, for the side view and the label. */
+  widthMm?: number;
+  depthMm?: number;
   /** LT-682, LT-686, D-065: what the rack holds that is not on the diagram —
    *  patch panels, PDUs, shelves, blanks, and reservations. */
   items?: RackFurniture[];
@@ -60,6 +63,10 @@ export interface RackFurniture {
   note?: string;
   powerW?: number;
   weightKg?: number;
+  /** LT-693: a chosen colour for the faceplate. */
+  colour?: string;
+  /** LT-695: how deep it is, for the side view. */
+  depthMm?: number;
 }
 
 /** LT-684: which way a box breathes. */
@@ -92,6 +99,8 @@ export interface Rackable {
   portNaming?: string;
   powerW?: number;
   weightKg?: number;
+  colour?: string;
+  depthMm?: number;
   status?: HealthStatus;
   /** LT-683: the stack this device is in, and its member number. */
   stack?: { id: string; name: string; member: number; role?: string };
@@ -101,7 +110,7 @@ export function rackableOf(id: string, d: DeviceNodeData): Rackable {
   return {
     id, label: d.label, rack: d.rack, rackU: d.rackU, rackUnits: d.rackUnits, rackFace: d.rackFace, rackDepth: d.rackDepth,
     kind: 'device', deviceType: d.deviceType, airflow: d.airflow, portCount: d.portCount, portNaming: d.portNaming,
-    powerW: d.powerW, weightKg: d.weightKg,
+    powerW: d.powerW, weightKg: d.weightKg, colour: d.rackColour, depthMm: d.depthMm,
   };
 }
 
@@ -110,6 +119,7 @@ export function furnitureRackables(rack: Pick<Rack, 'name' | 'items'>): Rackable
   return (rack.items ?? []).map((f) => ({
     id: f.id, label: f.label, rack: rack.name, rackU: f.u, rackUnits: f.units, rackFace: f.face, rackDepth: f.depth,
     kind: 'furniture', furniture: f.kind, airflow: f.airflow, note: f.note, powerW: f.powerW, weightKg: f.weightKg,
+    colour: f.colour, depthMm: f.depthMm,
   }));
 }
 
@@ -138,6 +148,17 @@ export function groupRacks<R extends Pick<Rack, 'building' | 'floor' | 'room' | 
       heading: k.split('\u0000').map((v, i) => (v ? (i === 1 ? `Floor ${v}` : i === 2 ? `Room ${v}` : v) : '')).filter(Boolean).join(' · '),
       racks: list.sort((a, b) => cmp(a.row, b.row) || cmp(a.position, b.position) || cmp(a.name, b.name)),
     }));
+}
+
+/** LT-695: the rack's depth a box takes, 0–1, for the side view: its own
+ *  millimetres against the rack's where both are given; otherwise most of
+ *  the rack for a full-depth box and well under half for a half-depth one. */
+export const DEFAULT_RACK_DEPTH_MM = 1000;
+export const DEFAULT_RACK_WIDTH_MM = 600;
+export function depthFraction(d: Pick<Rackable, 'depthMm' | 'rackDepth'>, rack: Pick<Rack, 'depthMm'>): number {
+  const rackDepth = rack.depthMm ?? DEFAULT_RACK_DEPTH_MM;
+  if (typeof d.depthMm === 'number' && d.depthMm > 0) return Math.max(0.06, Math.min(1, d.depthMm / rackDepth));
+  return d.rackDepth === 'half' ? 0.4 : 0.85;
 }
 
 /** LT-684: how a rack breathes, from what is in it. */

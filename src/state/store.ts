@@ -671,9 +671,9 @@ interface Store {
   removeRack: (id: string) => void;
   placeInRack: (nodeId: string, rackId: string, u: number, face?: RackFace) => string | null;
   takeOutOfRack: (nodeId: string) => void;
-  setRackDetails: (nodeId: string, patch: { rackFace?: RackFace; rackDepth?: 'full' | 'half'; airflow?: Airflow; powerW?: number; weightKg?: number }) => string | null;
+  setRackDetails: (nodeId: string, patch: { rackFace?: RackFace; rackDepth?: 'full' | 'half'; airflow?: Airflow; powerW?: number; weightKg?: number; rackColour?: string; depthMm?: number }) => string | null;
   /** LT-682, LT-686: furniture on a rack. Each returns why it could not, or null. */
-  addFurniture: (rackId: string, kind: FurnitureKind, label?: string, units?: number, u?: number) => string | null;
+  addFurniture: (rackId: string, kind: FurnitureKind, label?: string, units?: number, u?: number, face?: RackFace) => string | null;
   updateFurniture: (rackId: string, itemId: string, patch: Partial<Omit<RackFurniture, 'id' | 'kind'>>) => string | null;
   placeFurniture: (rackId: string, itemId: string, u: number, face?: RackFace) => string | null;
   removeFurniture: (rackId: string, itemId: string) => void;
@@ -2385,7 +2385,7 @@ export const useStore = create<Store>((set, get) => ({
     for (const k of ['building', 'floor', 'room', 'row', 'position', 'notes'] as const) {
       if (patch[k] !== undefined) rest[k] = patch[k]!.trim() || undefined;
     }
-    for (const k of ['powerLimitW', 'weightLimitKg'] as const) {
+    for (const k of ['powerLimitW', 'weightLimitKg', 'widthMm', 'depthMm'] as const) {
       if (patch[k] !== undefined) rest[k] = Number.isFinite(patch[k]) && patch[k]! > 0 ? patch[k] : undefined;
     }
     set((s) => ({
@@ -2445,10 +2445,12 @@ export const useStore = create<Store>((set, get) => ({
     return null;
   },
 
-  addFurniture(rackId, kind, label, units, u) {
+  addFurniture(rackId, kind, label, units, u, face) {
     const rack = (get().doc.racks ?? []).find((r) => r.id === rackId);
     if (!rack) return 'That rack is no longer there.';
     const item = newFurniture(kind, uid(), label, units);
+    // LT-692: it lands on the face it was dropped on, whatever its kind's habit.
+    if (face) item.face = face;
     const problem = furnitureProblem(item);
     if (problem) return problem;
     if (u !== undefined && item.units > 0) {
