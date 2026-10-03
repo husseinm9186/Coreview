@@ -251,6 +251,11 @@ export interface DeviceNodeData extends Record<string, unknown> {
   /** Whether it fills the rack front to back (the default) or only the face it
    *  is mounted on, leaving the other face's U free (LT-197). */
   rackDepth?: 'full' | 'half';
+  /** LT-684: which way it breathes. Unset means nobody has said. */
+  airflow?: 'front-to-back' | 'back-to-front' | 'side-to-side' | 'passive';
+  /** LT-689: what it draws and weighs, for the rack's budgets. */
+  powerW?: number;
+  weightKg?: number;
   /** LT-239: threaded comments on this device. */
   comments?: CommentThread[];
   /** LT-234: files about this device — photos, configs, contracts — by their

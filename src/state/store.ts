@@ -44,7 +44,9 @@ import type { Sample } from '../lib/sparkline';
 import type { CanvasFilter } from '../lib/canvasFilter';
 import type { InkStroke } from '../lib/ink';
 import type { CommentThread } from '../lib/comments';
-import { MAX_RACK_UNITS, placementProblem, rackableOf, racksFromDevices, spanOf, type Rack, type RackFace, type Rackable } from '../lib/rack';
+import { MAX_RACK_UNITS, furnitureRackables, placementProblem, rackableOf, racksFromDevices, spanOf, type Airflow, type Rack, type RackFace, type RackFurniture, type Rackable } from '../lib/rack';
+import { furnitureProblem, newFurniture, type FurnitureKind } from '../lib/rackFurniture';
+import { stackPreset, stackProblem, type Stack } from '../lib/stacking';
 import { deviceColor as computeDeviceColor } from '../theme';
 import { activePage, allEdges, allNodes, duplicatePage as duplicatePageIn, newPage, renamePage as renamePageIn, reorderPages as reorderPagesIn, setActivePage as setActivePageIn, withNewPage, withoutPage, withPage, nodeById, edgeById } from '../lib/pages';
 import { pageForContent } from '../lib/pageRect';
@@ -172,6 +174,9 @@ export interface ProjectDocument {
   /** The project's racks (LT-195). A device is in one when its `rack` names
    *  it; where, is its `rackU`. Absent on projects saved before racks. */
   racks?: Rack[];
+  /** LT-683, D-065: the stacks — the diagram's devices in member order,
+   *  with a technology. Absent on projects saved before stacks. */
+  stacks?: Stack[];
   /** LT-209: saved credentials to try first by subnet or vendor. Vault ids
    *  only. */
   credentialRules?: CredentialRule[];
@@ -316,6 +321,10 @@ export interface HistoryEntry {
   /** LT-285: the address register is part of the document, so removing a
    *  subnet by accident is undone like anything else. */
   ipam?: IpamState;
+  /** LT-682: the racks and their furniture, and the stacks (LT-683), for
+   *  the same reason. Absent on histories saved before them. */
+  racks?: Rack[];
+  stacks?: Stack[];
 }
 
 interface Store {
@@ -658,11 +667,20 @@ interface Store {
     patch: { label?: string; address?: string; interfaceLabel?: string; mac?: string; hostname?: string },
   ) => string | null;
   addRack: (name: string, units: number) => string | null;
-  updateRack: (id: string, patch: { name?: string; units?: number }) => string | null;
+  updateRack: (id: string, patch: Partial<Omit<Rack, 'id' | 'items'>>) => string | null;
   removeRack: (id: string) => void;
   placeInRack: (nodeId: string, rackId: string, u: number, face?: RackFace) => string | null;
   takeOutOfRack: (nodeId: string) => void;
-  setRackDetails: (nodeId: string, patch: { rackFace?: RackFace; rackDepth?: 'full' | 'half' }) => string | null;
+  setRackDetails: (nodeId: string, patch: { rackFace?: RackFace; rackDepth?: 'full' | 'half'; airflow?: Airflow; powerW?: number; weightKg?: number }) => string | null;
+  /** LT-682, LT-686: furniture on a rack. Each returns why it could not, or null. */
+  addFurniture: (rackId: string, kind: FurnitureKind, label?: string, units?: number, u?: number) => string | null;
+  updateFurniture: (rackId: string, itemId: string, patch: Partial<Omit<RackFurniture, 'id' | 'kind'>>) => string | null;
+  placeFurniture: (rackId: string, itemId: string, u: number, face?: RackFace) => string | null;
+  removeFurniture: (rackId: string, itemId: string) => void;
+  /** LT-683: stacks. */
+  addStack: (stack: Omit<Stack, 'id'>) => string | null;
+  updateStack: (id: string, patch: Partial<Omit<Stack, 'id'>>) => string | null;
+  removeStack: (id: string) => void;
   buildRacksFromDevices: () => { racks: number; placed: number; full: string[] };
   restoreRecovery: () => void;
   discardRecovery: () => void;
@@ -1048,6 +1066,8 @@ function snapshot(doc: ProjectDocument): HistoryEntry {
     probes: doc.probes,
     customShapes: doc.customShapes,
     ipam: doc.ipam,
+    racks: doc.racks,
+    stacks: doc.stacks,
   };
   if (import.meta.env.DEV) deepFreeze(entry);
   return entry;
@@ -2353,16 +2373,25 @@ export const useStore = create<Store>((set, get) => ({
     const problem =
       (name.toLowerCase() !== rack.name.toLowerCase() ? rackNameProblem(racks, name) : null) ?? rackUnitsProblem(units);
     if (problem) return problem;
-    const members = rackables(doc).filter((d) => sameRack(d.rack, rack.name));
+    const members = [...rackables(doc).filter((d) => sameRack(d.rack, rack.name)), ...furnitureRackables(rack)];
     const over = members.find((d) => (spanOf(d)?.top ?? 0) > units);
     if (over) return `${over.label} sits at U${spanOf(over)!.top}, above ${units}U. Move it first.`;
     get().commit('Change a rack');
     // Renaming carries the devices with it: they name the rack they are in.
-    const moved = new Map(members.map((d) => [d.id, { rack: name }]));
+    const moved = new Map(members.filter((d) => d.kind !== 'furniture').map((d) => [d.id, { rack: name }]));
+    // LT-685, LT-689: the place and the limits travel in the same patch; an
+    // empty string clears a field.
+    const rest: Partial<Rack> = {};
+    for (const k of ['building', 'floor', 'room', 'row', 'position', 'notes'] as const) {
+      if (patch[k] !== undefined) rest[k] = patch[k]!.trim() || undefined;
+    }
+    for (const k of ['powerLimitW', 'weightLimitKg'] as const) {
+      if (patch[k] !== undefined) rest[k] = Number.isFinite(patch[k]) && patch[k]! > 0 ? patch[k] : undefined;
+    }
     set((s) => ({
       doc: {
         ...patchDevices(s.doc, moved),
-        racks: (s.doc.racks ?? []).map((r) => (r.id === id ? { ...r, name, units } : r)),
+        racks: (s.doc.racks ?? []).map((r) => (r.id === id ? { ...r, ...rest, name, units } : r)),
       },
       dirty: true,
     }));
@@ -2383,7 +2412,7 @@ export const useStore = create<Store>((set, get) => ({
     const devices = rackables(doc);
     const device = devices.find((d) => d.id === nodeId);
     if (!rack || !device) return 'That rack or device is no longer there.';
-    const problem = placementProblem(rack, devices, device, u, face);
+    const problem = placementProblem(rack, [...devices, ...furnitureRackables(rack)], device, u, face);
     if (problem) return problem;
     get().commit('Place in a rack');
     set((s) => ({
@@ -2406,14 +2435,99 @@ export const useStore = create<Store>((set, get) => ({
     const rack = (doc.racks ?? []).find((r) => sameRack(device.rack, r.name));
     // A change of face or depth can make a placed box collide: refused, the
     // same as a move into occupied space.
-    if (rack && spanOf(device)) {
+    if (rack && spanOf(device) && (patch.rackFace !== undefined || patch.rackDepth !== undefined)) {
       const changed: Rackable = { ...device, ...patch };
-      const problem = placementProblem(rack, devices, changed, device.rackU!, changed.rackFace);
+      const problem = placementProblem(rack, [...devices, ...furnitureRackables(rack)], changed, device.rackU!, changed.rackFace);
       if (problem) return problem;
     }
     get().commit('Change how a device is racked');
     set((s) => ({ doc: patchDevices(s.doc, new Map([[nodeId, patch]])), dirty: true }));
     return null;
+  },
+
+  addFurniture(rackId, kind, label, units, u) {
+    const rack = (get().doc.racks ?? []).find((r) => r.id === rackId);
+    if (!rack) return 'That rack is no longer there.';
+    const item = newFurniture(kind, uid(), label, units);
+    const problem = furnitureProblem(item);
+    if (problem) return problem;
+    if (u !== undefined && item.units > 0) {
+      const others = [...rackables(get().doc), ...furnitureRackables(rack)];
+      const asRackable: Rackable = { id: item.id, label: item.label, rack: rack.name, rackUnits: item.units, rackFace: item.face, rackDepth: item.depth, kind: 'furniture', furniture: item.kind };
+      const blocked = placementProblem(rack, others, asRackable, u, item.face);
+      if (blocked) return blocked;
+      item.u = u;
+    }
+    get().commit(kind === 'reserved' ? 'Reserve rack space' : 'Add to a rack');
+    set((s) => ({ doc: { ...s.doc, racks: (s.doc.racks ?? []).map((r) => (r.id === rackId ? { ...r, items: [...(r.items ?? []), item] } : r)) }, dirty: true }));
+    return null;
+  },
+
+  updateFurniture(rackId, itemId, patch) {
+    const doc = get().doc;
+    const rack = (doc.racks ?? []).find((r) => r.id === rackId);
+    const item = rack?.items?.find((f) => f.id === itemId);
+    if (!rack || !item) return 'That item is no longer there.';
+    const next: RackFurniture = { ...item, ...patch };
+    if (patch.label !== undefined) next.label = patch.label.trim();
+    const problem = furnitureProblem(next);
+    if (problem) return problem;
+    // A change of height, face or depth can make a placed item collide.
+    if (next.u !== undefined && next.units > 0) {
+      const others = [...rackables(doc), ...furnitureRackables(rack).filter((f) => f.id !== itemId)];
+      const asRackable: Rackable = { id: next.id, label: next.label, rack: rack.name, rackU: next.u, rackUnits: next.units, rackFace: next.face, rackDepth: next.depth, kind: 'furniture', furniture: next.kind };
+      const blocked = placementProblem(rack, others, asRackable, next.u, next.face);
+      if (blocked) return blocked;
+    }
+    for (const k of Object.keys(next) as (keyof RackFurniture)[]) if (next[k] === undefined) delete next[k];
+    get().commit('Change a rack item');
+    set((s) => ({ doc: { ...s.doc, racks: (s.doc.racks ?? []).map((r) => (r.id === rackId ? { ...r, items: (r.items ?? []).map((f) => (f.id === itemId ? next : f)) } : r)) }, dirty: true }));
+    return null;
+  },
+
+  placeFurniture(rackId, itemId, u, face) {
+    const doc = get().doc;
+    const rack = (doc.racks ?? []).find((r) => r.id === rackId);
+    const item = rack?.items?.find((f) => f.id === itemId);
+    if (!rack || !item) return 'That item is no longer there.';
+    return get().updateFurniture(rackId, itemId, { u, ...(face ? { face } : {}) });
+  },
+
+  removeFurniture(rackId, itemId) {
+    if (!(get().doc.racks ?? []).some((r) => r.id === rackId && r.items?.some((f) => f.id === itemId))) return;
+    get().commit('Remove from a rack');
+    set((s) => ({ doc: { ...s.doc, racks: (s.doc.racks ?? []).map((r) => (r.id === rackId ? { ...r, items: (r.items ?? []).filter((f) => f.id !== itemId) } : r)) }, dirty: true }));
+  },
+
+  addStack(stack) {
+    const problem = stackProblem(stack, stackPreset(stack.technology));
+    if (problem) return problem;
+    const taken = (get().doc.stacks ?? []).flatMap((s) => s.members.map((m) => m.nodeId));
+    const twice = stack.members.find((m) => taken.includes(m.nodeId));
+    if (twice) return 'A device can be in one stack only.';
+    get().commit('Add a stack');
+    set((s) => ({ doc: { ...s.doc, stacks: [...(s.doc.stacks ?? []), { ...stack, id: uid(), name: stack.name.trim() }] }, dirty: true }));
+    return null;
+  },
+
+  updateStack(id, patch) {
+    const was = (get().doc.stacks ?? []).find((s) => s.id === id);
+    if (!was) return 'That stack is no longer there.';
+    const next: Stack = { ...was, ...patch, id };
+    const problem = stackProblem(next, stackPreset(next.technology));
+    if (problem) return problem;
+    const taken = (get().doc.stacks ?? []).filter((s) => s.id !== id).flatMap((s) => s.members.map((m) => m.nodeId));
+    const twice = next.members.find((m) => taken.includes(m.nodeId));
+    if (twice) return 'A device can be in one stack only.';
+    get().commit('Change a stack');
+    set((s) => ({ doc: { ...s.doc, stacks: (s.doc.stacks ?? []).map((x) => (x.id === id ? { ...next, name: next.name.trim() } : x)) }, dirty: true }));
+    return null;
+  },
+
+  removeStack(id) {
+    if (!(get().doc.stacks ?? []).some((s) => s.id === id)) return;
+    get().commit('Remove a stack');
+    set((s) => ({ doc: { ...s.doc, stacks: (s.doc.stacks ?? []).filter((x) => x.id !== id) }, dirty: true }));
   },
 
   buildRacksFromDevices() {

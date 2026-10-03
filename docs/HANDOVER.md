@@ -115,6 +115,7 @@ node e2e/dock.mjs                                  # grouped tabs, job strip, po
 node e2e/inspector.mjs                             # the device inspector's tabs and action row (LT-677)
 node e2e/discovermode.mjs                          # Discover's four steps, Advanced, the old Collect tab (LT-678)
 node e2e/pathsproject.mjs                          # the shared path question; the project screen's cards (LT-679)
+node e2e/rackroom.mjs                              # the racks screen rebuilt: furniture, stacks, airflow, place, zoom (LT-681–689)
 node e2e/crawling.mjs                              # Phase 2 crawl: live table, bindings, review
 node e2e/validation.mjs                            # Phase 3: probes, history, path check, compare
 node e2e/workflow.mjs                              # Phase 4: palette, filter, ink, comments, a11y
@@ -447,6 +448,15 @@ trust the summary below over that file; it is a signpost and it will rot.
   (`dock`, `inspector`, `discovermode`, `pathsproject`); eleven older ones
   press a tab before reaching a field, and `interact`'s nudge check reads
   the store, not the transform. The traps it taught are in §6.6.
+- **2 October 2026, later: the racks screen rebuilt (LT-681–LT-689, D-065).**
+  Racks on the rail; `RackPanel.tsx` redrawn on a stage with zoom; rack
+  furniture and reservations as `Rack.items` (`rackFurniture.ts`); stacks
+  as `doc.stacks` with presets and cable patterns in `stacking.ts`, every
+  preset from the vendor's guide and `verifiedAgainstHardware: false`;
+  airflow, place (building › floor › room), power and weight budgets in
+  `rack.ts`. The undo snapshot now carries `racks` and `stacks` — it never
+  had, so a removed rack could not be undone before. `rackroom.mjs` drives
+  all of it; `racks.mjs` is untouched and still passes.
 - **The audit of 2026-09-25 (LT-423–LT-458)** shipped the same day, all but
   one: LT-453 (level of detail on the canvas) is built, off by default, and
   waits for a benchmark on a quiet machine — the run was stopped for memory,

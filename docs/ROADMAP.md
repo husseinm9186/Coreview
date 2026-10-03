@@ -827,6 +827,165 @@ I'll review at your first checkpoint." Overlay edges go with the run diff.
 
 ## Done
 
+### LT-681 — Racks on the rail — 2026-10-02, done the same day
+**Source:** the operator, 2026-10-02, with a screenshot of Tools ▸ Racks:
+"to the tools, Rack I need you to move it to the side pannel". The rail
+gets a Racks entry that opens the racks screen; Tools keeps its tab, as
+nothing is removed (D-064), and the rail marks Racks current when that
+is what is showing.
+**Done 2026-10-02.** `NavRail` has a Racks entry between Backups and
+Addresses that opens Tools on its Racks view; the rail marks it current
+there, and Tools no longer does. Tools keeps the tab.
+
+### LT-682 — Rack furniture from the racks page — 2026-10-02, done the same day
+**Source:** the operator, 2026-10-02: "I need to add patch panel, PDU,
+UPS, Shelf and whatever you think off directly form the racks page. not
+just devices from the diagrams." A palette on the racks page adds what a
+rack holds that is not a network device: patch panel (copper, fibre),
+PDU (horizontal, and vertical zero-U), UPS, shelf, blanking panel, cable
+manager, KVM, console server, monitor drawer, a server or storage that
+is not on the diagram. Each has a default height and is drawn as itself.
+They live in the rack, not on the diagram (D-065), and share the
+placement rules — a whole U, no two in one space, face and depth.
+**Done 2026-10-02.** `rackFurniture.ts` names fifteen kinds with a
+default height, mounting and airflow, and the palette under "Add to a
+rack" on the racks page adds one to the rack chosen above it at the first
+free U from the top, or drops it on a rack at the U under the pointer.
+Furniture is `Rack.items` (D-065), shares `placementProblem` with devices
+through `furnitureRackables`, is drawn as itself (jacks, outlets, a
+battery, a plate, a flat panel), and is renamed, resized, re-faced,
+removed and undone from the chosen bar. Store: `addFurniture`,
+`updateFurniture`, `placeFurniture`, `removeFurniture`. One bug it
+surfaced: the undo history's snapshot never carried `racks`, so a rack
+added, renamed or removed could not be undone — found by `rackroom.mjs`
+when a removed patch panel did not come back — and now carries `racks`
+and `stacks`; older saved histories simply have none and leave them as
+they are.
+
+### LT-683 — Stacks in the elevation: the technology, the cables, the ring — 2026-10-02, done the same day
+**Source:** the operator, 2026-10-02, with Cisco's stack-cabling
+pictures (3- to 8-member rings, the StackWise ring with its stack ports)
+and the Aruba 3810 installation guide, VSF, Backplane Stacking and VSX:
+"add STCKING and Stack technology, and stack cables and stack methods.
+and stacking ring just like the referance i sent you for cisco, also
+incorporate other stacking like VSS, VSF, VSX". A stack is a named group
+of the diagram's devices in order, with a technology whose preset says
+what it is — ports per member and their names, ring, chain or pair, the
+most members, the cable, the roles — and the elevation draws the cables
+between the members' stack ports the way the vendor's guide draws them:
+a ring closes from the last member back to the first; a pair draws its
+inter-switch links and its keepalive. Presets, built from vendor
+documentation (D-065): Cisco StackWise / StackWise-480 / -1T,
+FlexStack-Plus, StackWise Virtual, VSS; Aruba VSF, Backplane Stacking,
+VSX; Juniper Virtual Chassis; HPE IRF; Dell VLT; Extreme SummitStack;
+Arista MLAG; FortiSwitch MCLAG; NVIDIA MLAG; Meraki stacking; Huawei
+iStack. A device a crawl reported as a stack member is offered to a
+stack of that kind.
+**Done 2026-10-02.** `stacking.ts` holds eighteen presets (Cisco
+StackWise-480/-1T, -160/-80, FlexStack-Plus, StackWise Virtual, VSS,
+Meraki; Aruba VSF, Backplane Stacking, CX VSF, VSX; Juniper Virtual
+Chassis; HPE IRF; Huawei iStack; Extreme SummitStack; Dell VLT; Arista,
+NVIDIA and FortiSwitch MLAG), each with its ports, where they are, the
+most members, ring/chain/pair, the roles, the cable and its source, every
+one `verifiedAgainstHardware: false` (D-065). `stackCables` runs a ring
+or chain the way the Cisco picture does — member N's second port to
+member N+1's first, the last back to the first — and a pair's named links
+with the keepalive dashed; `stacking.test.ts` holds it for every ring
+size 3–8 and for VSX. A stack is `doc.stacks` (`addStack`, `updateStack`,
+`removeStack`, a device in one stack only). The racks page's stack editor
+names, chooses, orders and numbers the members with the preset's roles;
+the elevation marks each member's number on its faceplate and draws the
+cables down the rack's side on the face the ports are on, a dashed stub
+for a member in another rack, and a legend saying "from the vendor's
+guide, not yet checked on hardware". A device the crawl reported in a
+stack is not yet offered automatically; it is in the member list like
+any other.
+
+### LT-684 — Airflow per device, and a rack that says when they fight — 2026-10-02, done the same day
+**Source:** the operator, 2026-10-02: "Air flow direction per device".
+Front-to-back, back-to-front, side-to-side or passive, on a device and
+on furniture, drawn as an arrow on the faceplate — intake on the face it
+breathes from, exhaust on the other — and summed per rack: a rack with
+both directions says so, because a back-to-front box in a front-to-back
+row breathes its neighbours' exhaust.
+**Done 2026-10-02.** `airflow` on a device and on furniture, set from
+the chosen bar; the faceplate shows ⇥ on the face it breathes from and ⇤
+on the other, ⇆ for side-to-side; `airflowOf` counts a rack's placed
+boxes and the rack's line says "mixed" in red when both directions are
+present.
+
+### LT-685 — Building, floor, room, row and position per rack — 2026-10-02, done the same day
+**Source:** the operator, 2026-10-02: "I may have multiple racks in the
+room, or multiple floors so we need to add Build, floor, rack#". A rack
+carries where it is; the racks page groups racks by building › floor ›
+room, in row and position order, and a filter narrows to one place. The
+device's own Rack / room field stays what it was: the rack's name.
+**Done 2026-10-02.** `building`, `floor`, `room`, `row`, `position`
+and `notes` on a rack, edited under the rack's Where button; `placeOf`
+writes the line under the rack's name; `groupRacks` groups the page by
+building › floor › room in row and position order, the unplaced first;
+a filter in the bar narrows by place or name; the SVG export carries the
+place.
+
+### LT-686 — Reserve U for what is coming — 2026-10-02, done the same day
+**Source:** the operator, 2026-10-02: "I need to type to reserve spaces
+for future devices in the rack units". A reservation is furniture of its
+own kind: a label, a height and a note, drawn hatched, taking its U so
+nothing else is dropped there, typed in place on the rack.
+**Done 2026-10-02.** A reservation is furniture of kind `reserved`:
+hatched, labelled with what it is for, resized on the chosen bar, taking
+its U so a device is refused there and counted apart in the rack's line
+and in the export.
+
+### LT-687 — Devices drawn as what they are — 2026-10-02, done the same day
+**Source:** the operator, 2026-10-02: "the devices should have their
+shapes like router, switch, firewall, colors". Each rack item is a
+faceplate: the class glyph and the class colour the palette uses, the
+name, a port row for anything with a port count, PSUs on the rear, the
+status tint while validation runs; furniture drawn as itself — jacks on
+a patch panel, outlets on a PDU, a battery on a UPS, a plate for a
+shelf, a flat panel for a blank.
+**Done 2026-10-02.** `Faceplate` draws each box with the class glyph,
+a colour strip in the class colour (the status colour while validation
+runs), the name, a port row from the port count (power supplies from the
+rear), the airflow arrow and the stack member number; furniture by kind.
+The waiting list shows the glyph too.
+
+### LT-688 — The rack canvas: zoom, pan, fit, and a ground you can read — 2026-10-02, done the same day
+**Source:** the operator, 2026-10-02: "the background looks bad and
+unable to make sense of it and can't zoom in or out. make it magical".
+The racks are drawn on a canvas of their own: posts with mounting holes,
+U numbers on both rails with every fifth marked, a top cap carrying the
+name and the place, a base; zoom with Ctrl+wheel and −/+/Fit/100 %, pan
+by scrolling or dragging the ground; the drag-and-drop, the ghost, the
+arrow keys and the SVG export as they were, at any zoom.
+**Done 2026-10-02.** The racks stand on `.cv-racks-stage`: a dotted
+ground, posts with three holes a U, U numbers down both rails with every
+fifth marked, a base; Ctrl+wheel and −/+/Fit/100 % zoom the stage by
+`transform: scale`, and a drop maps the pointer through the zoom so it
+lands on the U under it; the drag-and-drop, ghost, arrow keys and
+exports are as they were.
+
+### LT-689 — Budgets and the rest a rack elevation should carry — 2026-10-02, done the same day
+**Source:** the operator, 2026-10-02: "and things you would recommend
+for me please". Per rack: U used, free and reserved; power in watts and
+weight in kilograms summed from what the devices and furniture declare,
+against the rack's own limits; heat from the power; a legend; export as
+PNG beside SVG; duplicate a rack; print one rack per page.
+**Done 2026-10-02.** Per rack: U used, free and reserved; watts and
+kilograms summed from `powerW`/`weightKg` on devices and furniture
+against `powerLimitW`/`weightLimitKg` set under Where, red when over,
+with BTU/h; export as PNG beside SVG (the SVG rasterised at 2×). Not
+done: duplicate a rack and print one per page — logged in Icebox.
+**Run, for LT-681–LT-689 together:** `stacking.test.ts` (9),
+`rackFurniture.test.ts` (8), `rack.test.ts`, the stylesheet guards,
+vitest (1498), tsc, eslint, clippy, pytest, `racks.mjs` untouched and
+green, `rackroom.mjs` (new, 41 checks) and the other 41 harnesses, all
+green. `cargo test --workspace` met one spawn race in the fake-sidecar
+test ("Text file busy" while cargo was still writing the example) and
+passed in full on the rerun.
+
+
 ### LT-680 — The rail clipped "Addresses", and the dock's strip was cut off on Windows — 2026-10-02, done the same day
 **Source:** the operator, 2026-10-02, a screenshot of the Windows build
 after LT-679: the rail's "Addresses" label ran past the rail, and the
@@ -14509,6 +14668,9 @@ internal COREVIEW-FGT-Root-CA cannot and never will.
 ---
 
 ## Icebox
+
+### LT-690 — Duplicate a rack, and print one rack per page — 2026-10-02
+**Source:** LT-689's recommendations, the two not shipped with it.
 
 ### LT-599 — Commands a device does not have are not asked again — 2026-09-30
 **Source:** the same study. On the lab, five FortiOS `diagnose` commands

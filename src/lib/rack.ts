@@ -19,21 +19,61 @@
  * half-depth box — a patch panel, a small switch — is on one face only, and a
  * different half-depth box can share its U on the other face.
  */
-import type { DeviceNodeData } from '../types/domain';
+import type { DeviceNodeData, HealthStatus } from '../types/domain';
+import type { FurnitureKind } from './rackFurniture';
 
 export interface Rack {
   id: string;
   name: string;
   /** Height in U. */
   units: number;
+  /** LT-685: where the rack stands. All optional; a rack with none of
+   *  them is simply "here". */
+  building?: string;
+  floor?: string;
+  room?: string;
+  row?: string;
+  /** The rack's number or position in its row, as written on it. */
+  position?: string;
+  notes?: string;
+  /** LT-689: what the rack may carry, for the budgets. */
+  powerLimitW?: number;
+  weightLimitKg?: number;
+  /** LT-682, LT-686, D-065: what the rack holds that is not on the diagram —
+   *  patch panels, PDUs, shelves, blanks, and reservations. */
+  items?: RackFurniture[];
 }
+
+/** LT-682: a thing in a rack that is not a network device (D-065). */
+export interface RackFurniture {
+  id: string;
+  kind: FurnitureKind;
+  label: string;
+  /** Height in U; 0 for a vertical PDU or a cable manager down the post. */
+  units: number;
+  /** The lowest U it occupies; unset while it waits beside the rack. */
+  u?: number;
+  face?: RackFace;
+  depth?: 'full' | 'half';
+  airflow?: Airflow;
+  /** LT-686: what a reservation is for; also any item's note. */
+  note?: string;
+  powerW?: number;
+  weightKg?: number;
+}
+
+/** LT-684: which way a box breathes. */
+export type Airflow = 'front-to-back' | 'back-to-front' | 'side-to-side' | 'passive';
+export const AIRFLOWS: Airflow[] = ['front-to-back', 'back-to-front', 'side-to-side', 'passive'];
 
 export type RackFace = 'front' | 'rear';
 
 export const DEFAULT_RACK_UNITS = 42;
 export const MAX_RACK_UNITS = 60;
 
-/** The part of a device a rack cares about. */
+/** The part of a device — or a piece of furniture (LT-682) — a rack cares
+ *  about. The placement rules read only the first block; the drawing reads
+ *  the rest. */
 export interface Rackable {
   id: string;
   label: string;
@@ -42,10 +82,101 @@ export interface Rackable {
   rackUnits?: number;
   rackFace?: RackFace;
   rackDepth?: 'full' | 'half';
+  /** A device from the diagram, or furniture kept on the rack. */
+  kind?: 'device' | 'furniture';
+  deviceType?: string;
+  furniture?: FurnitureKind;
+  airflow?: Airflow;
+  note?: string;
+  portCount?: number;
+  portNaming?: string;
+  powerW?: number;
+  weightKg?: number;
+  status?: HealthStatus;
+  /** LT-683: the stack this device is in, and its member number. */
+  stack?: { id: string; name: string; member: number; role?: string };
 }
 
 export function rackableOf(id: string, d: DeviceNodeData): Rackable {
-  return { id, label: d.label, rack: d.rack, rackU: d.rackU, rackUnits: d.rackUnits, rackFace: d.rackFace, rackDepth: d.rackDepth };
+  return {
+    id, label: d.label, rack: d.rack, rackU: d.rackU, rackUnits: d.rackUnits, rackFace: d.rackFace, rackDepth: d.rackDepth,
+    kind: 'device', deviceType: d.deviceType, airflow: d.airflow, portCount: d.portCount, portNaming: d.portNaming,
+    powerW: d.powerW, weightKg: d.weightKg,
+  };
+}
+
+/** A rack's furniture as the placement rules and the drawing see it. */
+export function furnitureRackables(rack: Pick<Rack, 'name' | 'items'>): Rackable[] {
+  return (rack.items ?? []).map((f) => ({
+    id: f.id, label: f.label, rack: rack.name, rackU: f.u, rackUnits: f.units, rackFace: f.face, rackDepth: f.depth,
+    kind: 'furniture', furniture: f.kind, airflow: f.airflow, note: f.note, powerW: f.powerW, weightKg: f.weightKg,
+  }));
+}
+
+/** LT-685: where a rack is, in one line — "Building A · Floor 2 · Room 2.14 · Row B · 03". */
+export function placeOf(rack: Pick<Rack, 'building' | 'floor' | 'room' | 'row' | 'position'>): string {
+  return [rack.building, rack.floor && `Floor ${rack.floor}`, rack.room && `Room ${rack.room}`, rack.row && `Row ${rack.row}`, rack.position]
+    .map((v) => (v ?? '').toString().trim())
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** LT-685: racks grouped by building, then floor, then room, each group in
+ *  row and position order. Racks with no place come first, under no heading. */
+export function groupRacks<R extends Pick<Rack, 'building' | 'floor' | 'room' | 'row' | 'position' | 'name'>>(racks: readonly R[]): { heading: string; racks: R[] }[] {
+  const key = (r: R) => [r.building, r.floor, r.room].map((v) => (v ?? '').trim()).join('\u0000');
+  const groups = new Map<string, R[]>();
+  for (const r of racks) {
+    const k = key(r);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k)!.push(r);
+  }
+  const cmp = (a: string | undefined, b: string | undefined) => (a ?? '').localeCompare(b ?? '', undefined, { numeric: true });
+  return [...groups.entries()]
+    .sort(([a], [b]) => cmp(a, b))
+    .map(([k, list]) => ({
+      heading: k.split('\u0000').map((v, i) => (v ? (i === 1 ? `Floor ${v}` : i === 2 ? `Room ${v}` : v) : '')).filter(Boolean).join(' · '),
+      racks: list.sort((a, b) => cmp(a.row, b.row) || cmp(a.position, b.position) || cmp(a.name, b.name)),
+    }));
+}
+
+/** LT-684: how a rack breathes, from what is in it. */
+export function airflowOf(items: readonly Rackable[]): { frontToBack: number; backToFront: number; side: number; passive: number; unset: number; mixed: boolean } {
+  const out = { frontToBack: 0, backToFront: 0, side: 0, passive: 0, unset: 0, mixed: false };
+  for (const d of items) {
+    switch (d.airflow) {
+      case 'front-to-back': out.frontToBack += 1; break;
+      case 'back-to-front': out.backToFront += 1; break;
+      case 'side-to-side': out.side += 1; break;
+      case 'passive': out.passive += 1; break;
+      default: out.unset += 1;
+    }
+  }
+  out.mixed = out.frontToBack > 0 && out.backToFront > 0;
+  return out;
+}
+
+/** LT-689: what a rack carries, in U, watts and kilograms. */
+export function usageOf(rack: Pick<Rack, 'units'>, items: readonly Rackable[]): { used: number; reserved: number; free: number; powerW: number; weightKg: number; unknownPower: number } {
+  let used = 0;
+  let reserved = 0;
+  let powerW = 0;
+  let weightKg = 0;
+  let unknownPower = 0;
+  const seen = new Set<number>();
+  for (const d of items) {
+    const span = spanOf(d);
+    if (span) {
+      for (let u = span.bottom; u <= span.top; u++) {
+        if (seen.has(u)) continue;
+        seen.add(u);
+        if (d.furniture === 'reserved') reserved += 1; else used += 1;
+      }
+    }
+    if (typeof d.powerW === 'number') powerW += d.powerW; else if (d.kind === 'device') unknownPower += 1;
+    if (typeof d.weightKg === 'number') weightKg += d.weightKg;
+  }
+  return { used, reserved, free: Math.max(0, rack.units - used - reserved), powerW, weightKg, unknownPower };
 }
 
 const sameName = (a: string | undefined, b: string) => (a ?? '').trim().toLowerCase() === b.trim().toLowerCase();

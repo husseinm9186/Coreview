@@ -1334,3 +1334,32 @@ under Tools; the path tools share one question in the store but keep their
 own forms, because "from" and the destination are different things on each;
 and a project card's health line is a summary this machine writes at every
 save, never part of the project. Nothing was removed.
+
+### D-065 — Rack furniture lives in the rack; stacks are the document's; stacking drawings come from vendor documentation — 2026-10-02
+**Decision:** what a rack holds that is not a network device — patch
+panels, PDUs, UPSs, shelves, blanks, cable managers, KVMs, reservations
+(LT-682, LT-686) — is kept on the rack itself (`Rack.items`), not as
+nodes on the diagram: the diagram is the network, the elevation is the
+room, and a blanking panel has no place on a topology. Both kinds share
+one set of placement rules. A stack (LT-683) is a document-level list
+(`doc.stacks`) naming the diagram's devices in member order with a
+technology; the elevation draws its cables from a preset. The presets —
+ports per member, ring/chain/pair, the most members, roles, the cable —
+are built from vendor documentation under D-026's exception and say so:
+Cisco's Catalyst 9300 StackWise architecture paper (two rear stack
+ports, up to eight in a ring, Active/Standby/Member, 50 cm/1 m/3 m
+cables) and its community cabling pictures; Aruba's VSF, Backplane
+Stacking and VSX guides as published for AOS-S 16.10 and AOS-CX 10.13
+(VSF ring or chain of up to eight 2930F, Commander/Standby/Member; the
+3810M four-port stacking module; VSX as two switches with an ISL and a
+keepalive that must not cross it, Primary/Secondary); the rest from the
+vendors' public guides as the engine knows them. Each preset carries
+`verifiedAgainstHardware: false` until a stack on real hardware has been
+drawn and checked, and the screen says "from the vendor's guide".
+**Rejected:** furniture as diagram nodes on a hidden page (it would
+appear in exports, counts and the monitored-objects table); a stack as a
+device attribute only (the cabling needs the order and the ports, which
+belong to the group, not to one member).
+**Why:** the operator, 2026-10-02: "not just devices from the diagrams",
+and the Cisco cabling pictures and Aruba references he sent are how the
+cables are to be drawn.

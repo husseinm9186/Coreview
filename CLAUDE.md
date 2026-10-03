@@ -233,6 +233,7 @@ node e2e/dock.mjs         # the dock: grouped tabs, the job strip and clock, pop
 node e2e/inspector.mjs    # the device inspector in tabs: Status, Identity, Ports, Checks, Notes; the action row (LT-677)
 node e2e/discovermode.mjs # Discover as a mode: four steps, Advanced folded with the engine's view, Ping sweep second (LT-678)
 node e2e/pathsproject.mjs # one question for the four path tools; the project screen's folders, cards and health line (LT-679)
+node e2e/rackroom.mjs     # the racks screen: rail, furniture, reservations, stacks and their cables, airflow, place, zoom, budgets (LT-681–LT-689)
 ```
 
 Canvas performance is measured, not asserted (LT-190), against a **production**

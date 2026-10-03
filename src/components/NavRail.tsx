@@ -11,7 +11,7 @@
 import { t } from '../i18n';
 import { useStore, type DockTab } from '../state/store';
 
-type Mode = 'diagram' | 'discover' | 'monitor' | 'paths' | 'backups' | 'addresses' | 'tools' | 'terminal' | 'settings';
+type Mode = 'diagram' | 'discover' | 'monitor' | 'paths' | 'backups' | 'racks' | 'addresses' | 'tools' | 'terminal' | 'settings';
 
 const DOCK: Partial<Record<Mode, DockTab>> = { discover: 'crawl', monitor: 'objects', paths: 'trace', backups: 'backup', terminal: 'ssh' };
 const DOCK_MODE: Partial<Record<DockTab, Mode>> = {
@@ -43,6 +43,8 @@ function Glyph({ mode }: { mode: Mode }) {
       return <svg viewBox="0 0 20 20" aria-hidden><g {...p}><rect x="3" y="4" width="14" height="4" rx="1" /><path d="M4 8v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8M8 12h4" /></g></svg>;
     case 'addresses':
       return <svg viewBox="0 0 20 20" aria-hidden><g {...p}><path d="M7 3 5 17M15 3l-2 14M3 8h15M2 13h15" /></g></svg>;
+    case 'racks':
+      return <svg viewBox="0 0 20 20" aria-hidden><g {...p}><rect x="4" y="2" width="12" height="16" rx="1" /><path d="M6 6h8M6 9.5h8M6 13h8M6 16h8M4 2v-0M4 18v1M16 18v1" /></g></svg>;
     case 'tools':
       return <svg viewBox="0 0 20 20" aria-hidden><g {...p}><path d="M12.5 3.5a3.5 3.5 0 0 0-3 5.3L4 14.3 5.7 16l5.5-5.5a3.5 3.5 0 0 0 5.3-3l-2.3 2.3-2.3-.7-.7-2.3z" /></g></svg>;
     case 'terminal':
@@ -63,7 +65,7 @@ export function NavRail() {
   const current: Mode | null = registerOpen
     ? 'addresses'
     : toolsOpen
-      ? toolsView === 'settings' ? 'settings' : 'tools'
+      ? toolsView === 'settings' ? 'settings' : toolsView === 'racks' ? 'racks' : 'tools'
       : helpOpen
         ? null
         : panelOpen
@@ -82,7 +84,11 @@ export function NavRail() {
         s.setRegisterOpen(true);
         return;
       case 'tools':
-        s.setToolsOpen(true, s.toolsView === 'settings' ? 'compare' : undefined);
+        s.setToolsOpen(true, s.toolsView === 'settings' || s.toolsView === 'racks' ? 'compare' : undefined);
+        return;
+      // LT-681: the rack elevations, from the rail.
+      case 'racks':
+        s.setToolsOpen(true, 'racks');
         return;
       case 'settings':
         s.setToolsOpen(true, 'settings');
@@ -103,6 +109,7 @@ export function NavRail() {
     { mode: 'monitor', label: t('nav.monitor') },
     { mode: 'paths', label: t('nav.paths') },
     { mode: 'backups', label: t('nav.backups') },
+    { mode: 'racks', label: t('nav.racks') },
     { mode: 'addresses', label: t('nav.addresses') },
     { mode: 'tools', label: t('nav.tools') },
     { mode: 'terminal', label: t('nav.terminal') },

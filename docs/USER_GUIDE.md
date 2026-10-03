@@ -102,15 +102,60 @@ SD-WAN, MPLS L3VPN, a wireless survey or two racks. Names and addresses are
 placeholders from the documentation ranges, and nothing is monitored until you
 add checks.
 
-**Racks.** **Tools ▸ Racks** (Tools is on the rail) draws the project's racks U by U.
-Give devices a rack name in the inspector (**Rack / room**) and click **Build racks
-from devices**, or **Add rack** and drag devices in from the list. A box always
-lands on a whole U; a spot something else holds is refused and the message says
-what is there. Click a box to move it a U at a time with `↑`/`↓`, mount it on the
-rear, make it half depth (a patch panel, so something else can use the same U on
-the other face) or take it out. **Front** and **Rear** switch faces; a full-depth
-box shows hatched from behind. **Export … as SVG** saves the elevations. Nothing
-on the diagram moves.
+**Racks.** **Racks** on the rail (also **Tools ▸ Racks**) draws the project's
+racks U by U on a ground of their own: posts with their mounting holes, the U
+numbers down both rails with every fifth marked, a base. Give devices a rack
+name in the inspector (**Rack / room**) and click **Build racks from devices**,
+or **Add rack** and drag devices in from the list. A box always lands on a
+whole U; a spot something else holds is refused and the message says what is
+there. Click a box to move it a U at a time with `↑`/`↓`, mount it on the rear,
+make it half depth (a patch panel, so something else can use the same U on the
+other face), set its **airflow**, its watts and kilograms, or take it out.
+**Front** and **Rear** switch faces; a full-depth box shows hatched from
+behind. Zoom with **Ctrl+wheel** or **−**, **+**, **Fit** and the percentage,
+which puts it back to 100 %. **Export … as SVG** or **as PNG** saves the
+elevations. Nothing on the diagram moves.
+
+Each box is drawn as what it is: the class glyph and colour the palette uses,
+its name, a row of ports where it has a port count (power supplies from the
+rear), an airflow arrow — into the face it breathes from, out of the other —
+and, in a stack, its member number.
+
+**What a rack holds that is not on the diagram.** Under **Add to a rack**,
+click a patch panel, fibre enclosure, PDU (horizontal, or vertical zero-U),
+UPS, shelf, blanking panel, cable manager, KVM, console server, monitor
+drawer, a server or storage that is not drawn, or **Reserved space**, and it
+lands in the rack named above the list at the first free U from the top — or
+drag it onto a rack at the U you want. These live in the rack, not on the
+diagram, and keep the same rules as devices. Click one to rename it, change
+its height, mount it rear or half depth, or remove it. A **reservation** is
+hatched, says what it is for, takes its U so nothing else is dropped there,
+and is counted apart.
+
+**Where a rack stands.** **Where** on a rack opens its building, floor, room,
+row and position, and its power and weight limits. Racks are grouped under
+building › floor › room, in row and position order, and the filter in the bar
+narrows to one place or one rack.
+
+**Stacks.** **New stack** under **Stacks** names a stack, picks its technology
+— Cisco StackWise-480, -160 or FlexStack-Plus, StackWise Virtual, VSS, Meraki
+stacking; Aruba VSF, Backplane Stacking, CX VSF, VSX; Juniper Virtual Chassis;
+HPE IRF; Huawei iStack; Extreme SummitStack; Dell VLT; Arista, NVIDIA and
+FortiSwitch MLAG — and its members in order. The preset knows the ports each
+member has and where they are, how many members it takes, whether it is a
+ring, a chain or a pair, and what the roles are called, and the elevation
+draws the cables down the side of the rack the way the vendor's guide does:
+in a ring, each member's second port goes to the next member's first, and the
+last closes back to the first; a pair draws its inter-switch links and its
+keepalive dashed. Cables are drawn on the face the ports are on — the rear
+for StackWise, the front for VSF — and a member in another rack gets a dashed
+stub saying where. Every preset is built from the vendor's published guide
+and says so until a stack on real hardware has been checked against it.
+
+**The rack's line.** Under each rack: U used, free and reserved; watts and
+kilograms summed from what the boxes declare, against the rack's limits, in
+red when over, with the heat in BTU/h; and the airflow count, flagged
+**mixed** when boxes in one rack breathe opposite ways.
 
 **Cable schedule.** Set a link's **Cable** and **Cable length** in the inspector.
 **Export → Cable schedule as CSV** lists every cable — both ends' devices and
