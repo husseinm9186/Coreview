@@ -1,0 +1,105 @@
+[
+ {
+  "name": "CPython (embeddable, Windows)",
+  "version": "3.12.10",
+  "licence": "PSF-2.0 (with the licences of the libraries it bundles: OpenSSL Apache-2.0, libffi MIT, SQLite public domain, and others listed in its text)",
+  "url": "https://www.python.org/",
+  "files": [
+   "cpython-3.12.10.txt"
+  ]
+ },
+ {
+  "name": "bcrypt",
+  "version": "5.0.0",
+  "licence": "Apache-2.0",
+  "url": "https://github.com/pyca/bcrypt",
+  "files": [
+   "bcrypt-5.0.0.txt"
+  ]
+ },
+ {
+  "name": "cffi",
+  "version": "2.1.1",
+  "licence": "MIT-0",
+  "url": "https://github.com/python-cffi/cffi",
+  "files": [
+   "cffi-2.1.1.txt"
+  ]
+ },
+ {
+  "name": "cryptography",
+  "version": "50.0.1",
+  "licence": "Apache-2.0 OR BSD-3-Clause",
+  "url": "https://github.com/pyca/cryptography",
+  "files": [
+   "cryptography-50.0.1-1.txt",
+   "cryptography-50.0.1-2.txt",
+   "cryptography-50.0.1-3.txt"
+  ]
+ },
+ {
+  "name": "ntc_templates",
+  "version": "9.3.0",
+  "licence": "Apache-2.0",
+  "url": "https://github.com/networktocode/ntc-templates",
+  "files": [
+   "ntc_templates-9.3.0.txt"
+  ]
+ },
+ {
+  "name": "paramiko",
+  "version": "3.5.1",
+  "licence": "LGPL-2.1-or-later",
+  "url": "https://github.com/paramiko/paramiko",
+  "files": [
+   "paramiko-3.5.1.txt"
+  ]
+ },
+ {
+  "name": "pycparser",
+  "version": "3.0",
+  "licence": "BSD-3-Clause",
+  "url": "https://github.com/eliben/pycparser",
+  "files": [
+   "pycparser-3.0.txt"
+  ]
+ },
+ {
+  "name": "pynacl",
+  "version": "1.6.2",
+  "licence": "Apache-2.0",
+  "url": "https://github.com/pyca/pynacl",
+  "files": [
+   "pynacl-1.6.2-1.txt",
+   "pynacl-1.6.2-2.txt"
+  ]
+ },
+ {
+  "name": "scrapli",
+  "version": "2026.2.20",
+  "licence": "MIT",
+  "url": "https://github.com/carlmontanari/scrapli",
+  "files": [
+   "scrapli-2026.2.20.txt"
+  ]
+ },
+ {
+  "name": "scrapli_community",
+  "version": "2025.1.30",
+  "licence": "MIT",
+  "url": "https://github.com/scrapli/scrapli_community",
+  "files": [
+   "scrapli_community-2025.1.30.txt"
+  ]
+ },
+ {
+  "name": "textfsm",
+  "version": "2.1.0",
+  "licence": "Apache-2.0",
+  "url": "https://github.com/google/textfsm",
+  "files": [
+   "textfsm-2.1.0-1.txt",
+   "textfsm-2.1.0-2.txt"
+  ]
+ }
+]

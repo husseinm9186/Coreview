@@ -1,0 +1,130 @@
+# Coreview discovery catalog — MikroTik RouterOS (mikrotik_routeros)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from Coreview's discovery
+# specification, ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+vendor: MikroTik
+os: mikrotik_routeros
+name: RouterOS
+ntc_platform: mikrotik_routeros
+phase: 2
+fingerprint:
+  probe: /system resource print
+  match_regex: "platform: MikroTik|RouterOS"
+session:
+  source: scrapli_community scrapli_community.mikrotik.routeros.sync_driver.MikrotikRouterOSDriver
+  prompt_pattern: \[[a-z0-9@.\-_+\s]{1,48}@[a-z0-9.\-_\s]{1,64}\].{1,16}>
+  on_close:
+    - /quit
+  paging:
+    suffix: " without-paging"
+    source: Coreview routeros dialect; RouterOS has no session-wide paging switch
+  prompt_echo_twice:
+    source: scrapli_community mikrotik_routeros sync_driver.send_command
+role_hint: []
+role_defaults: {}
+caps_probe: []
+commands:
+  - id: system_resource_print
+    cmd: /system resource print
+    gate: always
+    parser: textfsm:mikrotik_routeros_system_resource_print
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+    coreview_reader: true
+  - id: interface_print
+    cmd: /interface print
+    gate: always
+    parser: none
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: ip_address_print
+    cmd: /ip address print
+    gate: always
+    parser: textfsm:mikrotik_routeros_ip_address_print
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (6 captures)
+  - id: ip_neighbor_print
+    cmd: /ip neighbor print
+    gate: always
+    parser: none
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: ip_arp_print
+    cmd: /ip arp print
+    gate: always
+    parser: textfsm:mikrotik_routeros_ip_arp_print
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: interface_bridge_host_print
+    cmd: /interface bridge host print
+    gate: always
+    parser: none
+    feeds:
+      - interface
+      - mac_table
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: routing_ospf_neighbor_print
+    cmd: /routing ospf neighbor print
+    gate: always
+    parser: textfsm:mikrotik_routeros_routing_ospf_neighbor_print
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: routing_bgp_session_print
+    cmd: /routing bgp session print
+    gate: always
+    parser: none
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: ip_route_print
+    cmd: /ip route print
+    gate: always
+    parser: none
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+live_path: []
+note: "Phase-2 stub: the commands are catalogued, the session block is taken from scrapli; parsers come with Phase 2."

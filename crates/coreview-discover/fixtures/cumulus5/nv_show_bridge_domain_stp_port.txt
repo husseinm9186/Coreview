@@ -1,0 +1,285 @@
+Interface Info: bond1
+--------------------------------------------------------------------------
+enabled              : yes         mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : no          bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 2000        restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 88:3A:30:00:00:c0
+
+Interface Info: brport-if30
+--------------------------------------------------------------------------
+enabled              : yes         mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : yes         bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 2000        restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: peerlink
+--------------------------------------------------------------------------
+enabled              : yes         mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : yes         bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 200         restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : yes         clag-isl-oper-up  : yes
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp10
+--------------------------------------------------------------------------
+enabled              : no          mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : no          bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 2000        restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp11
+--------------------------------------------------------------------------
+enabled              : no          mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : no          bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 200000000   restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp12
+--------------------------------------------------------------------------
+enabled              : yes         mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : yes         bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 2000        restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp13
+--------------------------------------------------------------------------
+enabled              : no          mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : no          bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 2000        restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp14
+--------------------------------------------------------------------------
+enabled              : no          mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : no          bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 200000000   restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp15
+--------------------------------------------------------------------------
+enabled              : no          mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : no          bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 200000000   restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp16
+--------------------------------------------------------------------------
+enabled              : yes         mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : no          bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 2000        restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp17
+--------------------------------------------------------------------------
+enabled              : no          mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : no          bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 2000        restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp18
+--------------------------------------------------------------------------
+enabled              : yes         mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : yes         bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 2000        restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp19
+--------------------------------------------------------------------------
+enabled              : yes         mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : yes         bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 200         restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp2
+--------------------------------------------------------------------------
+enabled              : yes         mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : yes         bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 2000        restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp20
+--------------------------------------------------------------------------
+enabled              : yes         mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : yes         bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 200         restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp3
+--------------------------------------------------------------------------
+enabled              : yes         mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : yes         bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 20000       restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp4
+--------------------------------------------------------------------------
+enabled              : yes         mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : yes         bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 2000        restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp5
+--------------------------------------------------------------------------
+enabled              : no          mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : no          bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 200000000   restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp6
+--------------------------------------------------------------------------
+enabled              : yes         mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : yes         bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 20000       restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp7
+--------------------------------------------------------------------------
+enabled              : no          mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : no          bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 2000        restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp8
+--------------------------------------------------------------------------
+enabled              : no          mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : no          bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 200000000   restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00
+
+Interface Info: swp9
+--------------------------------------------------------------------------
+enabled              : yes         mcheck            : no
+admin-edge-port      : no          bpdu-guard-port   : no
+auto-edge-port       : yes         bpdu-filter-port  : no
+oper-edge-port       : no          bpdu-guard-error  : no
+admin-port-path-cost : 0           restricted-tcn    : no
+port-path-cost       : 20000       restricted-role   : no
+network-port         : no          ba-inconsistent   : no
+clag-role            : secondary   clag-system-mac   : 02:00:00:00:01:01
+clag-isl             : no          clag-isl-oper-up  : no
+clag-dual-conn-mac   : 00:00:00:00:00:00

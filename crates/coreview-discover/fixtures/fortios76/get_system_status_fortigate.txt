@@ -1,0 +1,15 @@
+Version: FortiGate-60F v7.6.7,build3704,260601 (GA.M)
+First GA patch build date: 240724
+Current Security Level: High
+Firmware Signature: certified
+AV AI/ML Model: 4.05057(2026-09-29 10:20)
+IPS-MLDB: 2609.00200(2026-09-16 00:55)
+OT-Patch-DB: 37.00301(2026-09-28 15:00)
+Serial-Number: FGTFAKE0000001
+BIOS version: 05000100
+Hostname: LAB-FGT
+Operation Mode: NAT
+Current virtual domain: root
+Virtual domain configuration: disable
+Current HA mode: standalone
+System time: Tue Sep 29 18:51:44 2026

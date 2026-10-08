@@ -1,0 +1,11 @@
+flag bit pattern: 0x00000000
+vlan map: 0-4094
+
+MAC: 00:00:00:00:0f:02	VLAN: 2178 Port: internal(port-id 29)
+  Flags: 0x00000020 [ static ]
+
+MAC: 00:00:00:00:0a:01	VLAN: 10 Port: port24(port-id 24)
+  Flags: 0x00010441 [ hit dynamic src-hit native ]
+
+MAC: 00:00:00:00:0a:02	VLAN: 1 Port: port13(port-id 13)
+  Flags: 0x00000001 [ dynamic ]

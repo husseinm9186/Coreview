@@ -1,0 +1,69 @@
+Flags - * - selected, q - queued, o - offloaded, i - installed, S - fib-
+selected, x - failed
+
+Route           Protocol   Distance  Uptime             NHGId  Metric  Flags
+--------------  ---------  --------  -----------------  -----  ------  -----
+0.0.0.0/0       ospf       110       3 days, 9:15:53    221    10      *Si
+10.66.110.0/24  connected  0         16 days, 23:08:29  78     1024    io
+                connected  0         16 days, 23:08:30  74     0       *Sio
+                ospf       110       16 days, 22:41:06  94     1
+10.66.110.1/32  local      0         16 days, 23:08:29  78     0       *Sio
+10.66.110.3/32  local      0         16 days, 23:08:30  74     0       *Sio
+10.66.120.0/24  connected  0         16 days, 23:08:29  84     1024    io
+                connected  0         16 days, 23:08:29  80     0       *Sio
+                ospf       110       16 days, 22:41:06  97     1
+10.66.120.1/32  local      0         16 days, 23:08:29  84     0       *Sio
+10.66.120.3/32  local      0         16 days, 23:08:29  80     0       *Sio
+10.66.150.0/24  connected  0         16 days, 2:06:50   125    1024    io
+                connected  0         16 days, 2:06:50   121    0       *Sio
+                ospf       110       16 days, 2:06:50   120    1
+10.66.150.1/32  local      0         16 days, 2:06:50   125    0       *Sio
+10.66.150.3/32  local      0         16 days, 2:06:50   121    0       *Sio
+10.66.160.0/24  connected  0         16 days, 2:06:50   133    1024    io
+                connected  0         16 days, 2:06:50   129    0       *Sio
+                ospf       110       16 days, 2:06:50   128    1
+10.66.160.1/32  local      0         16 days, 2:06:50   133    0       *Sio
+10.66.160.3/32  local      0         16 days, 2:06:50   129    0       *Sio
+10.66.170.0/24  connected  0         16 days, 2:06:50   141    1024    io
+                connected  0         16 days, 2:06:50   137    0       *Sio
+                ospf       110       16 days, 2:06:50   136    1
+10.66.170.1/32  local      0         16 days, 2:06:50   141    0       *Sio
+10.66.170.3/32  local      0         16 days, 2:06:50   137    0       *Sio
+10.66.180.0/24  connected  0         16 days, 2:06:50   149    1024    io
+                connected  0         16 days, 2:06:50   145    0       *Sio
+                ospf       110       16 days, 2:06:50   144    1
+10.66.180.1/32  local      0         16 days, 2:06:50   149    0       *Sio
+10.66.180.3/32  local      0         16 days, 2:06:50   145    0       *Sio
+10.66.190.0/24  connected  0         16 days, 2:06:50   157    1024    io
+                connected  0         16 days, 2:06:50   153    0       *Sio
+                ospf       110       16 days, 2:06:50   152    1
+10.66.190.1/32  local      0         16 days, 2:06:50   157    0       *Sio
+10.66.190.3/32  local      0         16 days, 2:06:50   153    0       *Sio
+10.66.210.0/24  connected  0         16 days, 2:06:50   165    1024    io
+                connected  0         16 days, 2:06:50   161    0       *Sio
+                ospf       110       16 days, 2:06:50   160    1
+10.66.210.1/32  local      0         16 days, 2:06:50   165    0       *Sio
+10.66.210.3/32  local      0         16 days, 2:06:50   161    0       *Sio
+10.66.220.0/24  connected  0         16 days, 2:06:50   173    1024    io
+                connected  0         16 days, 2:06:50   169    0       *Sio
+                ospf       110       16 days, 2:06:50   168    1
+10.66.220.1/32  local      0         16 days, 2:06:50   173    0       *Sio
+10.66.220.3/32  local      0         16 days, 2:06:50   169    0       *Sio
+10.66.230.0/24  connected  0         16 days, 2:06:49   181    1024    io
+                connected  0         16 days, 2:06:50   177    0       *Sio
+                ospf       110       16 days, 2:06:50   176    1
+10.66.230.1/32  local      0         16 days, 2:06:49   181    0       *Sio
+10.66.230.3/32  local      0         16 days, 2:06:50   177    0       *Sio
+10.66.240.0/24  connected  0         16 days, 2:06:49   189    1024    io
+                connected  0         16 days, 2:06:49   185    0       *Sio
+                ospf       110       16 days, 2:06:49   184    1
+10.66.240.1/32  local      0         16 days, 2:06:49   189    0       *Sio
+10.66.240.3/32  local      0         16 days, 2:06:49   185    0       *Sio
+10.66.250.0/29  connected  0         16 days, 23:08:29  86     0       *Sio
+                ospf       110       11 days, 9:21:05   100    1
+10.66.250.3/32  local      0         16 days, 23:08:29  86     0       *Sio
+10.77.0.0/16    connected  0         16 days, 10:37:32  114    1024    io
+                connected  0         16 days, 10:41:05  108    0       *Sio
+                ospf       110       16 days, 10:41:05  107    1
+10.77.0.1/32    local      0         16 days, 10:37:32  114    0       *Sio
+10.77.0.3/32    local      0         16 days, 10:41:05  108    0       *Sio

@@ -1,0 +1,113 @@
+# Coreview discovery catalog — VMware ESXi (esxi)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from Coreview's discovery
+# specification, ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+#
+# Esxcli's `--formatter=json` for everything but the NIC hints,
+# which vim-cmd gives only as text and which stay on the capture list.
+# From VMware's documentation. The ESXi shell must be enabled.
+vendor: VMware
+os: esxi
+name: ESXi
+phase: 2
+fingerprint:
+  probe: esxcli --formatter=json system version get
+  match_regex: VMware ESXi
+session:
+  source: generic shell prompt
+  privilege_levels:
+    exec:
+      pattern: ^\[\S+@\S+:.*\]\s?$
+  default_privilege: exec
+  failed_when_contains:
+    - "Error:"
+    - ": not found"
+  on_close:
+    - exit
+role_hint:
+  - match: VMware ESXi
+    role: host
+role_defaults: {}
+caps_probe: []
+commands:
+  - id: esxcli_system_version_get
+    cmd: esxcli --formatter=json system version get
+    gate: always
+    parser: json
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (JSON); field mapping from documentation
+  - id: esxcli_system_hostname_get
+    cmd: esxcli --formatter=json system hostname get
+    gate: always
+    parser: json
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (JSON); field mapping from documentation
+  - id: esxcli_network_nic_list
+    cmd: esxcli --formatter=json network nic list
+    gate: always
+    parser: json
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (JSON); field mapping from documentation
+  - id: esxcli_network_ip_interface_ipv4_get
+    cmd: esxcli --formatter=json network ip interface ipv4 get
+    gate: always
+    parser: json
+    feeds:
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (JSON); field mapping from documentation
+  - id: esxcli_network_ip_route_ipv4_list
+    cmd: esxcli --formatter=json network ip route ipv4 list
+    gate: always
+    parser: json
+    feeds:
+      - route
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (JSON); field mapping from documentation
+  - id: esxcli_network_ip_neighbor_list
+    cmd: esxcli --formatter=json network ip neighbor list
+    gate: always
+    parser: json
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (JSON); field mapping from documentation
+  - id: vim_cmd_hostsvc_net_query_networkhint
+    cmd: vim-cmd hostsvc/net/query_networkhint
+    gate: always
+    parser: none
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 60
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+live_path: []
+note: "ESXi over SSH with the shell enabled. A vmnic's MAC is how a switch's MAC table places the host (P2)."

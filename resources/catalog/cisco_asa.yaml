@@ -1,0 +1,435 @@
+# Coreview discovery catalog — Cisco ASA / FTD (cisco_asa)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from Coreview's discovery
+# specification, ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+vendor: Cisco
+os: cisco_asa
+name: ASA / FTD
+ntc_platform: cisco_asa
+phase: 1
+fingerprint:
+  probe: show version
+  match_regex: Adaptive Security Appliance|Firepower Threat Defense
+session:
+  source: scrapli_community generic 'network' driver
+  privilege_levels:
+    exec:
+      pattern: ^[\w\./-]{1,63}>\s?$
+    privilege_exec:
+      pattern: ^[\w\./-]{1,63}#\s?$
+      escalate: enable
+      escalate_auth: true
+      escalate_prompt: ^(P|p)assword:\s?$
+      previous: exec
+  default_privilege: privilege_exec
+  failed_when_contains:
+    - "% Invalid input detected"
+    - "% Ambiguous command"
+    - "% Incomplete command"
+  on_open:
+    - terminal pager 0
+  on_close:
+    - logout
+  ntc_platform: cisco_asa
+  paging:
+    off:
+      - terminal pager 0
+    source: scrapli_community cisco_asa on_open; netmiko cisco_asa_ssh.py session_preparation
+  contexts:
+    kind: context
+    detect:
+      cmd: show mode
+      match: "^Security context mode: multiple"
+      source: spec
+    list:
+      cmd: show context
+      match: ^\*?\s*(\S+)\s+\S+
+      source: spec; unverified
+    enter:
+      - changeto context {ctx}
+    leave:
+      - changeto system
+    reprompt: true
+    source: netmiko cisco_asa_ssh.py send_command ("multi-context mode … base_prompt needs to be updated" after changeto)
+role_hint:
+  - match: ASA|FPR|Firepower
+    role: firewall
+role_defaults:
+  firewall:
+    - routing
+    - nat
+    - ha
+caps_probe:
+  - id: show_mode
+    cmd: show mode
+    flags:
+      multi_context: "^Security context mode: multiple"
+    timeout: 30
+  - id: show_running_config_include_router_route_nat_crypto_map_tunn
+    cmd: show running-config | include ^router |^route |^nat |^crypto map|^tunnel-group|^vrf
+    flags:
+      routing: "^router |^route "
+      ospf: ^router ospf
+      eigrp: ^router eigrp
+      bgp: ^router bgp
+      nat: "^nat "
+      ipsec: ^crypto map|^tunnel-group
+      vrf: "^vrf "
+    timeout: 30
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: textfsm:cisco_asa_show_version
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+    coreview_reader: true
+  - id: show_inventory
+    cmd: show inventory
+    gate: always
+    parser: textfsm:cisco_asa_show_inventory
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+    coreview_reader: true
+  - id: show_failover
+    cmd: show failover
+    gate: always
+    parser: textfsm:cisco_asa_show_failover
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (7 captures)
+  - id: show_interface_ip_brief
+    cmd: show interface ip brief
+    gate: always
+    parser: textfsm:cisco_asa_show_interface_ip_brief
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+    coreview_reader: true
+  - id: show_nameif
+    cmd: show nameif
+    gate: always
+    parser: reader:asa_nameif
+    feeds:
+      - fw_zone
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview reader from Cisco's ASA command reference; no capture yet
+  - id: show_nat
+    cmd: show nat
+    gate: always
+    parser: textfsm:cisco_asa_show_nat
+    feeds:
+      - nat_rule
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_nat_detail
+    cmd: show nat detail
+    gate: always
+    parser: textfsm:cisco_asa_show_nat
+    feeds:
+      - nat_rule
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_running_config_access_list
+    cmd: show running-config access-list
+    gate: always
+    parser: reader:asa_access_list
+    feeds:
+      - fw_policy
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview reader from Cisco's ASA command reference; no ntc template; no capture yet
+  - id: show_running_config_access_group
+    cmd: show running-config access-group
+    gate: always
+    parser: reader:asa_access_group
+    feeds:
+      - fw_binding
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview reader from Cisco's ASA command reference; ntc's template stops at an `out` or `global` line
+  - id: show_running_config_object_network
+    cmd: show running-config object network
+    gate: always
+    parser: textfsm:cisco_asa_show_running-config_object_network
+    feeds:
+      - fw_object
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_running_config_object_group_network
+    cmd: show running-config object-group network
+    gate: always
+    parser: textfsm:cisco_asa_show_object-group_network
+    feeds:
+      - fw_object
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_running_config_object_service
+    cmd: show running-config object service
+    gate: always
+    parser: textfsm:cisco_asa_show_running-config_object_service
+    feeds:
+      - fw_object
+    weight: light
+    timeout: 60
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_running_config_object_group_service
+    cmd: show running-config object-group service
+    gate: always
+    parser: textfsm:cisco_asa_show_running-config_object-group_service
+    feeds:
+      - fw_object
+    weight: light
+    timeout: 60
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ospf_neighbor
+    cmd: show ospf neighbor
+    gate: cap.ospf
+    parser: textfsm:cisco_asa_show_ospf_neighbor
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_eigrp_neighbors
+    cmd: show eigrp neighbors
+    gate: cap.eigrp
+    parser: none
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_bgp_summary
+    cmd: show bgp summary
+    gate: cap.bgp
+    parser: textfsm:cisco_asa_show_bgp_summary
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+  - id: show_vrf
+    cmd: show vrf
+    gate: cap.vrf
+    parser: none
+    feeds:
+      - vrf
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_crypto_ipsec_sa
+    cmd: show crypto ipsec sa
+    gate: cap.ipsec
+    parser: textfsm:cisco_asa_show_crypto_ipsec_sa
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_vpn_sessiondb_summary
+    cmd: show vpn-sessiondb summary
+    gate: cap.ipsec
+    parser: textfsm:cisco_asa_show_vpn-sessiondb
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_network
+    cmd: show network
+    gate: role.ftd
+    parser: none
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_managers
+    cmd: show managers
+    gate: role.ftd
+    parser: none
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  # An FTD's policy lives in its FMC. These three are what
+  # coreview-collect/src/api/fmc.rs reads for the FTD a collection reached
+  # (matched by address or name), after the documented token call; NAT and
+  # routes come from the FTD's own CLI above. From Cisco's FMC REST API
+  # documentation, unverified until the operator's FMC answers.
+  - id: fmc_access_rules
+    cmd: /policy/accesspolicies/{policy}/accessrules
+    gate: role.ftd
+    parser: api
+    api: /policy/accesspolicies/{policy}/accessrules
+    feeds:
+      - fw_policy
+    weight: light
+    timeout: 60
+    verified: docs
+    evidence: FMC REST, read by the FMC collector; field mapping from documentation
+  - id: fmc_interfaces
+    cmd: /devices/devicerecords/{device}/physicalinterfaces
+    gate: role.ftd
+    parser: api
+    api: /devices/devicerecords/{device}/physicalinterfaces
+    feeds:
+      - fw_zone
+    weight: light
+    timeout: 60
+    verified: docs
+    evidence: FMC REST, read by the FMC collector; field mapping from documentation
+  - id: fmc_objects
+    cmd: /object/networkaddresses
+    gate: role.ftd
+    parser: api
+    api: /object/networkaddresses
+    feeds:
+      - fw_object
+    weight: light
+    timeout: 60
+    verified: docs
+    evidence: FMC REST (network and port objects and groups), read by the FMC collector; field mapping from documentation
+  - id: show_interface
+    cmd: show interface
+    gate: always
+    parser: textfsm:cisco_asa_show_interface
+    feeds:
+      - interface
+      - ip_address
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (10 captures)
+  - id: show_arp
+    cmd: show arp
+    gate: always
+    parser: textfsm:cisco_asa_show_arp
+    feeds:
+      - arp
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_route
+    cmd: show route
+    gate: always
+    parser: textfsm:cisco_asa_show_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+    coreview_reader: true
+  - id: show_running_config
+    cmd: show running-config
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+  - id: show_mac_address_table
+    cmd: show mac-address-table
+    gate: cap.switching
+    parser: none
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_route_vrf_vrf
+    cmd: show route vrf {vrf}
+    gate: cap.vrf
+    foreach: vrf
+    parser: textfsm:cisco_asa_show_route
+    feeds:
+      - vrf
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+  # The data path's own table, which the path builder walks before the RIB.
+  - id: show_asp_table_routing
+    cmd: show asp table routing
+    gate: always
+    parser: reader:asa_asp_routing
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview cisco reader; ASA command reference `show asp table routing`
+    coreview_reader: true
+live_path:
+  - id: show_route_dst
+    cmd: show route {dst}
+    gate: always
+    parser: textfsm:cisco_asa_show_route
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+    phase: 3
+  - id: packet_tracer_input_in_if_proto_src_sport_dst_dport
+    cmd: packet-tracer input {in_if} {proto} {src} {sport} {dst} {dport}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    phase: 3

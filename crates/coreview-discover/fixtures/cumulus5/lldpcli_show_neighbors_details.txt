@@ -1,0 +1,281 @@
+-------------------------------------------------------------------------------
+LLDP neighbors:
+-------------------------------------------------------------------------------
+Interface:    eth0, via: LLDP, RID: 17, Time: 0 day, 00:49:21
+  Chassis:
+    ChassisID:    mac 0c:42:a1:00:1e:08
+    SysName:      leaf-b02
+    SysDescr:     Cumulus Linux version 5.18.0 running on Mellanox Technologies Ltd. MSN2010
+    MgmtIP:       198.51.100.12
+    MgmtIface:    2
+    Capability:   Bridge, on
+    Capability:   Router, on
+  Port:
+    PortID:       ifname swp3
+    PortDescr:    swp3
+    TTL:          120
+    MFS:          9216
+    PMD autoneg:  supported: yes, enabled: yes
+      Adv:          1000Base-T, HD: no, FD: yes
+      MAU oper type: 1000BaseTFD - Four-pair Category 5 UTP, full duplex mode
+  LLDP-MED:
+    Device Type:  Network Connectivity Device
+    Capability:   Capabilities, yes
+    Capability:   Policy, yes
+    Capability:   Location, yes
+    Capability:   MDI/PSE, yes
+    Capability:   MDI/PD, yes
+    Capability:   Inventory, yes
+  Unknown TLVs:
+    TLV:          OUI: 00,80,C2, SubType: 12, Len: 4 00,63,12,B7
+-------------------------------------------------------------------------------
+Interface:    swp1, via: LLDP, RID: 57, Time: 19 days, 00:55:46
+  Chassis:
+    ChassisID:    mac 88:3a:30:00:00:c0
+    SysName:      cx-1
+    SysDescr:     HPE ANW JL727A  ML.10.18.1002
+    MgmtIP:       198.51.100.4
+    MgmtIface:    3
+    MgmtIP:       2001:0db8:0000:b040:0000:0000:0000:1a64
+    MgmtIface:    3
+    Capability:   Bridge, on
+    Capability:   Router, on
+  Port:
+    PortID:       ifname 1/1/50
+    PortDescr:    1/1/50
+    TTL:          120
+    MFS:          1500
+    Port is aggregated. PortAggregID: 1
+    PMD autoneg:  supported: yes, enabled: no
+      MAU oper type: 10GigBaseR - R PCS/PMA, unknown PMD.
+  VLAN:         1, pvid: yes DEFAULT_VLAN_1
+  Unknown TLVs:
+    TLV:          OUI: 88,3A,30, SubType: 2, Len: 2 00,01
+    TLV:          OUI: 88,3A,30, SubType: 12, Len: 8 00,00,00,6A,00,00,00,00
+-------------------------------------------------------------------------------
+Interface:    swp3, via: LLDP, RID: 17, Time: 0 day, 00:49:21
+  Chassis:
+    ChassisID:    mac 0c:42:a1:00:1e:08
+    SysName:      leaf-b02
+    SysDescr:     Cumulus Linux version 5.18.0 running on Mellanox Technologies Ltd. MSN2010
+    MgmtIP:       198.51.100.12
+    MgmtIface:    2
+    Capability:   Bridge, on
+    Capability:   Router, on
+  Port:
+    PortID:       ifname eth0
+    PortDescr:    eth0
+    TTL:          120
+    MFS:          1500
+    PMD autoneg:  supported: yes, enabled: yes
+      Adv:          10Base-T, HD: no, FD: yes
+      Adv:          100Base-TX, HD: no, FD: yes
+      Adv:          1000Base-T, HD: no, FD: yes
+      MAU oper type: 1000BaseTFD - Four-pair Category 5 UTP, full duplex mode
+  LLDP-MED:
+    Device Type:  Network Connectivity Device
+    Capability:   Capabilities, yes
+    Capability:   Policy, yes
+    Capability:   Location, yes
+    Capability:   MDI/PSE, yes
+    Capability:   MDI/PD, yes
+    Capability:   Inventory, yes
+  Unknown TLVs:
+    TLV:          OUI: 00,80,C2, SubType: 12, Len: 4 00,63,12,B7
+-------------------------------------------------------------------------------
+Interface:    swp6, via: LLDP, RID: 57, Time: 19 days, 00:55:46
+  Chassis:
+    ChassisID:    mac 88:3a:30:00:00:c0
+    SysName:      cx-1
+    SysDescr:     HPE ANW JL727A  ML.10.18.1002
+    MgmtIP:       198.51.100.4
+    MgmtIface:    3
+    MgmtIP:       2001:0db8:0000:b040:0000:0000:0000:1a64
+    MgmtIface:    3
+    Capability:   Bridge, on
+    Capability:   Router, on
+  Port:
+    PortID:       ifname mgmt
+    PortDescr:    mgmt
+    TTL:          120
+  Unknown TLVs:
+    TLV:          OUI: 88,3A,30, SubType: 2, Len: 2 00,01
+    TLV:          OUI: 88,3A,30, SubType: 12, Len: 8 00,00,00,6A,00,00,00,00
+-------------------------------------------------------------------------------
+Interface:    swp9, via: CDPv2, RID: 97, Time: 9 days, 02:10:43
+  Chassis:
+    ChassisID:    local access-a1.lab.example.net
+    SysName:      access-a1.lab.example.net
+    SysDescr:     cisco WS-C3560-24PS running on Cisco IOS Software, C3560 Software (C3560-IPBASEK9-M), Version 12.2(55)SE12, RELEASE SOFTWARE (fc2)
+                  Technical Support: http://www.cisco.com/techsupport
+                  Copyright (c) 1986-2017 by Cisco Systems, Inc.
+                  Compiled Thu 28-Sep-17 02:04 by prod_rel_team
+    MgmtIP:       198.51.100.23
+    Capability:   Bridge, on
+  Port:
+    PortID:       ifname GigabitEthernet0/1
+    PortDescr:    GigabitEthernet0/1
+    TTL:          180
+  VLAN:         1, pvid: yes VLAN #1
+-------------------------------------------------------------------------------
+Interface:    swp9, via: LLDP, RID: 111, Time: 0 day, 00:59:01
+  Chassis:
+    ChassisID:    mac 00:23:ab:00:00:01
+    SysName:      access-a1.lab.example.net
+    SysDescr:     Cisco IOS Software, C3560 Software (C3560-IPBASEK9-M), Version 12.2(55)SE12, RELEASE SOFTWARE (fc2)
+                  Technical Support: http://www.cisco.com/techsupport
+                  Copyright (c) 1986-2017 by Cisco Systems, Inc.
+                  Compiled Thu 28-Sep-17 02:04 by prod_rel_team
+    MgmtIP:       198.51.100.23
+    Capability:   Bridge, on
+    Capability:   Router, off
+  Port:
+    PortID:       ifname Gi0/1
+    PortDescr:    GigabitEthernet0/1
+    TTL:          120
+    PMD autoneg:  supported: yes, enabled: yes
+      Adv:          10Base-T, HD: yes, FD: yes
+      Adv:          100Base-TX, HD: yes, FD: yes
+      Adv:          1000Base-T, HD: no, FD: yes
+      MAU oper type: 1000BaseTFD - Four-pair Category 5 UTP, full duplex mode
+  VLAN:         1, pvid: yes
+  LLDP-MED:
+    Device Type:  Network Connectivity Device
+    Capability:   Capabilities, yes
+    Capability:   Policy, yes
+    Capability:   Location, yes
+    Capability:   Inventory, yes
+    LLDP-MED Network Policy for: Voice, Defined: no
+      Priority:     Best effort
+      PCP:          0
+      DSCP Value:   0
+    LLDP-MED Network Policy for: Voice Signaling, Defined: no
+      Priority:     Best effort
+      PCP:          0
+      DSCP Value:   0
+    LLDP-MED Location Identification: Type: Civic address
+      Country:
+    Inventory:
+      Hardware Revision: WS-C3560-24PS (PowerPC405):S0
+      Software Revision: 12.2(55)SE12
+      Manufacturer: Cisco Systems, Inc.
+      Model:        WS-C3560-24PS
+-------------------------------------------------------------------------------
+Interface:    swp12, via: CDPv2, RID: 81, Time: 14 days, 13:47:05
+  Chassis:
+    ChassisID:    local wlc-a1
+    SysName:      wlc-a1
+    SysDescr:     cisco C9800-CL running on Cisco IOS Software [IOSXE], C9800-CL Software (C9800-CL-K9_IOSXE), Version 17.15.6, RELEASE SOFTWARE (fc2)
+                  Technical Support: http://www.cisco.com/techsupport
+                  Copyright (c) 1986-2026 by Cisco Systems, Inc.
+                  Compiled Wed 22-Jul-26 03:38 by mcpre
+    MgmtIP:       10.77.0.7
+    Capability:   Router, on
+  Port:
+    PortID:       ifname GigabitEthernet1
+    PortDescr:    GigabitEthernet1
+    TTL:          180
+-------------------------------------------------------------------------------
+Interface:    swp16, via: LLDP, RID: 105, Time: 3 days, 09:19:24
+  Chassis:
+    ChassisID:    local 60:22:32:00:00:3d
+    SysName:      edge-gw-a01
+    SysDescr:     Debian GNU/Linux 13 (trixie) Linux 4.19.152-ui-alpine #4.19.152 SMP Wed Sep 30 07:53:38 CST 2026 aarch64
+    MgmtIP:       198.51.100.1
+    MgmtIface:    32
+    MgmtIP:       fe80::6222:32ff:fe00:47
+    MgmtIface:    4
+    Capability:   Bridge, on
+    Capability:   Router, on
+    Capability:   Wlan, off
+    Capability:   Station, off
+  Port:
+    PortID:       mac 60:22:32:00:00:46
+    PortDescr:    eth9
+    TTL:          120
+    PMD autoneg:  supported: no, enabled: no
+      MAU oper type: 10GbaseT - Four-pair Category 6A or better, full duplex mode only
+  VLAN:         250, pvid: no vlan250
+-------------------------------------------------------------------------------
+Interface:    swp18, via: CDPv2, RID: 81, Time: 14 days, 13:46:57
+  Chassis:
+    ChassisID:    local wlc-a1
+    SysName:      wlc-a1
+    SysDescr:     cisco C9800-CL running on Cisco IOS Software [IOSXE], C9800-CL Software (C9800-CL-K9_IOSXE), Version 17.15.6, RELEASE SOFTWARE (fc2)
+                  Technical Support: http://www.cisco.com/techsupport
+                  Copyright (c) 1986-2026 by Cisco Systems, Inc.
+                  Compiled Wed 22-Jul-26 03:38 by mcpre
+    MgmtIP:       10.77.0.7
+    Capability:   Router, on
+  Port:
+    PortID:       ifname GigabitEthernet3
+    PortDescr:    GigabitEthernet3
+    TTL:          180
+-------------------------------------------------------------------------------
+Interface:    swp20, via: LLDP, RID: 110, Time: 1 day, 01:13:05
+  Chassis:
+    ChassisID:    mac b4:96:91:00:00:f1
+  Port:
+    PortID:       mac b4:96:91:00:00:f1
+    TTL:          121
+  Unknown TLVs:
+    TLV:          OUI: 00,80,C2, SubType: 12, Len: 4 00,61,89,06
+-------------------------------------------------------------------------------
+Interface:    swp21, via: LLDP, RID: 102, Time: 0 day, 00:32:06
+  Chassis:
+    ChassisID:    mac 0c:42:a1:00:1d:a0
+    SysName:      leaf-b01
+    SysDescr:     Cumulus Linux version 5.18.0 running on Mellanox Technologies Ltd. MSN2010
+    MgmtIP:       198.51.100.13
+    MgmtIface:    2
+    Capability:   Bridge, on
+    Capability:   Router, on
+  Port:
+    PortID:       ifname swp21
+    PortDescr:    swp21
+    TTL:          120
+    MFS:          9216
+    Port is aggregated. PortAggregID: 29
+    PMD autoneg:  supported: yes, enabled: yes
+      Adv:          1000Base-T, HD: no, FD: yes
+      MAU oper type: 100GbaseCR4 - 100GBASE-R PCS/PMA over 4 lane shielded copper balanced cable
+  LLDP-MED:
+    Device Type:  Network Connectivity Device
+    Capability:   Capabilities, yes
+    Capability:   Policy, yes
+    Capability:   Location, yes
+    Capability:   MDI/PSE, yes
+    Capability:   MDI/PD, yes
+    Capability:   Inventory, yes
+  Unknown TLVs:
+    TLV:          OUI: 00,80,C2, SubType: 12, Len: 4 00,63,12,B7
+-------------------------------------------------------------------------------
+Interface:    swp22, via: LLDP, RID: 102, Time: 0 day, 00:32:06
+  Chassis:
+    ChassisID:    mac 0c:42:a1:00:1d:a0
+    SysName:      leaf-b01
+    SysDescr:     Cumulus Linux version 5.18.0 running on Mellanox Technologies Ltd. MSN2010
+    MgmtIP:       198.51.100.13
+    MgmtIface:    2
+    Capability:   Bridge, on
+    Capability:   Router, on
+  Port:
+    PortID:       ifname swp22
+    PortDescr:    swp22
+    TTL:          120
+    MFS:          9216
+    Port is aggregated. PortAggregID: 29
+    PMD autoneg:  supported: yes, enabled: yes
+      Adv:          1000Base-T, HD: no, FD: yes
+      MAU oper type: 100GbaseCR4 - 100GBASE-R PCS/PMA over 4 lane shielded copper balanced cable
+  LLDP-MED:
+    Device Type:  Network Connectivity Device
+    Capability:   Capabilities, yes
+    Capability:   Policy, yes
+    Capability:   Location, yes
+    Capability:   MDI/PSE, yes
+    Capability:   MDI/PD, yes
+    Capability:   Inventory, yes
+  Unknown TLVs:
+    TLV:          OUI: 00,80,C2, SubType: 12, Len: 4 00,63,12,B7
+-------------------------------------------------------------------------------

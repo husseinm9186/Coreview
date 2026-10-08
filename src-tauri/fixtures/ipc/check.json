@@ -1,0 +1,13 @@
+{
+  "id": "check-1",
+  "name": "NTP synchronised",
+  "command": "show ntp status",
+  "expect": "contains",
+  "pattern": "synchronized",
+  "ignoreCase": true,
+  "block": "line vty",
+  "severity": "critical",
+  "roles": [
+    "router"
+  ]
+}

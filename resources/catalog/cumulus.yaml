@@ -1,0 +1,208 @@
+# Coreview discovery catalog — NVIDIA Cumulus Linux 3.x/4.x, NCLU (cumulus)
+#
+# 2026-09-30: an OS an SN2010 may run. **Built from NVIDIA's
+# Cumulus Linux documentation**; the classic crawler's dialect
+# (coreview-discover cumulus.rs) was built the same way. Cumulus is Debian
+# underneath, so what Linux answers in JSON — addresses, neighbours over
+# lldpd, the ARP table, the FDB, the kernel routes — is asked the way the
+# `hosts` catalog asks it; what is Cumulus's own — `net show system`, bonds,
+# MLAG (`clag`), VRFs, FRR's tables through NCLU — has a Coreview reader.
+# Every entry is `verified: docs` until a capture. Cumulus 5.x speaks NVUE
+# (`nv show`), which this does not read.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+vendor: NVIDIA
+os: cumulus
+name: Cumulus Linux (NCLU)
+ntc_platform: linux
+phase: 1
+fingerprint:
+  probe: net show system
+  match_regex: 'Cumulus Linux'
+session:
+  source: scrapli_community scrapli_community.cumulus.linux.sync_driver (prompt `user@host:vrf:~$`)
+  privilege_levels:
+    exec:
+      pattern: ^\S+@\S+:\S+:\S+\$\s*$
+  default_privilege: exec
+  failed_when_contains:
+    - "command not found"
+    - "Permission denied"
+    - "ERROR:"
+  on_close:
+    - exit
+role_hint:
+  - match: Cumulus Linux
+    role: l3_switch
+role_defaults:
+  l3_switch:
+    - switching
+    - routing
+    - lldp
+caps_probe: []
+commands:
+  - id: net_show_system
+    cmd: net show system
+    gate: always
+    parser: reader:cumulus_system
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview cumulus reader; NVIDIA Cumulus Linux 4.4 documentation `net show system`
+    coreview_reader: true
+  - id: ip_j_addr
+    cmd: ip -j addr
+    gate: always
+    parser: reader:linux_ip_addr
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview linux reader (iproute2 JSON, as the hosts catalog)
+    coreview_reader: true
+  - id: ip_j_neigh
+    cmd: ip -j neigh
+    gate: always
+    parser: json
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: iproute2 JSON (dst, lladdr, dev, state), as the hosts catalog
+  - id: ip_j_route_show_table_all
+    cmd: ip -j route show table all
+    gate: always
+    parser: json
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: iproute2 JSON (dst, gateway, dev, protocol, metric, table) — the kernel's table, which FRR fills
+  - id: bridge_j_fdb_show
+    cmd: bridge -j fdb show
+    gate: always
+    parser: json
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: iproute2 JSON (mac, ifname, vlan, state), as the hosts catalog
+  - id: lldpcli_show_neighbors_f_json
+    cmd: lldpcli show neighbors -f json
+    gate: always
+    parser: reader:linux_lldp
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview linux reader (lldpd JSON, as the hosts catalog); Cumulus runs lldpd
+    coreview_reader: true
+  - id: net_show_lldp
+    cmd: net show lldp
+    gate: always
+    parser: reader:cumulus_lldp
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview cumulus reader; NVIDIA documentation `net show lldp` — the neighbour's name and port where lldpcli is refused
+    coreview_reader: true
+  - id: net_show_interface_bonds
+    cmd: net show interface bonds
+    gate: always
+    parser: reader:cumulus_bonds
+    feeds:
+      - lag
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview cumulus reader; NVIDIA documentation `net show interface bonds`
+    coreview_reader: true
+  - id: net_show_clag
+    cmd: net show clag
+    gate: always
+    parser: reader:cumulus_clag
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview cumulus reader; NVIDIA documentation `net show clag` — the MLAG pair, peer link and backup address
+    coreview_reader: true
+  - id: net_show_vrf
+    cmd: net show vrf
+    gate: always
+    parser: reader:cumulus_vrf
+    feeds:
+      - vrf
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview cumulus reader; NVIDIA documentation `net show vrf`
+    coreview_reader: true
+  - id: net_show_route_vrf_all
+    cmd: net show route vrf all
+    gate: always
+    parser: reader:frr_ip_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview frr reader; FRR documentation `show ip route vrf all`, which NCLU prints
+    coreview_reader: true
+  - id: net_show_bgp_summary
+    cmd: net show bgp summary
+    gate: always
+    parser: reader:frr_bgp_summary
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview frr reader; FRR documentation `show ip bgp summary`, which NCLU prints
+    coreview_reader: true
+  - id: net_show_ospf_neighbor
+    cmd: net show ospf neighbor
+    gate: always
+    parser: reader:frr_ospf_neighbor
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: Coreview frr reader; FRR documentation `show ip ospf neighbor`, which NCLU prints
+    coreview_reader: true
+  - id: net_show_configuration_commands
+    cmd: net show configuration commands
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+live_path:
+  - id: net_show_route_vrf_ri_dst
+    cmd: net show route vrf {ri} {dst}
+    gate: always
+    parser: reader:frr_ip_route
+    feeds:
+      - path_probe
+    verified: docs
+    evidence: Coreview frr reader; FRR `show ip route vrf <name> <ip>` through NCLU
+    phase: 3
+note: 'NCLU, Cumulus 3.x/4.x. Built from NVIDIA''s documentation. An SN2010 on Onyx is the onyx catalog, on SONiC the sonic one. Cumulus 5.x (NVUE) is not read.'

@@ -1,0 +1,149 @@
+# Coreview discovery catalog — ArubaOS Mobility Controller (aruba_os)
+#
+# 2026-10-01: the wireless controllers (7000/7200, 9000, Mobility
+# Master) — not ArubaOS-Switch (aoss) nor AOS-CX (aoscx). ntc-templates'
+# `aruba_os` set (fixtures vendored); the session from netmiko's aruba_os.py
+# — `enable` then `no paging`. No device met yet.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+vendor: Aruba (HPE)
+os: aruba_os
+name: ArubaOS Mobility Controller
+ntc_platform: aruba_os
+phase: 1
+fingerprint:
+  probe: show version
+  match_regex: 'ArubaOS \(MODEL|Aruba Operating System'
+session:
+  prompt_pattern: '^\([\w.\-]+\)\s?\*?\s?(\[[^\]]+\]\s?)?(\(config[^)]*\)\s?)?[>#]\s?$'
+  privilege_levels:
+    exec:
+      pattern: '^\([\w.\-]+\)\s?\*?\s?(\[[^\]]+\]\s?)?>\s?$'
+    privilege_exec:
+      pattern: '^\([\w.\-]+\)\s?\*?\s?(\[[^\]]+\]\s?)?#\s?$'
+      escalate: enable
+      escalate_auth: true
+      escalate_prompt: (?i)password
+      previous: exec
+  default_privilege: privilege_exec
+  paging:
+    off:
+      - no paging
+    needs_enable: true
+    source: "netmiko aruba_os.py session_preparation: Aruba OS requires enable mode to disable paging"
+  ansi:
+    strip: true
+    source: netmiko aruba_os.py ansi_escape_codes = True
+  on_close:
+    - exit
+  failed_when_contains:
+    - "% Invalid input"
+    - "% Incomplete command"
+    - "% Ambiguous command"
+    - "% Parse error"
+  source: netmiko aruba_os.py (no scrapli platform)
+role_hint:
+  - match: ArubaOS|Aruba Operating System
+    role: wlc
+role_defaults:
+  wlc:
+    - wlc
+    - routing
+caps_probe: []
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: textfsm:aruba_os_show_version
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_hostname
+    cmd: show hostname
+    gate: always
+    parser: textfsm:aruba_os_show_hostname
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_inventory
+    cmd: show inventory
+    gate: always
+    parser: textfsm:aruba_os_show_inventory
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_interface_brief
+    cmd: show ip interface brief
+    gate: always
+    parser: textfsm:aruba_os_show_ip_interface_brief
+    feeds:
+      - ip_address
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_arp
+    cmd: show arp
+    gate: always
+    parser: textfsm:aruba_os_show_arp
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_vlan
+    cmd: show vlan
+    gate: always
+    parser: textfsm:aruba_os_show_vlan
+    feeds:
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ap_database_long
+    cmd: show ap database long
+    gate: cap.wlc
+    parser: textfsm:aruba_os_show_ap_database_long
+    feeds:
+      - ap
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_route
+    cmd: show ip route
+    gate: cap.routing
+    parser: none
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_running_config
+    cmd: show running-config
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+live_path: []
+note: 'the Mobility controllers, from ntc-templates and netmiko. `show ip route` has no template; an AP''s own LLDP is not read here (the switch side names it).'

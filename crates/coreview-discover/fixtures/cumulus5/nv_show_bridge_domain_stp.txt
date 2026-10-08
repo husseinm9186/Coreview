@@ -1,0 +1,210 @@
+Bridge
+    mode    : rstp
+    priority: 8192
+    state   : up
+    force protocol version : rstp
+Bridge ID                priority    : 8192    mac-address       : 02:00:00:00:01:01
+Designated Root ID       priority    : 8192    mac-address       : 02:00:00:00:01:01   root-port  : -
+Timers                   hello-time  : 2s      forward-delay     : 15s                 max-age    : 20s
+Max Hops                 max-hops    : 20
+Topology Change Network  count       : 135     time since change : 85104s
+                         change port : swp9    last change port  : bond1
+
+Interface info: bond1
+---------------------------------
+port-id            : 128.2(priority: 128, num: 2)
+role               : Designated
+state              : forwarding
+port-path-cost     : 2000
+fdb-flush          : no
+disputed           : no
+
+Interface info: brport-if30
+---------------------------------
+port-id            : 128.20(priority: 128, num: 20)
+role               : Designated
+state              : forwarding
+port-path-cost     : 2000
+fdb-flush          : no
+disputed           : no
+
+Interface info: peerlink
+---------------------------------
+port-id            : 128.1(priority: 128, num: 1)
+role               : Designated
+state              : forwarding
+port-path-cost     : 200
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp10
+---------------------------------
+port-id            : 128.11(priority: 128, num: 11)
+role               : Disabled
+state              : discarding
+port-path-cost     : 2000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp11
+---------------------------------
+port-id            : 128.12(priority: 128, num: 12)
+role               : Disabled
+state              : discarding
+port-path-cost     : 200000000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp12
+---------------------------------
+port-id            : 128.13(priority: 128, num: 13)
+role               : Designated
+state              : forwarding
+port-path-cost     : 2000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp13
+---------------------------------
+port-id            : 128.14(priority: 128, num: 14)
+role               : Disabled
+state              : discarding
+port-path-cost     : 2000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp14
+---------------------------------
+port-id            : 128.15(priority: 128, num: 15)
+role               : Disabled
+state              : discarding
+port-path-cost     : 200000000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp15
+---------------------------------
+port-id            : 128.16(priority: 128, num: 16)
+role               : Disabled
+state              : discarding
+port-path-cost     : 200000000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp16
+---------------------------------
+port-id            : 128.17(priority: 128, num: 17)
+role               : Designated
+state              : forwarding
+port-path-cost     : 2000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp17
+---------------------------------
+port-id            : 128.18(priority: 128, num: 18)
+role               : Disabled
+state              : discarding
+port-path-cost     : 2000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp18
+---------------------------------
+port-id            : 128.19(priority: 128, num: 19)
+role               : Designated
+state              : forwarding
+port-path-cost     : 2000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp19
+---------------------------------
+port-id            : 128.21(priority: 128, num: 21)
+role               : Designated
+state              : forwarding
+port-path-cost     : 200
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp2
+---------------------------------
+port-id            : 128.3(priority: 128, num: 3)
+role               : Designated
+state              : forwarding
+port-path-cost     : 2000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp20
+---------------------------------
+port-id            : 128.22(priority: 128, num: 22)
+role               : Designated
+state              : forwarding
+port-path-cost     : 200
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp3
+---------------------------------
+port-id            : 128.4(priority: 128, num: 4)
+role               : Designated
+state              : forwarding
+port-path-cost     : 20000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp4
+---------------------------------
+port-id            : 128.5(priority: 128, num: 5)
+role               : Designated
+state              : forwarding
+port-path-cost     : 2000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp5
+---------------------------------
+port-id            : 128.6(priority: 128, num: 6)
+role               : Disabled
+state              : discarding
+port-path-cost     : 200000000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp6
+---------------------------------
+port-id            : 128.7(priority: 128, num: 7)
+role               : Designated
+state              : forwarding
+port-path-cost     : 20000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp7
+---------------------------------
+port-id            : 128.8(priority: 128, num: 8)
+role               : Disabled
+state              : discarding
+port-path-cost     : 2000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp8
+---------------------------------
+port-id            : 128.9(priority: 128, num: 9)
+role               : Disabled
+state              : discarding
+port-path-cost     : 200000000
+fdb-flush          : no
+disputed           : no
+
+Interface info: swp9
+---------------------------------
+port-id            : 128.10(priority: 128, num: 10)
+role               : Designated
+state              : forwarding
+port-path-cost     : 20000
+fdb-flush          : no
+disputed           : no
+

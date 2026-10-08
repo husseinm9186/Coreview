@@ -1,0 +1,820 @@
+# Coreview discovery catalog — Fortinet FortiOS (fortios)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from Coreview's discovery
+# specification, ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+vendor: Fortinet
+os: fortios
+name: FortiOS
+ntc_platform: fortinet
+phase: 1
+fingerprint:
+  probe: get system status
+  # A FortiSwitch has its own catalog.
+  match_regex: "Version: Forti(Gate|Wifi)"
+session:
+  source: scrapli_community scrapli_community.fortinet.fortios.sync_driver.FortinetFortiOSDriver
+  prompt_pattern: "[\\w_-]+ (\\([\\w-]+\\) )?[$#]"
+  failed_when_contains:
+    - "Unknown action"
+    - "command parse error"
+  on_close:
+    - exit
+  banner:
+    prompt: "(Press 'a' to accept):"
+    answer: a
+    source: scrapli_community FortinetFortiOSDriver.prepare_session; netmiko fortinet_ssh.py session_preparation ("to accept")
+  contexts:
+    kind: vdom
+    detect:
+      cmd: get system status
+      match: "^Virtual domain configuration: (multiple|enable|split-task)"
+      source: netmiko fortinet_ssh.py _vdoms_enabled; scrapli_community _vdoms_status
+    list:
+      cmd: diagnose sys vd list
+      match: ^name=(\S+)/
+      source: spec (unverified); scrapli_community gather_vdoms uses `show | grep "config vdom" -f -A1` → ^edit (\w+)$
+    enter_global:
+      - config global
+    enter:
+      - config vdom
+      - edit {vdom}
+    leave:
+      - end
+    abort:
+      - abort
+      - end
+    source: scrapli_community FortinetFortiOSDriver.context / _to_system; netmiko fortinet_ssh.py _config_global
+  paging:
+    check:
+      cmd: get system console | grep ^output
+      match: output\s*:\s*(\w+)
+      want: standard
+      in_global: true
+      source: netmiko fortinet_ssh.py _get_output_mode_v7; scrapli_community prepare_session
+    check_v6:
+      cmd: show full-configuration system console
+      match: ^\s+set output (\S+)\s*$
+      source: netmiko fortinet_ssh.py _get_output_mode_v6
+    off:
+      - config system console
+      - set output standard
+      - end
+    restore:
+      - config system console
+      - set output {original}
+      - end
+    in_global: true
+    source: netmiko fortinet_ssh.py disable_paging / cleanup; scrapli_community prepare_session / cleanup_session; spec prep
+  kex_note: "netmiko fortinet_ssh.py preferred_kex: group14-sha1, group-exchange-sha1, group-exchange-sha256, group1-sha1 — Coreview already offers these"
+role_hint:
+  - match: FortiGate|FortiWiFi|FGT|FWF
+    role: firewall
+  - match: FortiSwitch|FSW
+    role: switch
+role_defaults:
+  firewall:
+    - routing
+    - nat
+    - lldp
+  switch:
+    - switching
+    - lldp
+caps_probe:
+  - id: get_system_status
+    cmd: get system status
+    flags:
+      vdom: "^Virtual domain configuration: (multiple|enable|split-task)"
+      ha: "^Current HA mode: (a-a|a-p)"
+    timeout: 30
+    parser: textfsm:fortinet_get_system_status
+  - id: diagnose_sys_vd_list
+    cmd: diagnose sys vd list
+    flags: {}
+    timeout: 30
+    note: no flag rule written yet; output is kept and sets nothing
+  - id: show_router_ospf
+    cmd: show router ospf
+    flags:
+      ospf: set router-id|config area
+      routing: set router-id
+    timeout: 30
+  - id: show_router_bgp
+    cmd: show router bgp
+    flags:
+      bgp: set as \d
+      routing: set as \d
+    timeout: 30
+  - id: show_router_static
+    cmd: show router static
+    flags:
+      routing: ^\s+edit \d+
+    timeout: 30
+  - id: show_router_policy
+    cmd: show router policy
+    flags:
+      pbr: ^\s+edit \d+
+    timeout: 30
+  - id: show_system_sdwan
+    cmd: show system sdwan
+    flags:
+      sdwan: set status enable
+    timeout: 30
+  - id: show_system_virtual_wan_link
+    cmd: show system virtual-wan-link
+    flags: {}
+    timeout: 30
+    note: no flag rule written yet; output is kept and sets nothing
+  - id: show_vpn_ipsec_phase1_interface
+    cmd: show vpn ipsec phase1-interface
+    flags:
+      ipsec: ^\s+edit "
+    timeout: 30
+  - id: show_firewall_vip
+    cmd: show firewall vip
+    flags:
+      nat: ^\s+edit "
+    timeout: 30
+  - id: show_system_interface
+    cmd: show system interface
+    flags:
+      vrf: set vrf [1-9]
+      switching: set type (aggregate|hard-switch|switch)
+      gre: set type tunnel
+      fortilink: set fortilink enable
+    timeout: 30
+commands:
+  - id: get_system_status
+    cmd: get system status
+    gate: always
+    context: global
+    parser: reader:fortios_system_status
+    api: /api/v2/monitor/system/status
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: Coreview fortios reader, met a FortiGate 60F on FortiOS 7.6.7 in a lab, where ntc's template refused 7.6's new lines
+    coreview_reader: true
+  - id: get_system_ha_status
+    cmd: get system ha status
+    gate: always
+    context: global
+    parser: reader:fortios_ha_status
+    api: /api/v2/monitor/system/ha-peer
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: Coreview fortios reader; standalone met a FortiGate 60F on FortiOS 7.6.7 in a lab, cluster member lines from ntc-templates' captured fixtures
+  - id: get_system_performance_status
+    cmd: get system performance status
+    gate: always
+    context: global
+    parser: none
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: get_system_interface_physical
+    cmd: get system interface physical
+    gate: always
+    context: global
+    parser: textfsm:fortinet_get_system_interface_physical
+    api: /api/v2/monitor/system/interface
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures); Coreview fortios reader
+    coreview_reader: true
+  - id: show_system_interface
+    cmd: show system interface
+    gate: always
+    context: global
+    parser: api
+    api: /api/v2/cmdb/system/interface
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/cmdb/system/interface); field mapping from documentation
+  - id: get_system_arp
+    cmd: get system arp
+    gate: always
+    context: global
+    parser: textfsm:fortinet_get_system_arp
+    api: /api/v2/monitor/network/arp
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures); Coreview fortios reader
+    coreview_reader: true
+  - id: get_wireless_controller_wtp_status
+    cmd: get wireless-controller wtp-status
+    gate: always
+    parser: reader:fortios_wtp_status
+    # The FortiAPs this FortiGate manages, and each one's uplink.
+    feeds:
+      - ap
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: Coreview fortios reader (the classic crawler's), met a FortiGate 60F on FortiOS 7.6.7 managing three FortiAPs in a lab
+    coreview_reader: true
+  - id: diagnose_ip_address_list
+    cmd: diagnose ip address list
+    gate: always
+    context: global
+    parser: none
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: diagnose_lldprx_neighbors_summary
+    cmd: diagnose lldprx neighbors summary
+    gate: always
+    context: global
+    parser: api
+    api: /api/v2/monitor/network/lldp/neighbors
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: Coreview fortios reader, met real hardware
+    coreview_reader: true
+  - id: diagnose_lldprx_neighbors
+    cmd: diagnose lldprx neighbors
+    gate: always
+    context: global
+    parser: api
+    api: /api/v2/monitor/network/lldp/neighbors
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/monitor/network/lldp/neighbors); field mapping from documentation
+    note: 'the spec marks this command "verify": its spelling is not confirmed'
+  - id: get_system_interface
+    cmd: get system interface
+    gate: always
+    foreach: vdom
+    parser: reader:fortios_interfaces
+    api: /api/v2/monitor/system/interface
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: Coreview fortios reader, met a FortiGate 60F on FortiOS 7.6.7 in a lab
+  - id: show_system_zone
+    cmd: show system zone
+    gate: always
+    foreach: vdom
+    parser: api
+    api: /api/v2/cmdb/system/zone
+    feeds:
+      - fw_zone
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/cmdb/system/zone); field mapping from documentation
+  - id: show_firewall_policy
+    cmd: show firewall policy
+    gate: always
+    foreach: vdom
+    parser: api
+    api: /api/v2/cmdb/firewall/policy
+    feeds:
+      - fw_policy
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/cmdb/firewall/policy); field mapping from documentation
+  - id: show_firewall_address
+    cmd: show firewall address
+    gate: always
+    foreach: vdom
+    parser: api
+    api: /api/v2/cmdb/firewall/address
+    # Objects the policies name, not policies.
+    feeds:
+      - fw_object
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/cmdb/firewall/address); field mapping from documentation
+  - id: show_firewall_addrgrp
+    cmd: show firewall addrgrp
+    gate: always
+    foreach: vdom
+    parser: api
+    api: /api/v2/cmdb/firewall/addrgrp
+    # Groups of the objects above.
+    feeds:
+      - fw_object
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/cmdb/firewall/addrgrp); field mapping from documentation
+  - id: monitor_firewall_address_fqdns
+    cmd: diagnose firewall fqdn list
+    gate: always
+    foreach: vdom
+    parser: api
+    api: /api/v2/monitor/firewall/address-fqdns
+    # What each FQDN address resolved to on the FortiGate itself.
+    feeds:
+      - fw_object
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: Coreview fortios reader (REST), met the lab's FortiGate 60F on FortiOS 7.6.7 — the list, then `?mkey=<name>` for each object's addresses
+    coreview_reader: true
+  - id: show_firewall_vip
+    cmd: show firewall vip
+    gate: always
+    foreach: vdom
+    parser: api
+    api: /api/v2/cmdb/firewall/vip
+    feeds:
+      - nat_rule
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/cmdb/firewall/vip); field mapping from documentation
+  - id: show_firewall_ippool
+    cmd: show firewall ippool
+    gate: always
+    foreach: vdom
+    parser: api
+    api: /api/v2/cmdb/firewall/ippool
+    feeds:
+      - nat_rule
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/cmdb/firewall/ippool); field mapping from documentation
+  - id: get_vpn_ipsec_tunnel_summary
+    cmd: get vpn ipsec tunnel summary
+    gate: cap.ipsec
+    parser: api
+    api: /api/v2/monitor/vpn/ipsec
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/monitor/vpn/ipsec); field mapping from documentation
+  - id: diagnose_vpn_tunnel_list
+    cmd: diagnose vpn tunnel list
+    gate: cap.ipsec
+    parser: api
+    api: /api/v2/monitor/vpn/ipsec
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/monitor/vpn/ipsec); field mapping from documentation
+  - id: show_vpn_ipsec_phase1_interface
+    cmd: show vpn ipsec phase1-interface
+    gate: cap.ipsec
+    parser: api
+    api: /api/v2/cmdb/vpn.ipsec/phase1-interface
+    feeds:
+      - interface
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/cmdb/vpn.ipsec/phase1-interface); field mapping from documentation
+  - id: show_vpn_ipsec_phase2_interface
+    cmd: show vpn ipsec phase2-interface
+    gate: cap.ipsec
+    parser: api
+    api: /api/v2/cmdb/vpn.ipsec/phase2-interface
+    feeds:
+      - interface
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/cmdb/vpn.ipsec/phase2-interface); field mapping from documentation
+  - id: show_system_sdwan
+    cmd: show system sdwan
+    gate: cap.sdwan
+    parser: api
+    api: /api/v2/cmdb/system/sdwan
+    # The SD-WAN zone and the interfaces it holds.
+    feeds:
+      - fw_zone
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/cmdb/system/sdwan); field mapping from documentation
+  - id: diagnose_sys_sdwan_member
+    cmd: diagnose sys sdwan member
+    gate: cap.sdwan
+    parser: api
+    api: /api/v2/monitor/virtual-wan/members
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/monitor/virtual-wan/members); field mapping from documentation
+  - id: diagnose_sys_sdwan_service
+    cmd: diagnose sys sdwan service
+    gate: cap.sdwan
+    parser: none
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: diagnose_sys_sdwan_health_check
+    cmd: diagnose sys sdwan health-check
+    gate: cap.sdwan
+    parser: api
+    api: /api/v2/monitor/virtual-wan/health-check
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST /api/v2/monitor/virtual-wan/health-check); field mapping from documentation
+  - id: execute_switch_controller_get_conn_status
+    cmd: execute switch-controller get-conn-status
+    gate: cap.fortilink
+    parser: api
+    api: /api/v2/monitor/switch-controller/managed-switch/status
+    # Managed switches are other boxes — a FortiLink neighbour while
+    # connected, never the FortiGate's own identity.
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: Coreview fortios reader, met real hardware; the REST reply's fields met the lab's FortiGate 60F on 7.6.7 with an idle managed switch
+    coreview_reader: true
+  - id: api_v2_monitor_system_status
+    cmd: /api/v2/monitor/system/status
+    gate: always
+    parser: api
+    api: /api/v2/monitor/system/status
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); field mapping from documentation
+  - id: monitor_system_interface
+    cmd: /api/v2/monitor/system/interface
+    gate: always
+    parser: api
+    api: /api/v2/monitor/system/interface
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: cmdb_system_interface
+    cmd: /api/v2/cmdb/system/interface
+    gate: always
+    parser: api
+    api: /api/v2/cmdb/system/interface
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: cmdb_system_zone
+    cmd: /api/v2/cmdb/system/zone
+    gate: always
+    parser: api
+    api: /api/v2/cmdb/system/zone
+    feeds:
+      - fw_zone
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: monitor_network_arp
+    cmd: /api/v2/monitor/network/arp
+    gate: always
+    parser: api
+    api: /api/v2/monitor/network/arp
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: monitor_network_lldp_neighbors
+    cmd: /api/v2/monitor/network/lldp/neighbors
+    gate: always
+    parser: api
+    api: /api/v2/monitor/network/lldp/neighbors
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: cmdb_firewall_policy
+    cmd: /api/v2/cmdb/firewall/policy
+    gate: always
+    parser: api
+    api: /api/v2/cmdb/firewall/policy
+    feeds:
+      - fw_policy
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: cmdb_firewall_vip
+    cmd: /api/v2/cmdb/firewall/vip
+    gate: always
+    parser: api
+    api: /api/v2/cmdb/firewall/vip
+    feeds:
+      - nat_rule
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: monitor_vpn_ipsec
+    cmd: /api/v2/monitor/vpn/ipsec
+    gate: always
+    parser: api
+    api: /api/v2/monitor/vpn/ipsec
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: monitor_virtual_wan_members
+    cmd: /api/v2/monitor/virtual-wan/members
+    gate: always
+    parser: api
+    api: /api/v2/monitor/virtual-wan/members
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: monitor_system_ha_peer
+    cmd: /api/v2/monitor/system/ha-peer
+    gate: always
+    parser: api
+    api: /api/v2/monitor/system/ha-peer
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: diagnose_ip_route_list
+    cmd: diagnose ip route list
+    gate: always
+    context: global
+    parser: none
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: get_router_info_routing_table_all
+    cmd: get router info routing-table all
+    gate: always
+    foreach: vdom
+    parser: reader:fortios_routing_table
+    api: /api/v2/monitor/router/ipv4
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: Coreview fortios reader, met a FortiGate 60F on FortiOS 7.6.7 in a lab, where ntc's template refused the reply
+    coreview_reader: true
+  - id: get_router_info_routing_table_database
+    cmd: get router info routing-table database
+    gate: always
+    foreach: vdom
+    parser: none
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: get_router_info_kernel
+    cmd: get router info kernel
+    gate: always
+    foreach: vdom
+    parser: reader:fortios_kernel_routes
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview fortinet reader; Fortinet documentation `get router info kernel` — the kernel's forwarding table
+    coreview_reader: true
+  - id: show_router_static
+    cmd: show router static
+    gate: always
+    foreach: vdom
+    parser: api
+    api: /api/v2/cmdb/router/static
+    feeds:
+      - device
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (REST /api/v2/cmdb/router/static); field mapping from documentation
+  - id: show_router_policy
+    cmd: show router policy
+    gate: cap.pbr
+    foreach: vdom
+    parser: api
+    api: /api/v2/cmdb/router/policy
+    feeds:
+      - policy_route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (REST /api/v2/cmdb/router/policy); field mapping from documentation
+    coreview_reader: true
+  - id: diagnose_firewall_proute_list
+    cmd: diagnose firewall proute list
+    gate: always
+    foreach: vdom
+    parser: none
+    feeds:
+      - policy_route
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: get_router_info_ospf_neighbor
+    cmd: get router info ospf neighbor
+    gate: cap.ospf
+    foreach: vdom
+    parser: api
+    api: /api/v2/monitor/router/ospf/neighbors
+    feeds:
+      - routing_neighbor
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (REST /api/v2/monitor/router/ospf/neighbors); field mapping from documentation
+  - id: get_router_info_bgp_summary
+    cmd: get router info bgp summary
+    gate: cap.bgp
+    foreach: vdom
+    parser: textfsm:fortinet_get_router_info_bgp_summary
+    api: /api/v2/monitor/router/bgp/neighbors
+    feeds:
+      - routing_neighbor
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: monitor_router_ipv4
+    cmd: /api/v2/monitor/router/ipv4
+    gate: always
+    parser: api
+    api: /api/v2/monitor/router/ipv4
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: cmdb_router_static
+    cmd: /api/v2/cmdb/router/static
+    gate: always
+    parser: api
+    api: /api/v2/cmdb/router/static
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: cmdb_router_policy
+    cmd: /api/v2/cmdb/router/policy
+    gate: always
+    parser: api
+    api: /api/v2/cmdb/router/policy
+    feeds:
+      - policy_route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: monitor_router_ospf_neighbors
+    cmd: /api/v2/monitor/router/ospf/neighbors
+    gate: always
+    parser: api
+    api: /api/v2/monitor/router/ospf/neighbors
+    feeds:
+      - routing_neighbor
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  - id: monitor_router_bgp_neighbors
+    cmd: /api/v2/monitor/router/bgp/neighbors
+    gate: always
+    parser: api
+    api: /api/v2/monitor/router/bgp/neighbors
+    feeds:
+      - routing_neighbor
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (REST); the path and fields checked against the lab FortiGate 60F on 7.6.7
+  # Which interfaces each VRF holds — the configuration is the only
+  # place FortiOS says it.
+  - id: show_system_interface_vrfs
+    cmd: show system interface
+    gate: cap.vrf
+    parser: reader:fortios_interface_vrfs
+    feeds:
+      - vrf
+    weight: light
+    timeout: 60
+    verified: docs
+    evidence: Coreview fortinet reader; FortiOS `show system interface` configuration layout (`set vrf N`)
+    coreview_reader: true
+live_path:
+  - id: get_router_info_routing_table_details_dst
+    cmd: get router info routing-table details {dst}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    phase: 3
+  - id: diagnose_firewall_proute_list_2
+    cmd: diagnose firewall proute list
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    phase: 3
+  - id: execute_traceroute_options_source_src
+    cmd: execute traceroute-options source {src}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    phase: 3
+  - id: execute_traceroute_dst
+    cmd: execute traceroute {dst}
+    gate: always
+    parser: textfsm:fortinet_execute_traceroute
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+    phase: 3

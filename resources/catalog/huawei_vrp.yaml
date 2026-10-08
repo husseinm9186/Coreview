@@ -1,0 +1,194 @@
+# Coreview discovery catalog — Huawei VRP (huawei_vrp)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from Coreview's discovery
+# specification, ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+vendor: Huawei
+os: huawei_vrp
+name: VRP
+ntc_platform: huawei_vrp
+phase: 2
+fingerprint:
+  probe: display version
+  match_regex: Huawei Versatile Routing Platform|VRP
+session:
+  source: scrapli_community scrapli_community.huawei.vrp.sync_driver.HuaweiVRPDriver
+  privilege_levels:
+    privilege_exec:
+      pattern: ^(?:hrp_[a|m|s])?<[a-z0-9.\-_@()/:]{1,48}>\s*$
+  default_privilege: privilege_exec
+  failed_when_contains:
+    - "Error:"
+  on_open:
+    - screen-length 0 temporary
+    - screen-width 256\ny\n\n
+  on_close:
+    - exit
+  ntc_platform: huawei_vrp
+  paging:
+    off:
+      - screen-length 0 temporary
+    source: scrapli_community huawei_vrp on_open; Coreview huawei dialect
+role_hint: []
+role_defaults: {}
+caps_probe: []
+commands:
+  - id: display_version
+    cmd: display version
+    gate: always
+    parser: textfsm:huawei_vrp_display_version
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (7 captures)
+    coreview_reader: true
+  - id: display_interface_brief
+    cmd: display interface brief
+    gate: always
+    parser: textfsm:huawei_vrp_display_interface_brief
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: display_ip_interface_brief
+    cmd: display ip interface brief
+    gate: always
+    parser: none
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    coreview_reader: true
+  - id: display_lldp_neighbor_information_verbose
+    cmd: display lldp neighbor-information verbose
+    gate: always
+    parser: none
+    feeds:
+      - neighbor
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: display_arp
+    cmd: display arp
+    gate: always
+    parser: none
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    coreview_reader: true
+  - id: display_ospf_peer
+    cmd: display ospf peer
+    gate: always
+    parser: none
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: display_bgp_peer
+    cmd: display bgp peer
+    gate: always
+    parser: textfsm:huawei_vrp_display_bgp_peer
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: display_vlan
+    cmd: display vlan
+    gate: always
+    parser: textfsm:huawei_vrp_display_vlan
+    also:
+      - textfsm:huawei_vrp_display_vlan_brief
+    feeds:
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+  - id: display_stp_brief
+    cmd: display stp brief
+    gate: always
+    parser: none
+    feeds:
+      - stp
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: display_link_aggregation_summary_display_eth_trunk
+    cmd: display link-aggregation summary | display eth-trunk
+    gate: always
+    parser: none
+    feeds:
+      - vlan
+      - lag
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: display_vrrp_brief
+    cmd: display vrrp brief
+    gate: always
+    parser: none
+    feeds:
+      - fhrp
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: display_mac_address
+    cmd: display mac-address
+    gate: always
+    parser: textfsm:huawei_vrp_display_mac-address
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: display_ip_routing_table
+    cmd: display ip routing-table
+    gate: always
+    parser: none
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    coreview_reader: true
+  - id: display_current_configuration
+    cmd: display current-configuration
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+live_path: []
+note: "Phase-2 stub: the commands are catalogued, the session block is taken from scrapli; parsers come with Phase 2."

@@ -1,0 +1,449 @@
+# Coreview discovery catalog — Palo Alto Networks PAN-OS (panos)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from Coreview's discovery
+# specification, ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+vendor: Palo Alto Networks
+os: panos
+name: PAN-OS
+ntc_platform: paloalto_panos
+phase: 1
+fingerprint:
+  probe: show system info
+  match_regex: "^model: PA-|^sw-version:"
+session:
+  source: scrapli_community generic 'network' driver
+  privilege_levels:
+    exec:
+      pattern: ^[\w\._-]+@[\w\.\(\)_-]+>\s?$
+  default_privilege: exec
+  failed_when_contains:
+    - "Unknown command:"
+    - Invalid syntax.
+    - Server error
+    - "Validation Error:"
+  on_open:
+    - set cli scripting-mode on
+    - set cli pager off
+  on_close:
+    - exit
+  ntc_platform: paloalto_panos
+  paging:
+    off:
+      - set cli scripting-mode on
+      - set cli pager off
+      - set cli config-output-format set
+    source: scrapli_community paloalto_panos on_open; netmiko paloalto_panos.py session_preparation; spec prep (config-output-format set)
+  contexts:
+    kind: vsys
+    detect:
+      cmd: show system info
+      match: "^multi-vsys: on"
+      source: spec
+    list:
+      cmd: show system setting target-vsys
+      match: vsys\d+
+      source: unverified — no source encodes vsys listing; PAN-OS XML API `type=config&xpath=/config/devices/entry/vsys` is the API-side answer
+    enter:
+      - set system setting target-vsys {vsys}
+    leave:
+      - set system setting target-vsys none
+    source: spec cap.vsys (unverified against a device)
+  banner:
+    prompt: Do you accept
+    answer: yes
+    source: netmiko paloalto_panos.py pa_banner_handler (keyboard-interactive)
+  structured:
+    api: XML API type=op, identical commands as <show><system><info></info></system></show>
+    source: spec
+role_hint:
+  - match: PA-|VM-
+    role: firewall
+role_defaults:
+  firewall:
+    - routing
+    - nat
+    - lldp
+    - structured_output
+caps_probe:
+  - id: show_system_info
+    cmd: show system info
+    flags:
+      vsys: "^multi-vsys: on"
+      advanced_routing: "^advanced-routing: on"
+      ha: ^ha-mode|^ha-state
+    timeout: 30
+    parser: textfsm:paloalto_panos_show_system_info
+  - id: show_config_running
+    cmd: show config running
+    flags:
+      ospf: <ospf>\s*<enable>yes
+      bgp: <bgp>\s*<enable>yes
+      ipsec: <ipsec>
+      pbr: <pbf>
+      nat: <nat>\s*<rules>
+      routing: <virtual-router>
+      gre: <tunnel>
+    timeout: 30
+commands:
+  - id: show_system_info
+    cmd: show system info
+    gate: always
+    parser: xml
+    shadow: textfsm:paloalto_panos_show_system_info
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_high_availability_state
+    cmd: show high-availability state
+    gate: always
+    parser: xml
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+  - id: show_interface_all
+    cmd: show interface all
+    gate: always
+    parser: xml
+    shadow: textfsm:paloalto_panos_show_interface_all
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_interface_logical
+    cmd: show interface logical
+    gate: always
+    parser: xml
+    shadow: textfsm:paloalto_panos_show_interface_logical
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_lacp_aggregate_ethernet_all
+    cmd: show lacp aggregate-ethernet all
+    gate: always
+    parser: xml
+    shadow: textfsm:paloalto_panos_show_lacp_aggregate-ethernet_all
+    feeds:
+      - lag
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_lldp_neighbors_all
+    cmd: show lldp neighbors all
+    gate: always
+    parser: xml
+    shadow: textfsm:paloalto_panos_show_lldp_neighbors_all
+    feeds:
+      - neighbor
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+    coreview_reader: true
+  - id: show_vlan_all
+    cmd: show vlan all
+    gate: always
+    parser: xml
+    feeds:
+      - vlan
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+  - id: show_routing_interface
+    cmd: show routing interface
+    gate: always
+    parser: xml
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+  - id: show_routing_protocol_ospf_neighbor
+    cmd: show routing protocol ospf neighbor
+    gate: cap.routing && !cap.advanced_routing && cap.ospf
+    parser: xml
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+  - id: show_routing_protocol_bgp_summary
+    cmd: show routing protocol bgp summary
+    gate: cap.routing && !cap.advanced_routing && cap.bgp
+    parser: xml
+    shadow: textfsm:paloalto_panos_show_routing_protocol_bgp_summary
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_routing_protocol_bgp_peer
+    cmd: show routing protocol bgp peer
+    gate: cap.routing && !cap.advanced_routing
+    parser: xml
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+  - id: show_advanced_routing_ospf_neighbor
+    cmd: show advanced-routing ospf neighbor
+    gate: cap.routing && cap.advanced_routing
+    parser: xml
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+  - id: show_advanced_routing_bgp_peer
+    cmd: show advanced-routing bgp peer
+    gate: cap.routing && cap.advanced_routing
+    parser: xml
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+    note: 'the spec marks this command "verify": its spelling is not confirmed'
+  - id: show_running_security_policy
+    cmd: show running security-policy
+    gate: role.firewall
+    parser: xml
+    shadow: textfsm:paloalto_panos_show_running_security-policy
+    feeds:
+      - fw_policy
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_running_nat_policy
+    cmd: show running nat-policy
+    gate: role.firewall
+    parser: xml
+    shadow: textfsm:paloalto_panos_show_running_nat-policy
+    feeds:
+      - nat_rule
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+  - id: show_pbf_rule_all
+    cmd: show pbf rule all
+    gate: role.firewall
+    parser: xml
+    feeds:
+      - policy_route
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+    coreview_reader: true
+  - id: show_vpn_ike_sa
+    cmd: show vpn ike-sa
+    gate: role.firewall && cap.ipsec
+    parser: xml
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+  - id: show_vpn_ipsec_sa
+    cmd: show vpn ipsec-sa
+    gate: role.firewall
+    parser: xml
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+  - id: show_vpn_tunnel
+    cmd: show vpn tunnel
+    gate: role.firewall
+    parser: xml
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+  - id: show_vpn_flow
+    cmd: show vpn flow
+    gate: role.firewall
+    parser: xml
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+  - id: show_arp_all
+    cmd: show arp all
+    gate: always
+    parser: xml
+    shadow: textfsm:paloalto_panos_show_arp_all
+    feeds:
+      - arp
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    coreview_reader: true
+  - id: show_mac_all
+    cmd: show mac all
+    gate: always
+    parser: xml
+    shadow: textfsm:paloalto_panos_show_mac_all
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_config_running
+    cmd: show config running
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+  - id: show_routing_route
+    cmd: show routing route
+    gate: cap.routing && !cap.advanced_routing
+    parser: xml
+    shadow: textfsm:paloalto_panos_show_routing_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+    coreview_reader: true
+  - id: show_routing_fib
+    cmd: show routing fib
+    gate: cap.routing && !cap.advanced_routing
+    parser: xml
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+  - id: show_routing_route_virtual_router_vr
+    cmd: show routing route virtual-router {vr}
+    gate: cap.routing && !cap.advanced_routing
+    foreach: vrf
+    parser: xml
+    shadow: textfsm:paloalto_panos_show_routing_route
+    feeds:
+      - route
+      - fhrp
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+  - id: show_advanced_routing_route
+    cmd: show advanced-routing route
+    gate: cap.routing && cap.advanced_routing
+    parser: xml
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+  - id: show_advanced_routing_fib
+    cmd: show advanced-routing fib
+    gate: cap.routing && cap.advanced_routing
+    parser: xml
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+live_path:
+  - id: test_routing_fib_lookup_virtual_router_vr_ip_dst
+    cmd: test routing fib-lookup virtual-router {vr} ip {dst}
+    gate: always
+    parser: xml
+    feeds:
+      - path_probe
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+    phase: 3
+  - id: test_pbf_policy_match_from_zone_source_src_destination_dst_protocol_p
+    cmd: test pbf-policy-match from {zone} source {src} destination {dst} protocol {p}
+    gate: always
+    parser: xml
+    feeds:
+      - path_probe
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+    phase: 3
+  - id: test_nat_policy_match_from_z1_to_z2_source_src_destination_dst_protocol_p_destination_port_dp
+    cmd: test nat-policy-match from {z1} to {z2} source {src} destination {dst} protocol {p} destination-port {dp}
+    gate: always
+    parser: xml
+    feeds:
+      - path_probe
+    verified: docs
+    evidence: structured output (XML API `type=op`); field mapping from documentation
+    phase: 3
+  - id: test_security_policy_match_from_z1_to_z2_source_src_destination_dst_protocol_p_destination_port_dp
+    cmd: test security-policy-match from {z1} to {z2} source {src} destination {dst} protocol {p} destination-port {dp}
+    gate: always
+    parser: xml
+    shadow: textfsm:paloalto_panos_test_security-policy-match
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    phase: 3
+  - id: traceroute_source_src_host_dst
+    cmd: traceroute source {src} host {dst}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    phase: 3
+structured_output: xml_api

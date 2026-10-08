@@ -1,0 +1,34 @@
+Capability codes:
+	R:Router, B:Bridge, T:Telephone, C:DOCSIS Cable Device
+	W:WLAN Access Point, P:Repeater, S:Station, O:Other
+
+_______________________________________________________________
+Neighbor learned on port port24 by LLDP protocol
+Last change 116811 seconds ago
+Last packet received 28 seconds ago
+
+Chassis ID: 00:00:5e:00:53:80 (mac)
+System Name: LAB-ACC-SW.example.test
+System Description:
+Cisco IOS Software, C2960CX Software (C2960CX-UNIVERSALK9-M), Version 15.2(7)E, RELEASE SOFTWARE (fc3)
+Technical Support: http://www.cisco.com/techsupport
+
+Time To Live: 120 seconds
+System Capabilities: BR
+Enabled Capabilities: BR
+Management IP Address: 192.0.2.7
+Management IP Interface Subtype: unknown, Index: 0
+
+Port ID: Gi0/9 (ifname)
+Port description: GigabitEthernet0/9
+IEEE802.1, Port VLAN ID: 1
+
+_______________________________________________________________
+Neighbor learned on port port3 by LLDP protocol
+
+Chassis ID: 00:00:5e:00:53:a1 (mac)
+System Name: LAB-AP-1
+System Description: FortiAP-231F v7.0
+System Capabilities: BW
+Management IP Address: 192.0.2.31
+Port ID: 00:00:5e:00:53:a1 (mac)

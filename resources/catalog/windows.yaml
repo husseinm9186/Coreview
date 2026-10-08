@@ -1,0 +1,84 @@
+# Coreview discovery catalog — Windows (windows)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from Coreview's discovery
+# specification, ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+#
+# PowerShell cmdlets piped to ConvertTo-Json, over OpenSSH with
+# PowerShell as its default shell (`DefaultShell` in the OpenSSH registry
+# key); from cmd.exe these fail and the host is not recognised. From
+# Microsoft's documentation.
+vendor: Microsoft
+os: windows
+name: Windows
+phase: 2
+fingerprint:
+  probe: Get-NetAdapter | ConvertTo-Json
+  match_regex: '"InterfaceDescription"'
+session:
+  source: generic shell prompt
+  privilege_levels:
+    exec:
+      pattern: ^PS [A-Za-z]:\\.*>\s?$
+  default_privilege: exec
+  failed_when_contains:
+    - "is not recognized as"
+    - "CommandNotFoundException"
+  on_close:
+    - exit
+role_hint:
+  - match: '"InterfaceDescription"'
+    role: host
+role_defaults: {}
+caps_probe: []
+commands:
+  - id: get_netadapter_convertto_json
+    cmd: Get-NetAdapter | ConvertTo-Json
+    gate: always
+    parser: json
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (JSON); field mapping from documentation
+  - id: get_netipaddress_convertto_json
+    cmd: Get-NetIPAddress | ConvertTo-Json
+    gate: always
+    parser: json
+    feeds:
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (JSON); field mapping from documentation
+  - id: get_netroute_convertto_json
+    cmd: Get-NetRoute | ConvertTo-Json
+    gate: always
+    parser: json
+    feeds:
+      - route
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (JSON); field mapping from documentation
+  - id: get_netneighbor_convertto_json
+    cmd: Get-NetNeighbor | ConvertTo-Json
+    gate: always
+    parser: json
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: structured output (JSON); field mapping from documentation
+live_path: []
+note: "Windows over OpenSSH with PowerShell as the default shell."

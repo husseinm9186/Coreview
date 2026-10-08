@@ -1,0 +1,119 @@
+Interface      Admin Status  Oper Status  Speed  MTU    Type      Remote Host                Remote Port        Summary                                        
+-------------  ------------  -----------  -----  -----  --------  -------------------------  -----------------  -------------------------------------------------------
+bond1          up            up           10G    9216   bond                                                                                                   
+br_default     up            up                  9216   bridge                                                  IPv6 Address:              fe80::1e34:daff:fe00:283f/64
+eth0           up            up           1G     1500   eth       leaf-b02                   swp3               IPv4 Address:                          198.51.100.12/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address: 2001:0db8:0000:b040:e42:a1ff:fe00:1e08/64
+                                                                                                                IPv6 Address:               fe80::e42:a1ff:fe00:1e08/64
+lo             up            unknown             65536  loopback                                                IPv4 Address:                              127.0.0.1/32
+                                                                                                                IPv4 Address:                               127.0.0.1/8
+                                                                                                                IPv4 Address:                              127.0.0.2/32
+                                                                                                                Address type:                                   primary
+                                                                                                                Address type:                                   primary
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:                                   ::1/128
+mgmt           up            up                  65575  vrf                                                     IPv4 Address:                               127.0.0.1/8
+                                                                                                                IPv4 Address:                               127.0.1.1/8
+                                                                                                                Address type:                                   primary
+                                                                                                                Address type:                                 secondary
+                                                                                                                IPv6 Address:                                   ::1/128
+peerlink       up            up           200G   9216   bond                                                                                                   
+peerlink.4094  up            up                  9216   sub                                                     IPv6 Address:              fe80::1e34:daff:fe00:27d0/64
+swp1           up            up           10G    9216   swp       cx-1                       1/1/50                                                            
+swp2           up            up           10G    9216   swp                                                                                                    
+swp3           up            up           1G     9216   swp       leaf-b02                   eth0                                                              
+swp4           up            up           10G    9216   swp                                                                                                    
+swp5           up            down                9216   swp                                                                                                    
+swp6           up            up           1G     9216   swp       cx-1                       mgmt                                                              
+swp7           up            down                9216   swp                                                                                                    
+swp8           up            down                9216   swp                                                                                                    
+swp9           up            up           1G     9216   swp       access-a1.lab.example.net  Gi0/1                                                             
+swp10          up            down                9216   swp                                                                                                    
+swp11          up            down                9216   swp                                                                                                    
+swp12          up            up           10G    9216   swp       wlc-a1                     GigabitEthernet1                                                  
+swp13          up            down                9216   swp                                                                                                    
+swp14          up            down                9216   swp                                                                                                    
+swp15          up            down                9216   swp                                                                                                    
+swp16          up            up           10G    9216   swp       edge-gw-a01                60:22:32:00:00:46                                                 
+swp17          up            down                9216   swp                                                                                                    
+swp18          up            up           10G    9216   swp       wlc-a1                     GigabitEthernet3                                                  
+swp19          up            up           100G   9216   swp                                                                                                    
+swp20          up            up           100G   9216   swp                                  b4:96:91:00:00:f1                                                 
+swp21          up            up           100G   9216   swp       leaf-b01                   swp21                                                             
+swp22          up            up           100G   9216   swp       leaf-b01                   swp22                                                             
+vlan5          up            up                  9216   svi                                                     IPv4 Address:                              10.77.0.3/16
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:              fe80::1e34:daff:fe00:283f/64
+vlan5-v0       up            up                  9216   svi                                                     IPv4 Address:                              10.77.0.1/16
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:                fe80::200:5eff:fe00:101/64
+vlan110        up            up                  9216   svi                                                     IPv4 Address:                            10.66.110.3/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:              fe80::1e34:daff:fe00:283f/64
+vlan110-v0     up            up                  9216   svi                                                     IPv4 Address:                            10.66.110.1/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:                fe80::200:5eff:fe00:101/64
+vlan120        up            up                  9216   svi                                                     IPv4 Address:                            10.66.120.3/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:              fe80::1e34:daff:fe00:283f/64
+vlan120-v0     up            up                  9216   svi                                                     IPv4 Address:                            10.66.120.1/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:                fe80::200:5eff:fe00:101/64
+vlan150        up            up                  9216   svi                                                     IPv4 Address:                            10.66.150.3/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:              fe80::1e34:daff:fe00:283f/64
+vlan150-v0     up            up                  9216   svi                                                     IPv4 Address:                            10.66.150.1/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:                fe80::200:5eff:fe00:101/64
+vlan160        up            up                  9216   svi                                                     IPv4 Address:                            10.66.160.3/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:              fe80::1e34:daff:fe00:283f/64
+vlan160-v0     up            up                  9216   svi                                                     IPv4 Address:                            10.66.160.1/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:                fe80::200:5eff:fe00:101/64
+vlan170        up            up                  9216   svi                                                     IPv4 Address:                            10.66.170.3/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:              fe80::1e34:daff:fe00:283f/64
+vlan170-v0     up            up                  9216   svi                                                     IPv4 Address:                            10.66.170.1/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:                fe80::200:5eff:fe00:101/64
+vlan180        up            up                  9216   svi                                                     IPv4 Address:                            10.66.180.3/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:              fe80::1e34:daff:fe00:283f/64
+vlan180-v0     up            up                  9216   svi                                                     IPv4 Address:                            10.66.180.1/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:                fe80::200:5eff:fe00:101/64
+vlan190        up            up                  9216   svi                                                     IPv4 Address:                            10.66.190.3/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:              fe80::1e34:daff:fe00:283f/64
+vlan190-v0     up            up                  9216   svi                                                     IPv4 Address:                            10.66.190.1/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:                fe80::200:5eff:fe00:101/64
+vlan210        up            up                  9216   svi                                                     IPv4 Address:                            10.66.210.3/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:              fe80::1e34:daff:fe00:283f/64
+vlan210-v0     up            up                  9216   svi                                                     IPv4 Address:                            10.66.210.1/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:                fe80::200:5eff:fe00:101/64
+vlan220        up            up                  9216   svi                                                     IPv4 Address:                            10.66.220.3/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:              fe80::1e34:daff:fe00:283f/64
+vlan220-v0     up            up                  9216   svi                                                     IPv4 Address:                            10.66.220.1/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:                fe80::200:5eff:fe00:101/64
+vlan230        up            up                  9216   svi                                                     IPv4 Address:                            10.66.230.3/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:              fe80::1e34:daff:fe00:283f/64
+vlan230-v0     up            up                  9216   svi                                                     IPv4 Address:                            10.66.230.1/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:                fe80::200:5eff:fe00:101/64
+vlan240        up            up                  9216   svi                                                     IPv4 Address:                            10.66.240.3/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:              fe80::1e34:daff:fe00:283f/64
+vlan240-v0     up            up                  9216   svi                                                     IPv4 Address:                            10.66.240.1/24
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:                fe80::200:5eff:fe00:101/64
+vlan250        up            up                  1500   svi                                                     IPv4 Address:                            10.66.250.3/29
+                                                                                                                Address type:                                   primary
+                                                                                                                IPv6 Address:              fe80::1e34:daff:fe00:283f/64

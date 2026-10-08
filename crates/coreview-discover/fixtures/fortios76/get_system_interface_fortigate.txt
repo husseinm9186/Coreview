@@ -1,0 +1,10 @@
+== [ wan1 ]
+name: wan1   mode: dhcp    ip: 0.0.0.0 0.0.0.0   status: down    netbios-forward: disable    type: physical   netflow-sampler: disable    sflow-sampler: disable    src-check: enable    trunk: disable    wccp: disable    drop-fragment: disable    mtu-override: disable
+== [ internal1 ]
+name: internal1   status: up    type: physical   trunk: disable
+== [ internal ]
+name: internal   mode: static    ip: 192.0.2.1 255.255.255.0   status: up    netbios-forward: disable    type: hard-switch   netflow-sampler: disable    sflow-sampler: disable    src-check: enable    trunk: disable    wccp: disable    drop-fragment: disable    mtu-override: disable
+== [ vlan20 ]
+name: vlan20   mode: static    ip: 198.51.100.1 255.255.255.0   status: up    netbios-forward: disable    type: vlan   netflow-sampler: disable    sflow-sampler: disable    src-check: enable    trunk: disable    switch-controller-feature: none    wccp: disable    drop-fragment: disable    mtu-override: disable
+== [ a ]
+name: a   status:

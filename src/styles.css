@@ -1,0 +1,3219 @@
+/* Colour lives in exactly three blocks in this file and nowhere else: `:root`
+   for the dark ground, `.is-light` for the white one, and the `@media print`
+   block near the bottom for paper. A hex anywhere else in this file, or
+   anywhere in `src/` outside `src/theme.ts`, is a bug. */
+:root {
+  /* The type scale. Every font-size in this file reads one of these;
+     typeScale.test.ts fails on a literal. The spacing set is declared for
+     new rules and not yet enforced. */
+  --text-2xs: 0.69230769rem;
+  --text-xs: 0.76923077rem;
+  --text-sm: 0.84615385rem;
+  --text-md: 0.92307692rem;
+  --text-lg: 1rem;
+  --text-xl: 1.07692308rem;
+  --text-2xl: 1.23076923rem;
+  --text-3xl: 1.38461538rem;
+  --text-4xl: 1.53846154rem;
+  --text-display: 2.30769231rem;
+  /* The canvas does not scale with the chrome — its zoom is its own
+     — so what is drawn on it reads these, in pixels, not the rem scale. */
+  --canvas-text-2xs: 9px;
+  --canvas-text-xs: 10px;
+  --canvas-text-sm: 11px;
+  --canvas-text-md: 12px;
+  --canvas-text-lg: 13px;
+  --canvas-text-xl: 14px;
+  --canvas-text-2xl: 16px;
+  --canvas-text-3xl: 18px;
+  --canvas-text-4xl: 20px;
+  --canvas-text-display: 30px;
+  /* The scale chosen in Settings; App sets it on the root element. */
+  --ui-scale: 1;
+  /* A rack faceplate's class colour, set per item inline; the accent until it is. */
+  --rack-item-colour: var(--accent);
+  --space-1: 0.30769231rem;
+  --space-2: 0.61538462rem;
+  --space-3: 0.92307692rem;
+  --space-4: 1.23076923rem;
+  --space-5: 1.84615385rem;
+  /* The chrome is dark, always, and the browser has to be told so —
+     this is not decoration.
+     A page that declares no colour scheme is assumed to be light, and every
+     control the engine draws itself is then drawn for a light page: the
+     scrollbars, the spinners on a number field, and — the one that was
+     reported — the reveal button inside a password field, which WebView2 draws
+     as `::-ms-reveal`. A dark glyph on our dark field is invisible, and no
+     amount of styling our own elements reaches it, because we do not draw it.
+     One line fixes every one of them, everywhere, at once. */
+  color-scheme: dark;
+
+  /* The same named palette on the dark ground, so every rule below is written
+     once against the names and neither ground has a set of its own. */
+  --desk: #0b0e12;
+  --page: #10141a;
+  --page-border: #2a323e;
+  --grid-minor: #171c24;
+  --grid-major: #1f2630;
+  --chrome: #161b22;
+  --chrome-edge: #2a323e;
+  --ink: #e6ebf2;
+  --ink-muted: #98a3b3;
+
+  /* The Graphite chrome — cool neutral greys with a faint
+     blue bias, so the only hues on screen are the ones that mean something
+     (healthy, warning, down) and the device icons keep their own. */
+  --bg: #0f1216;
+  --bg-raised: #13171d;
+  --panel: #161b22;
+  --panel-2: #1b212a;
+  --line: #232a34;
+  --line-strong: #2a323e;
+  --text: #e6ebf2;
+  --text-dim: #98a3b3;
+  --text-faint: #7f8a9a;
+  --accent: #5ea1ff;
+  /* What selection paints on the canvas. Split from --accent:
+     chrome no longer follows the ground, the canvas still does, and one
+     token cannot serve both when only one of them flips. */
+  --canvas-accent: #5ea1ff;
+
+  --healthy: #3fb66a;
+  --warning: #e8a33d;
+  --down: #e4564a;
+  --unknown: #7c8fa3;
+  --disabled: #55677a;
+  --maintenance: #8b7ff0;
+
+  --hover: #1e2530;
+  --danger-line: #5d2e2c;
+  --danger-hover: #34191a;
+  --on-status: #0b0e12;
+  --shadow: rgba(0, 0, 0, 0.55);
+  --shadow-deep: rgba(0, 0, 0, 0.7);
+  --scrim: rgba(6, 8, 11, 0.72);
+  --code-bg: rgba(255, 255, 255, 0.08);
+  --notice-bg: #2a2313;
+  --notice-line: #8a6d1f;
+  --notice-text: #f2e6c8;
+  --label-bg: rgba(11, 14, 18, 0.92);
+  --zone-fill: rgba(94, 161, 255, 0.05);
+  --zone-line: rgba(94, 161, 255, 0.34);
+  --zone-title: rgba(94, 161, 255, 0.13);
+  --guide: #f0abfc;
+  --callout-bg: rgba(234, 179, 8, 0.10);
+  --callout-line: rgba(234, 179, 8, 0.45);
+  --welcome-glow: #141c2a;
+
+  /* The faint dots behind the chrome. A texture, not a pattern to
+     read: at this alpha it reads as grain on a dark ground and disappears
+     entirely behind anything drawn on top. */
+  --dot: rgba(166, 182, 204, 0.06);
+  --dot-gap: 22px;
+
+  --mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+  --sans: ui-sans-serif, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --radius: 0.46153846rem;
+}
+
+/* The white ground — the canvas only.
+ *
+ * Superseding the light chrome: the operator looked at the
+ * light interface and asked for the panels back in dark — "make the side
+ * panels remain as the dark color… so only the diagram area turn white and
+ * light brown." So this block carries nothing but the drawing surface: a
+ * white page on a warm light-brown desk, dark chrome all around it, which
+ * is also how a drawing reads on a drafting table. Chrome tokens are not
+ * remapped here at all — that is the feature, not an omission. */
+.is-light {
+  --desk: #e9e2d3;
+  --page: #ffffff;
+  --page-border: #d0c7b3;
+  --grid-minor: #eaeaea;
+  --grid-major: #dcdcdc;
+  --ink: #1a1a1a;
+  --ink-muted: #6b6b6b;
+  --canvas-accent: #0b5fce;
+
+  --label-bg: rgba(255, 255, 255, 0.96);
+  --zone-fill: rgba(11, 95, 206, 0.045);
+  --zone-line: rgba(11, 95, 206, 0.4);
+  --zone-title: rgba(11, 95, 206, 0.13);
+  --guide: #a21caf;
+  --callout-bg: #fdf6e0;
+  --callout-line: #cfa53c;
+  /* The page's own shadow on the light desk; chrome casts none. */
+  --shadow: rgba(0, 0, 0, 0.14);
+  --shadow-deep: rgba(0, 0, 0, 0.2);
+}
+
+/* High contrast. Chrome and canvas both: pure black and white
+   grounds, lines and text at full strength, brighter status colours, and a
+   thick yellow focus ring that cannot be missed. */
+.is-contrast {
+  --bg: #000;
+  --bg-raised: #05080b;
+  --panel: #0a0f15;
+  --panel-2: #141b24;
+  --hover: #1f2a36;
+  --line: #7f95ab;
+  --line-strong: #b9c9d9;
+  --chrome: #000;
+  --chrome-edge: #7f95ab;
+  /* Texture costs contrast, which is the one thing this ground exists to
+     give. No dots here. */
+  --dot: transparent;
+  --text: #ffffff;
+  --text-dim: #e6eef6;
+  --text-faint: #cbd8e6;
+  --accent: #6cc4ff;
+  --healthy: #48f08c;
+  --warning: #ffc043;
+  --down: #ff6a5c;
+  --unknown: #d0dbe6;
+  --desk: #000;
+  --page: #000;
+  --page-border: #b9c9d9;
+  --grid-minor: #1a1f26;
+  --grid-major: #3a4552;
+  --ink: #ffffff;
+  --ink-muted: #e6eef6;
+  --canvas-accent: #6cc4ff;
+  --label-bg: #000;
+  --zone-line: #6cc4ff;
+}
+.is-contrast.is-light {
+  --desk: #fff;
+  --page: #fff;
+  --page-border: #000;
+  --grid-minor: #e4e4e4;
+  --grid-major: #9a9a9a;
+  --ink: #000;
+  --ink-muted: #1a1a1a;
+  --canvas-accent: #0038a8;
+  --label-bg: #fff;
+  --zone-line: #0038a8;
+}
+.is-contrast :focus-visible { outline: 3px solid #ffd400 !important; outline-offset: 2px; }
+.is-contrast .react-flow__edge-path { stroke-width: 3px; }
+.is-contrast .react-flow__node.selected { outline: 3px solid #ffd400; outline-offset: 3px; }
+.is-contrast .cv-btn { border-color: var(--line-strong); }
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; }
+/* The page itself never scrolls: every screen scrolls inside its own box. A
+   page-level scrollbar (WebView2 draws a 17 px one) would otherwise sit over
+   the dock's strip and the rail's last item (seen 2026-10-02). */
+body { overflow: hidden; }
+/* One root size, which every chrome size in this file is a
+   multiple of. 13 px up to a 1600-wide window (what the sizes were), 16 px
+   on a 4K screen, times the scale chosen in Settings. The canvas's own zoom
+   is separate; what is drawn on it reads the --canvas-text-* pixels. */
+html { font-size: calc(clamp(13px, 0.25vw + 9px, 16px) * var(--ui-scale)); }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--text-lg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.cv-mono { font-family: var(--mono); font-size: var(--text-md); }
+.cv-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.cv-ellipsis { max-width: 26.15384615rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------------------------------------------------------------- layout */
+
+/* The ground class sits here, and `var()` resolves where it is used — so
+   anything that took its colour from `body`, which is outside this element,
+   was still being painted from the dark palette. Every node on the canvas
+   inherited its text colour that way and stayed pale on white. */
+.cv-app {
+  /* The inherited colour for the whole application is a *chrome* colour. It
+     used to be `--ink`, a ground token, so pressing White background turned
+     every element that does not set its own colour into near-black text on
+     dark chrome — the register worst of all, because most of it is table
+    . The canvas sets `--ink` on itself below, which is where the
+     ground is supposed to flip. */
+  height: 100%; display: flex; flex-direction: column;
+  color: var(--text); background: var(--bg);
+  /* The dots sit behind everything and are covered by the canvas, which
+     paints its own ground, and by every panel. */
+  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+  background-size: var(--dot-gap) var(--dot-gap);
+}
+/* The desk. The page floats on this, and the difference between the two is
+   what tells you where the drawing surface is. */
+/* The canvas is the one region that follows the ground, so it states both
+   halves of it here and everything drawn inside inherits them. */
+.cv-canvas, .react-flow__pane { background: var(--desk); }
+/* The canvas inherits its size from itself, in pixels, not from the
+   chrome's root — what is drawn on it does not grow with the window. */
+.cv-canvas { color: var(--ink); font-size: var(--canvas-text-lg); }
+.cv-workspace { overflow: hidden; }
+/* The rail and the shell beside it. */
+/* The rail: 62 px at the laptop size — it was 52, and "Addresses" at the
+   rail's type size needs 46 inside the padding and borders. */
+.cv-workspace { display: grid; grid-template-columns: 4.76923077rem 1fr; grid-template-rows: 100%; }
+.cv-shell { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; }
+/* The canvas and the dock; the dock along the bottom, or down the right. */
+.cv-body { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.cv-body.is-dock-right { flex-direction: row; }
+.cv-body.is-dock-right > .cv-main { flex: 1; min-width: 0; }
+/* Beside the dock the canvas gives way first: the side panels keep their
+   width and their rails fold them; a canvas track with a floor overflowed
+   into the dock instead. */
+.cv-body.is-dock-right > .cv-main:not(.palette-hidden):not(.inspector-hidden) {
+  grid-template-columns: clamp(11.53846154rem, 15vw, 16.76923077rem) minmax(0, 1fr) clamp(18.46153846rem, 22vw, 26.15384615rem);
+}
+.cv-body.is-dock-right > .cv-main.palette-hidden:not(.inspector-hidden) { grid-template-columns: minmax(0, 1fr) clamp(18.46153846rem, 22vw, 26.15384615rem); }
+.cv-body.is-dock-right > .cv-main.inspector-hidden:not(.palette-hidden) { grid-template-columns: clamp(11.53846154rem, 15vw, 16.76923077rem) minmax(0, 1fr); }
+.cv-body.is-dock-right > .cv-panel, .cv-body.is-dock-right > .cv-panel.is-tall {
+  height: auto; width: clamp(24.61538462rem, 40vw, 61.53846154rem); flex: none;
+  border-top: 0; border-left: 1px solid var(--chrome-edge);
+}
+.cv-body.is-dock-right > .cv-panel.is-collapsed { width: auto; flex-direction: column; align-items: stretch; }
+.cv-nav {
+  display: flex; flex-direction: column; align-items: stretch; gap: 0.15384615rem;
+  padding: 0.46153846rem 0.30769231rem; background: var(--bg); border-right: 1px solid var(--chrome-edge);
+  overflow: hidden auto;
+}
+.cv-nav-item {
+  display: flex; flex-direction: column; align-items: center; gap: 0.15384615rem;
+  padding: 0.46153846rem 0.15384615rem; border: 1px solid transparent; border-radius: var(--radius);
+  background: transparent; color: var(--text-dim); font: inherit; font-size: var(--text-2xs); line-height: 1.1;
+  cursor: pointer; text-align: center; min-width: 0;
+}
+/* A label never widens the rail: it clips with an ellipsis, and the title says the rest. */
+.cv-nav-item span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-nav-item svg { width: 1.38461538rem; height: 1.38461538rem; }
+.cv-nav-item:hover { color: var(--text); background: var(--panel); }
+.cv-nav-item.is-current { color: var(--text); background: var(--panel); border-color: var(--line); box-shadow: inset 0.23076923rem 0 0 var(--accent); }
+.cv-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cv-nav-space { flex: 1; }
+/* The floating toolbar on the canvas; the ink strip sits under it. */
+.cv-canvas-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.cv-canvas-col > .cv-canvas { flex: 1; min-height: 0; }
+.cv-canvas-tools {
+  display: flex; align-items: center; gap: 0.30769231rem; flex-wrap: wrap;
+  padding: 0.30769231rem 0.61538462rem; background: var(--chrome); border-bottom: 1px solid var(--chrome-edge);
+}
+.cv-canvas-tools .cv-divider { height: 1.23076923rem; margin: 0 0.15384615rem; }
+/* The zoom level and the grid, each a small menu. */
+.cv-canvas-tools .cv-dropdown > summary.cv-btn-small { list-style: none; }
+.cv-canvas-tools .cv-dropdown > summary::-webkit-details-marker { display: none; }
+.cv-zoom-level { min-width: 3.6rem; text-align: center; font-variant-numeric: tabular-nums; }
+.cv-zoom-menu .cv-dropdown-menu, .cv-grid-menu .cv-dropdown-menu { min-width: 13rem; }
+.cv-zoom-menu .cv-dropdown-menu button, .cv-grid-menu .cv-dropdown-menu button { display: flex; align-items: center; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: 0.30769231rem 0.61538462rem; border-radius: var(--radius); cursor: pointer; font: inherit; }
+.cv-zoom-menu .cv-dropdown-menu button:hover, .cv-grid-menu .cv-dropdown-menu button:hover { background: var(--panel-2); }
+.cv-zoom-menu .cv-dropdown-menu button.is-on, .cv-grid-menu .cv-dropdown-menu button.is-on { color: var(--accent); font-weight: 600; }
+.cv-grid-menu .cv-check { padding: 0.30769231rem 0.61538462rem; }
+.cv-zoom-menu .cv-dropdown-menu, .cv-grid-menu .cv-dropdown-menu, .cv-page-menu .cv-dropdown-menu { left: 0; right: auto; }
+.cv-page-menu .cv-dropdown-menu button { display: flex; align-items: center; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: 0.30769231rem 0.61538462rem; border-radius: var(--radius); cursor: pointer; font: inherit; }
+.cv-page-menu .cv-dropdown-menu button:hover { background: var(--panel-2); }
+.cv-page-menu .cv-dropdown-menu button.is-on { color: var(--accent); font-weight: 600; }
+.cv-page-menu .cv-check { padding: 0.30769231rem 0.61538462rem; }
+.cv-page-menu .cv-seg { margin: 0.23076923rem 0.61538462rem; }
+.cv-page-menu .cv-seg button { width: auto; padding: 0.15384615rem 0.61538462rem; }
+/* Rulers over the pane's edge, and the print margin on the sheet. */
+.cv-rulers { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.cv-ruler { position: absolute; top: 0; left: 0; display: block; background: color-mix(in srgb, var(--chrome) 88%, transparent); }
+.cv-ruler.is-top { width: 100%; height: 18px; border-bottom: 1px solid var(--chrome-edge); }
+.cv-ruler.is-left { width: 18px; height: 100%; border-right: 1px solid var(--chrome-edge); }
+.cv-ruler line { stroke: var(--text-faint); stroke-width: 1; }
+.cv-ruler text { fill: var(--text-dim); font-size: var(--text-2xs); font-family: var(--mono); }
+.cv-ruler-corner { position: absolute; top: 0; left: 0; width: 18px; height: 18px; background: var(--chrome); border-right: 1px solid var(--chrome-edge); border-bottom: 1px solid var(--chrome-edge); font-size: var(--text-2xs); color: var(--text-faint); display: flex; align-items: center; justify-content: center; }
+.cv-page-margins { position: absolute; border: 1px dashed color-mix(in srgb, var(--canvas-accent) 55%, transparent); pointer-events: none; }
+@media print { .cv-rulers { display: none !important; } }
+.cv-canvas-tools .cv-btn.is-active { border-color: var(--accent); color: var(--text); }
+
+.cv-main {
+  flex: 1;
+  display: grid;
+  /* The side columns are fixed and the canvas takes the rest, which stops
+     working as the window narrows: 218 + 340 leaves 26.30769231rem of canvas at the
+     69.23076923rem minimum, which is not a diagram, it is a keyhole. Both sides shrink
+     with the window and the canvas keeps a floor. */
+  grid-template-columns:
+    clamp(11.53846154rem, 15vw, 16.76923077rem)
+    minmax(24.61538462rem, 1fr)
+    clamp(18.46153846rem, 22vw, 26.15384615rem);
+  min-height: 0;
+}
+
+/* Collapsed columns. The rails stay, so the panel can always be brought back.
+   The track count changes with the panel, the same way the responsive rules
+   below do it: a hidden panel is not a zero-width track but one track fewer,
+   or the canvas lands in the wrong one. */
+.cv-main.palette-hidden {
+  grid-template-columns: minmax(24.61538462rem, 1fr) clamp(18.46153846rem, 22vw, 26.15384615rem);
+}
+.cv-main.palette-hidden > .cv-palette { display: none; }
+.cv-main.inspector-hidden {
+  grid-template-columns: clamp(11.53846154rem, 15vw, 16.76923077rem) minmax(24.61538462rem, 1fr);
+}
+.cv-main.inspector-hidden > .cv-inspector { display: none; }
+.cv-main.palette-hidden.inspector-hidden { grid-template-columns: minmax(0, 1fr); }
+.cv-main { position: relative; }
+
+/* Presentation. Everything but the diagram goes; the page is what is
+   being shown. */
+.cv-workspace.is-presenting > .cv-nav, .cv-workspace.is-presenting .cv-shell > :not(.cv-body), .cv-workspace.is-presenting .cv-body > :not(.cv-main), .cv-workspace.is-presenting .cv-canvas-tools { display: none; }
+.cv-workspace.is-presenting { grid-template-columns: 1fr; }
+.cv-workspace.is-presenting .cv-main { grid-template-columns: minmax(0, 1fr); }
+.cv-workspace.is-presenting .cv-main > :not(.cv-canvas-col) { display: none; }
+.cv-workspace.is-presenting .cv-page-tabs,
+.cv-workspace.is-presenting .react-flow__controls,
+.cv-workspace.is-presenting .react-flow__minimap,
+.cv-workspace.is-presenting .cv-legend { display: none; }
+
+/* Health on the minimap carried by outline as well as colour. */
+.cv-minimap.is-health .cv-mm-down { stroke: currentColor; stroke-width: 18; stroke-dasharray: 30 18; }
+.cv-minimap.is-health .cv-mm-warning { stroke: currentColor; stroke-width: 18; }
+
+.cv-rail {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 12;
+  width: 1.07692308rem; height: 4.15384615rem; padding: 0;
+  background: var(--panel-2); color: var(--text-dim);
+  border: 1px solid var(--line); border-radius: 4px;
+  font-size: var(--text-md); line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.cv-rail:hover { background: var(--panel); color: var(--text); border-color: var(--line-strong); }
+.cv-rail:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cv-rail-left { left: 0; }
+.cv-rail-right { right: 0; }
+.cv-main:not(.palette-hidden) > .cv-rail-left { left: calc(clamp(11.53846154rem, 15vw, 16.76923077rem) - 0.53846154rem); }
+.cv-main:not(.inspector-hidden) > .cv-rail-right { right: calc(clamp(18.46153846rem, 22vw, 26.15384615rem) - 0.53846154rem); }
+
+/* Narrow enough that three columns cannot all be useful. The inspector goes
+   first: it edits the selected thing, and there is usually nothing selected,
+   while the palette is how anything gets onto the canvas in the first place.
+   It comes back the moment something is selected, because that is exactly when
+   it is needed. */
+@media (max-width: 1080px) {
+  .cv-main { grid-template-columns: clamp(10.76923077rem, 16vw, 14.61538462rem) minmax(0, 1fr); }
+  .cv-inspector { display: none; }
+  .cv-main.has-selection {
+    grid-template-columns: minmax(0, 1fr) clamp(20rem, 34vw, 26.15384615rem);
+  }
+  .cv-main.has-selection .cv-palette { display: none; }
+  .cv-main.has-selection .cv-inspector { display: block; }
+}
+
+/* Narrower still: the canvas is the whole point, and a 140px palette beside a
+   600px window is neither usable nor worth the space it costs. */
+@media (max-width: 820px) {
+  .cv-main { grid-template-columns: minmax(0, 1fr); }
+  .cv-palette { display: none; }
+  .cv-main.has-selection { grid-template-columns: minmax(0, 1fr); }
+  .cv-main.has-selection .cv-inspector {
+    position: absolute; inset: 0 0 0 auto; width: min(26.15384615rem, 88vw);
+    z-index: 20; box-shadow: -12px 0 28px var(--shadow);
+  }
+}
+
+.cv-browser-banner {
+  background: var(--notice-bg);
+  border-bottom: 1px solid var(--notice-line);
+  color: var(--notice-text);
+  padding: 0.61538462rem 1.07692308rem;
+}
+.cv-browser-banner code { font-family: var(--mono); }
+
+/* ---------------------------------------------------------------- topbar */
+
+.cv-topbar {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  gap: 0.92307692rem; padding: 0.46153846rem 0.92307692rem;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--chrome-edge);
+}
+.cv-topbar-centre { display: flex; align-items: center; gap: 0.46153846rem; flex-wrap: wrap; justify-content: center; }
+.cv-topbar-actions { justify-self: end; }
+.cv-more summary { padding-inline: 0.61538462rem; }
+.cv-dropdown-menu kbd { margin-left: auto; color: var(--text-faint); font-family: var(--mono); font-size: var(--text-xs); padding-left: 0.92307692rem; }
+.cv-topbar-left { display: flex; align-items: baseline; gap: 0.76923077rem; min-width: 0; white-space: nowrap; overflow: hidden; }
+.cv-topbar-left > * { flex: none; }
+.cv-topbar-left .cv-project-name { overflow: hidden; text-overflow: ellipsis; max-width: 24.61538462rem; }
+/* Links take the accent rather than the browser's blue, which on the green
+   ground reads as a rendering fault. */
+a { color: var(--accent); }
+a:hover { color: var(--text); }
+
+.cv-brand {
+  font-weight: 700; letter-spacing: 0.04em; color: var(--accent);
+  display: inline-flex; align-items: center; gap: 0.53846154rem;
+}
+.cv-brand-mark { width: 1.30769231rem; height: 1.30769231rem; flex: none; }
+.cv-project-name { font-weight: 600; }
+.cv-project-sub, .cv-project-date { color: var(--text-dim); }
+.cv-ticket {
+  font-family: var(--mono); font-size: var(--text-sm); color: var(--text-dim);
+  border: 1px solid var(--line-strong); border-radius: 4px; padding: 1px 0.46153846rem;
+}
+/* The login transcript a failed device left behind. */
+.cv-failure-log { display: flex; flex-wrap: wrap; align-items: center; gap: 0.46153846rem; margin: 0.30769231rem 0 0.61538462rem; }
+.cv-failure-log-path { font-size: var(--text-sm); word-break: break-all; color: var(--text-dim); }
+.cv-btn-small { padding: 1px 0.46153846rem; font-size: var(--text-sm); }
+.cv-save-state { color: var(--text-faint); font-size: var(--text-sm); display: inline-flex; align-items: center; gap: 0.30769231rem; }
+.cv-save-state.is-dirty { color: var(--warning); }
+/* The answer to pressing Save. It is a chrome element, so it reads a
+   chrome token — --healthy is defined in :root and again under .is-contrast,
+   and does not flip with the ground. */
+.cv-save-state.is-acknowledged { color: var(--healthy); font-weight: 600; }
+.cv-save-tick { font-size: var(--text-md); line-height: 1; }
+
+.cv-topbar-actions { display: flex; align-items: center; gap: 0.46153846rem; flex-wrap: wrap; }
+.cv-divider { width: 1px; height: 1.69230769rem; background: var(--line); margin: 0 0.30769231rem; }
+
+.cv-session-state {
+  display: inline-flex; align-items: center; gap: 0.46153846rem;
+  font-size: var(--text-md); color: var(--text-dim);
+  padding: 0.23076923rem 0.69230769rem; border: 1px solid var(--line); border-radius: 999px;
+}
+.cv-session-state .cv-dot {
+  width: 0.53846154rem; height: 0.53846154rem; border-radius: 50%; background: var(--unknown);
+}
+.cv-session-state.is-running { color: var(--healthy); border-color: color-mix(in srgb, var(--healthy) 45%, transparent); }
+.cv-session-state.is-running .cv-dot { background: var(--healthy); }
+.cv-session-state.is-error { color: var(--down); }
+.cv-session-state.is-error .cv-dot { background: var(--down); }
+
+.cv-counts { display: flex; gap: 0.30769231rem; }
+.cv-count {
+  font-size: var(--text-sm); padding: 0.15384615rem 0.53846154rem; border-radius: 4px;
+  border: 1px solid var(--line); color: var(--text-dim);
+}
+.cv-count.is-healthy { color: var(--healthy); }
+.cv-count.is-warning { color: var(--warning); }
+.cv-count.is-down { color: var(--down); }
+
+/* --------------------------------------------------------------- controls */
+
+.cv-btn {
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line-strong); border-radius: var(--radius);
+  padding: 0.38461538rem 0.84615385rem; font-size: var(--text-md); font-family: inherit; cursor: pointer;
+}
+.cv-btn:hover:not(:disabled) { background: var(--hover); border-color: var(--line-strong); }
+.cv-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.cv-btn-small { padding: 0.15384615rem 0.53846154rem; font-size: var(--text-sm); }
+.cv-btn.is-active { border-color: var(--accent); color: var(--accent); }
+.cv-btn.is-danger, .cv-btn-small.is-danger { border-color: var(--danger-line); color: var(--down); }
+.cv-btn.is-danger:hover { background: var(--danger-hover); }
+.cv-btn-start { border-color: color-mix(in srgb, var(--healthy) 55%, transparent); color: var(--healthy); }
+.cv-btn-stop { border-color: color-mix(in srgb, var(--down) 55%, transparent); color: var(--down); }
+
+.cv-input {
+  /* Chrome tokens, not the ground's: a field is part of the furniture and must
+     not turn white when the canvas does. */
+  width: 100%; background: var(--bg-raised); color: var(--text);
+  border: 1px solid var(--chrome-edge); border-radius: var(--radius);
+  padding: 0.38461538rem 0.61538462rem; font-size: var(--text-md); font-family: inherit;
+  /* An input's own idea of how wide it should be is about 180px, and that
+     beats a flex parent's `min-width: 0` — which is why three fields in a row
+     pushed the inspector 17.61538462rem wider than the panel and put a horizontal
+     scrollbar under everything. Nothing in a side panel should ever need
+     scrolling sideways to read. */
+  min-width: 0; box-sizing: border-box;
+}
+.cv-input:focus { border-color: var(--accent); outline: none; }
+textarea.cv-input { resize: vertical; }
+
+/* A dropdown is a control the engine would rather paint itself.
+   WebKitGTK ignores the background and colour above and draws its own light
+   control, which put pale grey text on near-white and made every dropdown in
+   the app hard to read — worst in a table of them, where it is the only thing
+   in the row you cannot make out. `appearance: none` takes the painting back;
+   the arrow has to be redrawn by hand because removing the appearance removes
+   that too. The options themselves open in a native popup, so they get the
+   same two colours stated explicitly rather than inherited. */
+select.cv-input {
+  appearance: none; -webkit-appearance: none;
+  background-color: var(--bg-raised); color: var(--text);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right 1rem center, right 0.61538462rem center;
+  background-size: 0.38461538rem 0.38461538rem, 0.38461538rem 0.38461538rem;
+  background-repeat: no-repeat;
+  padding-right: 1.84615385rem;
+}
+select.cv-input option { background: var(--bg-raised); color: var(--text); }
+.cv-color { width: 100%; height: 2.15384615rem; background: none; border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 1px; }
+
+.cv-field { display: flex; flex-direction: column; gap: 0.23076923rem; margin-bottom: 0.69230769rem; flex: 1; min-width: 0; }
+.cv-field-label { font-size: var(--text-sm); color: var(--text-dim); }
+.cv-field-hint { font-size: var(--text-xs); color: var(--text-faint); }
+.cv-field-hint.is-danger { color: var(--down); }
+/* Wraps rather than overflowing. A row of three controls in a 340px panel is
+   two rows, not a row you have to scroll. */
+.cv-row { display: flex; gap: 0.61538462rem; flex-wrap: wrap; }
+.cv-row > .cv-field { flex: 1 1 10.15384615rem; }
+.cv-checks { display: flex; flex-direction: column; gap: 0.38461538rem; margin: 0.61538462rem 0; }
+.cv-check { display: flex; align-items: center; gap: 0.46153846rem; font-size: var(--text-md); color: var(--text-dim); cursor: pointer; }
+.cv-check-inline { margin: 0; white-space: nowrap; }
+.cv-help { color: var(--text-faint); font-size: var(--text-sm); line-height: 1.5; }
+.cv-error { color: var(--down); font-size: var(--text-md); }
+
+/* The status pill. Its own class, after three components shared .cv-chip and
+   the filter-chip rules further down clobbered this ink with --text-dim —
+   dim grey on bright green, the bug. */
+.cv-status-chip {
+  display: inline-flex; align-items: center; gap: 0.30769231rem;
+  font-size: var(--text-xs); font-weight: 600; color: var(--on-status);
+  padding: 1px 0.53846154rem; border-radius: 999px; white-space: nowrap;
+}
+
+.cv-dropdown { position: relative; }
+.cv-dropdown summary { list-style: none; }
+.cv-dropdown summary::-webkit-details-marker { display: none; }
+.cv-dropdown-menu {
+  position: absolute; right: 0; top: 2.30769231rem; z-index: 40; min-width: 16.92307692rem;
+  background: var(--panel); border: 1px solid var(--line-strong);
+  border-radius: var(--radius); padding: 0.30769231rem; display: flex; flex-direction: column;
+  box-shadow: 0 12px 32px var(--shadow);
+}
+.cv-dropdown-menu button {
+  text-align: left; background: none; border: none; color: var(--text);
+  padding: 0.46153846rem 0.69230769rem; font-size: var(--text-md); font-family: inherit; cursor: pointer; border-radius: 4px;
+}
+.cv-dropdown-menu button:hover { background: var(--panel-2); }
+
+/* --------------------------------------------------------------- palette */
+
+.cv-palette {
+  background: var(--chrome); border-right: 1px solid var(--chrome-edge);
+  padding: 0.76923077rem; overflow-y: auto;
+  /* Reserves space for the scrollbar where the engine honours it (see
+     .cv-layers-list for the padding fix this app's WebKitGTK build needs
+     instead). */
+  scrollbar-gutter: stable;
+}
+.cv-palette-search { margin-bottom: 0.76923077rem; }
+.cv-palette-group h3 {
+  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-faint); margin: 0.92307692rem 0 0.46153846rem;
+}
+.cv-palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.38461538rem; }
+.cv-palette-item {
+  display: flex; flex-direction: column; align-items: center; gap: 0.30769231rem;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 0.61538462rem 0.30769231rem;
+  font-size: var(--text-xs); color: var(--text-dim); font-family: inherit;
+  cursor: grab; text-align: center; line-height: 1.25;
+}
+.cv-palette-item:hover { border-color: var(--accent); color: var(--text); }
+.cv-palette-icon { width: 1.69230769rem; height: 1.69230769rem; color: var(--accent); }
+.cv-palette-glyph { font-size: var(--text-3xl); color: var(--accent); line-height: 1.69230769rem; }
+.cv-palette-hint { color: var(--text-faint); font-size: var(--text-xs); margin-top: 1.07692308rem; }
+/* A captured shape — its own remove "×", pinned to the corner of
+   the draggable tile rather than nested inside it (a button in a button is
+   invalid markup, and a nested one is exactly the kind of element the
+   overlay-scrollbar bug showed cannot be trusted flush against an
+   edge — this one sits inset from every edge instead). */
+.cv-palette-item-wrap { position: relative; }
+.cv-palette-item-remove {
+  position: absolute; top: 0.23076923rem; right: 0.23076923rem; z-index: 1;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px;
+  color: var(--text-dim); font-size: var(--text-sm); line-height: 1; padding: 1px 0.30769231rem; cursor: pointer;
+}
+.cv-palette-item-remove:hover { color: var(--down); border-color: var(--down); }
+
+/* ---------------------------------------------------------------- canvas */
+
+/* Background is stated once, with the ground, near the top of this file. */
+.cv-canvas { position: relative; min-width: 0; }
+.react-flow__attribution { background: transparent; color: var(--text-faint); font-size: var(--canvas-text-2xs); }
+.react-flow__controls button {
+  background: var(--panel-2); border-bottom: 1px solid var(--line); fill: var(--text-dim);
+}
+.react-flow__controls button:hover { background: var(--hover); }
+.cv-minimap {
+  background: var(--desk);
+  border: 1px solid var(--chrome-edge); border-radius: var(--radius);
+  box-shadow: 0 2px 8px var(--shadow);
+}
+.cv-minimap svg { border-radius: var(--radius); }
+
+/* Near the minimum window size (1100x700) the canvas viewport is only about
+   590x380, and React Flow's default 200x150 minimap covers a third of it.
+   Shrink rather than hide: the minimap has a toggle in the canvas menu, and
+   hiding it here would make that toggle look broken. */
+@media (max-width: 1320px), (max-height: 860px) {
+  .cv-minimap { width: 132px !important; height: 92px !important; }
+}
+
+.cv-node {
+  position: relative; width: 100%; height: 100%;
+  color: var(--ink);
+  background: var(--page); border: 1.5px solid var(--unknown);
+  border-radius: var(--radius); padding: 8px 10px;
+  display: flex; align-items: center;
+}
+.cv-node.is-selected { box-shadow: 0 0 0 1px var(--canvas-accent); }
+.cv-node-shape { background: transparent; }
+.cv-node[data-shape='circle'] { border-radius: 50%; justify-content: center; text-align: center; }
+.cv-node[data-shape='rounded'] { border-radius: 16px; }
+.cv-node[data-shape='diamond'] { transform: rotate(45deg); }
+.cv-node[data-shape='diamond'] .cv-node-body { transform: rotate(-45deg); }
+.cv-node[data-shape='text'] { border-color: transparent; background: transparent; }
+/* A text object is not a box — no selection rectangle. The resize
+   handles are indication enough. */
+.cv-node[data-shape='text'].is-selected { box-shadow: none; }
+/* The label belongs inside the cloud, not in the corner of the box that
+   contains it. */
+.cv-node[data-shape='cloud'] {
+  justify-content: center; align-items: center; text-align: center;
+  padding: 18px 26px;
+}
+
+.cv-node-body { display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; }
+.cv-node-icon { flex: none; width: 30px; height: 30px; }
+.cv-node-icon svg { width: 100%; height: 100%; }
+.cv-node-image { width: 30px; height: 30px; object-fit: contain; }
+.cv-node-text { min-width: 0; }
+.cv-node-label { font-weight: 600; font-size: var(--canvas-text-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-node-detail { font-size: var(--canvas-text-xs); color: var(--ink-muted); margin-top: 2px; line-height: 1.4; }
+.cv-node-status-line { font-weight: 600; }
+.cv-node-maint { color: var(--maintenance); }
+
+.cv-status-badge {
+  position: absolute; top: -8px; right: -8px; z-index: 2;
+  width: 1.30769231rem; height: 1.30769231rem; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--text-xs); font-weight: 700; color: var(--on-status);
+  border: 2px solid var(--bg);
+}
+.cv-lock { position: absolute; top: -8px; left: -8px; font-size: var(--text-xs); }
+.cv-node-link {
+  position: absolute; bottom: -8px; left: -8px; font-size: var(--canvas-text-xs);
+  cursor: pointer;
+}
+
+.cv-handle {
+  width: 8px; height: 8px; background: var(--panel-2);
+  border: 1.5px solid var(--line-strong); border-radius: 50%;
+}
+.cv-handle:hover { background: var(--accent); border-color: var(--accent); }
+/* The resizer's line rectangle was the square box drawn round every
+   selected shape — a circle glyph wore a box. Each shape draws its own
+   highlight (ring, stroked outline, radius-following shadow), so the line
+   keeps its edge-drag hit area and loses its paint. The corner handles stay:
+   they say "resizable" without redrawing the bounds. */
+.react-flow__resize-control.line.cv-resize-line { border-color: transparent; }
+/* Above the art: the glyph fills the node, and anything without
+   a z-index is underneath the SVG — a resize corner that a click cannot
+   reach resizes nothing. */
+.react-flow__resize-control { z-index: 3; }
+.cv-resize-handle { background: var(--canvas-accent); border: none; width: 0.53846154rem; height: 0.53846154rem; border-radius: 1px; }
+
+.cv-note {
+  width: 100%; height: 100%; border: 1.5px solid; border-radius: var(--radius);
+  padding: 9px 11px; overflow: auto; line-height: 1.5;
+}
+.cv-note.is-selected { box-shadow: 0 0 0 1px var(--canvas-accent); }
+.cv-note-title { font-weight: 700; margin-bottom: 6px; letter-spacing: 0.02em; }
+.cv-note-body h3, .cv-note-body h4 { margin: 8px 0 3px; font-size: 1em; }
+.cv-note-body p, .cv-note-body li { margin: 2px 0; }
+.cv-note-body code { font-family: var(--mono); background: var(--code-bg); padding: 0 3px; border-radius: 3px; }
+.cv-note-check { display: flex; gap: 6px; align-items: flex-start; margin: 2px 0; }
+.cv-note-body a.cv-note-link { color: inherit; text-decoration: underline; cursor: pointer; }
+
+.cv-edge-label {
+  /* Transparent to the pointer. A label sits on top of the line it describes,
+     and letting it swallow the pointer meant the one place you would naturally
+     aim at was the one place hovering the link did nothing. Nothing on a label
+     is clickable, so it loses nothing by standing aside. */
+  position: absolute; pointer-events: none;
+  background: var(--label-bg); border: 1px solid var(--page-border);
+  border-radius: 4px; padding: 1px 6px; font-size: var(--canvas-text-xs); color: var(--ink);
+  font-family: var(--mono); white-space: nowrap;
+}
+/* A port label is the thing on a link that is read most and is written
+   smallest, so it takes the full ink of whatever it is drawn on rather than
+   the muted tone: bright on the dark canvas, black on the white one. `--ink`
+   is remapped by the white-background ground, so this follows it without
+   knowing which is in use. Muted grey was legible enough on neither. */
+.cv-edge-port {
+  color: var(--ink);
+  font-weight: 600;
+  background: var(--label-bg);
+}
+.cv-edge-center { font-family: var(--sans); display: inline-flex; gap: 5px; align-items: center; }
+.cv-edge-glyph { font-weight: 700; }
+
+.cv-menu {
+  position: fixed; z-index: 100; min-width: 14.61538462rem;
+  background: var(--panel); border: 1px solid var(--line-strong);
+  border-radius: var(--radius); padding: 0.30769231rem;
+  box-shadow: 0 14px 34px var(--shadow);
+  display: flex; flex-direction: column;
+}
+.cv-menu button {
+  text-align: left; background: none; border: none; color: var(--text);
+  padding: 0.46153846rem 0.69230769rem; font-size: var(--text-md); font-family: inherit; cursor: pointer; border-radius: 4px;
+}
+.cv-menu button:hover { background: var(--panel-2); }
+.cv-menu button.is-danger { color: var(--down); }
+
+/* -------------------------------------------------------------- inspector */
+
+.cv-inspector {
+  background: var(--chrome); border-left: 1px solid var(--chrome-edge);
+  padding: 0.92307692rem; overflow-y: auto;
+  /* Never sideways. If something cannot fit it has to wrap or shrink; a panel
+     you have to drag left and right to see a field is a panel whose fields
+     get missed. */
+  overflow-x: hidden;
+}
+.cv-inspector * { max-width: 100%; }
+/* Long values — an address, a serial, a path — wrap instead of forcing the
+   panel wider. */
+.cv-inspector .cv-mono,
+.cv-inspector .cv-help,
+.cv-inspector .cv-field-hint { overflow-wrap: anywhere; }
+.cv-inspector-title {
+  font-size: var(--text-lg); margin: 0 0 0.92307692rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 0.61538462rem;
+}
+/* Discover's four steps. */
+.cv-step { border-top: 1px solid var(--line); padding: 0.61538462rem 0 0.30769231rem; margin-top: 0.61538462rem; }
+.cv-step-head { display: flex; align-items: center; gap: 0.61538462rem; margin: 0 0 0.46153846rem; font-size: var(--text-md); font-weight: 600; color: var(--text); }
+.cv-step-head b { display: inline-flex; align-items: center; justify-content: center; width: 1.38461538rem; height: 1.38461538rem; border-radius: 50%; background: var(--panel-2); border: 1px solid var(--line-strong); color: var(--text-dim); font-size: var(--text-xs); font-weight: 600; }
+details.cv-discover-advanced > summary { cursor: pointer; list-style: none; }
+details.cv-discover-advanced > summary::-webkit-details-marker { display: none; }
+details.cv-discover-advanced > summary::after { content: '▸'; color: var(--text-faint); margin-left: auto; }
+details.cv-discover-advanced[open] > summary::after { content: '▾'; }
+/* The device inspector's action row, its tabs, and the Status tab's list. */
+.cv-inspector-actions { display: flex; flex-wrap: wrap; gap: 0.30769231rem; margin: 0 0 0.76923077rem; }
+.cv-inspector-tabs { margin: 0 0 0.92307692rem; padding-bottom: 0.46153846rem; border-bottom: 1px solid var(--line); gap: 0.15384615rem; }
+/* Five on one row at the inspector's narrowest. */
+.cv-tabs.cv-inspector-tabs button { padding: 0.23076923rem 0.53846154rem; font-size: var(--text-sm); }
+.cv-kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.30769231rem 0.76923077rem; margin: 0 0 1.07692308rem; font-size: var(--text-md); }
+.cv-kv-row { display: contents; }
+.cv-kv dt { color: var(--text-dim); white-space: nowrap; }
+.cv-kv dd { margin: 0; overflow-wrap: anywhere; }
+.cv-section { border-top: 1px solid var(--line); margin-top: 1.07692308rem; padding-top: 0.76923077rem; }
+.cv-section h3 {
+  font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text-faint); margin: 0 0 0.61538462rem;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.cv-addr { display: grid; grid-template-columns: 6.92307692rem 1fr auto auto; gap: 0.30769231rem; margin-bottom: 0.38461538rem; align-items: center; }
+.cv-addr-label { font-size: var(--text-sm); }
+
+.cv-probe { border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 0.61538462rem; }
+.cv-probe-head { display: flex; align-items: center; gap: 0.46153846rem; padding: 0.46153846rem; background: var(--panel-2); }
+.cv-probe-toggle { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: var(--text-sm); }
+.cv-probe-name { flex: 1; }
+.cv-probe-body { padding: 0.61538462rem; }
+.cv-probe-actions { display: flex; align-items: center; gap: 0.61538462rem; margin-top: 0.46153846rem; }
+.cv-probe-result { color: var(--text-dim); font-size: var(--text-sm); }
+
+/* ------------------------------------------------------------------ panel */
+
+.cv-panel {
+  background: var(--chrome); border-top: 1px solid var(--chrome-edge);
+  display: flex; flex-direction: column;
+  /* Capped against the viewport as well as fixed, so a short window keeps a
+     usable canvas instead of being all panel. */
+  height: min(20rem, 34vh);
+}
+/* Discovery is a workflow — a form, a filter and a results table — and does
+   not fit the height the status tables need. Capped against the viewport so it
+   still leaves a usable canvas at the 700px minimum window height. */
+.cv-panel.is-tall { height: min(35.38461538rem, 55vh); }
+/* The toolbar wraps rather than pushing its own buttons off the edge. */
+.cv-topbar { flex-wrap: wrap; row-gap: 0.46153846rem; }
+.cv-panel.is-collapsed {
+  height: auto; flex-direction: row; align-items: center; gap: 1.07692308rem; padding: 0.46153846rem 0.92307692rem;
+}
+.cv-panel-summary { display: flex; gap: 0.92307692rem; font-family: var(--mono); font-size: var(--text-sm); }
+.cv-panel-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.46153846rem 0.76923077rem;
+  padding: 0.46153846rem 0.76923077rem; border-bottom: 1px solid var(--line);
+}
+.cv-panel-search { max-width: 24.61538462rem; }
+.cv-panel-message { padding: 0.46153846rem 0.92307692rem; background: var(--panel-2); color: var(--text-dim); font-size: var(--text-sm); }
+.cv-panel-body { flex: 1; overflow: auto; }
+.cv-tabs { display: flex; flex-wrap: wrap; gap: 0.30769231rem; align-items: center; }
+/* A group is its heading and its tabs, kept together when the row wraps. */
+.cv-tab-group { display: inline-flex; align-items: center; gap: 0.30769231rem; }
+.cv-tab-group + .cv-tab-group { margin-left: 0.61538462rem; }
+.cv-tab-group-name { color: var(--text-faint); font-size: var(--text-2xs); letter-spacing: .08em; text-transform: uppercase; margin-right: 0.15384615rem; }
+/* The strip along the dock's bottom: the jobs, and the clock on the right. */
+.cv-dock-strip { display: flex; align-items: center; gap: 0.92307692rem; padding: 0.23076923rem 0.76923077rem; border-top: 1px solid var(--line); background: var(--panel-2); font-size: var(--text-sm); min-height: 1.84615385rem; }
+.cv-dock-strip > .cv-jobs { flex: 1; }
+.cv-dock-strip.is-compact { border-top: 0; background: transparent; padding: 0; margin-left: auto; min-height: 0; }
+.cv-dock-clock { margin-left: auto; color: var(--text-dim); white-space: nowrap; }
+.cv-tabs button {
+  white-space: nowrap;
+  background: none; border: 1px solid transparent; color: var(--text-dim);
+  padding: 0.30769231rem 0.76923077rem; border-radius: var(--radius); font-size: var(--text-md); font-family: inherit; cursor: pointer;
+}
+.cv-tabs button.is-active { background: var(--panel-2); border-color: var(--line-strong); color: var(--text); }
+
+.cv-table { width: 100%; border-collapse: collapse; font-size: var(--text-md); }
+/* A column heading that sorts. Looks like the heading it replaces. */
+.cv-th-sort { background: none; border: 0; padding: 0; margin: 0; color: inherit; font: inherit; text-align: inherit; cursor: pointer; }
+.cv-th-sort:hover { text-decoration: underline; }
+.cv-attached-list { max-height: 18rem; margin: var(--space-2) 0; }
+.cv-table th {
+  position: sticky; top: 0; z-index: 1;
+  text-align: left; font-weight: 600; color: var(--text-faint);
+  background: var(--chrome); border-bottom: 1px solid var(--chrome-edge);
+  padding: 0.46153846rem 0.76923077rem; font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em;
+}
+/* Rows are content and the header is furniture, so they differ — but both come
+   from the chrome set. Taking the rows from `--page` meant the ground toggle
+   turned every table white while the cells kept the chrome's near-white text,
+   which is white on white and was a bug once. */
+.cv-table tbody { background: var(--bg-raised); }
+.cv-table td { padding: 0.38461538rem 0.76923077rem; border-bottom: 1px solid var(--line); }
+.cv-table tbody tr:hover { background: var(--hover); cursor: pointer; }
+
+/* ---------------------------------------------------------------- welcome */
+
+.cv-welcome { flex: 1; overflow-y: auto; background: radial-gradient(84.61538462rem 38.46153846rem at 50% -10%, var(--welcome-glow) 0%, var(--desk) 62%); }
+.cv-welcome-inner { max-width: 92.30769231rem; margin: 0 auto; padding: 4.30769231rem 1.84615385rem 4.92307692rem; }
+/* Folders down the left, the projects as cards, the samples on the right. */
+.cv-proj { display: grid; grid-template-columns: 12.30769231rem minmax(0, 1fr) 18.46153846rem; gap: 1.84615385rem; margin-top: 2.61538462rem; align-items: start; }
+.cv-proj-side { display: flex; flex-direction: column; gap: 0.15384615rem; padding-top: 0.30769231rem; }
+.cv-proj-side-item { display: flex; justify-content: space-between; gap: 0.61538462rem; text-align: left; background: none; border: 1px solid transparent; color: var(--text-dim); padding: 0.38461538rem 0.61538462rem; border-radius: var(--radius); cursor: pointer; font: inherit; }
+.cv-proj-side-item:hover { background: var(--hover); color: var(--text); }
+.cv-proj-side-item.is-current { background: var(--panel-2); border-color: var(--line-strong); color: var(--text); }
+.cv-proj-side-count { color: var(--text-faint); font-size: var(--text-xs); }
+.cv-proj-main > .cv-welcome-section, .cv-proj-samples > .cv-welcome-section { margin-top: 0; }
+.cv-proj-search { max-width: 24.61538462rem; margin-bottom: 0.92307692rem; }
+.cv-proj-samples .cv-sample-grid { grid-template-columns: 1fr; }
+.cv-project-health { display: block; color: var(--text-dim); font-size: var(--text-sm); margin-top: 0.23076923rem; }
+.cv-project-health-part { white-space: nowrap; }
+.cv-health-dot { display: inline-block; width: 0.53846154rem; height: 0.53846154rem; border-radius: 50%; vertical-align: middle; margin-right: 0.15384615rem; }
+@media (max-width: 1100px) {
+  .cv-proj { grid-template-columns: 1fr; }
+  .cv-proj-side { flex-direction: row; flex-wrap: wrap; }
+}
+/* Which table a hop was looked up in. */
+.cv-trace-table { display: inline-block; padding: 0.07692308rem 0.46153846rem; border-radius: var(--radius); border: 1px solid var(--line-strong); color: var(--text-dim); font-size: var(--text-xs); white-space: nowrap; }
+.cv-trace-table.is-forwarding { border-color: var(--accent); color: var(--accent); }
+.cv-welcome-head h1 { font-size: var(--text-display); letter-spacing: 0.02em; margin: 0 0 0.61538462rem; }
+.cv-welcome-head p { color: var(--text-dim); max-width: 47.69230769rem; line-height: 1.6; margin: 0; }
+.cv-welcome-actions { display: flex; align-items: center; gap: 0.76923077rem; margin: 2rem 0 0.61538462rem; }
+.cv-welcome-section { margin-top: 2.61538462rem; }
+.cv-welcome-section h2 { font-size: var(--text-lg); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); }
+.cv-welcome-foot { margin-top: 3.38461538rem; color: var(--text-faint); font-size: var(--text-sm); }
+
+.cv-project-list { list-style: none; margin: 0; padding: 0; }
+.cv-project-list li {
+  display: flex; align-items: center; gap: 0.76923077rem;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--panel); margin-bottom: 0.53846154rem; padding-right: 0.76923077rem;
+}
+.cv-project-open {
+  flex: 1; display: grid; gap: 0.15384615rem; text-align: left;
+  background: none; border: none; color: var(--text);
+  padding: 0.76923077rem 0.92307692rem; cursor: pointer; font-family: inherit;
+}
+.cv-project-title { font-weight: 600; }
+.cv-project-meta, .cv-project-date { color: var(--text-faint); font-size: var(--text-sm); }
+.cv-project-tools { display: flex; gap: 0.38461538rem; }
+/* Folders on the project screen. */
+.cv-pfolder-head { display: flex; align-items: center; gap: var(--space-2); justify-content: space-between; }
+.cv-pfolder-crumbs { display: flex; flex-wrap: wrap; align-items: center; margin: 0 0 var(--space-2); font-size: var(--text-sm); color: var(--text-dim); }
+.cv-pfolder-crumb { background: none; border: 1px dashed transparent; color: var(--accent); padding: 0.15384615rem 0.30769231rem; border-radius: var(--radius); cursor: pointer; font: inherit; }
+.cv-pfolder-crumb.is-here { color: var(--text); cursor: default; }
+.cv-pfolder-crumb.is-drop, .cv-project-list li.is-drop { border-color: var(--accent); border-style: dashed; }
+.cv-pfolder-new { flex: 1; display: flex; gap: 0.46153846rem; align-items: center; margin-bottom: var(--space-2); padding: 0.46153846rem; }
+.cv-pfolder-row { background: var(--panel-2); }
+.cv-pfolder-glyph { color: var(--accent); }
+.cv-pfolder-move { width: auto; max-width: 14rem; font-size: var(--text-sm); padding: 0.15384615rem 0.30769231rem; }
+.cv-pfolder-problem { margin: 0 0 var(--space-2); }
+
+.cv-sample-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(18.46153846rem, 1fr)); gap: 0.76923077rem; margin-top: 0.76923077rem; }
+.cv-sample {
+  text-align: left; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 0.92307692rem; cursor: pointer;
+  display: grid; gap: 0.38461538rem; font-family: inherit; color: var(--text);
+}
+.cv-sample:hover { border-color: var(--accent); }
+.cv-sample-title { font-weight: 600; font-size: var(--text-md); }
+.cv-sample-desc { color: var(--text-faint); font-size: var(--text-sm); line-height: 1.5; }
+
+.cv-modal-backdrop {
+  position: fixed; inset: 0; z-index: 200;
+  background: var(--scrim);
+  display: flex; align-items: center; justify-content: center; padding: 1.84615385rem;
+}
+.cv-modal {
+  background: var(--panel); border: 1px solid var(--line-strong);
+  border-radius: 10px; padding: 1.69230769rem; max-width: 43.07692308rem; width: 100%;
+  box-shadow: 0 24px 60px var(--shadow-deep);
+}
+.cv-modal h2 { margin: 0 0 0.92307692rem; font-size: var(--text-2xl); }
+.cv-modal h3 { margin: 1.23076923rem 0 0.30769231rem; font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-faint); }
+.cv-modal p { color: var(--text-dim); line-height: 1.6; margin: 0 0 0.61538462rem; }
+.cv-modal-actions { display: flex; justify-content: flex-end; gap: 0.61538462rem; margin-top: 1.38461538rem; }
+
+@media print {
+  .cv-topbar, .cv-palette, .cv-inspector, .cv-panel, .react-flow__controls, .cv-minimap,
+  .cv-guide, .cv-find { display: none !important; }
+
+  /* Paper is white, so the diagram is drawn for white — not the dark palette
+     on a white page, which is how a printed diagram ends up as pale grey text
+     nobody can read. These are the same values the white ground uses; the
+     colours set from script follow because printing switches the ground
+     first, and this covers a plain Ctrl+P as well. */
+  body, .cv-app {
+    /* Paper is a light page, whatever the screen is doing. */
+    color-scheme: light;
+    /* Split the canvas ink from the chrome text; paper needs the
+       canvas set too, or a dark-ground print keeps light-grey labels. */
+    --desk: #ffffff;
+    --page: #ffffff;
+    --page-border: #c9c9c9;
+    --ink: #0d1722;
+    --ink-muted: #3d4e63;
+    --canvas-accent: #0b5fce;
+    --label-bg: #ffffff;
+    --bg: #ffffff;
+    --bg-raised: #ffffff;
+    --panel: #ffffff;
+    --panel-2: #e9eff5;
+    --line: #ccd6e0;
+    --line-strong: #93a5b8;
+    --text: #0d1722;
+    --text-dim: #3d4e63;
+    --text-faint: #5b6b7e;
+    --accent: #0b5fce;
+    --healthy: #0a8a3f;
+    --warning: #b45c00;
+    --down: #c81e1e;
+    --unknown: #44576e;
+    --disabled: #7d8ea1;
+    --maintenance: #5323b8;
+    --label-bg: #ffffff;
+    background: #fff;
+    color: #0d1722;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+/* ---- icon library (palette) ------------------------------------------- */
+
+.cv-palette-note {
+  display: grid;
+  gap: 0.46153846rem;
+  padding: 0 0.15384615rem 0.46153846rem;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.cv-muted {
+  color: var(--text-dim);
+}
+
+.cv-warn {
+  color: var(--warning);
+}
+
+.cv-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+/* Library icons are raster-rendered from SVG via <img>, so give them the same
+   box as the built-in glyphs and let them keep their own colours. */
+.cv-palette-item img.cv-palette-icon {
+  width: 1.69230769rem;
+  height: 1.69230769rem;
+  object-fit: contain;
+}
+
+/* ---- status change acknowledgement ------------------------------------ */
+
+@keyframes cv-status-pop {
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0 currentColor; }
+  35%  { transform: scale(1.35); box-shadow: 0 0 0 4px transparent; }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 transparent; }
+}
+
+/* One short pop when a node's status changes. Not a loop — a loop would be
+   noise on a busy canvas, and would keep the compositor awake for nothing. */
+.cv-status-pulse {
+  animation: cv-status-pop 420ms ease-out 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-status-pulse { animation: none; }
+}
+
+/* ---- folder settings --------------------------------------------------- */
+.cv-folders { margin-top: 2.61538462rem; }
+.cv-folders h2 {
+  font-size: var(--text-md); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-faint); font-weight: 600; margin: 0 0 0.92307692rem;
+}
+.cv-folder-row {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 0.92307692rem 1.07692308rem; margin-bottom: 0.76923077rem; background: var(--panel);
+}
+.cv-folder-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.92307692rem;
+}
+.cv-folder-title { font-weight: 600; }
+.cv-folder-actions { display: flex; gap: 0.46153846rem; }
+.cv-folder-path {
+  display: block; margin: 0.61538462rem 0 0.46153846rem; padding: 0.46153846rem 0.61538462rem;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+  font-size: var(--text-md); color: var(--text);
+  overflow-wrap: anywhere;
+}
+.cv-folder-path.is-unset { color: var(--text-faint); font-style: italic; }
+.cv-folders .cv-help { margin: 0; }
+
+/* ---- discovery --------------------------------------------------------- */
+.cv-discover { padding: 0.92307692rem 1.07692308rem 1.23076923rem; }
+.cv-discover-form {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.76923077rem;
+}
+/* The subnet field must not grow to fill the row: at 1600px it pushed the
+   Sweep button off the edge of the window entirely. */
+.cv-field { display: flex; flex-direction: column; gap: 0.30769231rem; flex: 0 1 23.07692308rem; min-width: 13.84615385rem; }
+.cv-field-narrow { flex: 0 0 8.46153846rem; min-width: 8.46153846rem; }
+.cv-field > span {
+  font-size: var(--text-sm); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint);
+}
+.cv-discover-status { margin: 0.76923077rem 0 0; font-size: var(--text-md); color: var(--text-dim); }
+.cv-discover-problem { color: var(--down); }
+.cv-discover-empty { padding: 1.23076923rem; }
+
+.cv-progress {
+  margin-top: 0.61538462rem; height: 0.30769231rem; border-radius: 2px;
+  background: var(--line); overflow: hidden;
+}
+.cv-progress-fill {
+  height: 100%; background: var(--accent);
+  transition: width 200ms linear;
+}
+
+.cv-discover-actions { display: inline-flex; gap: 0.46153846rem; margin-left: 0.46153846rem; flex-wrap: wrap; }
+.cv-discover-table { margin-top: 0; }
+.cv-discover-table td:first-child, .cv-discover-table th:first-child { width: 2.46153846rem; }
+/* The sweep reports six things about a host now, so the table has to
+   survive a narrow panel. The port list is the one column that grows without
+   bound — a host with eight open ports should wrap rather than push the round
+   trip off the edge. */
+.cv-discover-ports { max-width: 16.92307692rem; }
+/* The show-command list sits under the capture choices it belongs to. */
+.cv-show-commands { display: flex; flex-wrap: wrap; gap: 0.61538462rem 1.23076923rem; align-items: flex-start; margin: 0.30769231rem 0 0.61538462rem; }
+.cv-show-commands .cv-field:first-child { flex: 1 1 24.61538462rem; }
+.cv-show-commands textarea { width: 100%; resize: vertical; }
+.cv-show-commands .cv-help { flex-basis: 100%; margin: 0; }
+/* Sets applied by role or tag. */
+.cv-command-sets { flex-basis: 100%; display: flex; flex-direction: column; gap: 0.46153846rem; align-items: flex-start; }
+.cv-command-set {
+  display: flex; flex-wrap: wrap; gap: 0.46153846rem 0.92307692rem; align-items: flex-end;
+  width: 100%; box-sizing: border-box; margin: 0; padding: 0.61538462rem;
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+.cv-command-set .cv-field:not(.cv-field-narrow) { flex: 1 1 100%; }
+.cv-command-set-names { color: var(--text-dim); }
+/* The capture filename pattern and its preview. */
+.cv-file-pattern { display: flex; flex-wrap: wrap; gap: 0.30769231rem 1.23076923rem; align-items: flex-end; margin: 0.30769231rem 0 0.61538462rem; }
+.cv-file-pattern .cv-field { flex: 0 1 32.30769231rem; }
+.cv-file-pattern .cv-help { flex: 1 1 24.61538462rem; margin: 0; }
+
+/* Failures grouped by why, so four identical timeouts read as one
+   explanation instead of four lines that invite a longer timeout. */
+.cv-failure-group { margin: 0.61538462rem 0 0.15384615rem; }
+.cv-failure-group h5 {
+  margin: 0 0 0.15384615rem;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text);
+}
+.cv-failure-group .cv-help { margin: 0 0 0.30769231rem; }
+.cv-failure-group ul { margin: 0; padding-left: 1.38461538rem; }
+
+.cv-port-chip {
+  display: inline-block;
+  margin: 1px 0.23076923rem 1px 0;
+  padding: 0 0.38461538rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  line-height: 1.23076923rem;
+}
+.cv-mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ---- device discovery -------------------------------------------------- */
+/* The run controls get their own row: with nine fields above them, a button
+   in the field row is pushed off the edge of the window. */
+.cv-discover-run {
+  display: flex; align-items: center; gap: 1.07692308rem; flex-wrap: wrap;
+  margin-top: 0.92307692rem; font-size: var(--text-md);
+}
+.cv-discover-push {
+  margin: 0.76923077rem 0 0; padding: 0.61538462rem 0.92307692rem;
+  border: 1px solid var(--warning); border-left-width: 3px;
+  border-radius: var(--radius);
+  background: rgba(232, 163, 61, 0.08);
+  color: var(--text); font-size: var(--text-lg);
+}
+.cv-discover-filter {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.46153846rem;
+  margin: 1.07692308rem 0 0.30769231rem;
+}
+.cv-filter-label {
+  font-size: var(--text-sm); letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-faint); margin-right: 0.15384615rem;
+}
+.cv-chip {
+  font: inherit; font-size: var(--text-md); cursor: pointer;
+  padding: 0.23076923rem 0.69230769rem; border-radius: 999px;
+  border: 1px solid var(--line-strong); background: var(--panel);
+  color: var(--text-dim);
+}
+.cv-chip b { color: var(--text); font-weight: 600; }
+.cv-chip.is-on { border-color: var(--accent); color: var(--text); }
+.cv-chip:hover { border-color: var(--accent); }
+.cv-filter-search { flex: 0 1 18.46153846rem; margin-left: auto; }
+.cv-reached { color: var(--healthy); }
+.cv-seen { color: var(--text-faint); }
+.cv-discover-failures { margin-top: 0.92307692rem; font-size: var(--text-md); color: var(--text-dim); }
+.cv-discover-failures summary { cursor: pointer; color: var(--down); }
+.cv-discover-failures ul { margin: 0.61538462rem 0 0; padding-left: 1.38461538rem; }
+.cv-discover-failures li { margin-bottom: 0.30769231rem; }
+.cv-discover-live-failed { margin: 0.46153846rem 0 0; color: var(--warning); }
+.cv-snmp { margin-top: 0.92307692rem; }
+.cv-snmp > summary {
+  cursor: pointer; font-size: var(--text-md); color: var(--text-dim);
+  padding: 0.30769231rem 0; user-select: none;
+}
+.cv-snmp > summary:hover { color: var(--text); }
+.cv-snmp .cv-discover-form { margin-top: 0.61538462rem; }
+.cv-snmp .cv-help { margin-top: 0.61538462rem; }
+
+/* ---- the address register ------------------------------------- */
+.cv-ipam { display: flex; flex-direction: column; gap: 0.76923077rem; }
+.cv-ipam-bar { display: flex; align-items: center; gap: 0.92307692rem; }
+.cv-ipam-bar .cv-help { margin: 0; }
+.cv-ipam-add { border: 1px solid var(--line); border-radius: var(--radius); padding: 0.92307692rem; background: var(--panel); }
+.cv-ipam-empty { max-width: 62ch; }
+.cv-ipam-table td { vertical-align: middle; }
+.cv-ipam-subnet td { font-variant-numeric: tabular-nums; }
+/* An address row is a detail of the subnet above it, and reads as one. */
+.cv-ipam-address td:first-child { padding-left: 1.69230769rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.cv-ipam-meter {
+  display: inline-block; width: 6.15384615rem; height: 0.46153846rem; margin-right: 0.61538462rem; vertical-align: middle;
+  background: var(--line); border-radius: 3px; overflow: hidden;
+}
+.cv-ipam-meter-fill { display: block; height: 100%; background: var(--accent); }
+.cv-ipam-actions { white-space: nowrap; display: flex; gap: 0.46153846rem; justify-content: flex-end; }
+/* A form opened on a row spans the table, so its fields are not squeezed into
+   one cell's width. */
+.cv-ipam-form-row > td, .cv-ipam-detail > td { padding: 0.61538462rem 0.76923077rem; background: var(--panel); }
+.cv-ipam-form-row .cv-ipam-add { margin: 0; }
+.cv-ipam-kind-help { flex: 1 0 100%; margin: 0; }
+/* The addresses are their own table with their own headings. */
+.cv-ipam-scroll { overflow-x: auto; }
+.cv-ipam-filter { flex: 0 1 24.61538462rem; margin-left: auto; }
+/* The column chooser, the setup lists, and a subnet's where and whose. */
+.cv-ipam-columns { position: relative; flex: none; }
+/* The saved-views menu is sized to what it says. As a generic input it took
+   whatever width the bar had left, which pushed the filter box off its place. */
+.cv-ipam-views { flex: 0 0 auto; width: auto; max-width: 16.92307692rem; }
+.cv-ipam-columns > summary { cursor: pointer; list-style: none; padding: 0.23076923rem 0.61538462rem; border: 1px solid var(--line); border-radius: 4px; color: var(--text-dim); font-size: var(--text-md); }
+.cv-ipam-columns[open] > summary { color: var(--text); border-color: var(--accent); }
+.cv-ipam-columns-list { position: absolute; right: 0; top: calc(100% + 0.30769231rem); z-index: 20; min-width: 15.38461538rem; max-height: 27.69230769rem; overflow-y: auto; padding: 0.61538462rem 0.76923077rem; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; display: grid; gap: 0.30769231rem; }
+.cv-ipam-columns-list .cv-help { margin: 0.46153846rem 0 0; }
+.cv-ipam-setup { display: grid; gap: 1.84615385rem; padding: 0.92307692rem 1.23076923rem; max-width: 75.38461538rem; }
+.cv-ipam-setup-section h3 { margin: 0 0 0.30769231rem; font-size: var(--text-xl); }
+.cv-ipam-setup-section > .cv-help { max-width: 70ch; margin: 0 0 0.61538462rem; }
+.cv-ipam-setup-section .cv-table { margin-bottom: 0.61538462rem; }
+.cv-setup-on { border: none; margin: 0; padding: 0; display: flex; gap: 0.76923077rem; align-items: center; }
+.cv-setup-on > legend { font-size: var(--text-sm); color: var(--text-dim); padding: 0; margin-bottom: 0.15384615rem; }
+.cv-ipam-where { display: block; font-size: var(--text-sm); }
+/* The ranges sit above the addresses they cover. */
+.cv-ipam-ranges { margin: 0 0 0.76923077rem; }
+.cv-ipam-ranges th { font-size: var(--text-xs); color: var(--text-faint); }
+.cv-ipam-ranges td { font-variant-numeric: tabular-nums; }
+.cv-ipam-addresses { margin: 0; }
+.cv-ipam-addresses th { font-size: var(--text-xs); color: var(--text-faint); }
+.cv-ipam-addresses td { font-variant-numeric: tabular-nums; }
+
+/* ---- the guide, in the app ------------------------------------ */
+.cv-helpscreen { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--bg); overflow: hidden; }
+.cv-helpscreen-body { flex: 1; min-height: 0; display: grid; grid-template-columns: clamp(14.61538462rem, 20vw, 21.53846154rem) minmax(0, 1fr); }
+.cv-help-search { flex: 0 1 24.61538462rem; }
+.cv-help-nav { overflow: auto; border-right: 1px solid var(--line); padding: 0.76923077rem 0; display: flex; flex-direction: column; }
+.cv-help-navitem {
+  text-align: left; background: none; border: 0; color: var(--text-dim); cursor: pointer;
+  font: inherit; padding: 0.46153846rem 1.07692308rem; border-left: 2px solid transparent;
+}
+.cv-help-navitem:hover { color: var(--text); background: var(--panel); }
+.cv-help-navitem.is-active { color: var(--text); border-left-color: var(--accent); background: var(--panel); }
+.cv-help-body { overflow: auto; padding: 1.38461538rem 2rem 4.61538462rem; max-width: 86ch; line-height: 1.6; }
+.cv-help-body p, .cv-help-body ul, .cv-help-body ol { margin: 0 0 0.92307692rem; }
+.cv-help-body li { margin: 0 0 0.30769231rem; }
+.cv-help-h2 { font-size: var(--text-3xl); margin: 0 0 1.07692308rem; }
+.cv-help-h3 { font-size: var(--text-lg); margin: 1.53846154rem 0 0.61538462rem; color: var(--text); }
+.cv-help-body code { background: var(--panel); padding: 1px 0.38461538rem; border-radius: 3px; font-size: var(--text-md); }
+.cv-help-code {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 0.76923077rem 0.92307692rem; overflow-x: auto; font-size: var(--text-md); line-height: 1.5;
+}
+.cv-help-code code { background: none; padding: 0; }
+.cv-help-body blockquote {
+  margin: 0 0 0.92307692rem; padding: 0.30769231rem 0 0.30769231rem 0.92307692rem; border-left: 2px solid var(--line); color: var(--text-dim);
+}
+.cv-help-tablewrap { overflow-x: auto; margin: 0 0 1.07692308rem; }
+.cv-help-body hr { border: 0; border-top: 1px solid var(--line); margin: 1.38461538rem 0; }
+
+/* ---- the register's own screen -------------------------------- */
+/* It takes the whole workspace under the toolbar. The diagram stays mounted
+   behind it — React Flow rebuilds its viewport from nothing when unmounted,
+   so leaving would otherwise come back to a diagram that had jumped. */
+.cv-register {
+  /* The workspace is a flex column, so this takes the room the diagram and
+     the bottom panel had between them. */
+  flex: 1; display: flex; flex-direction: column; min-height: 0;
+  background: var(--bg); overflow: hidden;
+}
+.cv-main.is-behind { display: none; }
+/* The body too, or an empty flex item takes half the height from
+   the screen over it (racks.mjs found it: a 42U rack lost half its scroll). */
+.cv-body.is-behind { display: none; }
+.cv-register-head {
+  display: flex; align-items: center; gap: 1.23076923rem; flex-wrap: wrap;
+  padding: 0.76923077rem 1.07692308rem; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.cv-register-title { font-size: var(--text-xl); margin: 0; font-weight: 600; }
+.cv-register-project { color: var(--text-dim); font-weight: 400; }
+.cv-register-back { margin-left: auto; }
+.cv-register-body { flex: 1; min-height: 0; overflow: auto; padding: 1.07692308rem; }
+/* Inside the screen the panel's own scroll box is not wanted: the screen
+   scrolls, and two nested scrollbars is how the split review ended up
+   clipped in the bottom panel. */
+.cv-register-body .cv-ipam-scroll { overflow-x: auto; }
+
+/* Settings, on the same screen. Chrome colours throughout. */
+.cv-settings { display: flex; flex-direction: column; gap: 1.38461538rem; padding: 1.07692308rem; max-width: 75.38461538rem; }
+.cv-settings-block { display: flex; flex-direction: column; gap: 0.61538462rem; }
+.cv-settings-block h2 {
+  margin: 0; font-size: var(--text-sm); font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+.cv-settings-block > .cv-help { margin: 0; max-width: 78ch; }
+.cv-settings-creds { display: flex; flex-direction: column; gap: 0.76923077rem; }
+.cv-settings-creds .cv-cred-override { border: 1px solid var(--line); border-radius: var(--radius); }
+.cv-settings-pruned { color: var(--warning); }
+/* Trace path. */
+.cv-pathtrace { display: flex; flex-direction: column; gap: 0.76923077rem; padding: 0.76923077rem 0.92307692rem; }
+.cv-trace-path { display: flex; flex-direction: column; gap: 0.46153846rem; }
+.cv-trace-ecmp { font-size: var(--text-sm); color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.cv-trace-why > summary { cursor: pointer; font-size: var(--text-sm); color: var(--text-dim); padding: 0.30769231rem 0; }
+.cv-trace-why > summary:hover { color: var(--text); }
+.cv-trace-reasons { margin: 0.30769231rem 0 0; padding-left: 1.53846154rem; font-size: var(--text-md); display: flex; flex-direction: column; gap: 0.46153846rem; }
+.cv-trace-reasons .cv-help { margin: 0.15384615rem 0 0; }
+.cv-trace-insufficient { border-left: 2px solid var(--warning); padding-left: 0.61538462rem; }
+.cv-trace-simulate > summary { cursor: pointer; font-size: var(--text-sm); color: var(--text-dim); padding: 0.30769231rem 0; }
+.cv-trace-simulate > summary:hover { color: var(--text); }
+.cv-trace-targets { display: flex; flex-wrap: wrap; gap: 0.76923077rem; padding: 0.46153846rem 0; }
+.cv-trace-simulating { color: var(--warning); }
+.cv-trace-port .cv-input { width: 7ch; min-width: 0; }
+.cv-trace-made { color: var(--healthy); }
+/* What the Rust builder adds for a collection run. */
+.cv-collected-path { display: flex; flex-direction: column; gap: 0.76923077rem; border-top: 1px solid var(--line); padding-top: 0.76923077rem; }
+.cv-collected-path [data-verdict="deny"] { color: var(--down); }
+.cv-collected-path [data-verdict="undetermined"] { color: var(--warning); }
+.cv-collected-path [data-verdict="allow"] { color: var(--healthy); }
+.cv-collected-path tr[data-agrees="no"] td { color: var(--warning); }
+.cv-collected-path pre { margin: 0.30769231rem 0 0; padding: 0.46153846rem 0.61538462rem; max-height: 18.46153846rem; overflow: auto; white-space: pre-wrap; border: 1px solid var(--line); border-radius: var(--radius); font-size: var(--text-sm); }
+.cv-trace-warnings { margin: 0; padding-left: 1.53846154rem; display: flex; flex-direction: column; gap: 0.30769231rem; font-size: var(--text-md); }
+.cv-trace-ending { margin: 0; }
+
+/* A deduction, marked as one. */
+.cv-inferred-note { color: var(--text-dim); border-left: 2px solid var(--line-strong); padding-left: 0.61538462rem; }
+.cv-settings-vault > summary {
+  cursor: pointer; padding: 0.46153846rem 0; font-size: var(--text-sm); color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.cv-settings-vault > summary:hover { color: var(--text); }
+
+/* The same screen, holding Compare, Racks and the two imports. These
+   were panels, so their own padding is already right; the screen does not add
+   a second layer of it. */
+.cv-tools-body { padding: 0; }
+
+/* ---- the IPAM tab --------------------------------------------- */
+.cv-lab { display: flex; flex-direction: column; gap: 0.76923077rem; }
+.cv-lab-head { display: flex; align-items: center; gap: 1.23076923rem; flex-wrap: wrap; }
+.cv-lab-tabs { flex: 0 1 auto; }
+.cv-lab-view { display: flex; flex-direction: column; gap: 0.76923077rem; }
+.cv-lab-view section { display: flex; flex-direction: column; gap: 0.61538462rem; align-items: flex-start; }
+/* A column of stretched children turns every button into a full-width band. */
+.cv-lab-view section > .cv-btn { align-self: flex-start; }
+.cv-lab-view section > table, .cv-lab-view section > .cv-discover-form,
+.cv-lab-view section > .cv-lab-problems, .cv-lab-view section > p { align-self: stretch; }
+.cv-lab-bar { display: flex; align-items: center; gap: 0.76923077rem; }
+.cv-lab-bar .cv-help { margin: 0; }
+.cv-lab-h3 { font-size: var(--text-sm); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin: 0.46153846rem 0 0; }
+.cv-lab-note { max-width: 96ch; margin: 0; }
+.cv-lab-said { color: var(--healthy); }
+.cv-lab-free { display: flex; align-items: center; gap: 0.61538462rem; flex-wrap: wrap; }
+.cv-lab-tree td { font-variant-numeric: tabular-nums; vertical-align: middle; }
+.cv-lab-container td:first-child { font-weight: 600; }
+.cv-lab-subnet td { color: var(--text-dim); }
+.cv-pill-container, .cv-pill-subnet {
+  display: inline-block; font-size: var(--text-xs); padding: 0 0.46153846rem; border-radius: 9px; border: 1px solid;
+}
+.cv-pill-container { color: var(--accent); border-color: var(--accent); }
+.cv-pill-subnet { color: var(--healthy); border-color: var(--healthy); }
+/* Conflicts and refusals are the two things on this tab that must not be
+   mistaken for chrome. */
+.cv-lab-conflicts, .cv-lab-problems {
+  border: 1px solid var(--down); border-radius: var(--radius); padding: 0.69230769rem 0.92307692rem; background: var(--panel);
+}
+.cv-lab-conflicts ul, .cv-lab-problems ul { margin: 0.46153846rem 0 0; padding-left: 1.38461538rem; }
+.cv-lab-conflicts li, .cv-lab-problems li { font-size: var(--text-md); color: var(--text-dim); }
+.cv-lab-problems p { margin: 0; color: var(--down); }
+.cv-lab-diff { display: flex; flex-direction: column; gap: 0.15384615rem; font-size: var(--text-md); }
+.cv-diff-out { color: var(--down); }
+.cv-diff-in { color: var(--healthy); }
+.cv-lab-wizard section { border-top: 1px solid var(--line); padding-top: 0.61538462rem; }
+.cv-lab-vrfs { margin: 0 0 0.61538462rem; }
+.mono { font-variant-numeric: tabular-nums; }
+
+/* ---- backups ----------------------------------------------------------- */
+.cv-backup-columns {
+  display: grid; grid-template-columns: minmax(21.53846154rem, 1fr) minmax(21.53846154rem, 1fr);
+  gap: 1.53846154rem; margin-top: 1.07692308rem; align-items: start;
+}
+@media (max-width: 1100px) { .cv-backup-columns { grid-template-columns: 1fr; } }
+.cv-backup-head {
+  font-size: var(--text-sm); letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--text-faint); font-weight: 600; margin: 0 0 0.61538462rem;
+}
+.cv-backup-list { list-style: none; margin: 0; padding: 0; }
+.cv-backup-list button {
+  font: inherit; font-size: var(--text-lg); text-align: left; width: 100%;
+  background: none; border: none; color: var(--text); cursor: pointer;
+  padding: 0.38461538rem 0.61538462rem; border-radius: 4px;
+}
+.cv-backup-list button:hover { background: var(--panel-2); }
+.cv-backup-list button.is-open { background: var(--panel-2); color: var(--accent); }
+.cv-backup-captures { margin-top: 0.76923077rem; }
+/* A filter above a long list; What an empty list says. */
+.cv-list-filter { margin: 0.46153846rem 0; max-width: 24.61538462rem; }
+/* The drawer, over the inspector's side of the window. */
+.cv-drawer {
+  position: fixed; top: 3.38461538rem; right: 0; bottom: 0; z-index: 40;
+  width: clamp(27.69230769rem, 40vw, 49.23076923rem);
+  background: var(--chrome); border-left: 1px solid var(--chrome-edge);
+  box-shadow: -8px 0 24px var(--shadow);
+  display: flex; flex-direction: column;
+}
+.cv-drawer-head { display: flex; align-items: center; gap: 0.92307692rem; padding: 0.61538462rem 0.92307692rem; border-bottom: 1px solid var(--chrome-edge); }
+.cv-drawer-body { padding: 0.92307692rem; overflow-y: auto; overflow-x: hidden; }
+.cv-drawer-body * { max-width: 100%; }
+.cv-drawer-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(13.84615385rem, 1fr)); gap: 0.46153846rem 1.23076923rem; margin: 0.61538462rem 0 0.92307692rem; }
+.cv-drawer-fact { font-size: var(--text-md); }
+.cv-drawer-fact .cv-help { display: block; }
+.cv-drawer-message { padding: 0.61538462rem 0.76923077rem; border-left: 3px solid var(--warning); background: var(--panel-2); }
+.cv-drawer-message.is-info { border-left-color: var(--accent); }
+.cv-drawer-history, .cv-drawer-devices { list-style: none; margin: 0; padding: 0; font-size: var(--text-md); }
+.cv-drawer-history li, .cv-drawer-devices li { display: flex; align-items: center; gap: 0.61538462rem; padding: 0.23076923rem 0; }
+.cv-open-drawer { margin-bottom: 0.61538462rem; }
+.cv-finding-open { margin-left: 0.46153846rem; }
+/* The selection bar and its tick column. */
+.cv-select-bar { display: flex; align-items: center; gap: 0.61538462rem; padding: 0.30769231rem 0.61538462rem; margin: 0.30769231rem 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; font-size: var(--text-md); }
+.cv-pick-col { width: 1.84615385rem; text-align: center; }
+tr[data-picked="yes"] td { background: var(--hover); }
+.cv-empty { margin: 0.61538462rem 0; }
+.cv-empty-what { color: var(--text); }
+/* The running jobs, one header each. */
+.cv-jobs { display: flex; flex-direction: column; gap: 0.30769231rem; padding: 0.46153846rem 0.92307692rem; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.cv-jobs.is-compact { flex-direction: row; flex-wrap: wrap; padding: 0; border: 0; background: transparent; gap: 0.61538462rem; }
+.cv-job { display: inline-flex; align-items: center; gap: 0.61538462rem; font-size: var(--text-md); }
+.cv-job-line { color: var(--text-dim); }
+.cv-job.is-stopping .cv-job-line { color: var(--text-faint); }
+.cv-job-progress { width: 6.92307692rem; height: 0.46153846rem; accent-color: var(--accent); }
+/* The intent rules under the findings. */
+.cv-intent-rules { margin-top: 0.76923077rem; }
+.cv-intent-list { list-style: none; margin: 0.46153846rem 0 0; padding: 0; font-size: var(--text-md); }
+.cv-intent-list li { display: flex; align-items: center; gap: 0.61538462rem; padding: 0.15384615rem 0; }
+/* A failed check's severity, and the matrix's rows by their worst. */
+.cv-severity { font-size: var(--text-sm); color: var(--text-dim); }
+.cv-severity.is-critical { color: var(--down); }
+.cv-severity.is-warning { color: var(--warning); }
+.cv-check-matrix td { white-space: nowrap; }
+.cv-check-matrix tr[data-worst="critical"] td:first-child { color: var(--down); }
+/* Whether a capture differs from the one before it of its kind. */
+.cv-backup-badge { margin-left: 0.61538462rem; font-size: var(--text-sm); color: var(--text-dim); }
+.cv-backup-badge.is-changed { color: var(--warning); }
+.cv-backup-captures ul { list-style: none; margin: 0.46153846rem 0 0; padding: 0; font-size: var(--text-md); }
+.cv-backup-captures li {
+  display: flex; align-items: center; gap: 0.76923077rem; padding: 0.23076923rem 0;
+}
+.cv-diff { margin-top: 0.92307692rem; }
+.cv-diff-body {
+  margin: 0.46153846rem 0 0; padding: 0.61538462rem 0.76923077rem; max-height: 15.38461538rem; overflow: auto;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+  font-family: var(--mono); font-size: var(--text-sm); line-height: 1.5;
+}
+.cv-diff-body .is-added { color: var(--healthy); }
+.cv-diff-body .is-removed { color: var(--down); }
+/* Two runs compared, per device and per command. */
+.cv-before-after { margin-top: 1.07692308rem; }
+.cv-before-after-pick { display: flex; flex-wrap: wrap; gap: 0.61538462rem 1.23076923rem; align-items: flex-end; }
+.cv-before-after-result { margin-top: 0.61538462rem; }
+.cv-compared-device { border-top: 1px solid var(--line); padding: 0.46153846rem 0; }
+.cv-compared-device summary { cursor: pointer; }
+.cv-compared-part { margin: 0.46153846rem 0 0 1.07692308rem; }
+.cv-compared-name { margin: 0 0 0.15384615rem; font-size: var(--text-md); }
+.cv-compared-status.is-changed { color: var(--warning); }
+.cv-compared-status.is-same,
+.cv-compared-status.is-onlyBefore,
+.cv-compared-status.is-onlyAfter { color: var(--text-dim); }
+/* Checks against a run's captures. The verdict is a labelled pill, so
+   it reads without the colour. */
+.cv-backup-checks { margin-top: 1.07692308rem; display: flex; flex-direction: column; gap: 0.46153846rem; align-items: stretch; }
+.cv-backup-checks > .cv-help { margin: 0; }
+.cv-check-row {
+  display: flex; flex-wrap: wrap; gap: 0.46153846rem 0.92307692rem; align-items: flex-end;
+  margin: 0; padding: 0.61538462rem; border: 1px solid var(--line); border-radius: var(--radius);
+}
+.cv-check-row .cv-field-wide { flex: 1 1 16.92307692rem; }
+.cv-check-results-wrap { overflow-x: auto; }
+.cv-check-results td { vertical-align: top; }
+.cv-verdict {
+  display: inline-block; padding: 1px 0.61538462rem; border: 1px solid currentColor; border-radius: 999px;
+  font-size: var(--text-sm); font-weight: 600; white-space: nowrap;
+}
+.cv-verdict.is-pass { color: var(--healthy); }
+.cv-verdict.is-fail { color: var(--down); }
+.cv-verdict.is-rejected { color: var(--warning); }
+.cv-verdict.is-notCaptured { color: var(--text-dim); }
+.cv-check-evidence { margin-top: 0.15384615rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Ordered collection groups and where a collection has got to. */
+.cv-collection-groups { margin: 0.30769231rem 0 0.61538462rem; display: flex; flex-direction: column; gap: 0.46153846rem; align-items: stretch; }
+.cv-collection-groups > .cv-help { margin: 0; }
+.cv-group-order {
+  align-self: center; min-width: 1.5em; font-weight: 600;
+  font-variant-numeric: tabular-nums; color: var(--text-dim);
+}
+.cv-group-progress { margin: 0.30769231rem 0 0.61538462rem; }
+.cv-group-progress ol { margin: 0 0 0.46153846rem; padding-left: 1.38461538rem; display: flex; flex-direction: column; gap: 0.23076923rem; }
+.cv-verdict.is-waiting,
+.cv-verdict.is-notRun { color: var(--text-dim); }
+.cv-verdict.is-running { color: var(--accent); }
+.cv-verdict.is-done { color: var(--healthy); }
+/* A sweep row's name on the diagram, when it differs from the one
+   the network gave. */
+.cv-known-as { color: var(--text-dim); font-family: var(--sans); }
+/* The optional gateway ARP read, above the sweep results. */
+.cv-gateway-arp { margin: 0.61538462rem 0; }
+.cv-gateway-arp .cv-help { margin: 0.30769231rem 0; }
+.cv-backup-results { margin-top: 0.92307692rem; }
+.cv-backup-results p { margin: 0.15384615rem 0; }
+
+/* ---- host keys --------------------------------------------------------- */
+.cv-hostkeys { margin-top: 2.61538462rem; }
+.cv-hostkeys h2 {
+  font-size: var(--text-md); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-faint); font-weight: 600; margin: 0 0 0.92307692rem;
+}
+.cv-hostkey-table { margin-top: 0.76923077rem; }
+.cv-hostkey-table td, .cv-hostkey-table th { font-size: var(--text-md); }
+.cv-fingerprint { color: var(--text-dim); overflow-wrap: anywhere; }
+.cv-hostkey-actions {
+  display: flex; align-items: center; gap: 0.76923077rem; flex-wrap: wrap; margin-top: 0.92307692rem;
+}
+.cv-btn-danger { color: var(--down); border-color: var(--down); }
+.cv-hostkey-message { margin-top: 0.61538462rem; }
+
+/* ---- credential vault -------------------------------------------------- */
+.cv-vault { margin-top: 2.61538462rem; }
+.cv-vault h2 {
+  font-size: var(--text-md); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-faint); font-weight: 600; margin: 0 0 0.92307692rem;
+}
+.cv-vault .cv-help { max-width: 62ch; margin-bottom: 0.76923077rem; }
+.cv-vault .cv-discover-form { margin-top: 0.92307692rem; align-items: flex-end; }
+.cv-vault-bar { display: flex; align-items: center; gap: 0.92307692rem; flex-wrap: wrap; }
+.cv-vault-add {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 0.92307692rem; background: var(--panel);
+}
+/* Keeping a typed credential, offered inside the run's own form. On
+   its own row — the fields beside it are a wrapping flex line, and a form that
+   appears between two fields reads as belonging to whichever one it split. */
+.cv-keep-cred { flex: 1 0 100%; display: flex; flex-direction: column; gap: 0.46153846rem; }
+.cv-keep-cred > .cv-btn { align-self: flex-start; }
+.cv-keep-cred-form {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.76923077rem;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 0.92307692rem; background: var(--panel);
+}
+.cv-keep-cred-form .cv-help { flex: 1 0 100%; margin: 0; }
+/* Said where the button is, not only in the paragraph at the top. */
+.cv-vault-waiting { color: var(--text-dim); }
+/* What can be done to a credential this project already keeps. */
+.cv-keep-cred-held { display: flex; flex-wrap: wrap; align-items: center; gap: 0.61538462rem; }
+.cv-keep-cred-held .cv-help { margin: 0; max-width: 62ch; }
+
+/* Open shells, one tab each, in the bottom panel. Chrome colours —
+   the terminal's own palette is handed to xterm from these same tokens. */
+.cv-ssh { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.cv-ssh-empty { padding: 0.92307692rem; }
+.cv-ssh-tabs { flex: 0 0 auto; padding: 0.30769231rem 0.61538462rem 0; gap: 0.15384615rem; flex-wrap: wrap; }
+.cv-ssh-tab { display: inline-flex; align-items: stretch; }
+.cv-ssh-tab > button:first-child { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-ssh-close {
+  background: none; border: 0; color: var(--text-faint); cursor: pointer;
+  padding: 0 0.46153846rem; font-size: var(--text-lg); line-height: 1;
+}
+.cv-ssh-close:hover { color: var(--down); }
+.cv-ssh-controls {
+  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.76923077rem;
+  padding: 0.30769231rem 0.61538462rem 0.46153846rem; border-bottom: 1px solid var(--line);
+}
+.cv-ssh-controls .cv-field { margin-bottom: 0; flex: 0 0 auto; }
+.cv-ssh-size .cv-input { width: 5.5em; min-width: 0; }
+.cv-ssh-state { display: flex; flex-wrap: wrap; gap: 0.76923077rem; margin: 0; align-items: baseline; }
+.cv-ssh-logging { color: var(--healthy); }
+/* Find in the scrollback. */
+.cv-ssh-find {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 0.46153846rem;
+  padding: 0.30769231rem 0.61538462rem 0.46153846rem; border-bottom: 1px solid var(--line);
+}
+.cv-ssh-find .cv-input { max-width: 30ch; }
+/* Sending to several. Deliberately not a one-click control. */
+.cv-ssh-send {
+  flex: 0 0 auto; display: flex; flex-direction: column; gap: 0.61538462rem;
+  padding: 0.76923077rem; margin: 0.46153846rem 0.61538462rem; border: 1px solid var(--line-strong);
+  border-radius: var(--radius); background: var(--bg-raised);
+}
+.cv-ssh-send > strong { font-size: var(--text-md); color: var(--text); }
+.cv-ssh-send .cv-help { margin: 0; max-width: 70ch; }
+.cv-ssh-targets {
+  display: flex; flex-wrap: wrap; gap: 0.76923077rem; margin: 0;
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 0.61538462rem;
+}
+.cv-ssh-targets > legend {
+  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-dim); padding: 0 0.30769231rem;
+}
+.cv-ssh-screens { flex: 1; min-height: 0; padding: 0.46153846rem 0.61538462rem 0.61538462rem; }
+.cv-ssh-screen { height: 100%; min-height: 0; }
+/* xterm sizes itself to this box, so the box has to have a size of its own. */
+.cv-ssh-screen .xterm { height: 100%; }
+
+/* A login typed on the device itself, in the inspector. Chrome
+   colours throughout — the inspector does not follow the canvas ground. */
+.cv-cred-overrides { margin: 0.61538462rem 0; border: 1px solid var(--line); border-radius: var(--radius); }
+.cv-cred-overrides > summary {
+  cursor: pointer; padding: 0.46153846rem 0.69230769rem; font-size: var(--text-sm); color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.cv-cred-overrides > summary:hover { color: var(--text); }
+.cv-cred-override {
+  display: flex; flex-direction: column; gap: 0.46153846rem;
+  padding: 0.61538462rem 0.69230769rem; border-top: 1px solid var(--line); background: var(--bg-raised);
+}
+.cv-cred-override-head { display: flex; flex-direction: column; gap: 0.15384615rem; }
+.cv-cred-override-head strong { font-size: var(--text-md); color: var(--text); }
+.cv-cred-override-head .cv-help { margin: 0; }
+.cv-cred-override .cv-row { flex-wrap: wrap; gap: 0.61538462rem; }
+/* Testing a login, beside the buttons that manage it. */
+.cv-cred-test-at { margin-bottom: 0; flex: 0 0 auto; }
+.cv-cred-test-at .cv-input { width: 16ch; min-width: 0; }
+.cv-cred-reached { color: var(--healthy); }
+.cv-vault-table { margin-top: 0.92307692rem; }
+.cv-vault-table td, .cv-vault-table th { font-size: var(--text-md); }
+.cv-secret-cell { display: flex; align-items: center; gap: 0.46153846rem; }
+.cv-second-secret { color: var(--text-faint); }
+/* An eye is a control, not de-emphasised text, so it takes `--text-dim`
+   rather than `--text-faint`: the fainter token does not carry enough contrast
+   for something meant to be found and clicked. */
+.cv-eye {
+  background: none; border: none; padding: 0.15384615rem; cursor: pointer;
+  color: var(--text-dim); display: inline-flex; align-items: center;
+  border-radius: 3px;
+}
+.cv-eye:hover, .cv-eye:focus-visible { color: var(--accent); }
+.cv-eye:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Belt and braces for the engine's own reveal button. `color-scheme` above is
+   what actually fixes it; these give it our colour rather than the engine's
+   idea of a dark page, and give it a hit area big enough to aim at. */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-webkit-credentials-auto-fill-button {
+  color: var(--text-dim);
+  filter: invert(0);
+  cursor: pointer;
+  margin-right: 0.15384615rem;
+}
+.cv-menu-danger { color: var(--warning) !important; }
+
+/* ---- subnet list ------------------------------------------------------- */
+.cv-subnets { margin-top: 0.92307692rem; }
+.cv-subnets-label {
+  display: block; font-size: var(--text-sm); letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-faint); margin-bottom: 0.46153846rem;
+}
+.cv-subnet-row { display: flex; align-items: center; gap: 0.61538462rem; margin-bottom: 0.46153846rem; }
+.cv-subnet-row .cv-input { flex: 0 1 20rem; }
+.cv-subnet-row .cv-input.is-bad { border-color: var(--down); }
+.cv-subnet-problem { font-size: var(--text-md); color: var(--down); }
+.cv-subnet-actions { display: flex; align-items: center; gap: 0.76923077rem; margin-top: 0.15384615rem; }
+
+/* The credential half of an imported package: a distinct block, because it is
+   a second decision after the project is already in. */
+.cv-import-vault { border: 1px solid var(--warning); border-radius: var(--radius); padding: 0.92307692rem 1.07692308rem; }
+.cv-import-vault h2 { margin-top: 0; }
+
+/* The Visio preview. Every cell is editable, so the rows are tighter
+   than a reading table's and the inputs sit flush in them — a grid of boxes
+   with padding around each one is unreadable at forty rows. Hovering must not
+   look like a click target here: these rows are edited in place, not opened. */
+.cv-import-table td { padding: 0.15384615rem 0.46153846rem; }
+.cv-import-table tbody tr:hover { cursor: default; }
+.cv-import-table .cv-input { width: 100%; min-width: 6.46153846rem; padding: 0.23076923rem 0.46153846rem; }
+/* A tighter cell than the panels this class was written for, but the arrow
+   still needs its corner: without this the type name runs under it. */
+.cv-import-table select.cv-input { padding-right: 1.69230769rem; }
+.cv-import-table .cv-btn { padding: 0.15384615rem 0.61538462rem; font-size: var(--text-sm); }
+/* A link the drawing did not glue: worked out from where the line was drawn,
+   and marked so it can be checked rather than trusted. */
+.cv-import-table tr.cv-row-inferred td:first-child { border-left: 2px solid var(--warning); }
+.cv-import-colour { width: 2.61538462rem; height: 1.69230769rem; padding: 0; border: 1px solid var(--line);
+  border-radius: 3px; background: none; }
+
+/* Glyph nodes: the icon with its name beneath it and no box.
+   A network diagram is drawn as symbols with labels, not as a wall of
+   bordered cards — and a card grows every time an address or a status line is
+   added, so the diagram reflows as monitoring turns on.
+
+   The node's bounds ARE the art. It used to be an invisible 168x92
+   box with a 46px icon floating in it — resize corners, connection dots and
+   the ends of links all sat on the box, nowhere near the drawn shape, and
+   resizing changed nothing visible. Now the art fills the node (so resizing
+   scales the icon), and the text hangs below without counting toward the
+   bounds. */
+/* React Flow's wrapper is the outer square, and it is a hit target across all
+   of it as well — so making the node inside transparent is not enough on its
+   own. Scoped by `:has` to glyph devices: a note, a zone or a card-style
+   device is a box, and a box should be clickable everywhere.
+
+   `!important` because React Flow writes `pointer-events` inline on every node
+   from its own selectable/draggable state, and nothing but this beats an
+   inline style. Events still reach it: hit testing skips this element, but an
+   event that starts on `.cv-glyph-hit` inside it still bubbles through, which
+   is what keeps dragging and selecting working. */
+.react-flow__node:has(> .cv-glyph-node) { pointer-events: none !important; }
+
+.cv-glyph-node {
+  width: 100%; height: 100%;
+  background: none; border: none; padding: 0;
+  position: relative;
+  /* The node's own box takes no pointer events. An HTML element is a
+     hit target across the whole of its box whether or not anything is painted
+     there, so a square node swallowed every link that passed behind it — for
+     a device with links converging on it from several angles, that was most of
+     them. What the pointer lands on is `.cv-glyph-hit` below, plus the things
+     that have always needed it: the handles, the badge, the name. */
+  pointer-events: none;
+}
+/* Round, matching the ring that marks a device as selected, so what can be
+   clicked is what looks like the device. Rounding an element's corners takes
+   them out of hit testing too, which is the whole point: a link crossing a
+   corner reaches the link. */
+.cv-glyph-hit {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  pointer-events: auto;
+}
+.cv-glyph-node .react-flow__handle,
+.cv-glyph-node .react-flow__resize-control { pointer-events: auto; }
+.cv-glyph-art {
+  position: relative;
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  /* The artwork owns every pixel of the node, and it must own
+     none of the pointer: clicks and drags fall through to the node wrapper,
+     and the connection dots and resize corners never fight the drawing for
+     the same pixels. The status badge opts back in for its tooltip. */
+  pointer-events: none;
+}
+.cv-glyph-badge { pointer-events: auto; }
+.cv-glyph-art svg { width: 100%; height: 100%; }
+.cv-glyph-art img { width: 100%; height: 100%; object-fit: contain; }
+
+/* Selection is a ring on the glyph rather than a box around everything: the
+   node has no box to outline. */
+.cv-glyph-node.is-selected .cv-glyph-art::after {
+  content: ''; position: absolute; inset: -6px;
+  border: 1.5px solid var(--canvas-accent); border-radius: 50%;
+}
+
+.cv-glyph-badge {
+  position: absolute; top: -4px; right: -6px; z-index: 2;
+  width: 15px; height: 15px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--canvas-text-2xs); font-weight: 700; color: var(--on-status);
+  border: 2px solid var(--desk);
+}
+.cv-glyph-lock { position: absolute; top: -6px; left: -8px; font-size: var(--canvas-text-2xs); }
+.cv-glyph-link {
+  position: absolute; bottom: -6px; left: -8px; font-size: var(--canvas-text-2xs);
+  pointer-events: auto; cursor: pointer;
+}
+
+.cv-glyph-text {
+  position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  margin-top: 6px; text-align: center; line-height: 1.35;
+  /* Wider than the node box so a long name does not force the node wider and
+     shove its neighbours around. */
+  width: max-content; max-width: 190px;
+  /* The block is wider than the node so a long name does not resize it. Only
+     the text itself takes pointer events, or that overhang would swallow
+     clicks meant for the canvas — and the label has to be clickable to be
+     renamed in place. */
+  pointer-events: none;
+}
+.cv-glyph-label, .cv-glyph-text .cv-inline-edit { pointer-events: auto; }
+.cv-glyph-label { font-weight: 600; font-size: var(--canvas-text-md); color: var(--ink); }
+.cv-glyph-addr { font-family: var(--mono); font-size: var(--canvas-text-xs); color: var(--ink-muted); }
+.cv-glyph-status { font-size: var(--canvas-text-xs); font-weight: 600; }
+
+/* Typing on the diagram itself. Sized and coloured to match the text it
+   replaces, so committing a rename does not make the label jump. */
+.cv-inline-edit {
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--accent); border-radius: 3px;
+  padding: 0 0.23076923rem; text-align: inherit; font: inherit;
+  width: min(13.84615385rem, 90%); pointer-events: all;
+}
+.cv-glyph-text .cv-inline-edit { text-align: center; }
+.cv-glyph-label, .cv-node-label { cursor: text; }
+
+/* Choosing what the crawl may log in to, before it runs. */
+.cv-login-classes { display: flex; flex-direction: column; gap: 0.46153846rem; margin: 0.61538462rem 0 0.30769231rem; }
+.cv-class-chips { display: flex; flex-wrap: wrap; gap: 0.46153846rem; }
+.cv-chip {
+  background: var(--panel-2); color: var(--text-dim);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 0.15384615rem 0.76923077rem; font-size: var(--text-sm); cursor: pointer;
+}
+.cv-chip:hover:not(:disabled) { border-color: var(--line-strong); color: var(--text); }
+.cv-chip.is-on { background: rgba(94, 184, 255, 0.14); border-color: var(--accent); color: var(--text); }
+.cv-chip:disabled { opacity: 0.5; cursor: default; }
+
+/* The second credential set: present but folded away, because most estates
+   have one login and the form is already long. */
+.cv-backup-creds { margin: 0.61538462rem 0 0.15384615rem; }
+.cv-backup-creds > summary { cursor: pointer; color: var(--text-dim); font-size: var(--text-md); }
+.cv-backup-creds > summary:hover { color: var(--text); }
+
+/* A device that has missed a check but has not yet failed enough times to be
+   called down. Solid green for the fifteen seconds the default thresholds
+   take is the app claiming health it has not confirmed — this says plainly
+   that the last check did not answer, without asserting the device is down. */
+.cv-glyph-art.is-failing::before {
+  content: ''; position: absolute; inset: -5px;
+  border: 1.5px dashed var(--warning); border-radius: 50%;
+  animation: cv-missed 1.4s ease-in-out infinite;
+}
+@keyframes cv-missed { 0%, 100% { opacity: 0.45 } 50% { opacity: 1 } }
+@media (prefers-reduced-motion: reduce) {
+  .cv-glyph-art.is-failing::before { animation: none; opacity: 0.8; }
+}
+
+/* How long ago a result was actually confirmed. Dim, because it is context
+   for the status rather than the status itself. */
+.cv-stale { color: var(--text-dim); white-space: nowrap; }
+
+/* Choosing telnet is a decision with a cost, so the warning is attached to
+   the choice rather than left to a manual nobody reads. */
+.cv-transport { margin-top: 0.61538462rem; max-width: 24.61538462rem; }
+.cv-transport-warning { color: var(--warning); max-width: 70ch; }
+
+/* One timing policy for the whole project. */
+.cv-timing { display: flex; flex-direction: column; gap: 0.46153846rem; margin: 0.76923077rem 0 0.30769231rem; }
+.cv-timing-row { display: flex; gap: 0.61538462rem; }
+.cv-timing-row .cv-field { flex: 1; }
+
+/* Silent devices: folded away, because most runs do not want them and the
+   results table is the thing people came for. */
+.cv-attached { margin: 0.76923077rem 0 0.30769231rem; border-left: 2px solid var(--line); padding-left: 0.76923077rem; }
+.cv-attached > summary { cursor: pointer; color: var(--text-dim); font-size: var(--text-md); }
+.cv-attached > summary:hover { color: var(--text); }
+
+/* Connection points belong on the shape — and the node's
+   bounds ARE the shape, so the handles sit on the node's own edges. The old
+   constants (half of a 46px glyph from its centre) survived the change and
+   left all four dots clustered near the top of the node, where a grab meant
+   to drag the device landed in a handle's enlarged hit area and started a
+   connection instead. */
+.cv-glyph-node .react-flow__handle {
+  width: 7px; height: 7px;
+  background: var(--page);
+  border: 1.5px solid var(--page-border);
+  /* Out of the way until wanted: four dots around every device is clutter on
+     a diagram of any size.
+     
+     Not just invisible — untouchable. An invisible handle keeps its hit area,
+     and the hit area is bigger than the dot, so the handles of a device you
+     are not pointing at sat over its neighbours and swallowed clicks meant
+     for them. A click on a device did nothing and nothing said why. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.cv-glyph-node .react-flow__handle::after {
+  /* A bigger target than the dot, so grabbing one does not need precision. */
+  content: ''; position: absolute; inset: -7px;
+}
+.cv-glyph-node:hover .react-flow__handle,
+.cv-glyph-node.is-selected .react-flow__handle,
+.react-flow.is-connecting .cv-glyph-node .react-flow__handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.cv-glyph-node .react-flow__handle-top { top: 0; left: 50%; }
+.cv-glyph-node .react-flow__handle-bottom { top: 100%; bottom: auto; left: 50%; }
+.cv-glyph-node .react-flow__handle-left { top: 50%; left: 0; }
+.cv-glyph-node .react-flow__handle-right { top: 50%; left: 100%; right: auto; }
+
+/* A halo behind node text, so a link crossing it stays readable.
+   
+   Without a box to sit in, a label and a line that pass through each other
+   are both hard to read. A shadow the colour of the canvas separates them
+   without drawing anything anyone has to look at — and without putting the
+   boxes back. */
+.cv-glyph-label,
+.cv-glyph-addr,
+.cv-glyph-status,
+.cv-node-maint {
+  text-shadow:
+    0 0 3px var(--desk), 0 0 3px var(--desk),
+    1px 0 2px var(--desk), -1px 0 2px var(--desk),
+    0 1px 2px var(--desk), 0 -1px 2px var(--desk);
+}
+
+/* ------------------------------------------------------------------- find */
+.cv-find {
+  position: absolute; z-index: 90; top: 0.92307692rem; left: 50%; transform: translateX(-50%);
+  width: min(33.84615385rem, calc(100% - 2.46153846rem));
+  background: var(--panel); border: 1px solid var(--line-strong);
+  border-radius: var(--radius); box-shadow: 0 16px 38px var(--shadow);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.cv-find-input {
+  background: none; border: none; color: var(--text);
+  padding: 0.69230769rem 0.84615385rem; font-size: var(--text-lg); font-family: inherit; outline: none;
+}
+.cv-find-input::placeholder { color: var(--text-faint); }
+.cv-find-results {
+  border-top: 1px solid var(--line); max-height: 20rem; overflow-y: auto;
+  display: flex; flex-direction: column; padding: 0.30769231rem;
+}
+.cv-find-results button {
+  display: flex; justify-content: space-between; gap: 0.92307692rem; align-items: baseline;
+  text-align: left; background: none; border: none; color: var(--text);
+  padding: 0.46153846rem 0.61538462rem; font-size: var(--text-md); font-family: inherit; cursor: pointer; border-radius: 4px;
+}
+.cv-find-results button:hover { background: var(--panel-2); }
+.cv-find-results button.is-at { background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
+.cv-find-label { font-weight: 600; }
+.cv-find-where {
+  color: var(--text-dim); font-family: var(--mono); font-size: var(--text-sm);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%;
+}
+.cv-find-empty { padding: 0.61538462rem 0.76923077rem; font-size: var(--text-md); color: var(--text-dim); }
+
+/* --------------------------------------------------------------- changes */
+.cv-change {
+  border: 1px solid var(--line-strong); border-radius: var(--radius);
+  background: var(--bg-raised); padding: 0.76923077rem 0.92307692rem; margin: 0.92307692rem 0;
+}
+.cv-change h3 { margin: 0 0 0.46153846rem; font-size: var(--text-lg); }
+.cv-change-group { margin-top: 0.76923077rem; }
+.cv-change-group h4 {
+  margin: 0; font-size: var(--text-md); display: flex; align-items: center; gap: 0.46153846rem;
+}
+.cv-change-count {
+  font-family: var(--mono); font-size: var(--text-sm); color: var(--text-dim);
+  background: var(--panel-2); border-radius: 9px; padding: 0 0.46153846rem;
+}
+.cv-change-group p { margin: 0.15384615rem 0 0.30769231rem; }
+.cv-change-group ul { margin: 0; padding-left: 1.38461538rem; }
+.cv-change-group li { font-size: var(--text-md); font-family: var(--mono); color: var(--text); }
+
+/* -------------------------------------------------------- bulk selection */
+.cv-inspector-sub {
+  display: block; font-weight: 400; font-size: var(--text-sm); color: var(--text-dim);
+  margin-top: 0.15384615rem;
+}
+.cv-row-tight { display: flex; gap: 0.46153846rem; align-items: center; }
+.cv-row-tight .cv-input { flex: 1; min-width: 0; }
+.cv-tag-row { display: flex; flex-wrap: wrap; gap: 0.38461538rem; }
+.cv-tag {
+  font-family: var(--mono); font-size: var(--text-sm); color: var(--text);
+  background: var(--panel-2); border: 1px solid var(--line-strong);
+  border-radius: 10px; padding: 0.15384615rem 0.61538462rem; cursor: pointer;
+}
+.cv-tag:hover { border-color: var(--down); color: var(--down); }
+.cv-tag.is-partial {
+  cursor: default; color: var(--text-dim); border-style: dashed;
+}
+.cv-tag.is-partial:hover { border-color: var(--line-strong); color: var(--text-dim); }
+
+/* --------------------------------------------------------- status history */
+.cv-history { margin: 1.07692308rem 0 0.46153846rem; display: flex; flex-direction: column; gap: 0.46153846rem; }
+.cv-history-head { display: flex; align-items: center; justify-content: space-between; gap: 0.61538462rem; }
+.cv-history-windows { display: flex; gap: 0.15384615rem; }
+.cv-history-windows button {
+  background: none; border: 1px solid transparent; color: var(--text-dim);
+  font-family: var(--mono); font-size: var(--text-xs); padding: 1px 0.46153846rem;
+  border-radius: 4px; cursor: pointer;
+}
+.cv-history-windows button:hover { color: var(--text); }
+.cv-history-windows button.is-at {
+  color: var(--text); border-color: var(--line-strong); background: var(--panel-2);
+}
+.cv-history-strip {
+  display: flex; height: 0.92307692rem; border-radius: 3px; overflow: hidden;
+  border: 1px solid var(--line); background: var(--panel-2);
+  position: relative; cursor: pointer;
+}
+.cv-history-strip span { display: block; height: 100%; min-width: 1px; }
+/* Click the strip to read it more closely. */
+.cv-history-strip.is-expanded { height: 3.07692308rem; }
+/* The scrub line — follows the pointer, read out in the line below. */
+.cv-history-scrub {
+  position: absolute; top: 0; bottom: 0; width: 1px;
+  background: var(--text); pointer-events: none; opacity: 0.8;
+}
+.cv-history-scrub-readout { margin: 0; font-variant-numeric: tabular-nums; }
+.cv-history-legend { display: flex; flex-wrap: wrap; gap: 0.76923077rem; }
+.cv-history-key {
+  display: inline-flex; align-items: center; gap: 0.38461538rem;
+  font-size: var(--text-sm); color: var(--text-dim);
+}
+.cv-history-key i { width: 0.61538462rem; height: 0.61538462rem; border-radius: 2px; display: inline-block; }
+
+/* ------------------------------------------------------- tracing one link */
+/* Pointing at a link fades the rest of them. On a meshed diagram the links
+   necessarily cross, and no amount of routing removes that — but only one of
+   them has to be readable at a time. Nodes and labels are untouched, so the
+   diagram never stops being legible while the pointer is anywhere near it.
+
+   This was `.react-flow__edges:has(.react-flow__edge:hover)`,
+   and can no longer be: the band the pointer actually lands on has to sit
+   above the node layer to be clickable at all, which puts it in a different
+   part of the tree from the line it belongs to, and no selector joins the two
+   back up. `edges/traced.ts` holds the id instead and each link fades itself,
+   which is also what lets a *selected* link stay bright. */
+.react-flow__edge { transition: opacity 160ms ease; }
+
+/* A shape whose outline a border cannot draw. Sits behind the label and takes
+   no pointer events, so the node still drags and selects normally. */
+.cv-node-outline {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none; overflow: visible;
+}
+
+/* ------------------------------------------------------------- sections */
+/* A labelled area that holds the devices standing in it.
+ *
+ * It is drawn under everything else — a section that covered its contents
+ * would turn the diagram into a set of empty boxes — and that layering is
+ * also what keeps the devices inside clickable: they sit on top, so a click
+ * on a device reaches the device and a click on bare ground inside the
+ * section reaches the section, which is how it gets selected and dragged. */
+.cv-node.cv-zone {
+  background: var(--zone-fill);
+  border: 1.5px dashed var(--zone-line);
+  border-radius: 10px;
+  align-items: flex-start;
+  padding: 0;
+}
+.cv-node.cv-zone.is-selected { border-style: solid; }
+.cv-node.cv-zone .cv-node-text {
+  background: var(--zone-title);
+  border-bottom-right-radius: 8px;
+  padding: 3px 10px 4px;
+  max-width: 70%;
+}
+.cv-node.cv-zone .cv-node-label { font-size: var(--canvas-text-md); letter-spacing: 0.02em; }
+.cv-node.cv-zone .cv-node-detail { display: none; }
+.cv-node.cv-zone .react-flow__handle { display: none; }
+/* A section is an area, not a device: it has no address, nothing probes it,
+   and a health badge on it would be reporting on nothing. */
+.cv-node.cv-zone .cv-status-badge { display: none; }
+/* Zoomed far out, the detail nobody can read or aim at is not drawn.
+   The device's grab area stays, so it can still be dragged. */
+.cv-canvas.is-far .cv-glyph-text,
+.cv-canvas.is-far .cv-glyph-badge,
+.cv-canvas.is-far .cv-node-text,
+.cv-canvas.is-far .cv-status-badge,
+.cv-canvas.is-far .react-flow__handle,
+.cv-canvas.is-far .cv-edge-hit,
+.cv-canvas.is-far .react-flow__edge-interaction,
+.cv-canvas.is-far .react-flow__edgelabel-renderer { display: none !important; }
+
+/* Editing a text box in place, line breaks and all. */
+.cv-inline-edit-multi { resize: none; font: inherit; width: 100%; }
+
+/* A label's text style controls in the inspector. */
+.cv-text-style { display: grid; gap: 0.30769231rem; margin: 0.46153846rem 0 0.61538462rem; }
+.cv-input-narrow { width: 4.92307692rem; flex: 0 0 auto; }
+
+/* Where a dragged link end will land — a connection point it has
+   snapped to. */
+.cv-connection-snap {
+  position: absolute; width: 1.07692308rem; height: 1.07692308rem; border-radius: 50%;
+  border: 2px solid var(--canvas-accent); background: transparent;
+  pointer-events: none; z-index: 30;
+}
+/* The ports offered while a link end is dragged near a device, and
+   the name of the one it has snapped to. */
+.cv-port-ticks { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 29; }
+.cv-port-ticks circle { fill: var(--page); stroke: var(--canvas-accent); stroke-width: 1.2; }
+.cv-port-ticks circle.is-on { fill: var(--canvas-accent); }
+.cv-connection-snap-name {
+  position: absolute; left: 1.3rem; top: -0.2rem; white-space: nowrap;
+  font-family: var(--mono); font-size: var(--canvas-text-xs); font-weight: 600;
+  color: var(--ink); background: var(--label-bg); border: 1px solid var(--canvas-accent); border-radius: 3px; padding: 0 0.3rem;
+}
+.cv-canvas:has(.cv-rulers) .cv-ink-bar { top: 26px; left: 26px; }
+
+/* The lasso being drawn. */
+.cv-lasso {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 20; overflow: visible;
+}
+.cv-lasso polygon {
+  fill: var(--canvas-accent); fill-opacity: 0.08;
+  stroke: var(--canvas-accent); stroke-width: 1.5; stroke-dasharray: 5 4;
+}
+
+/* A link's drawn body, faded by TraceFade while another link is pointed at. */
+.cv-link-body { transition: opacity 120ms ease; }
+
+/* A logical boundary draws its own dashed outline (one dash pattern
+   per kind) and a chip naming the area. */
+.cv-boundary-outline {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none; overflow: visible;
+}
+.cv-boundary-chip {
+  font-size: var(--text-sm); font-weight: 700; letter-spacing: 0.02em;
+  margin-right: 0.46153846rem; white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+/* The cable tag in a link's centre label. */
+.cv-cable-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.03em;
+}
+.cv-cable-tag.has-label { margin-right: 0.38461538rem; padding-right: 0.38461538rem; border-right: 1px solid currentColor; }
+.cv-boundary-chip.is-invalid { text-decoration: underline wavy; text-underline-offset: 0.23076923rem; }
+.cv-node.cv-zone .cv-node-text { display: flex; align-items: baseline; flex-wrap: wrap; }
+
+/* A group inside the icon library. A real shape set is hundreds of icons
+   across a dozen families, and one flat alphabetical list of them is not
+   something anyone finds anything in. */
+.cv-palette-sub {
+  cursor: pointer; list-style: none; font-size: var(--text-sm); font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-dim);
+  padding: 0.46153846rem 0.15384615rem 0.30769231rem; display: flex; align-items: center; gap: 0.46153846rem;
+}
+.cv-palette-sub::-webkit-details-marker { display: none; }
+.cv-palette-sub::before { content: '▸'; font-size: var(--text-2xs); transition: transform 120ms ease; }
+details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
+.cv-palette-sub:hover { color: var(--text); }
+.cv-palette-count {
+  font-family: var(--mono); font-weight: 400; letter-spacing: 0;
+  text-transform: none; color: var(--text-faint);
+}
+
+/* The line a device just lined up with. It reaches both boxes and no further:
+   a line across the whole canvas says something is aligned, this says what
+   it is aligned with. Drawn inside the viewport, so it scales with the zoom
+   and stays exactly on the edge it is describing. */
+.cv-guide {
+  position: absolute; z-index: 5; pointer-events: none;
+  background: var(--guide);
+}
+.cv-guide.is-vertical { width: 1px; }
+.cv-guide.is-horizontal { height: 1px; }
+
+/* ---------------------------------------------------------------- views */
+.cv-layers { border-bottom: 1px solid var(--line); margin-bottom: 0.61538462rem; padding-bottom: 0.30769231rem; }
+.cv-layers-hidden {
+  font-size: var(--text-xs); font-weight: 400; letter-spacing: 0; text-transform: none;
+  color: var(--warning);
+}
+.cv-layers-list {
+  display: flex; flex-direction: column; gap: 0.23076923rem; margin: 0.30769231rem 0 0.61538462rem;
+  /* WebKitGTK's overlay scrollbar paints over the palette's right edge
+     without reserving layout space for it (confirmed live: offsetWidth and
+     clientWidth are equal, so `scrollbar-gutter: stable` has nothing to grab
+     and is a no-op here) — a button flush against that edge is under the
+     scrollbar, and elementFromPoint there resolves to the scrolling
+     ancestor, not the button, so it never receives the click. */
+  padding-right: 1.07692308rem;
+}
+.cv-layer { display: flex; align-items: center; gap: 0.30769231rem; }
+.cv-layer-name {
+  flex: 1; min-width: 0; background: none; border: 1px solid transparent;
+  color: var(--text); font-size: var(--text-md); font-family: inherit; padding: 0.15384615rem 0.38461538rem;
+  border-radius: 4px;
+}
+.cv-layer-name:hover { border-color: var(--line); }
+.cv-layer-name:focus { border-color: var(--accent); outline: none; background: var(--bg); }
+.cv-layer-eye, .cv-layer-lock, .cv-layer-print, .cv-layer-remove {
+  background: none; border: none; cursor: pointer; padding: 0.15384615rem 0.23076923rem;
+  color: var(--text-dim); font-size: var(--text-md); line-height: 1; border-radius: 3px;
+}
+.cv-layer-eye:hover, .cv-layer-lock:hover, .cv-layer-print:hover, .cv-layer-remove:hover { color: var(--text); }
+.cv-layer-print.is-off { color: var(--text-faint); text-decoration: line-through; }
+.cv-layers-standard { margin-bottom: 0.46153846rem; }
+.cv-layer-eye.is-off { color: var(--text-faint); }
+.cv-layer-lock.is-on { color: var(--warning); }
+.cv-layer-remove:hover { color: var(--down); }
+.cv-layers-add { margin-bottom: 0.46153846rem; }
+
+/* Pages: a tab strip along the bottom of the canvas, scoped to the
+   canvas's own width rather than the whole window — the shape palette and
+   inspector rails either side keep their own space, the way Lucidchart's
+   page tabs sit only under the drawing area. */
+.cv-page-tabs {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
+  display: flex; align-items: stretch; gap: 0.15384615rem; padding: 0.30769231rem 0.61538462rem;
+  background: var(--panel); border-top: 1px solid var(--line);
+  overflow-x: auto;
+}
+.cv-page-tab {
+  display: flex; align-items: center; padding: 0 0.30769231rem;
+  border: 1px solid transparent; border-radius: 4px 4px 0 0;
+  background: none; cursor: pointer; max-width: 12.30769231rem;
+}
+.cv-page-tab:hover { background: var(--hover); }
+.cv-page-tab.is-active {
+  background: var(--bg); border-color: var(--line) var(--line) var(--bg);
+}
+.cv-page-tab-name {
+  min-width: 0; width: 100%; background: none; border: none;
+  color: var(--text); font-size: var(--text-md); font-family: inherit;
+  padding: 0.38461538rem 0.30769231rem; cursor: inherit; text-overflow: ellipsis;
+}
+.cv-page-tab.is-active .cv-page-tab-name { cursor: text; }
+.cv-page-tab-name:focus { outline: none; }
+.cv-page-tab-add {
+  background: none; border: none; cursor: pointer; color: var(--text-dim);
+  font-size: var(--text-2xl); line-height: 1; padding: 0 0.76923077rem; border-radius: 4px;
+}
+.cv-page-tab-add:hover { color: var(--text); background: var(--hover); }
+
+/* The page navigator — every page with a sketch of what is on it. */
+.cv-page-nav-toggle {
+  background: none; border: none; cursor: pointer; color: var(--text-dim);
+  font-size: var(--text-lg); padding: 0 0.61538462rem; border-radius: 4px; margin-right: 0.30769231rem;
+}
+.cv-page-nav-toggle:hover, .cv-page-nav-toggle.is-on { color: var(--text); background: var(--hover); }
+.cv-page-tabs:has(.cv-page-nav) { overflow: visible; }
+.cv-page-nav {
+  position: absolute; left: 0.61538462rem; bottom: calc(100% + 0.30769231rem); z-index: 20;
+  width: 23.07692308rem; max-height: min(60vh, 40rem); display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.cv-page-nav-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 0.61538462rem;
+  padding: 0.61538462rem 0.76923077rem; border-bottom: 1px solid var(--line);
+  color: var(--text); font-size: var(--text-md); font-weight: 600;
+}
+.cv-page-nav-hint { color: var(--text-dim); font-size: var(--text-xs); font-weight: 400; }
+.cv-page-nav-list { list-style: none; margin: 0; padding: 0.30769231rem; overflow-y: auto; }
+.cv-page-nav-row {
+  display: flex; align-items: center; gap: 0.76923077rem; padding: 0.30769231rem 0.46153846rem;
+  border-radius: 4px; cursor: pointer; border: 1px solid transparent;
+}
+.cv-page-nav-row:hover { background: var(--hover); }
+.cv-page-nav-row.is-active { border-color: var(--accent); background: var(--panel-2); }
+.cv-page-nav-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cv-page-nav-row.is-drop { border-style: dashed; border-color: var(--line); }
+.cv-page-thumb { flex: none; background: var(--bg); border: 1px solid var(--line); border-radius: 3px; }
+.cv-page-thumb-device { fill: var(--text-dim); }
+.cv-page-thumb-zone { fill: none; stroke: var(--line); stroke-width: 1; }
+.cv-page-thumb-link { stroke: var(--text-dim); stroke-width: 0.6; opacity: 0.7; }
+.cv-page-nav-text { display: flex; flex-direction: column; min-width: 0; gap: 0.15384615rem; }
+.cv-page-nav-name { color: var(--text); font-size: var(--text-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-page-nav-count { color: var(--text-dim); font-size: var(--text-xs); }
+.cv-page-nav-rename {
+  font: inherit; font-size: var(--text-md); color: var(--text); background: var(--bg);
+  border: 1px solid var(--accent); border-radius: 3px; padding: 1px 0.30769231rem;
+}
+
+/* A callout: a small card that says something, with a leader pointing at what
+   it is about. Deliberately quiet — it is a remark on the diagram, not part
+   of the network. */
+.cv-node[data-shape='callout'] {
+  background: var(--callout-bg);
+  border: 1px solid var(--callout-line);
+  border-radius: 6px;
+  align-items: center;
+  padding: 6px 9px;
+}
+.cv-node[data-shape='callout'] .cv-node-label { font-weight: 500; white-space: normal; }
+.cv-node[data-shape='callout'] .cv-node-detail,
+.cv-node[data-shape='callout'] .cv-status-badge { display: none; }
+
+/* --------------------------------------------------------------- legend */
+/* Colouring by subnet is only useful if you can tell which colour is which
+   subnet; without this it is a pretty diagram that says nothing. */
+.cv-legend {
+  position: absolute; z-index: 8; left: 0.92307692rem; top: 0.92307692rem;
+  max-width: 20rem; max-height: 45%; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line-strong);
+  border-radius: var(--radius); padding: 0.53846154rem 0.69230769rem;
+  box-shadow: 0 10px 26px var(--shadow);
+}
+.cv-legend-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.61538462rem;
+  font-size: var(--text-sm); font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text-dim); margin-bottom: 0.38461538rem;
+}
+.cv-legend-off {
+  background: none; border: none; color: var(--text-dim); cursor: pointer;
+  font-size: var(--text-lg); line-height: 1; padding: 0 0.15384615rem;
+}
+.cv-legend-off:hover { color: var(--text); }
+.cv-legend-items { display: flex; flex-direction: column; gap: 0.23076923rem; }
+.cv-legend-item { display: flex; align-items: center; gap: 0.46153846rem; font-size: var(--text-sm); }
+.cv-legend-item i { width: 0.69230769rem; height: 0.69230769rem; border-radius: 2px; flex: none; }
+.cv-legend-key {
+  font-family: var(--mono); color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cv-legend-count { margin-left: auto; color: var(--text-faint); font-family: var(--mono); }
+
+/* Settings that sit inside a menu rather than being an action. */
+.cv-dropdown-field {
+  display: flex; flex-direction: column; gap: 0.38461538rem;
+  padding: 0.53846154rem 0.69230769rem; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  margin: 0.30769231rem 0;
+}
+.cv-dropdown-field label {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.61538462rem;
+  font-size: var(--text-sm); color: var(--text-dim);
+}
+.cv-dropdown-field .cv-input { width: 10rem; }
+/* A line in the change report that can be gone to. */
+.cv-change-show {
+  background: none; border: none; padding: 0; text-align: left;
+  font: inherit; color: inherit; cursor: pointer;
+  text-decoration: underline; text-decoration-style: dotted;
+  text-underline-offset: 0.23076923rem;
+}
+.cv-change-show:hover { color: var(--accent); }
+
+/* Space held: the pointer is a hand and a drag moves the whole diagram.
+   The cursor has to say so, or holding space looks like nothing happened. */
+.cv-canvas.is-panning,
+.cv-canvas.is-panning .react-flow__pane { cursor: grab; }
+.cv-canvas.is-panning .react-flow__pane:active { cursor: grabbing; }
+/* Nothing here disables the nodes while space is held: React Flow sets
+   pointer-events on them inline, which no stylesheet can beat. It is done
+   through `nodesDraggable` instead. */
+/* The sheet that takes the drag while space is held. Transparent, but it has
+   to be there: a drag that begins over a device is captured by the device
+   before the canvas sees it. */
+.cv-pan-sheet {
+  position: absolute; inset: 0; z-index: 20; cursor: grab;
+}
+.cv-pan-sheet:active { cursor: grabbing; }
+
+/* ----------------------------------------------------------------- page */
+/* The sheet the diagram is drawn on, floating on the desk. The border and the
+   shadow are the whole point: without an edge, white is just the absence of
+   anything. */
+.cv-page {
+  /* Behind everything. The viewport portal appends after the edge layer, so
+     without this the page painted over the links — the devices still showed,
+     because they are rendered later still, which made it look like the links
+     had simply gone. */
+  z-index: -1;
+  background: var(--page);
+  border: 1px solid var(--page-border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 10px 28px rgba(0, 0, 0, 0.05);
+  pointer-events: none;
+}
+.cv-page-grid { position: absolute; inset: 0; }
+
+/* ------------------------------------------------------------ shortcuts */
+.cv-help-scrim {
+  position: fixed; inset: 0; z-index: 200; background: var(--scrim);
+  display: flex; align-items: center; justify-content: center;
+}
+.cv-help-card {
+  background: var(--chrome); border: 1px solid var(--chrome-edge);
+  border-radius: 10px; box-shadow: 0 24px 60px var(--shadow-deep);
+  padding: 1.38461538rem 1.69230769rem; max-width: 58.46153846rem; max-height: 80vh; overflow-y: auto;
+}
+.cv-help-head { display: flex; justify-content: space-between; align-items: center; }
+.cv-help-head h2 { margin: 0 0 0.46153846rem; font-size: var(--text-xl); }
+.cv-help-head button {
+  background: none; border: none; font-size: var(--text-3xl); cursor: pointer; color: var(--text-dim);
+}
+.cv-help-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(16.92307692rem, 1fr)); gap: 0.30769231rem 2rem; }
+.cv-help-cols h3 {
+  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-faint); margin: 0.92307692rem 0 0.30769231rem;
+}
+.cv-help-row { display: flex; gap: 0.76923077rem; align-items: baseline; padding: 0.15384615rem 0; font-size: var(--text-md); }
+.cv-help-row kbd {
+  font-family: var(--mono); font-size: var(--text-xs); white-space: nowrap;
+  background: var(--bg-raised); border: 1px solid var(--chrome-edge);
+  border-bottom-width: 2px; border-radius: 4px; padding: 1px 0.46153846rem;
+}
+.cv-help-row span { color: var(--text-dim); }
+
+.cv-tr-card { min-width: 32.30769231rem; }
+.cv-tr-card h2 { display: flex; gap: 0.46153846rem; align-items: baseline; }
+.cv-tr-table { width: 100%; border-collapse: collapse; margin-top: 0.76923077rem; font-size: var(--text-md); }
+.cv-tr-table th {
+  text-align: left; font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-faint); padding: 0 0.61538462rem 0.30769231rem 0; border-bottom: 1px solid var(--chrome-edge);
+}
+.cv-tr-table td { padding: 0.23076923rem 0.61538462rem 0.23076923rem 0; vertical-align: top; border-bottom: 1px solid var(--chrome-edge); }
+.cv-tr-table tr:last-child td { border-bottom: none; }
+.cv-tr-table td:first-child { color: var(--text-dim); }
+.cv-tr-changed td { background: color-mix(in srgb, var(--warning) 14%, transparent); }
+.cv-tr-changed td:first-child { color: var(--warning); font-weight: 600; }
+
+/* What the panel filter matches, lit on the canvas. Everything else steps
+   back rather than vanishing — the point is to find, not to hide. */
+.cv-glyph-node.is-hit .cv-glyph-art::after,
+.cv-node.is-hit::after {
+  content: ''; position: absolute; inset: -6px; border-radius: 10px;
+  border: 2px solid var(--warning); pointer-events: none;
+}
+.cv-glyph-node.is-hit .cv-glyph-art::after { border-radius: 50%; }
+.cv-glyph-node.is-dimmed, .cv-node.is-dimmed { opacity: 0.3; }
+
+/* Unsaved work found from a session that ended badly. Loud on purpose: it is
+   answered once and gone, and quiet recovery prompts get dismissed unread. */
+.cv-recovery {
+  display: flex; align-items: center; gap: 0.76923077rem; padding: 0.53846154rem 0.92307692rem;
+  background: var(--notice-bg); border-bottom: 1px solid var(--notice-line);
+  color: var(--notice-text); font-size: var(--text-md);
+}
+
+/* --- the monitored-objects row, floated over the node on hover
+   while validation runs. Tokens only, so it holds in both themes; no
+   pointer-events, so it never steals the drag it is hovering over. --- */
+.cv-livecard {
+  position: absolute;
+  bottom: calc(100% + 0.76923077rem);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 15.38461538rem;
+  max-width: 21.53846154rem;
+  padding: 0.61538462rem 0.76923077rem;
+  background: var(--chrome);
+  border: 1px solid var(--chrome-edge);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--text);
+  pointer-events: none;
+  z-index: 40;
+  text-align: left;
+}
+.cv-livecard-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.92307692rem;
+  font-weight: 600;
+  margin-bottom: 0.38461538rem;
+  padding-bottom: 0.38461538rem;
+  border-bottom: 1px solid var(--chrome-edge);
+}
+.cv-livecard-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-livecard dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15384615rem 0.92307692rem;
+  margin: 0;
+}
+.cv-livecard dt {
+  color: var(--text-faint);
+}
+.cv-livecard dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- labels that ride the link. The centre label and the
+   port labels take the pointer again — they are things you drag now, which
+   costs the hover-the-link trick underneath them and is worth it. Flat text
+   is written straight on the line: no box, no border, just ink with the
+   canvas halo. --- */
+/* Above the clickable band, which covers the line these sit on. */
+.cv-edge-center, .cv-edge-port { pointer-events: auto; cursor: grab; z-index: 3; }
+.cv-edge-center:active, .cv-edge-port:active { cursor: grabbing; }
+.cv-edge-flat {
+  position: absolute;
+  pointer-events: auto;
+  cursor: grab;
+  z-index: 3;
+  background: none;
+  border: none;
+  font-family: var(--mono);
+  font-size: var(--canvas-text-xs);
+  color: var(--ink);
+  white-space: nowrap;
+  text-shadow:
+    0 0 3px var(--desk), 0 0 3px var(--desk),
+    1px 0 2px var(--desk), -1px 0 2px var(--desk),
+    0 1px 2px var(--desk), 0 -1px 2px var(--desk);
+}
+.cv-edge-flat:active { cursor: grabbing; }
+.cv-edge-flat input {
+  width: 90px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--label-bg);
+  border: 1px solid var(--page-border);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+/* --- the built-in shape library folds behind one header, its
+   categories nested a level in. --- */
+.cv-palette-lib {
+  cursor: pointer; font-weight: 600; font-size: var(--text-md);
+  padding: 0.30769231rem 0; list-style: none;
+  display: flex; align-items: center; gap: 0.46153846rem;
+}
+.cv-palette-lib::-webkit-details-marker { display: none; }
+.cv-palette-lib::before { content: '▸'; font-size: var(--text-2xs); color: var(--text-faint); }
+details[open] > .cv-palette-lib::before { content: '▾'; }
+.cv-palette-nested { margin-left: 0.61538462rem; }
+
+/* --- handles for reshaping a link by hand. A solid dot at each
+   waypoint (drag to move, double-click to drop), a hollow dot at each
+   segment midpoint (drag to bend a new one in). --- */
+.cv-edge-waypoint, .cv-edge-addpoint {
+  position: absolute; width: 10px; height: 10px;
+  pointer-events: auto; cursor: grab; z-index: 6;
+}
+/* A filled square at each real waypoint — Lucidchart's vertex handle. */
+.cv-edge-waypoint { background: var(--canvas-accent); border: 1.5px solid var(--page); border-radius: 2px; }
+/* A hollow circle at each segment midpoint — grab to add a bend. */
+.cv-edge-addpoint {
+  background: var(--page); border: 1.5px solid var(--canvas-accent);
+  border-radius: 50%; opacity: 0.7;
+}
+.cv-edge-addpoint:hover { opacity: 1; }
+.cv-edge-waypoint:active, .cv-edge-addpoint:active { cursor: grabbing; }
+
+/* --- a pill grip on each segment of a step link. Drag to slide the
+   segment orthogonally; press and hold to reset the line. --- */
+.cv-edge-grip {
+  position: absolute; width: 16px; height: 8px; border-radius: 5px;
+  background: var(--canvas-accent); border: 1.5px solid var(--page);
+  pointer-events: auto; cursor: move; z-index: 6;
+}
+.cv-edge-grip:active { cursor: grabbing; }
+
+/* --- the handle that bows a curved link. A ring, so it reads as
+   "pull me" rather than as a point on the line. --- */
+.cv-edge-curve {
+  position: absolute; width: 11px; height: 11px; border-radius: 50%;
+  background: var(--page); border: 2px solid var(--canvas-accent);
+  pointer-events: auto; cursor: ns-resize; z-index: 6;
+}
+.cv-edge-curve:active { cursor: grabbing; }
+
+/* --- the handle at each end of a link, right where it meets its
+   device — drag anywhere around that shape's own edge; double-click to put
+   it back on automatic. A ring rather than a filled dot, so it reads
+   distinctly from the waypoint handles a step or curved link also shows. --- */
+.cv-edge-endpoint {
+  position: absolute; width: 13px; height: 13px; border-radius: 50%;
+  background: transparent; border: 2px solid var(--canvas-accent);
+  pointer-events: auto; cursor: grab; z-index: 7; opacity: 0.85;
+}
+.cv-edge-endpoint:hover { opacity: 1; background: var(--page); }
+.cv-edge-endpoint:active { cursor: grabbing; }
+
+/* --- the clickable band along a link.
+   Drawn in the label layer so it sits above the nodes; the line itself stays
+   in the edge layer below them, because a cable passing behind a device is
+   what a diagram should look like. Only the stroke takes the pointer, and
+   only 12px of it, so this catches a deliberate click on a line without
+   taking the device under it away from the pointer. Below the endpoint and
+   waypoint handles, which must still win where they overlap. --- */
+/* Just above a resting node, and no further.
+   Known limit: React Flow raises a *selected* node to z-index 1004,
+   so a link crossing the device you have selected still cannot be clicked.
+   Raising this band over that was tried and backed out — above the nodes it
+   also covers their connection handles, and a new link could no longer be
+   drawn from, or dropped onto, a device. Trimming the band's ends mitigates
+   that for ordinary links but not for short ones, where there is nothing left
+   to trim. The fix needs the node's own hit area to stop being a full square,
+   not a bigger number here. */
+.cv-edge-hit { position: absolute; left: 0; top: 0; overflow: visible; z-index: 2; }
+.cv-edge-hit path {
+  fill: none; stroke: transparent; stroke-width: 12;
+  /* Twelve *screen* pixels, not twelve canvas units. Without this the band
+     shrinks with the zoom like everything else on the canvas, and a link
+     stops being clickable long before it stops being visible — measured at
+     0.14 zoom, where the band is under two pixels wide. */
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke; cursor: pointer;
+}
+
+/* --- what a broken panel looks like, instead of an empty window. --- */
+.cv-boundary {
+  margin: 0.92307692rem; padding: 0.92307692rem 1.07692308rem;
+  border: 1px solid var(--down); border-radius: var(--radius);
+  background: var(--panel); color: var(--text);
+}
+.cv-boundary-detail {
+  font-family: var(--mono); font-size: var(--text-sm); color: var(--text-dim);
+  white-space: pre-wrap; margin: 0.61538462rem 0; max-height: 10.76923077rem; overflow: auto;
+}
+
+/* --- the transition log under Recent status — when each state
+   started, as a date-time group, newest first. --- */
+.cv-history-log {
+  list-style: none; margin: 0.46153846rem 0 0; padding: 0;
+  font-size: var(--text-sm); max-height: 11.38461538rem; overflow: auto;
+}
+/* The strip's own click-to-enlarge shows more of the log behind it
+   too — a taller strip with the same 12 lines below it answered "more
+   detail" with a bigger picture of the same thing, not actually more. */
+.cv-history-log.is-expanded { max-height: 27.69230769rem; }
+.cv-history-log li {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 0.61538462rem;
+  align-items: baseline; padding: 0.15384615rem 0;
+  border-top: 1px solid var(--line);
+}
+.cv-history-dtg { color: var(--text-dim); font-size: var(--text-xs); white-space: nowrap; }
+
+/* --- the clock picker in the top bar, and the zone note under the
+   transition log. --- */
+.cv-input-inline {
+  height: 1.69230769rem; padding: 0 0.30769231rem; font-size: var(--text-sm); margin-left: 0.46153846rem;
+  max-width: 10.15384615rem;
+}
+.cv-history-zone { margin: 0.46153846rem 0 0; font-size: var(--text-xs); }
+
+/* Rack elevations. They were in the bottom panel and a 42U rack is
+   taller than any panel; Gave them the Tools screen, which is where the
+   height was always going to have to come from. */
+.cv-racks { display: flex; flex-direction: column; gap: 0.61538462rem; padding: 0.61538462rem 0.92307692rem; min-height: 100%; height: 100%; min-width: 0; }
+.cv-racks-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.61538462rem; }
+.cv-racks-message { color: var(--text-dim); font-size: var(--text-md); }
+.cv-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.cv-seg button {
+  background: none; border: none; color: var(--text-dim); font: inherit; font-size: var(--text-md);
+  padding: 0.30769231rem 0.76923077rem; cursor: pointer;
+}
+.cv-seg button + button { border-left: 1px solid var(--line); }
+.cv-seg button.is-on { background: var(--panel-2); color: var(--text); }
+.cv-racks-zoomctl { display: inline-flex; gap: 0.15384615rem; align-items: center; }
+.cv-racks-zoomvalue { min-width: 3.4rem; font-variant-numeric: tabular-nums; }
+.cv-racks-place-filter { max-width: 20rem; }
+.cv-racks-chosen {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.61538462rem; font-size: var(--text-md); color: var(--text-dim);
+  padding: 0.30769231rem 0.61538462rem; border: 1px solid var(--line); border-radius: 4px;
+}
+.cv-racks-chosen strong { color: var(--text); }
+.cv-racks-chosen .cv-field-inline { flex-direction: row; align-items: center; gap: 0.30769231rem; }
+.cv-racks-chosen .cv-field-inline > span { text-transform: none; letter-spacing: 0; font-size: var(--text-sm); color: var(--text-dim); }
+.cv-racks-chosen .cv-field-inline .cv-input { width: auto; max-width: 11rem; }
+.cv-racks-chosen .cv-field-wide .cv-input { max-width: 20rem; }
+.cv-racks-body { display: flex; align-items: stretch; gap: 0.92307692rem; flex: 1; min-height: 0; }
+.cv-racks-waiting { flex: none; width: 17.69230769rem; display: flex; flex-direction: column; gap: 0.46153846rem; overflow-y: auto; padding-right: 0.30769231rem; }
+/* The column scrolls; its sections never squash into each other in a short window. */
+.cv-racks-waiting > * { flex-shrink: 0; }
+.cv-racks-waiting > ul { list-style: none; margin: 0; padding: 0; max-height: 16rem; overflow-y: auto; }
+.cv-racks-device {
+  display: flex; justify-content: space-between; gap: 0.46153846rem; padding: 0.23076923rem 0.46153846rem; font-size: var(--text-md);
+  color: var(--text); border-radius: 3px; cursor: grab;
+}
+.cv-racks-device:hover { background: var(--hover); }
+.cv-racks-device.is-selected { outline: 1px solid var(--accent); }
+.cv-racks-device-name { display: inline-flex; align-items: center; gap: 0.38461538rem; min-width: 0; }
+.cv-racks-device-glyph { width: 1.07692308rem; height: 1.07692308rem; flex: none; }
+.cv-racks-units { color: var(--text-dim); white-space: nowrap; }
+.cv-racks-side-head { margin: 0.61538462rem 0 0; font-size: var(--text-2xs); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
+.cv-racks-furniture { display: grid; grid-template-columns: 1fr 1fr; gap: 0.30769231rem; }
+.cv-racks-furniture-item { display: flex; align-items: center; gap: 0.38461538rem; justify-content: flex-start; text-align: left; cursor: grab; }
+.cv-racks-furniture-item svg { width: 1.07692308rem; height: 1.07692308rem; flex: none; color: var(--text-dim); }
+.cv-racks-templates { display: flex; flex-direction: column; gap: 0.38461538rem; }
+.cv-racks-template-line { margin: 0; }
+.cv-racks-stacks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.23076923rem; }
+.cv-racks-stack { display: flex; flex-wrap: wrap; align-items: center; gap: 0.38461538rem; font-size: var(--text-md); }
+.cv-racks-stack-swatch { display: inline-block; width: 0.69230769rem; height: 0.69230769rem; border-radius: 2px; vertical-align: middle; }
+/* The stack editor is a card across the top of the stage, not a column. */
+.cv-racks-stackeditor { display: flex; flex-direction: column; gap: 0.46153846rem; padding: 0.61538462rem 0.76923077rem; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); }
+.cv-racks-stackeditor-row { display: flex; flex-wrap: wrap; gap: 0.61538462rem; align-items: flex-end; }
+.cv-racks-stackeditor .cv-field { flex: 0 1 16rem; margin: 0; }
+.cv-racks-stackeditor .cv-field.cv-field-narrow { flex-basis: 8rem; }
+.cv-racks-stacknote { margin: 0; }
+.cv-racks-stackmembers { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 0.30769231rem 0.76923077rem; font-size: var(--text-md); }
+.cv-racks-stackmembers li { display: inline-flex; align-items: center; gap: 0.38461538rem; padding: 0.15384615rem 0.46153846rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); }
+/* The stage — a ground the racks stand on, scrolled and zoomed. */
+.cv-racks-stage {
+  flex: 1; min-width: 0; min-height: 24rem; overflow: auto; position: relative;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  /* A step above the panels, not the desk, so the racks stand out of it rather than sink into it. */
+  background-color: color-mix(in srgb, var(--text) 4%, var(--panel));
+  background-image:
+    linear-gradient(to bottom, transparent 0, transparent 92%, color-mix(in srgb, var(--text) 8%, transparent) 100%),
+    radial-gradient(color-mix(in srgb, var(--text) 16%, transparent) 1px, transparent 1px);
+  background-size: 100% 100%, 1.84615385rem 1.84615385rem;
+}
+.cv-racks-zoom { transform-origin: top left; padding: 1.23076923rem; display: flex; flex-direction: column; gap: 1.84615385rem; width: max-content; min-width: 100%; }
+.cv-racks-empty { position: absolute; inset: 0; margin: auto; height: max-content; text-align: center; max-width: 24.61538462rem; }
+.cv-racks-place { display: flex; flex-direction: column; gap: 0.61538462rem; }
+.cv-racks-place-head { margin: 0; font-size: var(--text-sm); letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+.cv-racks-row { display: flex; align-items: flex-start; gap: 3.69230769rem; }
+.cv-rack { flex: none; width: 26.15384615rem; display: flex; flex-direction: column; gap: 0.30769231rem; padding: 0.61538462rem; border-radius: 6px; border: 1px solid var(--line-strong); background: color-mix(in srgb, var(--text) 7%, var(--panel-2)); box-shadow: 0 2px 10px var(--shadow); }
+.cv-rack.is-target { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.cv-rack-head { display: flex; gap: 0.30769231rem; align-items: center; }
+.cv-rack-name { flex: 1; min-width: 0; font-weight: 600; }
+.cv-rack-place { font-size: var(--text-sm); color: var(--text-dim); padding: 0 0.15384615rem; }
+.cv-rack-wherefields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.30769231rem; padding: 0.30769231rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.cv-rack-frame { display: flex; align-items: flex-start; position: relative; }
+.cv-rack-numbers {
+  list-style: none; margin: 0; padding: 0; width: 1.69230769rem;
+  color: var(--text-dim); font-size: var(--text-2xs); font-variant-numeric: tabular-nums;
+}
+.cv-rack-numbers.is-left { text-align: right; padding-right: 0.23076923rem; }
+.cv-rack-numbers.is-right { text-align: left; padding-left: 0.23076923rem; }
+.cv-rack-numbers li { display: flex; align-items: center; }
+.cv-rack-numbers.is-left li { justify-content: flex-end; }
+.cv-rack-numbers li.is-fifth { color: var(--text); font-weight: 600; }
+/* The posts: a strip of mounting holes, three a U. */
+.cv-rack-post {
+  flex: none; width: 0.61538462rem; background: color-mix(in srgb, var(--text) 18%, var(--panel-2)); border: 1px solid color-mix(in srgb, var(--text) 22%, var(--line-strong));
+  background-image: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--text) 45%, var(--panel-2)) 1.2px, transparent 1.6px);
+  background-size: 100% calc(14px / 3);
+}
+.cv-rack-post.is-left { border-right: 0; border-radius: 3px 0 0 3px; }
+.cv-rack-post.is-right { border-left: 0; border-radius: 0 3px 3px 0; }
+.cv-rack-slots {
+  /* How many zero-U strips stand in the right-hand column; the panel sets it per rack. */
+  --zerou: 0;
+  position: relative; flex: 1; box-sizing: content-box; border-top: 2px solid color-mix(in srgb, var(--text) 22%, var(--line-strong)); border-bottom: 2px solid color-mix(in srgb, var(--text) 22%, var(--line-strong)); background: color-mix(in srgb, var(--text) 5%, var(--panel-2));
+  background-image: repeating-linear-gradient(to bottom, transparent 0 13px, color-mix(in srgb, var(--text) 10%, var(--line-strong)) 13px 14px);
+}
+.cv-rack-base { height: 0.46153846rem; margin: 0 1.4rem; border-radius: 0 0 4px 4px; background: color-mix(in srgb, var(--text) 18%, var(--panel-2)); border: 1px solid color-mix(in srgb, var(--text) 22%, var(--line-strong)); border-top: 0; }
+/* The cables run from the right post out into the gap between racks, over the right-hand numbers. */
+.cv-rack-cables { position: absolute; left: calc(100% - 1.69230769rem); top: 0; overflow: visible; pointer-events: none; }
+.cv-rack-cables path { stroke-linecap: round; }
+/* A faceplate. */
+.cv-rack-item {
+  /* A zero-U strip takes a column of its own on the right, so a faceplate stops short of it. */
+  position: absolute; left: 0.15384615rem; right: calc(0.15384615rem + var(--zerou) * 0.76923077rem); display: flex; align-items: center; gap: 0.30769231rem;
+  background: color-mix(in srgb, var(--text) 20%, var(--panel-2)); border: 1px solid color-mix(in srgb, var(--text) 34%, var(--line-strong)); border-radius: 2px;
+  color: var(--text); font: inherit; font-size: var(--text-xs); padding: 0 0.30769231rem 0 0; cursor: grab; overflow: hidden;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 10%, transparent), inset 0 -1px 0 color-mix(in srgb, #000 35%, transparent);
+}
+.cv-rack-item.is-device { border-color: color-mix(in srgb, var(--rack-item-colour) 60%, var(--line-strong)); }
+.cv-rack-item-strip { flex: none; align-self: stretch; width: 0.30769231rem; background: var(--rack-item-colour); }
+.cv-rack-item-glyph { flex: none; width: 1rem; height: 1rem; color: var(--text-dim); }
+.cv-rack-item.is-1u .cv-rack-item-glyph { width: 0.84615385rem; height: 0.84615385rem; }
+.cv-rack-item-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; text-align: left; }
+.cv-rack-item-stack { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 0.92307692rem; height: 0.92307692rem; border-radius: 50%; background: var(--text); color: var(--bg); font-size: 0.6rem; font-weight: 700; }
+.cv-rack-ports { flex: none; display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 3px); gap: 1px; align-self: center; }
+.cv-rack-ports i { display: block; width: 3px; height: 3px; background: color-mix(in srgb, var(--text) 45%, transparent); border-radius: 0.5px; }
+.cv-rack-ports.is-dense { grid-template-rows: repeat(2, 2px); gap: 1px; }
+.cv-rack-ports.is-dense i { width: 2px; height: 2px; }
+.cv-rack-psus { flex: none; display: flex; gap: 2px; }
+.cv-rack-psus i { display: block; width: 0.84615385rem; height: 0.46153846rem; border: 1px solid color-mix(in srgb, var(--text) 40%, transparent); border-radius: 1px; }
+.cv-rack-air { flex: none; font-size: 0.7rem; line-height: 1; }
+.cv-rack-air.is-in { color: var(--accent); }
+.cv-rack-air.is-out { color: var(--down); }
+.cv-rack-air.is-side, .cv-rack-air.is-passive { color: var(--text-faint); }
+.cv-rack-item.is-furniture { background: color-mix(in srgb, var(--text) 13%, var(--panel-2)); color: var(--text); padding-left: 0.30769231rem; }
+.cv-rack-item.is-furniture.is-blank { background: repeating-linear-gradient(90deg, var(--panel) 0 6px, var(--panel-2) 6px 7px); }
+.cv-rack-item.is-furniture.is-shelf { background: linear-gradient(to bottom, var(--panel-2), var(--panel)); border-top-width: 2px; }
+.cv-rack-item.is-furniture.is-reserved { background: repeating-linear-gradient(-45deg, transparent 0 5px, color-mix(in srgb, var(--warning) 22%, transparent) 5px 8px); border: 1px dashed var(--warning); color: var(--text); }
+.cv-rack-item.is-furniture.is-ups, .cv-rack-item.is-furniture.is-server, .cv-rack-item.is-furniture.is-storage { background: var(--panel-2); color: var(--text); }
+.cv-rack-item.is-behind {
+  cursor: default; border-style: dashed; border-color: var(--line); color: var(--text-dim); font-style: italic;
+  background: repeating-linear-gradient(45deg, transparent 0 0.30769231rem, var(--hover) 0.30769231rem 0.53846154rem);
+}
+.cv-rack-item.is-clash { border: 2px solid var(--down); }
+.cv-rack-item.is-selected { box-shadow: 0 0 0 2px var(--accent); z-index: 1; }
+.cv-rack-item:focus-visible { outline: 2px solid var(--accent); }
+.cv-rack-ghost {
+  position: absolute; left: 0; right: calc(var(--zerou) * 0.76923077rem); pointer-events: none; z-index: 2;
+  border: 2px dashed var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.cv-rack-ghost.is-refused { border-color: var(--down); background: color-mix(in srgb, var(--down) 18%, transparent); }
+/* The swatches. */
+.cv-racks-swatches { display: inline-flex; gap: 0.23076923rem; align-items: center; }
+.cv-swatch { width: 1.07692308rem; height: 1.07692308rem; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.cv-swatch.is-on { border-color: var(--text); box-shadow: 0 0 0 1px var(--bg); }
+.cv-swatch.is-none { background: var(--panel-2); color: var(--text-dim); font-size: var(--text-xs); line-height: 1; border-color: var(--line-strong); }
+/* The status light and the fascias. */
+.cv-rack-led { flex: none; width: 0.38461538rem; height: 0.38461538rem; border-radius: 50%; background: var(--text-faint); box-shadow: 0 0 3px transparent; }
+.cv-rack-led.is-healthy { background: var(--healthy); box-shadow: 0 0 4px var(--healthy); }
+.cv-rack-led.is-warning { background: var(--warning); box-shadow: 0 0 4px var(--warning); }
+.cv-rack-led.is-down { background: var(--down); box-shadow: 0 0 4px var(--down); }
+.cv-fascia { flex: none; display: inline-flex; align-items: center; gap: 1px; }
+.cv-fascia i { display: block; background: color-mix(in srgb, var(--text) 55%, transparent); border-radius: 0.5px; }
+.cv-fascia i.is-gap { margin-right: 2px; }
+.cv-fascia.is-switch, .cv-fascia.is-router, .cv-fascia.is-rear { gap: 4px; }
+.cv-fascia.is-ports { display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 3px); gap: 1px; }
+.cv-fascia.is-ports i { width: 3px; height: 3px; }
+.cv-fascia.is-ports[data-count="48"], .cv-fascia.is-ports[data-count="32"] { grid-template-rows: repeat(2, 2px); }
+.cv-fascia.is-ports[data-count="48"] i, .cv-fascia.is-ports[data-count="32"] i { width: 2px; height: 2px; }
+.cv-fascia.is-uplinks i { width: 5px; height: 6px; background: color-mix(in srgb, var(--accent) 55%, transparent); }
+.cv-fascia.is-leds i { width: 3px; height: 3px; border-radius: 50%; background: var(--healthy); }
+.cv-fascia.is-leds i:nth-child(2) { background: var(--warning); }
+.cv-fascia.is-leds i:nth-child(3) { background: var(--text-faint); }
+.cv-fascia.is-bays i { width: 4px; height: 8px; background: color-mix(in srgb, var(--text) 30%, transparent); border-top: 2px solid color-mix(in srgb, var(--healthy) 70%, transparent); }
+.cv-fascia.is-bays.is-tall i { height: 18px; }
+.cv-fascia.is-drives { display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 4px); gap: 1px; }
+.cv-fascia.is-drives i { width: 7px; height: 4px; background: color-mix(in srgb, var(--text) 30%, transparent); }
+.cv-fascia.is-drives.is-tall { grid-template-rows: repeat(3, 5px); }
+.cv-fascia.is-blades i { width: 5px; height: 10px; background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.cv-fascia.is-jacks { display: grid; grid-auto-flow: column; grid-template-rows: repeat(1, 5px); gap: 1px; }
+.cv-fascia.is-jacks i { width: 3px; height: 5px; background: color-mix(in srgb, var(--accent) 50%, transparent); }
+.cv-fascia.is-fibre i { width: 4px; height: 5px; background: color-mix(in srgb, #2cc6c6 60%, transparent); border-radius: 1px; }
+.cv-fascia.is-outlets i { width: 5px; height: 5px; border-radius: 50%; background: transparent; border: 1px solid color-mix(in srgb, var(--text) 55%, transparent); }
+.cv-fascia.is-battery { width: 2.6rem; height: 6px; border: 1px solid color-mix(in srgb, var(--text) 50%, transparent); border-radius: 1px; padding: 1px; }
+.cv-fascia.is-battery i { height: 100%; background: var(--healthy); }
+.cv-fascia.is-fingers i { width: 3px; height: 8px; background: color-mix(in srgb, var(--text) 25%, transparent); border-radius: 1px 1px 0 0; }
+.cv-fascia.is-ribs i { width: 2px; height: 7px; background: color-mix(in srgb, var(--text) 14%, transparent); }
+.cv-fascia.is-plate { width: 3rem; height: 3px; background: color-mix(in srgb, var(--text) 35%, transparent); border-radius: 1px; }
+.cv-fascia.is-screen i { width: 1.6rem; height: 8px; border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); border-radius: 1px; background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.cv-fascia.is-fans i { width: 7px; height: 7px; border-radius: 50%; background: transparent; border: 1px dashed color-mix(in srgb, var(--text) 45%, transparent); }
+.cv-fascia.is-psus i { width: 0.84615385rem; height: 0.46153846rem; background: transparent; border: 1px solid color-mix(in srgb, var(--text) 45%, transparent); border-radius: 1px; }
+.cv-rack-item.has-colour { border-color: color-mix(in srgb, var(--rack-item-colour) 60%, var(--line-strong)); }
+.cv-rack-item.is-furniture.has-colour { color: var(--text); }
+/* A zero-U item down the post. */
+.cv-rack-zerou { position: absolute; top: 0; bottom: 0; right: 0; display: flex; gap: 2px; padding: 2px; pointer-events: none; }
+.cv-rack-zerou-item { pointer-events: auto; width: 0.61538462rem; height: 100%; border: 1px solid var(--line-strong); border-radius: 2px; background: repeating-linear-gradient(to bottom, var(--panel-2) 0 10px, color-mix(in srgb, var(--text) 25%, transparent) 10px 12px); color: var(--text-dim); padding: 0; cursor: pointer; writing-mode: vertical-rl; font: inherit; font-size: var(--text-2xs); overflow: hidden; }
+.cv-rack-zerou-item span { display: block; padding: 0.3rem 0; white-space: nowrap; background: var(--panel-2); }
+.cv-rack-zerou-item.is-selected { box-shadow: 0 0 0 2px var(--accent); }
+.cv-rack-zerou-item[style*="--rack-item-colour"] { border-color: var(--rack-item-colour); }
+/* The side view — a box as deep as it is, from the rail it is mounted on. */
+.cv-rack.is-view-side .cv-rack-slots { background-image: repeating-linear-gradient(to bottom, transparent 0 13px, var(--line) 13px 14px), linear-gradient(to right, color-mix(in srgb, var(--text) 5%, transparent), transparent 20%, transparent 80%, color-mix(in srgb, var(--text) 5%, transparent)); }
+.cv-rack-side-rail { position: absolute; bottom: -1.2rem; font-size: var(--text-2xs); letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); }
+.cv-rack-side-rail.is-front { left: 0; }
+.cv-rack-side-rail.is-rear { right: 0; }
+.cv-rack-side-item { position: absolute; display: flex; align-items: center; gap: 0.3rem; padding: 0 0.3rem; background: color-mix(in srgb, var(--text) 18%, var(--panel-2)); border: 1px solid var(--line-strong); border-left: 3px solid var(--rack-item-colour); border-radius: 2px; color: var(--text); font: inherit; font-size: var(--text-xs); overflow: hidden; cursor: pointer; box-shadow: inset 0 -1px 0 color-mix(in srgb, #000 35%, transparent); }
+.cv-rack-side-item.is-front { left: 0.15384615rem; }
+.cv-rack-side-item.is-rear { right: calc(0.15384615rem + var(--zerou) * 0.76923077rem); border-left: 1px solid var(--line-strong); border-right: 3px solid var(--rack-item-colour); flex-direction: row-reverse; }
+.cv-rack-side-item.is-reserved { background: repeating-linear-gradient(-45deg, transparent 0 5px, color-mix(in srgb, var(--warning) 22%, transparent) 5px 8px); border-style: dashed; }
+.cv-rack-side-item.is-selected { box-shadow: 0 0 0 2px var(--accent); z-index: 1; }
+.cv-rack-side-depth { margin-left: auto; color: var(--text-faint); font-size: var(--text-2xs); white-space: nowrap; }
+.cv-rack-size { display: block; color: var(--text-faint); font-size: var(--text-2xs); }
+.cv-rack.is-view-side .cv-rack-frame { margin-bottom: 1rem; }
+/* Cables over the slots; a cable can be pointed at and clicked, the rest passes through. */
+.cv-rack-patch { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 1; }
+.cv-rack-patch-cable path { opacity: 0.9; transition: opacity 120ms ease, stroke-width 120ms ease; }
+.cv-rack-patch-cable:hover path { stroke-width: 2.6; opacity: 1; }
+/* The chosen link's cable, or the chosen box's cables, glow; the rest fade back. */
+.cv-rack-patch-cable.is-lit path { stroke-width: 2.2; opacity: 1; filter: drop-shadow(0 0 2.5px currentColor); }
+.cv-racks-cablebar strong { font-family: var(--mono); font-weight: 600; }
+.cv-rack-patch-cable.is-lit text { font-weight: 700; }
+.cv-rack-patch-cable.is-dim path, .cv-rack-patch-cable.is-dim text { opacity: 0.28; }
+.cv-rack-patch.has-lit { z-index: 3; }
+.cv-fascia.is-ports i, .cv-fascia.is-jacks i, .cv-fascia.is-fibre i { cursor: pointer; }
+.cv-racks-feed { display: inline-flex; gap: 0.46153846rem; align-items: center; }
+/* The rack's form, the scale bar, the millimetre rail. */
+.cv-rack.is-form-2-post .cv-rack-post { width: 0.38461538rem; background-image: none; }
+.cv-rack.is-form-enclosed .cv-rack-frame { outline: 3px solid color-mix(in srgb, var(--text) 30%, var(--line-strong)); outline-offset: 2px; border-radius: 3px; }
+.cv-rack.is-form-enclosed .cv-rack-base { margin: 0 0.6rem; }
+.cv-rack-numbers.is-mm li { font-size: 0.55rem; color: var(--text-faint); white-space: nowrap; }
+.cv-rack-numbers.is-mm li.is-fifth { color: var(--text-dim); font-weight: 400; }
+.cv-racks-scale { position: sticky; left: 0.61538462rem; bottom: 0.61538462rem; z-index: 2; display: inline-flex; align-items: center; gap: 0.46153846rem; margin: 0 0.61538462rem 0.61538462rem; padding: 0.23076923rem 0.46153846rem; background: color-mix(in srgb, var(--panel) 85%, transparent); border: 1px solid var(--line); border-radius: var(--radius); font-size: var(--text-xs); color: var(--text-dim); float: left; }
+.cv-racks-scale i { display: block; height: 0.46153846rem; border: 1px solid var(--text-dim); border-top: 0; }
+.cv-rack-summary { display: flex; flex-wrap: wrap; gap: 0.3rem 0.92307692rem; font-size: var(--text-sm); color: var(--text-dim); padding: 0 0.15384615rem; }
+.cv-rack-summary .is-over { color: var(--down); }
+/* A second chosen box, the find box, the layout buttons. */
+.cv-rack-item.is-also { outline: 2px dashed var(--accent); outline-offset: -2px; }
+.cv-racks-find { display: inline-flex; align-items: center; gap: 0.30769231rem; margin: 0; }
+.cv-racks-find .cv-input { width: 10rem; }
+.cv-racks-find-count { font-size: var(--text-xs); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.cv-racks-chosen.is-many { gap: 0.61538462rem; }
+.cv-racks-layoutbtns { display: inline-flex; gap: 0.30769231rem; align-self: end; }
+/* The floor. */
+.cv-floor { display: flex; flex-direction: column; gap: 0.46153846rem; }
+.cv-floor-plan { display: block; border: 1px solid var(--line); border-radius: var(--radius); background: color-mix(in srgb, var(--text) 3%, var(--panel)); }
+.cv-floor-ground { fill: transparent; }
+.cv-floor-grid { stroke: color-mix(in srgb, var(--text) 10%, transparent); stroke-width: 1; }
+.cv-floor-air { opacity: 0.55; }
+.cv-floor-air.is-cold { fill: #5ea1ff; }
+.cv-floor-air.is-hot { fill: #ff6a5c; }
+.cv-floor-air.is-mixed { fill: #ffc043; }
+.cv-floor-rack { cursor: grab; }
+.cv-floor-rack.is-dragging { cursor: grabbing; }
+.cv-floor-body { fill: color-mix(in srgb, var(--text) 16%, var(--panel)); stroke: var(--text-dim); stroke-width: 1.2; }
+.cv-floor-rack.is-target .cv-floor-body { stroke: var(--accent); stroke-width: 2; }
+.cv-floor-rack.is-placed .cv-floor-body { fill: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+.cv-floor-front { stroke: var(--text); stroke-width: 3.5; fill: none; }
+.cv-floor-name { fill: var(--text); font-size: var(--canvas-text-2xs); font-weight: 600; pointer-events: none; }
+.cv-floor-place { fill: var(--text-dim); font-size: var(--canvas-text-2xs); pointer-events: none; }
+.cv-floor-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.46153846rem; font-size: var(--text-xs); color: var(--text-dim); }
+.cv-floor-legend { display: inline-flex; align-items: center; gap: 0.30769231rem; margin-right: auto; }
+.cv-floor-legend i { display: inline-block; width: 0.76923077rem; height: 0.53846154rem; border-radius: 2px; opacity: 0.8; }
+.cv-floor-legend i.is-cold { background: #5ea1ff; }
+.cv-floor-legend i.is-hot { background: #ff6a5c; }
+.cv-floor-legend i.is-mixed { background: #ffc043; }
+/* Links that leave the rack for a device in no rack: a count on the faceplate, a list under the rack. */
+.cv-rack-item-out { margin-left: auto; font-size: var(--text-2xs); font-weight: 600; color: var(--text-dim); background: color-mix(in srgb, var(--text) 10%, transparent); border: 1px solid var(--line); border-radius: 999px; padding: 0 0.38461538rem; white-space: nowrap; pointer-events: auto; }
+.cv-rack-linksout { font-size: var(--text-sm); color: var(--text-dim); display: flex; flex-direction: column; gap: 0.07692308rem; padding: 0 0.15384615rem; }
+.cv-rack-linksout strong { color: var(--text); font-weight: 600; }
+/* Duplicate, and one rack per printed page. */
+.cv-rack-duplicate { padding: 0 0.38461538rem; }
+@media print {
+  .cv-racks .cv-racks-bar, .cv-racks .cv-racks-waiting, .cv-racks .cv-racks-chosen, .cv-racks .cv-racks-stackeditor, .cv-racks .cv-racks-scale, .cv-racks-place-head { display: none !important; }
+  .cv-racks-stage { overflow: visible !important; border: 0 !important; background: #fff !important; }
+  .cv-racks-zoom { transform: none !important; padding: 0 !important; width: auto !important; }
+  .cv-racks-row { display: block !important; }
+  .cv-rack { break-after: page; page-break-after: always; break-inside: avoid; margin: 0 auto 1rem !important; }
+  .cv-rack:last-child { break-after: auto; page-break-after: auto; }
+}
+/* The planner's advice, one line each, amber for a note and red for a warning. */
+.cv-rack-advice { list-style: none; margin: 0; padding: 0 0.15384615rem; display: flex; flex-direction: column; gap: 0.15384615rem; }
+.cv-rack-advice-line { all: unset; cursor: pointer; display: block; font-size: var(--text-sm); line-height: 1.35; padding: 0.15384615rem 0.46153846rem; border-radius: var(--radius); border-left: 3px solid var(--warning); background: color-mix(in srgb, var(--warning) 9%, transparent); color: var(--text); }
+.cv-rack-advice .is-warn .cv-rack-advice-line { border-left-color: var(--down); background: color-mix(in srgb, var(--down) 9%, transparent); }
+.cv-rack-advice-line:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.cv-rack-advice-line:focus-visible { outline: 2px solid var(--accent); }
+.cv-rack-legend { display: flex; flex-direction: column; gap: 0.15384615rem; font-size: var(--text-sm); color: var(--text-dim); padding: 0 0.15384615rem; }
+.cv-rack-foot { font-size: var(--text-sm); color: var(--text-dim); display: flex; flex-direction: column; gap: 0.15384615rem; }
+
+/* Which extra tables a crawl reads. */
+.cv-crawl-details { display: flex; flex-wrap: wrap; gap: 0.30769231rem 1.07692308rem; border: 1px solid var(--line); border-radius: 4px; padding: 0.30769231rem 0.76923077rem 0.46153846rem; margin: 0.46153846rem 0; }
+.cv-crawl-details legend { color: var(--text-dim); font-size: var(--text-sm); padding: 0 0.30769231rem; }
+.cv-inventory details { margin: 0.30769231rem 0; }
+.cv-inventory summary { cursor: pointer; font-size: var(--text-md); color: var(--text); padding: 0.15384615rem 0; }
+.cv-inventory-table { font-size: var(--text-sm); }
+.cv-inventory-table tr.is-dim td { color: var(--text-dim); }
+.cv-inventory-table td.is-warning { color: var(--warning); }
+.cv-inventory-vlans { list-style: none; margin: 0; padding: 0; columns: 2; font-size: var(--text-sm); color: var(--text); }
+.cv-table-scroll { overflow-x: auto; }
+/* Credential rules by subnet or vendor. */
+.cv-cred-rules { margin: 0.46153846rem 0; }
+.cv-cred-rules summary { cursor: pointer; font-size: var(--text-md); color: var(--text); }
+.cv-cred-rule { align-items: center; }
+.cv-cred-rule-problem { color: var(--warning); flex-basis: 100%; }
+.cv-seed-csv { align-self: flex-end; cursor: pointer; }
+/* The live crawl table. State is carried by words and a border style,
+   not colour alone. */
+.cv-crawl-table { margin: 0.46153846rem 0; max-height: 20rem; overflow: auto; }
+.cv-crawl-table summary { cursor: pointer; font-size: var(--text-md); color: var(--text); }
+.cv-crawl-state { display: inline-block; padding: 0 0.46153846rem; border-radius: 8px; border: 1px solid var(--line); font-size: var(--text-sm); white-space: nowrap; }
+.cv-crawl-state.is-collected, .cv-crawl-state.is-reported { border-color: var(--healthy); color: var(--healthy); }
+.cv-crawl-state.is-failed { border-color: var(--down); color: var(--down); border-style: dashed; }
+.cv-crawl-state.is-awaiting-approval, .cv-crawl-state.is-retrying { border-color: var(--warning); color: var(--warning); }
+.cv-crawl-state.is-skipped, .cv-crawl-state.is-queued { color: var(--text-dim); }
+.cv-crawl-detail { color: var(--text-dim); max-width: 32.30769231rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A crawl's dry run. */
+.cv-dry-run { border: 1px solid var(--line); border-radius: 4px; padding: 0.61538462rem 0.92307692rem; margin: 0.46153846rem 0; font-size: var(--text-md); color: var(--text); }
+.cv-dry-run header { display: flex; align-items: baseline; gap: 0.76923077rem; }
+.cv-dry-run header .cv-layer-remove { margin-left: auto; }
+.cv-dry-run h4 { margin: 0.61538462rem 0 0.15384615rem; font-size: var(--text-sm); color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.cv-dry-run ul { margin: 0; padding-left: 1.38461538rem; }
+.cv-dry-run-bad { color: var(--warning); }
+.cv-dry-run-commands { font-size: var(--text-sm); color: var(--text-dim); margin: 0.15384615rem 0; }
+.cv-crawl-profiles { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.46153846rem; margin-bottom: 0.46153846rem; }
+/* Crawl findings. Severity is in the words as well as the colour. */
+.cv-findings { margin: 0.46153846rem 0; font-size: var(--text-md); }
+.cv-findings summary { cursor: pointer; color: var(--text); }
+.cv-findings ul { margin: 0.30769231rem 0; padding-left: 0; list-style: none; }
+.cv-findings li { padding: 0.23076923rem 0.61538462rem; border-left: 3px solid var(--line); color: var(--text); margin: 0.15384615rem 0; }
+.cv-findings li.is-warning { border-left-color: var(--warning); }
+.cv-finding-kind { font-weight: 600; margin-right: 0.30769231rem; }
+.cv-findings li.is-warning .cv-finding-kind { color: var(--warning); }
+.cv-findings-none { margin: 0.46153846rem 0; }
+/* Reviewing a crawl's changes before any is applied. */
+.cv-reconcile { border: 1px solid var(--accent); border-radius: 4px; padding: 0.61538462rem 0.92307692rem; margin: 0.61538462rem 0; font-size: var(--text-md); color: var(--text); }
+.cv-reconcile header { display: flex; gap: 0.76923077rem; align-items: baseline; flex-wrap: wrap; }
+.cv-reconcile h4 { margin: 0.61538462rem 0 0.15384615rem; font-size: var(--text-sm); color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.cv-reconcile ul { list-style: none; margin: 0; padding: 0; max-height: 16.92307692rem; overflow-y: auto; }
+.cv-reconcile li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15384615rem 0.76923077rem; padding: 0.15384615rem 0; }
+.cv-reconcile-detail { color: var(--text-dim); }
+.cv-reconcile-group.is-removed h4, .cv-reconcile-group.is-moved h4 { color: var(--warning); }
+.cv-probe-template-pick { width: auto; margin-left: 0.46153846rem; font-size: var(--text-sm); }
+/* Probe history sparklines. The strip's bar height carries status
+   (sliver healthy, half warning, full down) so it reads without colour. */
+.cv-probe-history { margin: 0.30769231rem 0 0.61538462rem; }
+.cv-probe-history-head { display: flex; align-items: center; gap: 0.61538462rem; font-size: var(--text-sm); color: var(--text-dim); }
+.cv-probe-history-head select { width: auto; font-size: var(--text-sm); padding: 1px 0.30769231rem; }
+.cv-sparkline { display: block; margin-top: 0.30769231rem; overflow: visible; }
+.cv-sparkline-base { stroke: var(--line); stroke-width: 1; }
+.cv-sparkline-area { fill: var(--accent); opacity: 0.15; }
+.cv-sparkline-line { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; }
+.cv-sparkline-last { fill: var(--accent); }
+.cv-sparkline-bar.is-healthy { fill: var(--healthy); }
+.cv-sparkline-bar.is-warning { fill: var(--warning); }
+.cv-sparkline-bar.is-down { fill: var(--down); }
+.cv-sparkline-bar.is-unknown, .cv-sparkline-bar.is-maintenance, .cv-sparkline-bar.is-disabled { fill: var(--text-faint); }
+/* Path check. */
+.cv-path-check { padding: 0.61538462rem 0.92307692rem; font-size: var(--text-md); color: var(--text); }
+.cv-path-hops { list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.30769231rem; margin: 0.61538462rem 0 0.30769231rem; padding: 0; }
+.cv-path-hops li { display: flex; align-items: center; gap: 0.30769231rem; }
+.cv-path-hop { padding: 1px 0.61538462rem; border: 1px solid var(--line); border-radius: 10px; }
+.cv-path-hop.is-healthy { border-color: var(--healthy); }
+.cv-path-hop.is-warning { border-color: var(--warning); }
+.cv-path-hop.is-down { border-color: var(--down); border-style: dashed; color: var(--down); }
+.cv-path-link.is-down { color: var(--down); font-weight: 700; }
+.cv-path-result { margin: 0.61538462rem 0; padding: 0.30769231rem 0.61538462rem; border-left: 3px solid var(--line); }
+.cv-path-result.is-ok { border-left-color: var(--healthy); }
+.cv-path-result.is-bad { border-left-color: var(--down); }
+/* Comparing two runs. Direction is a glyph as well as a colour. */
+.cv-compare { padding: 0.61538462rem 0.92307692rem; font-size: var(--text-md); color: var(--text); }
+.cv-compare-table tr.is-worse .cv-compare-change { color: var(--down); }
+.cv-compare-table tr.is-better .cv-compare-change { color: var(--healthy); }
+/* The command palette. */
+.cv-palette-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.35); display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; }
+.cv-command-palette { width: min(49.23076923rem, calc(100vw - 2.46153846rem)); background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; max-height: 70vh; }
+.cv-command-input { margin: 0.76923077rem; font-size: var(--text-xl); padding: 0.61538462rem 0.76923077rem; }
+.cv-command-results { list-style: none; margin: 0; padding: 0 0.46153846rem; overflow-y: auto; }
+.cv-command-results li { display: grid; grid-template-columns: 5.84615385rem minmax(0, 1fr) minmax(0, 1fr); gap: 0.61538462rem; align-items: baseline; padding: 0.38461538rem 0.61538462rem; border-radius: 4px; cursor: pointer; font-size: var(--text-md); }
+.cv-command-results li.is-active { background: var(--hover); outline: 1px solid var(--accent); }
+.cv-command-kind { color: var(--text-dim); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; }
+.cv-command-title { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-command-detail { color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-command-foot { margin: 0; padding: 0.46153846rem 1.23076923rem 0.61538462rem; color: var(--text-dim); font-size: var(--text-sm); border-top: 1px solid var(--line); }
+/* Dimmed, not hidden. */
+.react-flow__node.is-dimmed { opacity: 0.15; }
+.react-flow__edge.is-dimmed { opacity: 0.1; }
+.cv-dim-chip { position: absolute; top: 0.76923077rem; left: 50%; transform: translateX(-50%); z-index: 8; display: flex; align-items: center; gap: 0.61538462rem; padding: 0.30769231rem 0.46153846rem 0.30769231rem 0.92307692rem; background: var(--panel); border: 1px solid var(--accent); border-radius: 16px; color: var(--text); font-size: var(--text-md); }
+.cv-filter-fields { width: 20rem; display: flex; flex-direction: column; gap: 0.46153846rem; }
+/* A field's 23rem flex basis is a width in a row; in this column it
+   was each field's height. And the panel scrolls rather than leave the window. */
+.cv-filter-fields > .cv-field, .cv-filter-fields > fieldset, .cv-filter-fields > .cv-check, .cv-filter-fields > p, .cv-filter-fields > button { flex: none; }
+.cv-filter-menu .cv-filter-fields { max-height: calc(100vh - 8rem); overflow-y: auto; overscroll-behavior: contain; }
+.cv-filter-fields fieldset { border: 1px solid var(--line); border-radius: 4px; padding: 0.30769231rem 0.61538462rem; max-height: 10.76923077rem; overflow-y: auto; }
+.cv-filter-fields legend { font-size: var(--text-sm); color: var(--text-dim); }
+.cv-filter-menu summary.is-on { border-color: var(--accent); color: var(--text); }
+/* Neighbours and attachments in the device inspector. */
+.cv-link-button { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
+.cv-attachment { display: flex; align-items: center; gap: 0.46153846rem; margin: 0.23076923rem 0; font-size: var(--text-md); }
+.cv-attachment-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+/* The port at each end of a link. */
+.cv-port-end h4 { margin: 0.46153846rem 0 0.15384615rem; font-size: var(--text-md); color: var(--text); }
+.cv-port-facts { display: grid; grid-template-columns: max-content 1fr; gap: 1px 0.76923077rem; margin: 0; font-size: var(--text-sm); }
+.cv-port-facts dt { color: var(--text-dim); }
+.cv-port-facts dd { margin: 0; color: var(--text); }
+.cv-port-facts dd.is-warning { color: var(--warning); }
+/* The rest of a note's Markdown. */
+.cv-note-body h5 { margin: 4px 0 2px; font-size: 1em; }
+.cv-note-body blockquote { margin: 2px 0; padding-left: 8px; border-left: 3px solid currentColor; opacity: 0.85; }
+.cv-note-body hr { border: none; border-top: 1px solid currentColor; opacity: 0.4; margin: 4px 0; }
+.cv-note-number { margin: 0; }
+.cv-note-number > span:first-child { opacity: 0.8; }
+/* Freehand ink. */
+.cv-ink-bar { position: absolute; top: 10px; left: 10px; z-index: 7; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; max-width: calc(100% - 20px); }
+.cv-ink-bar .cv-btn.is-on { border-color: var(--accent); color: var(--text); background: var(--panel-2); }
+.cv-ink-swatch { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line); cursor: pointer; padding: 0; }
+.cv-ink-swatch.is-on { box-shadow: 0 0 0 2px var(--accent); }
+.cv-ink-width { width: auto; font-size: var(--canvas-text-sm); padding: 1px 4px; }
+.cv-ink-sheet { position: absolute; inset: 0; z-index: 6; touch-action: none; }
+.cv-ink-sheet.is-pen { cursor: crosshair; }
+.cv-ink-sheet.is-eraser { cursor: cell; }
+@media print { .cv-ink-bar { display: none; } }
+/* Comments. */
+.cv-comment { border-left: 3px solid var(--accent); padding: 0.30769231rem 0.61538462rem; margin: 0.46153846rem 0; font-size: var(--text-md); color: var(--text); }
+.cv-comment.is-resolved { border-left-color: var(--line); opacity: 0.7; }
+.cv-comment header { display: flex; align-items: baseline; gap: 0.46153846rem; }
+.cv-comment header .cv-btn { margin-left: auto; }
+.cv-comment p { margin: 0.15384615rem 0 0.30769231rem; white-space: pre-wrap; }
+.cv-comment-reply { margin-left: 0.76923077rem; padding-left: 0.46153846rem; border-left: 1px solid var(--line); }
+.cv-comment-new { display: flex; flex-direction: column; gap: 0.30769231rem; }
+.cv-comment-badge { position: absolute; top: -6px; left: -6px; font-size: var(--text-xs); background: var(--panel); color: var(--text); border: 1px solid var(--accent); border-radius: 8px; padding: 0 0.30769231rem; }
+
+/* Matching a file's columns to fields. */
+.cv-import-map { display: grid; gap: 0.61538462rem; margin-block: 0.61538462rem; }
+.cv-import-map-head { display: flex; flex-wrap: wrap; gap: 0.92307692rem; align-items: end; }
+.cv-import-kind { border: 0; padding: 0; margin: 0; display: flex; gap: 0.76923077rem; align-items: center; }
+.cv-import-kind legend { float: left; margin-right: 0.61538462rem; color: var(--text-dim); font-size: var(--text-md); }
+.cv-import-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(13.07692308rem, 1fr)); gap: 0.61538462rem; }
+
+/* Choosing a report. */
+.cv-report-dialog { width: min(47.69230769rem, calc(100vw - 2.46153846rem)); max-height: calc(100vh - 3.69230769rem); overflow: auto; }
+.cv-report-dialog fieldset { border: 0; padding: 0; margin: 0 0 1.07692308rem; }
+.cv-report-dialog legend { font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-faint); margin-bottom: 0.46153846rem; }
+.cv-report-templates { display: grid; grid-template-columns: repeat(auto-fit, minmax(18.46153846rem, 1fr)); gap: 0.61538462rem; }
+.cv-report-template { display: flex; gap: 0.61538462rem; align-items: flex-start; padding: 0.61538462rem 0.76923077rem; border: 1px solid var(--line-strong); border-radius: 8px; cursor: pointer; }
+.cv-report-template.is-on { border-color: var(--accent); }
+.cv-report-template span { display: grid; gap: 0.15384615rem; }
+.cv-report-template small { color: var(--text-dim); line-height: 1.4; }
+.cv-report-sections { display: flex; flex-wrap: wrap; gap: 0.30769231rem 1.07692308rem; }
+
+/* The credential use log. */
+.cv-credential-use { margin-block: 0.76923077rem; }
+.cv-credential-use > summary { cursor: pointer; color: var(--text-dim); }
+
+/* The guided tour. */
+.cv-tour { position: absolute; left: 0.92307692rem; top: 3.38461538rem; z-index: 8; width: min(23.07692308rem, calc(100% - 1.84615385rem)); padding: 0.76923077rem 0.92307692rem; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.35); }
+.cv-tour header { display: flex; align-items: center; gap: 0.61538462rem; margin-bottom: 0.46153846rem; }
+.cv-tour header strong { margin-right: auto; }
+.cv-tour ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.30769231rem; }
+.cv-tour li { display: flex; gap: 0.61538462rem; color: var(--text-dim); }
+.cv-tour li.is-next { color: var(--text); }
+.cv-tour li.is-done .cv-tour-title { text-decoration: line-through; }
+.cv-tour-mark { width: 1em; color: var(--healthy); }
+.cv-tour-detail { display: block; margin-top: 0.15384615rem; color: var(--text-dim); line-height: 1.45; }
+
+/* Which subnets are in use, and which are not.
+   The bands are the app's existing status colours rather than a new palette,
+   because "nearly full" here means the same kind of thing "down" means on the
+   canvas: the row you act on first. Chrome tokens only — the ground tokens
+   belong to the canvas (see groundTokens.test.ts). */
+.cv-dash-table td { font-variant-numeric: tabular-nums; vertical-align: middle; }
+.cv-dash-table .cv-num { text-align: right; }
+.cv-bar {
+  display: inline-block; width: 9.23076923rem; height: 0.61538462rem; border-radius: 4px;
+  background: var(--panel-2); margin-right: 0.61538462rem; overflow: hidden; vertical-align: middle;
+}
+.cv-bar-fill { display: block; height: 100%; border-radius: 4px; }
+.cv-bar-value { font-size: var(--text-sm); color: var(--text-dim); }
+/* Filled bars and the summary pills share one set of colours, so the two
+   always agree about what "busy" looks like. */
+.cv-bar-fill.cv-band-full { background: var(--down); }
+.cv-bar-fill.cv-band-busy { background: var(--warning); }
+.cv-bar-fill.cv-band-light { background: var(--healthy); }
+.cv-bar-fill.cv-band-empty { background: var(--text-dim); }
+.cv-dash .cv-pill {
+  display: inline-block; font-size: var(--text-xs); padding: 0 0.46153846rem; border-radius: 9px;
+  border: 1px solid; color: var(--text-dim); border-color: var(--line);
+}
+.cv-dash .cv-pill.cv-band-full { color: var(--down); border-color: var(--down); }
+.cv-dash .cv-pill.cv-band-busy { color: var(--warning); border-color: var(--warning); }
+.cv-dash .cv-pill.cv-band-light { color: var(--healthy); border-color: var(--healthy); }
+
+/* Meraki, on the Settings screen. Chrome tokens only: this is
+   chrome, and only the canvas follows the ground toggle. */
+.cv-meraki-row {
+  display: flex; flex-wrap: wrap; gap: 0.92307692rem; align-items: flex-end; margin: 0.76923077rem 0;
+}
+.cv-meraki-row label { display: flex; flex-direction: column; gap: 0.30769231rem; font-size: var(--text-md); color: var(--text-dim); }
+.cv-meraki-count { font-size: var(--text-md); color: var(--text-faint); align-self: center; }
+
+.cv-meraki-report { margin-top: 1.23076923rem; border-top: 1px solid var(--line); padding-top: 0.92307692rem; }
+.cv-meraki-report-head { display: flex; gap: 0.92307692rem; align-items: baseline; flex-wrap: wrap; }
+.cv-meraki-report-head h3 { margin: 0; font-size: var(--text-xl); }
+
+.cv-meraki-tally { display: flex; gap: 0.76923077rem; list-style: none; padding: 0; margin: 0.92307692rem 0; flex-wrap: wrap; }
+.cv-meraki-tile {
+  display: flex; flex-direction: column; gap: 0.15384615rem; min-width: 7.07692308rem;
+  padding: 0.61538462rem 0.76923077rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2);
+}
+.cv-meraki-tile strong { font-size: var(--text-4xl); font-variant-numeric: tabular-nums; }
+.cv-meraki-tile span { font-size: var(--text-sm); color: var(--text-faint); }
+.cv-meraki-tile.is-attention strong { color: var(--down); }
+.cv-meraki-tile.is-advisory strong { color: var(--accent); }
+.cv-meraki-tile.is-manual strong { color: var(--warning); }
+.cv-meraki-tile.is-pass strong { color: var(--healthy); }
+.cv-meraki-tile.is-na strong { color: var(--unknown); }
+
+.cv-meraki-checks { list-style: none; padding: 0; margin: 0.92307692rem 0; display: flex; flex-direction: column; gap: 0.61538462rem; }
+.cv-meraki-check { border: 1px solid var(--line); border-radius: 6px; padding: 0.61538462rem 0.76923077rem; }
+.cv-meraki-check.is-attention { border-left: 3px solid var(--down); }
+.cv-meraki-check.is-advisory { border-left: 3px solid var(--accent); }
+.cv-meraki-check.is-manual { border-left: 3px solid var(--warning); }
+.cv-meraki-check.is-pass { border-left: 3px solid var(--healthy); }
+.cv-meraki-check.is-na { border-left: 3px solid var(--unknown); }
+.cv-meraki-check-head {
+  display: flex; gap: 0.76923077rem; align-items: center; width: 100%;
+  background: none; border: 0; padding: 0; cursor: pointer; text-align: left; color: var(--text);
+}
+.cv-meraki-num { font-variant-numeric: tabular-nums; color: var(--text-faint); font-size: var(--text-sm); min-width: 2.15384615rem; }
+.cv-meraki-check-title { font-weight: 600; font-size: var(--text-lg); flex: 1; }
+.cv-meraki-summary { margin: 0.30769231rem 0 0 2.92307692rem; font-size: var(--text-md); color: var(--text-dim); }
+.cv-meraki-check-body { margin: 0.61538462rem 0 0 2.92307692rem; display: flex; flex-direction: column; gap: 0.61538462rem; overflow-x: auto; }
+.cv-meraki-check-body h5 { margin: 0 0 0.30769231rem; font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
+.cv-meraki-action { font-size: var(--text-md); color: var(--warning); margin: 0; }
+.cv-meraki-actions { margin: 0.61538462rem 0; }
+
+/* The health report's document structure. */
+.cv-meraki-meta { margin: 0.76923077rem 0; max-width: 47.69230769rem; }
+.cv-meraki-meta th { text-align: left; width: 12.30769231rem; font-weight: 600; }
+.cv-meraki-key { list-style: none; padding: 0; margin: 0.61538462rem 0; display: flex; flex-direction: column; gap: 0.30769231rem; font-size: var(--text-md); color: var(--text-dim); }
+.cv-meraki-section { margin-top: 1.38461538rem; }
+.cv-meraki-section > h4 { margin: 0 0 0.61538462rem; font-size: var(--text-xl); }
+.cv-meraki-nav { margin: 0.15384615rem 0 0 2.92307692rem; font-size: var(--text-sm); color: var(--text-faint); }
+.cv-meraki-checklist { margin: 0 0 0.30769231rem 1.23076923rem; padding: 0; font-size: var(--text-md); color: var(--text-dim); }
+.cv-meraki-steps { margin: 0 0 0.30769231rem 1.23076923rem; padding: 0; font-size: var(--text-md); color: var(--text-dim); display: flex; flex-direction: column; gap: 0.30769231rem; }
+.cv-meraki-steps li { line-height: 1.45; }
+
+/* The filter's hide tick and its count. */
+.cv-filter-hide { margin-top: 0.46153846rem; }
+.cv-filter-menu .cv-help { max-width: 21.53846154rem; }
+
+/* Reaching the rest of the machine's vault, deliberately. */
+.cv-cred-elsewhere { align-self: flex-start; margin-top: 0.30769231rem; }
+
+/* A device holding a folded branch. */
+.react-flow__node.is-collapsed { filter: drop-shadow(0 0 0 transparent); }
+.react-flow__node.is-collapsed::after {
+  content: '+'; position: absolute; top: -6px; right: -6px;
+  width: 16px; height: 16px; line-height: 15px; text-align: center;
+  font-size: var(--canvas-text-lg); font-weight: 700; border-radius: 50%;
+  background: var(--accent); color: var(--on-status);
+  border: 1px solid var(--panel); pointer-events: none;
+}
+
+/* Filtering by type from the canvas toolbar. */
+.cv-type-filter { position: relative; }
+/* This one is at the *left* edge of the canvas, not on the right of
+   the top bar like every other dropdown, so the shared `right: 0` opened it
+   out of the window — the labels were off-screen and only the counts showed.
+   It opens rightwards, into the room it actually has. */
+.cv-type-filter .cv-dropdown-menu { left: 0; right: auto; }
+.cv-type-filter-menu { max-height: 60vh; overflow-y: auto; min-width: 16.15384615rem; }
+.cv-type-filter-menu .cv-check { display: flex; align-items: center; gap: 0.46153846rem; font-size: var(--text-md); }
+.cv-type-count { margin-left: auto; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+/* Link confidence on the Collect tab's topology table. */
+.cv-collect .is-inferred td { font-style: italic; }
+.cv-collect .cv-confidence-07 td:nth-child(4),
+.cv-collect .cv-confidence-06 td:nth-child(4) { color: var(--warning); }

@@ -1,0 +1,21 @@
+[package]
+name = "coreview-topology"
+version = "2.5.0"
+authors = ["Mohammed Almoola <https://www.linkedin.com/in/malmoola>"]
+edition = "2021"
+rust-version = "1.77"
+description = "P2's topology builder: the discovery tables of a collection in, one graph out — devices by serial and MAC, links merged and scored with their evidence, bundles and stacks, devices placed by MAC, shared subnets, overlays — and the crawl-result view the review screen already draws. Pure: no SQLite, no Tauri, no network."
+license = "LicenseRef-Almoola-Free-Proprietary"
+# Proprietary: never published to crates.io.
+publish = false
+
+[dependencies]
+# Only for the shapes the review screen reads (CrawlResult and friends).
+coreview-discover = { path = "../coreview-discover" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+# The end-to-end test: raw CLI output → the vendored templates → the table normaliser → the builder.
+coreview-catalog = { path = "../coreview-catalog" }
+coreview-collect = { path = "../coreview-collect" }

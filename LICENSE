@@ -1,0 +1,76 @@
+Coreview — Licence and Terms of Use
+
+Copyright © 2026 Mohammed Almoola. All rights reserved.
+https://www.linkedin.com/in/malmoola
+
+
+1. IT IS FREE
+
+Coreview is proprietary software, made available free of charge for lawful use.
+
+You may use it for anything you like — at work, at home, for your employer, for
+your customers, on as many computers as you want. There is no licence key, no
+activation, no seat count and no registration. Everything you make with it —
+your diagrams, reports and exports — is yours, with no claim on it whatsoever.
+
+
+2. YOU MAY PASS IT ON
+
+You may give Coreview to anyone: send the installer to a colleague, share it
+with other engineers, post a link to it publicly. Two conditions, and they are
+the whole of it:
+
+  (a) pass it on exactly as you received it, unchanged, with this licence and
+      the THIRD-PARTY-NOTICES file still alongside it; and
+
+  (b) do not charge for it, and do not bundle it into anything sold.
+
+
+3. WHAT IS RESERVED
+
+Without prior written permission from Mohammed Almoola, you may not:
+
+  (a) sell Coreview, licence it, rent it, or charge any fee for it or for
+      access to it;
+
+  (b) modify it, translate it, or create derivative works from it;
+
+  (c) reverse engineer, decompile or disassemble it, except where the law
+      says you may do so regardless of this licence;
+
+  (d) rebrand it, rename it, or present it as your own work; or
+
+  (e) remove or alter this licence, the authorship, or the third-party
+      notices.
+
+The source code is published so that anyone pointing Coreview at a network can
+read exactly what it does. Being able to read it is not permission to reuse it;
+that is what this section reserves. If you want to do any of the above, ask —
+the answer may well be yes.
+
+
+4. THE COMPONENTS IT IS BUILT ON
+
+Coreview is built on open-source components that keep their own licences, which
+nothing above changes. They are listed with their full licence texts in
+THIRD-PARTY-NOTICES, which is installed beside the application and must travel
+with any copy you pass on.
+
+
+5. NO WARRANTY
+
+Coreview is provided "as is", without warranty of any kind, express or implied,
+including the warranties of merchantability, fitness for a particular purpose
+and non-infringement. In no event shall the author be liable for any claim,
+damages or other liability arising from the software or its use.
+
+Coreview runs checks against network equipment you point it at, and can log in
+to devices with credentials you give it. You are responsible for having the
+authority to do that on the networks you use it on.
+
+
+6. NAMES
+
+"Coreview" is used here as the name of this program and is not claimed as a
+trademark. Other names and marks mentioned anywhere in this software belong to
+their respective owners.

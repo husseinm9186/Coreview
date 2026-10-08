@@ -1,0 +1,6 @@
+Version: FortiSwitch-224E v7.6.1,build1047,241217 (GA)
+Serial-Number: FSWFAKE0000001
+Firmware Signature: valid
+Burn in MAC: 00:00:00:00:0f:01
+Hostname: FSWFAKE0000001
+Security mode: none

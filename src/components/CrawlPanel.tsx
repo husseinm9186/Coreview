@@ -1,0 +1,2030 @@
+import { scannedOf, sweptLine } from '../lib/subnetScan';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+import { t } from '../i18n';
+import { EmptyState } from './EmptyState';
+import { useRovingTabindex } from './useRovingTabindex';
+import { isInfrastructure, roleCounts } from '../lib/deviceRoles';
+import { useStore } from '../state/store';
+import { startDiscoverRun, watchDiscoverRuns } from '../lib/discoverRun';
+import {
+  ipc,
+  isDesktop,
+  type CrawlDetails,
+  type CrawlEvent,
+  type CrawledDevice,
+  type CrawlFailure,
+  type CrawlResult,
+  type DeviceClassName,
+  type Neighbor,
+  type SnmpInput,
+  type StoredSettings,
+} from '../lib/ipc';
+import { CredentialPicker, SavedCredentialSelect } from './CredentialPicker';
+import { CollectionPanel } from './CollectionPanel';
+import { bindingsFor, ruleProblem, type CredentialRule } from '../lib/credentialBindings';
+import { uid } from '../lib/id';
+import { seedsFromCsv } from '../lib/seeds';
+import { discoverySuggestions } from '../lib/discoverySuggestions';
+import { dryRun, inCidr, ipToInt, parseCidr, type DryRunPlan } from '../lib/dryRun';
+import { reconcile, type Change } from '../lib/reconcile';
+import { reviewable } from '../lib/reviewFilter';
+import { readProfile, type CrawlProfile } from '../lib/crawlProfiles';
+import { crawlFindings, FINDING_LABEL, type DrawnLink } from '../lib/crawlFindings';
+import { INTENT_KINDS, intentFindings, intentUnjudged, newIntentRule, ruleComplete, ruleLabel, type IntentKind, type IntentRule } from '../lib/intentChecks';
+import { allEdges, allNodes } from '../lib/pages';
+import { reduceCrawlTable, stateCounts, STATE_LABEL, tableRows, type CrawlTable } from '../lib/crawlTable';
+import { SubnetList } from './SubnetList';
+import { failureAdvice, failureHeading, reasonWithoutAddress } from '../lib/failures';
+import { newProbe } from '../lib/probes';
+import { buildTopology, identity } from '../lib/topology';
+import { ChangeReport } from './ChangeReport';
+import { inferredSwitches, selectAttached, vendorCounts, attachedRows, sortAttachedRows, type AttachedColumn } from '../lib/attached';
+import type { DeviceNodeData } from '../types/domain';
+import { activePage } from '../lib/pages';
+
+const CLASS_LABEL: Record<DeviceClassName, string> = {
+  router: 'Router',
+  switch: 'Switch',
+  firewall: 'Firewall',
+  'wireless-controller': 'Wireless controller',
+  'access-point': 'Access point',
+  phone: 'Phone',
+  camera: 'Camera',
+  printer: 'Printer',
+  server: 'Server',
+  endpoint: 'Endpoint',
+  unknown: 'Unknown',
+};
+
+/** The glyphs the canvas already knows, keyed by discovered class. */
+/** Classes the crawl logs into by default. */
+const INFRASTRUCTURE: DeviceClassName[] = ['router', 'switch', 'firewall', 'wireless-controller'];
+
+/** Everything that can be ticked as somewhere to log in to. Phones, printers
+ *  and cameras are on the list because someone may genuinely want to, not
+ *  because it is a good idea by default. */
+const LOGIN_CHOICES: { value: DeviceClassName; label: string }[] = [
+  { value: 'router', label: 'Routers' },
+  { value: 'switch', label: 'Switches' },
+  { value: 'firewall', label: 'Firewalls' },
+  { value: 'wireless-controller', label: 'WLCs' },
+  { value: 'access-point', label: 'Access points' },
+  { value: 'server', label: 'Servers' },
+  { value: 'printer', label: 'Printers' },
+  { value: 'camera', label: 'Cameras' },
+  { value: 'phone', label: 'Phones' },
+  { value: 'endpoint', label: 'Endpoints' },
+  { value: 'unknown', label: 'Unclassified' },
+];
+
+/** One row of the results list: something reached, or something merely seen. */
+type Row = {
+  key: string;
+  name: string;
+  address: string;
+  probeTarget: string;
+  klass: DeviceClassName;
+  platform: string | null;
+  reached: boolean;
+  /** How the device answered, so the table never overstates what is known. */
+  via: 'ssh' | 'snmp' | 'reported' | null;
+  picked: boolean;
+};
+
+/**
+ * Discover, then filter, then build — in that order and as three visible steps.
+ *
+ * A crawl of a real network finds far more than anyone wants to draw. Nothing
+ * reaches the canvas until it has passed a filter the user set, and the filter
+ * is applied here rather than during the crawl so changing your mind costs a
+ * click instead of another walk of the estate.
+ */
+/** One SNMP credential the operator has entered or picked. */
+type SnmpRow = {
+  key: string;
+  version: 'v2c' | 'v3';
+  community: string;
+  user: string;
+  auth: string;
+  authPass: string;
+  priv: string;
+  privPass: string;
+  /** Set when this row is a saved credential rather than a typed one. */
+  credentialId: string | null;
+};
+
+/** What of an SNMP row may be written to the plain-text settings table.
+ *
+ *  **Never a community string and never a passphrase.** Those are secrets,
+ *  they live in the encrypted vault, and the only thing that crosses into
+ *  settings is the id of the credential holding them. */
+export function snmpRowsShape(rows: SnmpRow[]): string {
+  return JSON.stringify(
+    rows.map((r) => ({
+      version: r.version,
+      user: r.user,
+      auth: r.auth,
+      priv: r.priv,
+      credentialId: r.credentialId,
+    })),
+  );
+}
+
+/** Rebuilds rows from what was saved, with every secret field left empty. */
+export function restoreSnmpRows(stored: string): SnmpRow[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stored);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map((raw) => {
+    const r = (raw ?? {}) as Record<string, unknown>;
+    return {
+      ...blankSnmpRow(),
+      version: r.version === 'v3' ? ('v3' as const) : ('v2c' as const),
+      user: typeof r.user === 'string' ? r.user : '',
+      auth: typeof r.auth === 'string' ? r.auth : 'sha',
+      priv: typeof r.priv === 'string' ? r.priv : 'aes 256',
+      credentialId: typeof r.credentialId === 'string' ? r.credentialId : null,
+    };
+  });
+}
+
+let snmpRowSeq = 0;
+function blankSnmpRow(): SnmpRow {
+  snmpRowSeq += 1;
+  return {
+    key: `snmp-${snmpRowSeq}`,
+    version: 'v2c',
+    community: '',
+    user: '',
+    auth: 'sha',
+    authPass: '',
+    priv: 'aes 256',
+    privPass: '',
+    credentialId: null,
+  };
+}
+
+/** The rows that are complete enough to be worth sending.
+ *
+ *  Half a v3 user fails on every device with an error that looks like the
+ *  devices are at fault, so an incomplete row is dropped rather than tried.
+ *  Pure, so the rule is tested without a form. */
+export function snmpRowsForRun(rows: SnmpRow[]): {
+  typed: SnmpInput[];
+  savedIds: string[];
+} {
+  const typed: SnmpInput[] = [];
+  const savedIds: string[] = [];
+  for (const r of rows) {
+    if (r.credentialId) {
+      savedIds.push(r.credentialId);
+      continue;
+    }
+    if (r.version === 'v2c') {
+      if (r.community.trim()) typed.push({ version: 'v2c', community: r.community.trim() });
+      continue;
+    }
+    if (!r.user.trim() || !r.authPass) continue;
+    typed.push({
+      version: 'v3',
+      username: r.user.trim(),
+      authProtocol: r.auth,
+      authPassword: r.authPass,
+      privacy: r.priv || undefined,
+      privacyPassword: r.privPass,
+    });
+  }
+  return { typed, savedIds };
+}
+
+export function CrawlPanel({
+  onBackup,
+}: {
+  /** Hands devices to the Backups tab, which owns the credentials and the
+   *  folder. Duplicating the backup form here would mean two places to keep
+   *  right. */
+  onBackup: (targets: { address: string; name: string }[]) => void;
+}) {
+  const doc = useStore((s) => s.doc);
+  const meta = useStore((s) => s.meta);
+  const [seed, setSeed] = useState('');
+  const [subnets, setSubnets] = useState<string[]>([]);
+  // The subnets whose scan box is ticked.
+  const [sweep, setSweep] = useState<string[]>([]);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [enablePassword, setEnablePassword] = useState('');
+  const [secondFactor, setSecondFactor] = useState(false);
+  // The seed as it was when the run started, for the stored crawl.
+  const seedRef = useRef('');
+  // The tables beyond neighbours, each a command or two a device.
+  const [details, setDetails] = useState<CrawlDetails>({
+    routes: true, spanningTree: true, vlans: true,
+    // Off until asked for. Read-only like everything else, but their
+    // parsers are documentation-built and unproven.
+    vrfs: false, overlay: false,
+  });
+  const [reverseDns, setReverseDns] = useState(true);
+  // Off unless asked for. A log nobody asked for is a file nobody is
+  // guarding.
+  const [debugLog, setDebugLog] = useState(false);
+  const [debugLogPath, setDebugLogPath] = useState<string | null>(null);
+  // The support capture — every identity reply, redacted, in a folder.
+  const [supportCapture, setSupportCapture] = useState(false);
+  const [supportResult, setSupportResult] = useState<{ folder: string; files: number; problem?: string | null } | null>(null);
+  // Where each device is, live.
+  const [table, setTable] = useState<CrawlTable>(new Map());
+  // The plan a run would follow, worked out with nothing sent.
+  const [plan, setPlan] = useState<DryRunPlan | null>(null);
+  // A crawl's changes, waiting to be accepted.
+  const [review, setReview] = useState<{ changes: Change[]; ticked: Set<string>; dangling: number } | null>(null);
+  const [concurrency, setConcurrency] = useState(4);
+  const [perHost, setPerHost] = useState(300);
+  const [retries, setRetries] = useState(1);
+  const [port, setPort] = useState(22);
+  const [credentialId, setCredentialId] = useState<string | null>(null);
+  const [maxHops, setMaxHops] = useState(4);
+  const [preference, setPreference] = useState<'loopback' | 'management' | 'first'>('loopback');
+  // SNMP is optional and only used where SSH is refused, so it lives behind a
+  // disclosure rather than adding six more fields to the main row.
+  const [snmpOpen, setSnmpOpen] = useState(false);
+  // A list, not one. A real estate answers several ways — a Catalyst
+  // on v3 with SHA and AES-256, older kit on v2c with a community — and one
+  // credential means a crawl that identifies a fraction of what it could.
+  const [snmpRows, setSnmpRows] = useState<SnmpRow[]>([blankSnmpRow()]);
+
+  const [runningClassic, setRunning] = useState(false);
+  // The catalog-driven collector, following neighbours, by
+  // default; the older crawler stays a choice until the new one covers it.
+  const [engine, setEngine] = useState<'collector' | 'classic'>('collector');
+  // Advanced, folded unless asked for — in the store, because the
+  // Collect view lives under it and the dock's old Collect tab opens it.
+  const advanced = useStore((s) => s.discoverAdvanced);
+  const setAdvanced = useStore((s) => s.setDiscoverAdvanced);
+  // A collector run lives in the store, so it is still here after a
+  // tab change; The controls only the classic crawler reads.
+  const discoverRun = useStore((s) => s.discoverRun);
+  const running = runningClassic || discoverRun !== null;
+  const classicOnly = engine === 'collector';
+  useEffect(() => {
+    watchDiscoverRuns();
+  }, []);
+  useEffect(() => {
+    if (discoverRun) setStatus(discoverRun.status);
+  }, [discoverRun]);
+  // The REST side for a FortiGate or AOS-CX, as the Collect tab has it.
+  const [apiCredentialId, setApiCredentialId] = useState<string | undefined>();
+  const [status, setStatus] = useState<string | null>(null);
+  const [pushMessage, setPushMessage] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [rows, setRows] = useState<Row[]>([]);
+  // Written only by the final result, never by the event stream. The two
+  // arrive on separate channels with no ordering between them, so letting both
+  // write produced a list that disagreed with its own count.
+  const [failures, setFailures] = useState<CrawlFailure[]>([]);
+  // Live count while the crawl runs, so failures are visible before it ends.
+  const [liveFailed, setLiveFailed] = useState(0);
+
+  // Chosen before the run: the classes the crawl is allowed to log into.
+  // Everything discovered is drawn either way — this only decides what gets a
+  // connection attempt, which is what sets off intrusion alerts.
+  const [loginClasses, setLoginClasses] = useState<DeviceClassName[]>(INFRASTRUCTURE);
+  const [transport, setTransport] = useState<'ssh' | 'telnet' | 'sshThenTelnet'>('ssh');
+  // Reach each device by hopping through the one that found it.
+  const [hopThrough, setHopThrough] = useState(false);
+  // Silent devices — the ones that announce nothing — are drawn only when
+  // asked for. A flat /24 can hold two hundred, and drawing them all buries
+  // the topology the diagram exists to show.
+  const [showAttached, setShowAttached] = useState(false);
+  // Looking at the devices seen on switch ports is not choosing them.
+  const [addAttached, setAddAttached] = useState(false);
+  const [attachedVendor, setAttachedVendor] = useState('');
+  const [attachedSubnet, setAttachedSubnet] = useState('');
+  const [attachedPort, setAttachedPort] = useState('');
+  const [singlePortOnly, setSinglePortOnly] = useState(true);
+  // A second login, tried only where the first is rejected.
+  const [backupOpen, setBackupOpen] = useState(false);
+  const [backupUsername, setBackupUsername] = useState('');
+  const [backupPassword, setBackupPassword] = useState('');
+  const [backupEnable, setBackupEnable] = useState('');
+  const [result, setResult] = useState<{ devices: CrawledDevice[]; notVisited: Neighbor[]; firstSeenKeys?: CrawlResult['firstSeenKeys'] } | null>(
+    null,
+  );
+
+  // Filter, applied after the crawl.
+  const [classes, setClasses] = useState<DeviceClassName[]>([]);
+  const [search, setSearch] = useState('');
+
+  // A scan is set up once and repeated. Everything here is what the
+  // run was *shaped* like — never a password: those stay in the vault and are
+  // referenced by id. Loaded once on mount; `restored` keeps the save effect
+  // below from writing empty defaults over what was just read.
+  const [restored, setRestored] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void ipc
+      .getSettings()
+      .then((st) => {
+        if (cancelled) return;
+        if (st.scanSeed) setSeed(st.scanSeed);
+        if (st.scanSubnets) setSubnets(st.scanSubnets.split(',').filter(Boolean));
+        if (st.scanSweep) setSweep(st.scanSweep.split(',').filter(Boolean));
+        if (st.scanPort) setPort(Number(st.scanPort) || 22);
+        if (st.scanMaxHops) setMaxHops(Number(st.scanMaxHops) || 4);
+        // What *this project* keeps wins over the machine-wide
+        // setting. The setting is one scan's shape for whoever opens the app;
+        // the project's credentials belong to the estate it describes, and a
+        // second project must not start with the first one's login.
+        // The project's own login is now *offered* as a tick rather
+        // than chosen for you — "global should be first but unchecked by
+        // default in the discover devices section". A crawl logs into an
+        // estate, and it must not start doing that because a credential was
+        // saved for something else. What the *scan* was last set up with is
+        // still restored, because that is this form's own memory rather than
+        // somebody else's credential.
+        if (st.scanCredentialId) setCredentialId(st.scanCredentialId);
+
+        if (st.scanSnmpRows) {
+          const restored = restoreSnmpRows(st.scanSnmpRows);
+          if (restored.length) {
+            setSnmpRows(restored);
+            setSnmpOpen(true);
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setRestored(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Saved as it is changed rather than on scan, so a run that is set up and
+  // then abandoned is still there tomorrow.
+  useEffect(() => {
+    if (!restored) return;
+    const save: [keyof StoredSettings, string | null][] = [
+      ['scanSeed', seed.trim() || null],
+      ['scanSubnets', subnets.length ? subnets.join(',') : null],
+      ['scanSweep', scannedOf(subnets, sweep).join(',') || null],
+      ['scanPort', String(port)],
+      ['scanMaxHops', String(maxHops)],
+      ['scanCredentialId', credentialId],
+      ['scanSnmpRows', snmpOpen ? snmpRowsShape(snmpRows) : null],
+    ];
+    for (const [key, value] of save) void ipc.setSetting(key, value).catch(() => {});
+  }, [restored, seed, subnets, sweep, port, maxHops, credentialId, snmpOpen, snmpRows]);
+
+  const seenKeys = useRef<Set<string>>(new Set());
+
+  // A topology built from a collection run opens here, in the same
+  // table and review a crawl fills — the way saved SNMP walks are read; and
+  // A Discover run on the collector ends here the same way, with
+  // the devices that failed and why.
+  const pendingCrawlResult = useStore((s) => s.pendingCrawlResult);
+  useEffect(() => {
+    if (!pendingCrawlResult) return;
+    const built = { devices: pendingCrawlResult.devices, notVisited: pendingCrawlResult.notVisited };
+    seenKeys.current = new Set();
+    setRows(resultRows(built, seenKeys.current));
+    setFailures((pendingCrawlResult.failures ?? []).map((f) => ({ address: f.address, reason: f.reason })));
+    setLiveFailed(0);
+    setResult(built);
+    setStatus(pendingCrawlResult.label);
+    useStore.getState().setPendingCrawlResult(null);
+  }, [pendingCrawlResult]);
+
+  useEffect(() => {
+    let offEvent: (() => void) | undefined;
+    let offResult: (() => void) | undefined;
+
+    void ipc
+      .onCrawlEvent((e: CrawlEvent) => {
+        // Every event also moves a row of the live table.
+        setTable((t) => reduceCrawlTable(t, e));
+        switch (e.kind) {
+          case 'started':
+            setStatus(`Walking the network from ${e.seed}…`);
+            break;
+          case 'ssh': {
+            // The progress is nested; before, this read fields off a
+            // flattened event that never arrived under this kind.
+            const p = e.progress;
+            if (p.kind === 'awaitingSecondFactor') {
+              // A push is pending. The one status that has to shout: without
+              // it, waiting for Duo looks exactly like a hang.
+              setPushMessage(p.message);
+            } else if (p.kind === 'connecting') {
+              setStatus(`Connecting to ${p.host}…`);
+            }
+            break;
+          }
+          case 'scanned':
+            setStatus(sweptLine(e));
+            break;
+          case 'reached':
+            setPushMessage(null);
+            setStatus(`Reached ${e.hostname} (${e.address})`);
+            break;
+          case 'failed':
+            setLiveFailed((n) => n + 1);
+            setStatus(
+              `${e.failure.address} could not be reached — ${reasonWithoutAddress(e.failure.address, e.failure.reason)}`,
+            );
+            break;
+          case 'finished':
+            setRunning(false);
+            setPushMessage(null);
+            setStatus(
+              e.cancelled
+                ? `Stopped — reached ${e.reached}, ${e.failed} failed`
+                : `Reached ${t('plural.device', { count: e.reached })}, ${e.failed} failed`,
+            );
+            break;
+        }
+      })
+      .then((f) => {
+        offEvent = f;
+      });
+
+    void ipc
+      .onCrawlResult((r: CrawlResult) => {
+        // Every crawl is kept, so two can be compared later — written
+        // by the crawl itself as it goes, so nothing is sent back.
+        const next = resultRows(r, seenKeys.current);
+        setRows((prev) => [...prev, ...next]);
+        setFailures(r.failures);
+        // Where it went, so it can be found and sent on.
+        setDebugLogPath(r.debugLogPath ?? null);
+        setSupportResult(r.supportCapture ?? null);
+        // The adjacencies live here and nowhere else. Flattening to rows threw
+        // away who is plugged into what, which is why the built diagram used
+        // to be a grid of unconnected boxes.
+        setResult({ devices: r.devices, notVisited: r.notVisited, firstSeenKeys: r.firstSeenKeys });
+      })
+      .then((f) => {
+        offResult = f;
+      });
+
+    return () => {
+      offEvent?.();
+      offResult?.();
+    };
+  }, []);
+
+  /** Saved snmpwalk files, one device each, read into the table as if
+   *  a crawl had reached them over SNMP. Nothing is contacted. */
+  const readWalks = async (files: File[]) => {
+    setProblem(null);
+    const devices: CrawledDevice[] = [];
+    const notes: string[] = [];
+    for (const file of files) {
+      try {
+        const r = await ipc.readSnmpWalk(await file.text());
+        if (r.device) devices.push(r.device);
+        for (const p of r.problems) notes.push(`${file.name}: ${p}`);
+        if (r.unknownRows > 0) notes.push(`${file.name}: ${r.unknownRows} rows named by MIBs this does not read (${r.unknownNames.slice(0, 3).join(', ')}${r.unknownNames.length > 3 ? '…' : ''}) — walk with -On to keep everything.`);
+      } catch (e) {
+        notes.push(`${file.name}: ${String(e)}`);
+      }
+    }
+    const names = new Set(devices.map((d) => d.hostname.toLowerCase()));
+    const heard = new Map<string, Neighbor>();
+    for (const d of devices) for (const n of d.neighbors) if (!names.has(n.shortName.toLowerCase())) heard.set(n.shortName.toLowerCase(), n);
+    const walked = { devices, notVisited: [...heard.values()] };
+    seenKeys.current = new Set();
+    setRows(resultRows(walked, seenKeys.current));
+    setFailures([]);
+    setResult(walked);
+    const read = `Read ${t('plural.device', { count: devices.length })} from ${files.length} walk file${files.length === 1 ? '' : 's'}${walked.notVisited.length ? `, and ${t('plural.neighbour', { count: walked.notVisited.length })} they report` : ''}.`;
+    setStatus(read);
+    if (notes.length) setProblem(`${read} ${notes.join(' ')}`);
+  };
+
+  /** Only sends SNMP credentials when they are complete enough to work. */
+  const snmpForRun = () =>
+    snmpOpen ? snmpRowsForRun(snmpRows) : { typed: [], savedIds: [] };
+
+  const start = async () => {
+    setProblem(null);
+    setRows([]);
+    setFailures([]);
+    setLiveFailed(0);
+    setPushMessage(null);
+    seenKeys.current = new Set();
+    setResult(null);
+    // A live table left by an earlier run is not this run's.
+    setTable(new Map());
+    seedRef.current = seed.trim();
+    if (engine === 'collector') {
+      const projectId = useStore.getState().meta?.id;
+      if (!projectId) {
+        setProblem(t('discover.needProject'));
+        return;
+      }
+      // The one saved SNMP login the collector's fallback takes.
+      const snmpSaved = snmpOpen ? (snmpForRun().savedIds[0] ?? useStore.getState().doc.credentialDefaults?.snmp?.[0]) : undefined;
+      try {
+        await startDiscoverRun(
+          {
+            projectId,
+            targets: seed.trim(),
+            port,
+            planOnly: false,
+            lightOnly: false,
+            credentialId: credentialId ?? undefined,
+            keepDiagnostic: supportCapture,
+            // The chips and the transport apply to the collector too.
+            loginClasses,
+            transport,
+            apiCredentialId: apiCredentialId || undefined,
+            snmpCredentialId: snmpSaved || undefined,
+            follow: { maxHops, maxDevices: 500, subnetLimit: subnets.join(', ') || undefined },
+            // The ticked subnets, swept and logged into after the neighbours.
+            scanSubnets: scannedOf(subnets, sweep),
+            // The project's other saved SSH logins, tried in turn when
+            // a device refuses the first — the same set the classic crawler
+            // uses. The one chosen above is not repeated.
+            fallbackCredentialIds: [
+              useStore.getState().doc.credentialDefaults?.ssh,
+              ...(useStore.getState().doc.credentialDefaults?.sshMore ?? []),
+            ].filter((id): id is string => !!id && id !== credentialId),
+          },
+          credentialId ? undefined : { username, password, enablePassword: enablePassword || undefined },
+          // The second login, where one was typed.
+          backupUsername.trim() ? { username: backupUsername.trim(), password: backupPassword, enablePassword: backupEnable || undefined } : undefined,
+        );
+      } catch (err) {
+        setProblem(err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
+    setRunning(true);
+    try {
+      await ipc.startCrawl(
+        {
+          seed: seed.trim(),
+          subnets,
+          crawlClasses: loginClasses,
+          maxHops,
+          maxDevices: 500,
+          secondFactor,
+          addressPreference: preference,
+          port,
+          transport,
+          snmp: snmpForRun().typed,
+          credentialId: credentialId ?? undefined,
+          // The project's other SSH logins, tried in order after the
+          // first on a device with no login of its own.
+          fallbackCredentialIds: [
+            useStore.getState().doc.credentialDefaults?.ssh,
+            ...(useStore.getState().doc.credentialDefaults?.sshMore ?? []),
+          ].filter((id): id is string => !!id && id !== credentialId),
+          // The backend has taken saved SNMP credentials by id all along;
+          // nothing ever sent one, so the vault's SNMP half was unreachable
+          // from a crawl. The passphrases are fetched inside Rust
+          // and never travel through the interface.
+          // And, when SNMP is asked for, the project's SNMP ones too.
+          snmpCredentialIds: [...new Set([...snmpForRun().savedIds, ...(snmpOpen ? (useStore.getState().doc.credentialDefaults?.snmp ?? []) : [])])],
+          details,
+          reverseDns,
+          debugLog,
+          supportCapture,
+          // Hop through the device that found each one, falling back
+          // to a direct session only when a hop cannot be made.
+          reach: hopThrough ? 'throughParentThenDirect' : undefined,
+          // The ticked subnets, swept and logged into after the neighbours.
+          scanSubnets: scannedOf(subnets, sweep),
+          concurrency,
+          perHostTimeoutSecs: perHost,
+          retries,
+          // Vault ids only; Rust opens them.
+          bindings: bindingsFor(useStore.getState().doc),
+          // Which project the run is kept under.
+          projectId: useStore.getState().meta?.id,
+        },
+        { username, password, enablePassword: enablePassword || undefined },
+        backupUsername.trim()
+          ? [
+              {
+                username: backupUsername.trim(),
+                password: backupPassword,
+                enablePassword: backupEnable || undefined,
+              },
+            ]
+          : undefined,
+      );
+    } catch (err) {
+      setRunning(false);
+      setProblem(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const counts = useMemo(() => {
+    const by = new Map<DeviceClassName, number>();
+    rows.forEach((r) => by.set(r.klass, (by.get(r.klass) ?? 0) + 1));
+    return [...by.entries()].sort((a, b) => b[1] - a[1]);
+  }, [rows]);
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (classes.length && !classes.includes(r.klass)) return false;
+      if (!q) return true;
+      return (
+        r.name.toLowerCase().includes(q) ||
+        r.address.includes(q) ||
+        (r.platform ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [rows, classes, search]);
+
+  const picked = visible.filter((r) => r.picked);
+
+  /** Only what was logged into can be backed up: a device seen by a neighbour
+   *  has not proved it will accept a session, and one found over SNMP has
+   *  proved it will not. */
+  const backupable = picked.filter((r) => r.via === 'ssh');
+
+  const backUp = () => {
+    if (!backupable.length) return;
+    useStore.getState().setStatusMessage(
+      `Sending ${t('plural.device', { count: backupable.length })} to the Backups tab`,
+    );
+    onBackup(backupable.map((r) => ({ address: r.probeTarget || r.address, name: r.name })));
+  };
+
+  const toggleClass = (c: DeviceClassName) =>
+    setClasses((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+  const toggleRow = (key: string) =>
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, picked: !r.picked } : r)));
+  const setAllVisible = (picked: boolean) => {
+    const keys = new Set(visible.map((v) => v.key));
+    setRows((prev) => prev.map((r) => (keys.has(r.key) ? { ...r, picked } : r)));
+  };
+  /**
+   * The choice an engineer actually makes is "the network" against
+   * "everything the crawl found". Ticking thirty endpoints one at a time is a
+   * chore, not a choice. The individual ticks stay underneath, so this is a
+   * starting point rather than a mode.
+   */
+  const setVisibleByRole = () => {
+    const keys = new Set(visible.map((v) => v.key));
+    setRows((prev) =>
+      prev.map((r) => (keys.has(r.key) ? { ...r, picked: isInfrastructure(r.klass) } : r)),
+    );
+  };
+  const roleTotals = useMemo(() => roleCounts(visible), [visible]);
+
+  /**
+   * Builds the diagram from the crawl.
+   *
+   * Not from the rows: those are a flattened list and know nothing about who
+   * is plugged into what. The result carries every device's neighbours with
+   * the port at each end, which is what makes this a diagram rather than a
+   * grid of boxes.
+   */
+  const attachedFilter = useMemo(
+    () => ({
+      vendor: attachedVendor,
+      subnet: attachedSubnet,
+      port: attachedPort,
+      // A port carrying several addresses leads to another switch, and what
+      // is behind it belongs to that switch rather than this one.
+      maxPerPort: singlePortOnly ? 1 : undefined,
+    }),
+    [attachedVendor, attachedSubnet, attachedPort, singlePortOnly],
+  );
+  const chosenAttached = useMemo(
+    () => (result ? selectAttached(result.devices, attachedFilter) : []),
+    [result, attachedFilter],
+  );
+  // Crowded ports with nothing announcing itself on them. Computed
+  // from what was actually chosen, so a crowd that was filtered away does not
+  // leave a switch behind claiming it is there.
+  const inferred = useMemo(() => inferredSwitches(chosenAttached), [chosenAttached]);
+  // The same rows as a table, sortable by any column.
+  const [attachedSort, setAttachedSort] = useState<{ key: AttachedColumn; dir: 1 | -1 }>({ key: 'address', dir: 1 });
+  const sortedAttached = useMemo(() => sortAttachedRows(attachedRows(chosenAttached), attachedSort.key, attachedSort.dir), [chosenAttached, attachedSort]);
+  const makers = useMemo(() => (result ? vendorCounts(result.devices) : []), [result]);
+  const attachedTotal = useMemo(
+    () => (result ? selectAttached(result.devices, {}).length : 0),
+    [result],
+  );
+
+  const build = () => {
+    if (!result || !meta) return;
+    // The ticked rows, by every identity each one has.
+    //
+    // This used to be a set of row keys — hostnames — matched against the
+    // node's drawn **label**. Those agree only while a device has a name. A
+    // device the crawl reached but could not name is labelled with its
+    // address, its row key is the empty string it was given, and it is
+    // dropped here after the topology had correctly placed it. When that
+    // device is the seed, and the seed is the core, every distribution switch
+    // below it becomes an island, with nothing joining it to the core.
+    //
+    // Identity is the thing both sides already agree on: `identity()` is what
+    // the topology keys devices by, and `identitiesOfNode` is its inverse.
+    const keep = new Set(picked.flatMap((r) => [identity(r.name, r.address), `a:${r.address.trim()}`]).filter((k) => k && k !== 'a:'));
+    const page = activePage(doc);
+    const bottom = page.nodes.reduce((m, n) => Math.max(m, n.position.y + 120), 0);
+
+    const topo = buildTopology(result, meta.id, {
+      origin: { x: 80, y: bottom + 80 },
+      attached: addAttached ? chosenAttached : [],
+      inferred: addAttached ? inferred : [],
+      // A second crawl updates the diagram rather than drawing another copy
+      // of the network beside it, so re-running discovery is something you can
+      // do weekly instead of once. Scoped to the active page.
+      existingNodes: page.nodes,
+      existingEdges: page.edges,
+      // Cables on the Physical view, layer-3 hops on the Logical one,
+      // where the page has them.
+      views: {
+        physical: (page.canvas.layers ?? []).find((l) => l.name.toLowerCase() === 'physical')?.id,
+        logical: (page.canvas.layers ?? []).find((l) => l.name.toLowerCase() === 'logical')?.id,
+      },
+    });
+
+    // Nothing is written yet. The crawl's changes are listed for
+    // review — additions and updates ticked, removals and moves not — and
+    // only what is accepted is applied, as one undo step. What reaches the
+    // review is `reviewable`'s decision.
+    const limits = subnets.map(parseCidr).filter((c): c is NonNullable<typeof c> => c !== null);
+    const inScope = limits.length
+      ? (address: string) => {
+          const ip = ipToInt(address);
+          return ip !== null && limits.some((c) => inCidr(ip, c));
+        }
+      : null;
+    const changes = reviewable(reconcile({ page, topo, devices: result.devices, inScope }), page, topo, keep);
+    setReview({ changes, ticked: new Set(changes.filter((c) => c.accept).map((c) => c.id)), dangling: topo.danglingLinks });
+  };
+
+  const applyReview = () => {
+    if (!review || !meta) return;
+    const accepted = review.changes.filter((c) => review.ticked.has(c.id));
+    const added = useStore.getState().applyCrawlChanges(accepted);
+    for (const node of added) {
+      const address = (node.data as DeviceNodeData).addresses?.[0]?.address;
+      // Ticking the row was the decision: everything placed with an
+      // address arrives monitored, not just what was logged into.
+      if (address) useStore.getState().upsertProbe(newProbe('node', node.id, meta.id, address, 'Discovered'));
+    }
+    const count = (kind: string) => accepted.filter((c) => c.kind === kind).length;
+    const parts = [`Applied ${accepted.length} of ${t('plural.change', { count: review.changes.length })}:`,
+      `${count('added')} added, ${count('changed')} updated, ${count('moved')} moved, ${count('removed')} removed.`];
+    if (review.dangling) parts.push(`${review.dangling} link ends were not on the diagram.`);
+    useStore.getState().setStatusMessage(parts.join(' '));
+    setReview(null);
+    setAllVisible(false);
+  };
+
+  if (!isDesktop) {
+    return (
+      <p className="cv-help cv-discover-empty">
+        Discovery needs the desktop app — a browser cannot open SSH connections.
+      </p>
+    );
+  }
+
+  // The form as a profile, and a profile back into the form.
+  const currentProfile = (name: string): CrawlProfile => ({
+    id: uid(), name, seed, subnets, maxHops, preference, port, transport,
+    credentialId: credentialId ?? null, snmp: snmpOpen ? snmpRowsShape(snmpRows) : null, details, reverseDns,
+    concurrency, perHostTimeoutSecs: perHost, retries, secondFactor, hopThrough,
+  });
+  const applyProfile = (raw: CrawlProfile) => {
+    const p = readProfile(raw);
+    if (!p) return;
+    setSeed(p.seed);
+    setSubnets(p.subnets);
+    setMaxHops(p.maxHops);
+    setPreference(p.preference);
+    setPort(p.port);
+    setTransport(p.transport);
+    setCredentialId(p.credentialId);
+    const rows = p.snmp ? restoreSnmpRows(p.snmp) : [];
+    setSnmpRows(rows.length ? rows : [blankSnmpRow()]);
+    setSnmpOpen(rows.length > 0);
+    setDetails(p.details);
+    setReverseDns(p.reverseDns);
+    setConcurrency(p.concurrency);
+    setPerHost(p.perHostTimeoutSecs);
+    setRetries(p.retries);
+    setSecondFactor(p.secondFactor);
+    setHopThrough(p.hopThrough);
+    setPlan(null);
+    useStore.getState().setStatusMessage(`Loaded the ${p.name} profile. Passwords are not part of a profile.`);
+  };
+
+  return (
+    <div className="cv-discover">
+      <CrawlProfiles disabled={running} current={currentProfile} apply={applyProfile} />
+
+      {/* Four decisions, in order. Everything else has a default and
+          is one disclosure away under Advanced. */}
+      {/* 1 — where to start: the seeds, how far to go, and what to log in to. */}
+      <section className="cv-step" data-step="seeds" aria-labelledby="cv-step-seeds">
+        <h4 className="cv-step-head" id="cv-step-seeds"><b>1</b> {t('discover.step.seeds')}</h4>
+      <div className="cv-discover-form">
+        {/* One seed or several — addresses, hostnames, ranges — or a CSV. */}
+        <label className="cv-field">
+          <span>Seed devices</span>
+          <input className="cv-input" value={seed} spellCheck={false} disabled={running}
+            placeholder="10.1.1.1, core-sw1, 10.1.2.0/24"
+            title={t('discover.seedTitle')}
+            onChange={(e) => setSeed(e.target.value)} />
+        </label>
+        <label className="cv-btn cv-btn-small cv-seed-csv" aria-disabled={running}>
+          From CSV…
+          <input type="file" accept=".csv,text/csv" hidden disabled={running}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (!file) return;
+              void file.text().then((text) => {
+                const found = seedsFromCsv(text);
+                setSeed((s) => [...new Set([...s.split(/[\s,;]+/).filter(Boolean), ...found])].join(', '));
+                useStore.getState().setStatusMessage(
+                  found.length ? `Read ${t('plural.seed', { count: found.length })} from ${file.name}.` : `Nothing in ${file.name} looked like an address or a hostname.`,
+                );
+              });
+            }} />
+        </label>
+        {/* The project already knows its subnets and which of its
+            devices a crawl can walk from. Offered, never applied on its own —
+            a scan reaches out to real equipment and stays something the
+            user starts. */}
+        <button type="button" className="cv-btn cv-btn-small cv-fill-from-project" disabled={running}
+          title="Put this project's switches and routers in the seeds, and its subnets in the limits"
+          onClick={() => {
+            const found = discoverySuggestions(useStore.getState().doc);
+            if (!found.seeds.length && !found.subnets.length) {
+              useStore.getState().setStatusMessage(
+                'Nothing to fill in yet: this project has no addressed switches or routers, and no subnets in the register.',
+              );
+              return;
+            }
+            if (found.seeds.length) {
+              setSeed((was) => [...new Set([...was.split(/[\s,;]+/).filter(Boolean), ...found.seeds])].join(', '));
+            }
+            if (found.subnets.length) setSubnets((was) => [...new Set([...was, ...found.subnets])]);
+            useStore.getState().setStatusMessage(
+              `Filled in ${t('plural.seed', { count: found.seeds.length })} and ${t('plural.subnet', { count: found.subnets.length })} from this project. Change anything before you scan.`,
+            );
+          }}>
+          Fill from this project
+        </button>
+      </div>
+      <div className="cv-discover-form">
+        <label className="cv-field cv-field-narrow">
+          <span>Hops</span>
+          <select className="cv-input" value={maxHops} disabled={running}
+            onChange={(e) => setMaxHops(Number(e.target.value))}>
+            {/* Eight was short for a real estate — a campus core to a
+                branch access switch is readily a dozen, and the crawler has
+                always accepted up to the 32 the backend clamps to. The
+                dropdown was the only thing stopping it. */}
+            {[1, 2, 3, 4, 6, 8, 12, 16, 24, 32].map((h) => <option key={h} value={h}>{h}</option>)}
+          </select>
+        </label>
+        <label className="cv-field cv-field-narrow">
+          <span>Probe address</span>
+          <select className="cv-input" value={preference} disabled={running}
+            onChange={(e) => setPreference(e.target.value as typeof preference)}>
+            <option value="loopback">Loopback</option>
+            <option value="management">Management</option>
+            <option value="first">First found</option>
+          </select>
+        </label>
+      </div>
+      <SubnetList label="Stay inside these subnets" subnets={subnets} onChange={setSubnets}
+        disabled={running} placeholder="10.1.0.0/16" scanned={sweep} onScannedChange={setSweep} />
+
+      {/* Chosen before the run, because a connection attempt to a phone or a
+          camera is what sets off an intrusion alert, and by then it has
+          happened. Everything discovered is drawn either way — this decides
+          only what gets logged into. */}
+      <div className="cv-login-classes">
+        <span className="cv-subnets-label">Log in to</span>
+        <div className="cv-class-chips">
+          {LOGIN_CHOICES.map(({ value, label }) => {
+            const on = loginClasses.includes(value);
+            return (
+              <button
+                key={value}
+                type="button"
+                className={`cv-chip${on ? ' is-on' : ''}`}
+                disabled={running}
+                aria-pressed={on}
+                onClick={() =>
+                  setLoginClasses((prev) =>
+                    prev.includes(value) ? prev.filter((c) => c !== value) : [...prev, value],
+                  )
+                }
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <span className="cv-help">
+          Everything found is drawn, including whatever is not ticked here. Unticking something
+          means Coreview will not try to log in to it — nothing more.
+        </span>
+      </div>
+
+      </section>
+
+      {/* 2 — how to log in: the login, the port and the transport, a second
+          login, the rules, SNMP, and the API side the collector reads. */}
+      <section className="cv-step" data-step="logins" aria-labelledby="cv-step-logins">
+        <h4 className="cv-step-head" id="cv-step-logins"><b>2</b> {t('discover.step.logins')}</h4>
+      <div className="cv-discover-form">
+        <CredentialPicker kind="ssh" triesAll disabled={running} chosen={credentialId} onChoose={setCredentialId}
+          remember typed={{ username, secret: password, secondSecret: enablePassword }}>
+          <label className="cv-field cv-field-narrow">
+            <span>Username</span>
+            <input className="cv-input" value={username} autoComplete="off" disabled={running}
+              onChange={(e) => setUsername(e.target.value)} />
+          </label>
+          <label className="cv-field cv-field-narrow">
+            <span>Password</span>
+            <input className="cv-input" type="password" value={password} autoComplete="off"
+              disabled={running} onChange={(e) => setPassword(e.target.value)} />
+          </label>
+          <label className="cv-field cv-field-narrow">
+            <span>Enable</span>
+            <input className="cv-input" type="password" value={enablePassword} autoComplete="off"
+              disabled={running} onChange={(e) => setEnablePassword(e.target.value)} />
+          </label>
+        </CredentialPicker>
+        <label className="cv-field cv-field-narrow">
+          <span>Port</span>
+          <input className="cv-input" type="number" value={port} disabled={running}
+            onChange={(e) => setPort(Number(e.target.value) || 22)} />
+        </label>
+      </div>
+      {/* Telnet is never chosen for anyone. It puts every credential and every
+          byte of output on the wire in clear text, which is not a flaw in the
+          implementation — it is what the protocol is — so the run has to ask
+          for it and the form says what it costs. */}
+      <label className="cv-field cv-field-narrow cv-transport">
+        <span>Reach devices over</span>
+        <select
+          className="cv-input"
+          value={transport}
+          disabled={running}
+          onChange={(e) => setTransport(e.target.value as typeof transport)}
+        >
+          <option value="ssh">SSH only</option>
+          <option value="sshThenTelnet">SSH, then telnet if nothing answers</option>
+          <option value="telnet">Telnet only</option>
+        </select>
+      </label>
+      {transport !== 'ssh' && (
+        <p className="cv-help cv-transport-warning">
+          Telnet sends the username, the password and everything the device replies in clear
+          text, readable by anything on the path. Coreview will not fall back to it after a
+          password is <em>rejected</em> — the account exists and the credentials are wrong, and
+          sending them again unprotected would be worse than failing.
+        </p>
+      )}
+
+      {/* Hop from one device to the next instead of connecting to
+          every one straight from this machine. */}
+      <label className="cv-check" title="Log in to the seed, then ssh from its own prompt to the next device, and on down the chain — the way an engineer reaches a switch only the core can see">
+        <input type="checkbox" checked={hopThrough} disabled={running} onChange={(e) => setHopThrough(e.target.checked)} />
+        Reach each device by hopping through the one that found it
+      </label>
+      {hopThrough && (
+        <p className="cv-help" data-region="hop-note">
+          Coreview logs in to the seed, then runs that device's own <code>ssh</code> to the next
+          device it found, and on down the chain — every CDP or LLDP neighbour of a kind you
+          chose above. It never connects straight from this machine except to a seed, and never
+          writes to a device it passes through. If a hop cannot be made, that one device is
+          reached directly instead. This runs on the classic crawler.
+        </p>
+      )}
+
+      {/* Two logins, because one estate rarely has one. Sites migrate between
+          TACACS realms and appliances keep a local account of their own. */}
+      <details
+        className="cv-backup-creds"
+        open={backupOpen}
+        onToggle={(e) => setBackupOpen((e.currentTarget as HTMLDetailsElement).open)}
+      >
+        <summary>Second login, if the first is refused</summary>
+        <div className="cv-discover-form">
+          <label className="cv-field cv-field-narrow">
+            <span>Username</span>
+            <input className="cv-input" value={backupUsername} autoComplete="off" disabled={running}
+              onChange={(e) => setBackupUsername(e.target.value)} />
+          </label>
+          <label className="cv-field cv-field-narrow">
+            <span>Password</span>
+            <input className="cv-input" type="password" value={backupPassword} autoComplete="off"
+              disabled={running} onChange={(e) => setBackupPassword(e.target.value)} />
+          </label>
+          <label className="cv-field cv-field-narrow">
+            <span>Enable</span>
+            <input className="cv-input" type="password" value={backupEnable} autoComplete="off"
+              disabled={running} onChange={(e) => setBackupEnable(e.target.value)} />
+          </label>
+        </div>
+        <span className="cv-help">
+          Used only where the first login is rejected. A timeout or a refused connection is not
+          retried — a second password will not help, and on a locking account policy it would do
+          harm.
+        </span>
+      </details>
+
+      <div className="cv-discover-form">
+        <label className="cv-check cv-check-inline" title={classicOnly ? t('discover.pushAlwaysCollector') : undefined}>
+          {/* The collector logs in to one device at a time whatever is ticked; the tick says so rather than going dim. */}
+          <input type="checkbox" checked={classicOnly || secondFactor} disabled={running || classicOnly}
+            onChange={(e) => setSecondFactor(e.target.checked)} />
+          These devices use Duo or another push factor — log in one at a time
+          {classicOnly && <span className="cv-help" data-region="push-note"> {t('discover.pushAlwaysCollector')}</span>}
+        </label>
+      </div>
+      <CredentialRules disabled={running} />
+
+      <details className="cv-snmp" open={snmpOpen}
+        onToggle={(e) => setSnmpOpen((e.target as HTMLDetailsElement).open)}>
+        <summary>Also try SNMP for devices that refuse SSH</summary>
+        {snmpRows.map((row, i) => {
+          const set = (patch: Partial<SnmpRow>) =>
+            setSnmpRows((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+          return (
+            <div className="cv-discover-form cv-snmp-row" key={row.key}>
+              {/* The vault already holds SNMP credentials; nothing offered
+                  them here, so a community string or a v3 passphrase had to
+                  be retyped for every run. */}
+              <CredentialPicker kind="snmp" disabled={running} chosen={row.credentialId}
+                onChoose={(id) => set({ credentialId: id })} remember
+                typed={{
+                  username: row.version === 'v3' ? row.user : 'v2c',
+                  secret: row.version === 'v3' ? row.authPass : row.community,
+                  secondSecret: row.version === 'v3' ? row.privPass : undefined,
+                }}>
+                <span className="cv-help cv-snmp-typed">Typed below. Save it and the next scan starts with it.</span>
+              </CredentialPicker>
+              {row.credentialId === null && (
+                <>
+                  <label className="cv-field cv-field-narrow">
+                    <span>Version</span>
+                    <select className="cv-input" value={row.version} disabled={running}
+                      onChange={(e) => set({ version: e.target.value as 'v2c' | 'v3' })}>
+                      <option value="v2c">v2c</option>
+                      <option value="v3">v3</option>
+                    </select>
+                  </label>
+                  {row.version === 'v2c' ? (
+                    <label className="cv-field">
+                      <span>Community (read-only)</span>
+                      <input className="cv-input" type="password" value={row.community}
+                        autoComplete="off" disabled={running}
+                        onChange={(e) => set({ community: e.target.value })} />
+                    </label>
+                  ) : (
+                    <>
+                      <label className="cv-field cv-field-narrow">
+                        <span>User</span>
+                        <input className="cv-input" value={row.user} autoComplete="off"
+                          disabled={running} onChange={(e) => set({ user: e.target.value })} />
+                      </label>
+                      <label className="cv-field cv-field-narrow">
+                        <span>Auth</span>
+                        <select className="cv-input" value={row.auth} disabled={running}
+                          onChange={(e) => set({ auth: e.target.value })}>
+                          <option value="sha">sha</option>
+                          <option value="md5">md5</option>
+                          <option value="sha256">sha256</option>
+                          <option value="sha512">sha512</option>
+                        </select>
+                      </label>
+                      <label className="cv-field cv-field-narrow">
+                        <span>Auth password</span>
+                        <input className="cv-input" type="password" value={row.authPass}
+                          autoComplete="off" disabled={running}
+                          onChange={(e) => set({ authPass: e.target.value })} />
+                      </label>
+                      <label className="cv-field cv-field-narrow">
+                        <span>Privacy</span>
+                        <select className="cv-input" value={row.priv} disabled={running}
+                          onChange={(e) => set({ priv: e.target.value })}>
+                          <option value="">none</option>
+                          <option value="aes">aes</option>
+                          <option value="aes 192">aes 192</option>
+                          <option value="aes 256">aes 256</option>
+                          <option value="des">des</option>
+                        </select>
+                      </label>
+                      <label className="cv-field cv-field-narrow">
+                        <span>Privacy password</span>
+                        <input className="cv-input" type="password" value={row.privPass}
+                          autoComplete="off" disabled={running}
+                          onChange={(e) => set({ privPass: e.target.value })} />
+                      </label>
+                    </>
+                  )}
+                </>
+              )}
+              {snmpRows.length > 1 && (
+                <button type="button" className="cv-btn cv-btn-small" disabled={running}
+                  aria-label={`Remove SNMP credential ${i + 1}`}
+                  onClick={() => setSnmpRows((prev) => prev.filter((_, j) => j !== i))}>
+                  Remove
+                </button>
+              )}
+            </div>
+          );
+        })}
+        <div className="cv-discover-form">
+          <button type="button" className="cv-btn cv-btn-small" disabled={running}
+            onClick={() => setSnmpRows((prev) => [...prev, blankSnmpRow()])}>
+            Add another SNMP credential
+          </button>
+          <span className="cv-help">
+            Each is tried in turn until one answers. v2c and v3 can be mixed.
+          </span>
+        </div>
+        <p className="cv-help">
+          Used only where SSH is refused. A device that answers is named and classified, but
+          cannot report its neighbours, so it appears without links.
+        </p>
+      </details>
+
+      <div className="cv-discover-form">
+        {engine === 'collector' && (
+          <SavedCredentialSelect kind="api" label={t('collect.apiCredential')} value={apiCredentialId} onChange={setApiCredentialId} />
+        )}
+      </div>
+      </section>
+
+      {/* 3 — what to read and keep: how hard to push, what else to ask each
+          device, and the diagnostic. */}
+      <section className="cv-step" data-step="options" aria-labelledby="cv-step-options">
+        <h4 className="cv-step-head" id="cv-step-options"><b>3</b> {t('discover.step.options')}</h4>
+      {/* What cannot apply to the collector says so, beside the controls, rather than going dim and silent. */}
+      {classicOnly && <p className="cv-help" data-region="options-classic-note">{t('discover.optionsClassicOnly')}</p>}
+      <div className="cv-discover-form">
+        <label className="cv-field cv-field-narrow" title="How many devices to work on at the same time. A push factor still logs in one at a time.">
+          <span>At once</span>
+          <select className="cv-input" value={concurrency} disabled={running || classicOnly}
+            onChange={(e) => setConcurrency(Number(e.target.value))}>
+            {[1, 2, 4, 8, 16, 32].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+        <label className="cv-field cv-field-narrow" title="How long one device may take — login and every command — before the crawl moves on">
+          <span>Give up after</span>
+          <select className="cv-input" value={perHost} disabled={running || classicOnly}
+            onChange={(e) => setPerHost(Number(e.target.value))}>
+            {[[60, '1 min'], [120, '2 min'], [300, '5 min'], [600, '10 min']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </label>
+        <label className="cv-field cv-field-narrow" title="Tries again when nothing answered. A refused login is never retried.">
+          <span>Retries</span>
+          <select className="cv-input" value={retries} disabled={running || classicOnly}
+            onChange={(e) => setRetries(Number(e.target.value))}>
+            {[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+      </div>
+      <fieldset className="cv-crawl-details" disabled={running || classicOnly}>
+        <legend>Also read from each device</legend>
+        {([
+          ['vlans', 'Ports and VLANs', 'show interfaces status, show vlan brief, show interfaces trunk'],
+          ['spanningTree', 'Spanning tree', 'show spanning-tree'],
+          ['routes', 'Routing table', 'show ip route, show ipv6 route'],
+          // Two more read-only commands, off until asked for. Their
+          // parsers were built from vendor documentation and have met no
+          // hardware, so the tooltip says so rather than leaving
+          // somebody to find out from an empty result.
+          ['vrfs', 'Per-VRF routing tables', 'show vrf, then show ip route vrf <name>. Not yet tested against a device with VRFs.'],
+          ['overlay', 'VXLAN and EVPN', 'show nve vni, show nve peers, show bgp l2vpn evpn. Not yet tested against a fabric.'],
+        ] as const).map(([key, label, commands]) => (
+          <label key={key} className="cv-check cv-check-inline" title={commands}>
+            <input type="checkbox" checked={details[key]}
+              onChange={(e) => setDetails((d) => ({ ...d, [key]: e.target.checked }))} />
+            {label}
+          </label>
+        ))}
+        <label className="cv-check cv-check-inline" title="A PTR lookup for each address found, where nothing else named it">
+          <input type="checkbox" checked={reverseDns} onChange={(e) => setReverseDns(e.target.checked)} />
+          Names from reverse DNS
+        </label>
+      </fieldset>
+
+      {/* One tick, one folder. The debug log — every command, login
+          and decision, with timings, and which reply file each command went
+          to; never a password, a community or any device output —
+          beside the replies themselves, redacted. It is the
+          diagnostic to send with a report. */}
+      <label className="cv-check cv-check-inline cv-support-capture" title={t('crawl.diagnostic.title')}>
+        <input
+          type="checkbox"
+          checked={debugLog && supportCapture}
+          disabled={running}
+          onChange={(e) => {
+            setDebugLog(e.target.checked);
+            setSupportCapture(e.target.checked);
+          }}
+        />
+        {t('crawl.diagnostic.tick')}
+      </label>
+      {(supportResult || debugLogPath) && (() => {
+        // The folder holding both, where both were kept; the log's own
+        // folder otherwise.
+        const folder = supportResult ? supportResult.folder.replace(/[\\/]replies[\\/]?$/, '') : (debugLogPath ?? '').replace(/[\\/][^\\/]*$/, '');
+        return (
+          <div className="cv-failure-log cv-support-result">
+            <span className="cv-help">
+              {supportResult
+                ? t('crawl.diagnostic.written', { count: supportResult.files })
+                : t('crawl.diagnostic.logOnly')}
+              {supportResult?.problem ? ` — ${supportResult.problem}` : ''}
+            </span>
+            <code className="cv-failure-log-path">{folder}</code>
+            <button type="button" className="cv-btn cv-btn-small" onClick={() => void navigator.clipboard.writeText(folder)}>
+              {t('crawl.support.copyPath')}
+            </button>
+            <button type="button" className="cv-btn cv-btn-small" onClick={() => void ipc.openAttachment(folder, true)}>
+              {t('crawl.support.openFolder')}
+            </button>
+          </div>
+        );
+      })()}
+
+      </section>
+
+      {/* 4 — Advanced, folded: which engine, a dry run, walks saved
+          elsewhere, and the engine's own view — the plan preview, the
+          command log, the shadow report and the topology it built, which
+          was the Collect tab. */}
+      <details className="cv-step cv-discover-advanced" data-step="advanced" open={advanced}
+        onToggle={(e) => setAdvanced((e.currentTarget as HTMLDetailsElement).open)}>
+        <summary className="cv-step-head"><b>4</b> {t('discover.step.advanced')}</summary>
+      <div className="cv-discover-form">
+        <label className="cv-field cv-field-narrow" title={t('discover.engineHelp')}>
+          <span>{t('discover.engine')}</span>
+          <select className="cv-input" data-field="discover-engine" value={engine} disabled={running}
+            onChange={(e) => setEngine(e.target.value as 'collector' | 'classic')}>
+            <option value="collector">{t('discover.engineCollector')}</option>
+            <option value="classic">{t('discover.engineClassic')}</option>
+          </select>
+        </label>
+        {classicOnly && <span className="cv-help" data-region="discover-engine-note">{t('discover.collectorIgnores')}</span>}
+        {!running && (
+          <button type="button" className="cv-btn" disabled={!seed.trim() || classicOnly}
+            title="Show what this run would do, without sending anything to the network"
+            onClick={() => {
+              void ipc.listCredentials().catch(() => []).then((saved) => {
+                const label = (id: string) => saved.find((c) => c.id === id)?.label ?? 'a credential no longer saved';
+                const runLogin = credentialId ? `${label(credentialId)} (chosen above)` : username ? `${username} (typed above)` : 'no login given';
+                const snmp = snmpForRun();
+                setPlan(dryRun({
+                  seed, subnets, maxHops, maxDevices: 500, port, details, reverseDns, concurrency,
+                  perHostTimeoutSecs: perHost, retries, secondFactor, transport,
+                  bindings: bindingsFor(useStore.getState().doc),
+                  snmpCount: snmp.typed.length + snmp.savedIds.length,
+                }, label, runLogin));
+              });
+            }}>
+            Dry run
+          </button>
+        )}
+        {!running && (
+          <label className="cv-btn" title="Files saved from snmpwalk on another machine, one device each — with MIB names, -On, or no MIBs">
+            Open SNMP walks…
+            <input type="file" multiple accept=".txt,.walk,.snmpwalk,text/plain" hidden aria-label="Open SNMP walk files"
+              onChange={(e) => {
+                const files = [...(e.target.files ?? [])];
+                e.target.value = '';
+                if (files.length) void readWalks(files);
+              }} />
+          </label>
+        )}
+      </div>
+        {advanced && <CollectionPanel />}
+      </details>
+
+      <div className="cv-discover-run">
+        {running ? (
+          <button type="button" className="cv-btn cv-btn-stop" onClick={() => void (engine === 'collector' ? ipc.cancelCollection() : ipc.cancelCrawl())}>
+            Stop
+          </button>
+        ) : (
+          <button type="button" className="cv-btn cv-btn-start" onClick={() => void start()}
+            disabled={!seed.trim() || (!credentialId && (!username || !password))}>
+            Discover
+          </button>
+        )}
+      </div>
+
+      {pushMessage && (
+        <p className="cv-discover-push" role="status">
+          {pushMessage}
+        </p>
+      )}
+
+      {plan && <DryRunPanel plan={plan} onClose={() => setPlan(null)} />}
+      {table.size > 0 && <LiveCrawlTable table={table} />}
+      {result && <CrawlFindingsList result={result} />}
+
+      <p className="cv-discover-status">
+        {problem ? <span className="cv-discover-problem">{problem}</span>
+          : status ?? 'Typed credentials are used for this run and then forgotten. Save puts them in the encrypted vault and remembers which one this project uses, so the next scan does not ask again; Replace types a new password over one, and Wipe takes it out of the vault altogether.'}
+      </p>
+
+      {rows.length > 0 && (
+        <>
+          <div className="cv-discover-filter">
+            <span className="cv-filter-label">Show</span>
+            {counts.map(([c, n]) => (
+              <button key={c} type="button"
+                className={`cv-chip ${classes.includes(c) ? 'is-on' : ''}`}
+                onClick={() => toggleClass(c)}>
+                {CLASS_LABEL[c]} <b>{n}</b>
+              </button>
+            ))}
+            <input className="cv-input cv-filter-search" placeholder="Name, address or platform"
+              value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+
+          {result && <ChangeReport result={result} />}
+
+          {review && (
+            <ReconcileReview
+              review={review}
+              onToggle={(id) => setReview((r) => {
+                if (!r) return r;
+                const ticked = new Set(r.ticked);
+                if (ticked.has(id)) ticked.delete(id);
+                else ticked.add(id);
+                return { ...r, ticked };
+              })}
+              onApply={applyReview}
+              onCancel={() => setReview(null)}
+            />
+          )}
+
+          <div className="cv-discover-actions">
+            <button type="button" className="cv-btn cv-btn-small" onClick={() => setAllVisible(true)}>
+              {t('crawl.selectEverything', { count: roleTotals.everything })}
+            </button>
+            <button
+              type="button"
+              className="cv-btn cv-btn-small"
+              onClick={setVisibleByRole}
+              disabled={roleTotals.infrastructure === 0}
+              title={t('crawl.infraTitle')}
+            >
+              {t('crawl.selectInfra', { count: roleTotals.infrastructure })}
+            </button>
+            <button type="button" className="cv-btn cv-btn-small" onClick={() => setAllVisible(false)}>
+              Select none
+            </button>
+            <button type="button" className="cv-btn cv-btn-small cv-btn-start"
+              onClick={build} disabled={!picked.length}>
+              Add {picked.length}
+              {addAttached && chosenAttached.length > 0 ? ` + ${chosenAttached.length}` : ''} to diagram
+            </button>
+            <button type="button" className="cv-btn cv-btn-small" onClick={backUp}
+              disabled={!backupable.length}
+              title={
+                backupable.length < picked.length
+                  ? 'Only devices Coreview logged into can be backed up'
+                  : undefined
+              }>
+              Back up {backupable.length}
+            </button>
+            <span className="cv-help">
+              {visible.length} of {rows.length} shown
+              {failures.length > 0 && ` · ${failures.length} could not be reached`}
+            </span>
+          </div>
+
+          <table className="cv-table cv-discover-table">
+            <thead>
+              <tr>
+                <th />
+                <th>Device</th>
+                <th>Kind</th>
+                <th>Probe address</th>
+                <th>Platform</th>
+                <th>How</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((r) => (
+                <tr key={r.key}>
+                  <td>
+                    <input type="checkbox" checked={r.picked} aria-label={`Include ${r.name}`}
+                      onChange={() => toggleRow(r.key)} />
+                  </td>
+                  <td>{r.name}</td>
+                  <td>{CLASS_LABEL[r.klass]}</td>
+                  <td className="cv-mono">{r.probeTarget || '—'}</td>
+                  <td>{r.platform ?? '—'}</td>
+                  <td className={r.reached ? 'cv-reached' : 'cv-seen'}>
+                    {r.via === 'ssh'
+                      ? 'Logged in'
+                      : r.via === 'snmp'
+                        ? 'SNMP only'
+                        : r.via === 'reported'
+                          ? 'Described by its controller'
+                          : 'Seen by a neighbour'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {running && liveFailed > 0 && (
+        <p className="cv-help cv-discover-live-failed">
+          {t('plural.device', { count: liveFailed })} could not be reached so far
+        </p>
+      )}
+
+      {result && attachedTotal > 0 && (
+        <details className="cv-attached" open={showAttached}
+          onToggle={(e) => setShowAttached((e.currentTarget as HTMLDetailsElement).open)}>
+          <summary>
+            {t('plural.moreDeviceWas', { count: attachedTotal })} seen on
+            switch ports without announcing anything
+          </summary>
+
+          <p className="cv-help">
+            These speak no discovery protocol — printers, cameras, workstations. A switch knows
+            they are there because it learned their address on a port. Nothing here is drawn
+            unless you ask: a flat network can hold hundreds, and all of them at once would bury
+            the topology.
+          </p>
+
+          <div className="cv-discover-form">
+            <label className="cv-field cv-field-narrow">
+              <span>Made by</span>
+              <input className="cv-input" list="cv-makers" value={attachedVendor}
+                placeholder="any" onChange={(e) => setAttachedVendor(e.target.value)} />
+              <datalist id="cv-makers">
+                {makers.map((m) => (
+                  <option key={m.vendor} value={m.vendor}>{`${m.vendor} (${m.count})`}</option>
+                ))}
+              </datalist>
+            </label>
+            <label className="cv-field cv-field-narrow">
+              <span>In subnet</span>
+              <input className="cv-input" value={attachedSubnet} placeholder="any"
+                onChange={(e) => setAttachedSubnet(e.target.value)} />
+            </label>
+            <label className="cv-field cv-field-narrow">
+              <span>On port</span>
+              <input className="cv-input" value={attachedPort} placeholder="any"
+                onChange={(e) => setAttachedPort(e.target.value)} />
+            </label>
+          </div>
+
+          <label className="cv-check cv-check-inline">
+            <input type="checkbox" checked={singlePortOnly}
+              onChange={(e) => setSinglePortOnly(e.target.checked)} />
+            Only ports with one device on them
+          </label>
+          <p className="cv-help">
+            A port carrying several addresses leads to another switch. Ticked, only what is on a
+            port of its own is drawn. Unticked, a crowded port is drawn as the switch it must be
+            — see below.
+          </p>
+
+          <label className="cv-check" data-field="add-attached">
+            <input type="checkbox" checked={addAttached} onChange={(e) => setAddAttached(e.target.checked)} />
+            {t('discover.addAttached')}
+          </label>
+
+          <p className="cv-help">
+            <strong>{chosenAttached.length}</strong> of {attachedTotal} match.{' '}
+            {addAttached ? t('discover.attachedAdded') : t('discover.attachedNotAdded')}
+            {/* And one place each. A device learned by three switches
+                is drawn under the one that sees it on the quietest port. */}
+          </p>
+
+          {/* The rows the counts above are counting. Nothing is drawn
+              from here; it is what the crawl learned about each silent device,
+              so it can be read before it is on the diagram. */}
+          {chosenAttached.length > 0 && (
+            <div className="cv-table-scroll cv-attached-list">
+              <table className="cv-table cv-compare-table">
+                <thead>
+                  <tr>
+                    {([
+                      ['address', t('crawl.attached.address')],
+                      ['mac', t('crawl.attached.mac')],
+                      ['vendor', t('crawl.attached.maker')],
+                      ['hostname', t('crawl.attached.name')],
+                      ['subnet', t('crawl.attached.subnet')],
+                      ['host', t('crawl.attached.switch')],
+                      ['port', t('crawl.attached.port')],
+                      ['vlan', t('crawl.attached.vlan')],
+                    ] as const).map(([key, label]) => (
+                      <th key={key}>
+                        <button type="button" className="cv-th-sort" aria-sort={attachedSort.key === key ? (attachedSort.dir === 1 ? 'ascending' : 'descending') : undefined}
+                          onClick={() => setAttachedSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : 1 }))}>
+                          {label}{attachedSort.key === key ? (attachedSort.dir === 1 ? ' ▲' : ' ▼') : ''}
+                        </button>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedAttached.map((r) => (
+                    <tr key={`${r.host}|${r.port}|${r.mac}`}>
+                      <td className="cv-mono">{r.address}</td>
+                      <td className="cv-mono">{r.mac}</td>
+                      <td>{r.vendor}</td>
+                      <td>{r.hostname}</td>
+                      <td className="cv-mono">{r.subnet}</td>
+                      <td>{r.host}</td>
+                      <td className="cv-mono">{r.port}</td>
+                      <td className="cv-mono">{r.vlan}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {inferred.length > 0 && (
+            <p className="cv-help cv-inferred-note">
+              <strong>{inferred.length}</strong>{' '}
+              {t('plural.portHas', { count: inferred.length })} several devices behind them and
+              nothing on them answered LLDP or CDP, so each will be drawn as an unmanaged switch
+              with its devices hanging off it:{' '}
+              {inferred
+                .slice(0, 4)
+                .map((i) => `${i.host} ${i.port} (${i.macs.length})`)
+                .join(', ')}
+              {inferred.length > 4 ? ', …' : ''}. What they are was not discovered; that they are
+              there was.
+            </p>
+          )}
+        </details>
+      )}
+
+      {!running && failures.length > 0 && (
+        <details className="cv-discover-failures">
+          <summary>{t('plural.device', { count: failures.length })} could not be reached</summary>
+          {/* Grouped by why, with what to do about it. Four
+              controller-managed access points used to read as four identical
+              timeouts, which invites the wrong fix — a longer timeout. They
+              now read as one group saying the devices are up and offer no
+              SSH. */}
+          {[...new Map(failures.map((f) => [f.kind ?? 'other', f.kind])).keys()].map((kind) => {
+            const group = failures.filter((f) => (f.kind ?? 'other') === kind);
+            const advice = failureAdvice(group[0]?.kind);
+            return (
+              <div className="cv-failure-group" key={kind}>
+                <h5>
+                  {failureHeading(group[0]?.kind)} <span className="cv-muted">({group.length})</span>
+                </h5>
+                {advice && <p className="cv-help">{advice}</p>}
+                <ul>
+                  {group.map((f) => (
+                    <li key={f.address}>
+                      <code>{f.address}</code> — {reasonWithoutAddress(f.address, f.reason)}
+                      {/* A device that answered and then never reached
+                          a prompt left what it sent on disk. The path is shown
+                          rather than hidden behind a button, because the whole
+                          point is that somebody can find the file and send it
+                          on — often from a different machine to this one. */}
+                      {f.transcriptPath && (
+                        <div className="cv-failure-log">
+                          <span className="cv-help">
+                            What it sent was saved, so it can be read or sent on:
+                          </span>
+                          <code className="cv-failure-log-path">{f.transcriptPath}</code>
+                          <button
+                            type="button"
+                            className="cv-btn cv-btn-small"
+                            onClick={() => void navigator.clipboard.writeText(f.transcriptPath ?? '')}
+                          >
+                            Copy path
+                          </button>
+                          <button
+                            type="button"
+                            className="cv-btn cv-btn-small"
+                            onClick={() => void ipc.openAttachment(f.transcriptPath ?? '', true)}
+                          >
+                            Open folder
+                          </button>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </details>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Saved credentials to try first on a subnet or a vendor's devices.
+ * Kept with the project — they are ids into this machine's vault, not secrets —
+ * and sent with every crawl alongside each device's own.
+ */
+function CredentialRules({ disabled }: { disabled: boolean }) {
+  const rules = useStore((s) => s.doc.credentialRules) ?? [];
+  const setRules = useStore((s) => s.setCredentialRules);
+  const patch = (id: string, change: Partial<CredentialRule>) =>
+    setRules(rules.map((r) => (r.id === id ? { ...r, ...change } : r)));
+  return (
+    <details className="cv-cred-rules" open={rules.length > 0 || undefined}>
+      <summary>Saved credentials by subnet or vendor{rules.length ? ` (${rules.length})` : ''}</summary>
+      <p className="cv-help">
+        Tried before the login above on the devices they match — a device's own (in its inspector) first, then the
+        narrowest subnet, then the vendor.
+      </p>
+      {rules.map((r) => {
+        const problem = ruleProblem(r);
+        return (
+          <div key={r.id} className="cv-discover-form cv-cred-rule">
+            <select className="cv-input" aria-label="Match by" value={r.scope} disabled={disabled}
+              onChange={(e) => patch(r.id, { scope: e.target.value as CredentialRule['scope'] })}>
+              <option value="subnet">Subnet</option>
+              <option value="vendor">Vendor or platform</option>
+            </select>
+            <input className="cv-input" aria-label="Subnet or vendor" value={r.value} disabled={disabled} spellCheck={false}
+              placeholder={r.scope === 'subnet' ? '192.0.2.0/24' : 'FortiSwitch'}
+              aria-invalid={Boolean(problem && r.value)}
+              onChange={(e) => patch(r.id, { value: e.target.value })} />
+            <SavedCredentialSelect label="Saved credential for this rule" value={r.credentialId || undefined} disabled={disabled}
+              onChange={(id) => patch(r.id, { credentialId: id ?? '' })} />
+            <button type="button" className="cv-layer-remove" aria-label="Remove this rule" disabled={disabled}
+              onClick={() => setRules(rules.filter((x) => x.id !== r.id))}>×</button>
+            {problem && r.value && <span className="cv-help cv-cred-rule-problem">{problem}</span>}
+          </div>
+        );
+      })}
+      <button type="button" className="cv-btn cv-btn-small" disabled={disabled}
+        onClick={() => setRules([...rules, { id: uid(), scope: 'subnet', value: '', credentialId: '' }])}>
+        Add a rule
+      </button>
+    </details>
+  );
+}
+
+/** One row per device, where it is in the crawl right now. Open while
+ *  a run is going; a finished run's table stays until the next one starts. */
+function LiveCrawlTable({ table }: { table: CrawlTable }) {
+  const all = tableRows(table);
+  const counts = stateCounts(table);
+  // Filter as you type, literally, over what the row shows.
+  const [filter, setFilter] = useState('');
+  const q = filter.trim().toLowerCase();
+  const rows = q
+    ? all.filter((r) => [r.address, r.name ?? '', STATE_LABEL[r.state], r.detail ?? ''].some((v) => v.toLowerCase().includes(q)))
+    : all;
+  // One tab stop, arrows between rows.
+  const tableRef = useRef<HTMLDivElement>(null);
+  useRovingTabindex(tableRef, [rows.length]);
+  return (
+    <details className="cv-crawl-table" open>
+      <summary>
+        Devices this run{' '}
+        <span className="cv-palette-count">
+          {Object.entries(counts).map(([state, n]) => `${n} ${STATE_LABEL[state as keyof typeof STATE_LABEL].toLowerCase()}`).join(' · ')}
+        </span>
+      </summary>
+      {all.length > 8 && (
+        <input className="cv-input cv-list-filter" value={filter} aria-label={t('filter.rows')} placeholder={t('filter.rows')}
+          onChange={(e) => setFilter(e.target.value)} />
+      )}
+      <div className="cv-table-scroll" ref={tableRef}>
+        <table className="cv-table">
+          <thead>
+            <tr><th>Address</th><th>Name</th><th>Hops</th><th>State</th><th>Detail</th></tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.address} data-state={r.state}>
+                <td className="cv-mono">{r.address}</td>
+                <td>{r.name ?? ''}</td>
+                <td>{r.hops ?? ''}</td>
+                <td><span className={`cv-crawl-state is-${r.state}`}>{STATE_LABEL[r.state]}</span></td>
+                <td className="cv-crawl-detail">{r.detail ?? ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
+
+/** A crawl's plan, from its settings alone. */
+function DryRunPanel({ plan, onClose }: { plan: DryRunPlan; onClose: () => void }) {
+  return (
+    <section className="cv-dry-run" aria-label="Dry run">
+      <header>
+        <strong>Dry run</strong>
+        <span className="cv-help">Nothing was sent: no ping, no DNS, no login.</span>
+        <button type="button" className="cv-layer-remove" aria-label="Close the dry run" onClick={onClose}>×</button>
+      </header>
+      <h4>Seeds</h4>
+      <ul>
+        {plan.seeds.map((s) => (
+          <li key={s.seed} data-kind={s.kind}>
+            <span className="cv-mono">{s.seed}</span>{' — '}
+            {s.kind === 'address' && (s.allowed ? <>would be dialled with {s.credentials.join(', then ')}</> : <>outside the subnet limit — dialled anyway, because you named it; its neighbours are not followed</>)}
+            {s.kind === 'range' && <>{s.allowed} of {s.addresses} addresses inside the limit would be checked on the login port first, then dialled with {s.credentials.join(', then ')}</>}
+            {s.kind === 'hostname' && <>would be looked up in DNS when the run starts; which address it is is not known yet</>}
+            {s.kind === 'invalid' && <span className="cv-dry-run-bad">{s.reason}</span>}
+          </li>
+        ))}
+      </ul>
+      <h4>Limits</h4>
+      <ul>{plan.limits.map((l) => <li key={l}>{l}</li>)}</ul>
+      <h4>Asked of each device</h4>
+      <p className="cv-mono cv-dry-run-commands">{plan.commands.join(' · ')}</p>
+      <p className="cv-help">{plan.snmp}. Neighbours found along the way are dialled within the same limits; who they are is only known once the run starts.</p>
+    </section>
+  );
+}
+
+/** Pick, save and remove named crawl settings. */
+function CrawlProfiles({
+  disabled,
+  current,
+  apply,
+}: {
+  disabled: boolean;
+  current: (name: string) => CrawlProfile;
+  apply: (p: CrawlProfile) => void;
+}) {
+  const profiles = useStore((s) => s.doc.crawlProfiles) ?? [];
+  const save = useStore((s) => s.saveCrawlProfile);
+  const remove = useStore((s) => s.deleteCrawlProfile);
+  const [chosen, setChosen] = useState('');
+  const [name, setName] = useState('');
+  return (
+    <div className="cv-crawl-profiles">
+      <label className="cv-field cv-field-narrow">
+        <span>Profile</span>
+        <select className="cv-input" value={chosen} disabled={disabled || profiles.length === 0}
+          onChange={(e) => {
+            setChosen(e.target.value);
+            const p = profiles.find((x) => x.id === e.target.value);
+            if (p) {
+              apply(p);
+              setName(p.name);
+            }
+          }}>
+          <option value="">{profiles.length ? 'Choose a saved profile' : 'No profiles yet'}</option>
+          {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </label>
+      <input className="cv-input" aria-label="Profile name" placeholder="Name these settings" value={name} disabled={disabled}
+        onChange={(e) => setName(e.target.value)} />
+      <button type="button" className="cv-btn cv-btn-small" disabled={disabled || !name.trim()}
+        title="Seeds, limits, tables and saved credentials — never a password"
+        onClick={() => {
+          save(current(name.trim()));
+          const saved = (useStore.getState().doc.crawlProfiles ?? []).find((p) => p.name.toLowerCase() === name.trim().toLowerCase());
+          if (saved) setChosen(saved.id);
+          useStore.getState().setStatusMessage(`Saved the ${name.trim()} profile.`);
+        }}>
+        Save profile
+      </button>
+      {chosen && (
+        <button type="button" className="cv-btn cv-btn-small" disabled={disabled}
+          onClick={() => {
+            remove(chosen);
+            setChosen('');
+          }}>
+          Delete profile
+        </button>
+      )}
+    </div>
+  );
+}
+
+// A stable empty list: a selector that made a fresh `[]` on every render
+// would never compare equal, and the panel would re-render until React
+// stopped it — which is exactly what the crawling harness caught.
+const NO_RULES: IntentRule[] = [];
+
+/** What the crawl says is wrong, worst first. */
+function CrawlFindingsList({ result }: { result: Pick<CrawlResult, 'devices' | 'firstSeenKeys'> }) {
+  // The pages and the rules, not the whole document.
+  const pages = useStore((s) => s.doc.pages);
+  const intentRules = useStore((s) => s.doc.intentRules) ?? NO_RULES;
+  const findings = useMemo(() => {
+    // Links already drawn between devices, by the names a crawl knows them by.
+    const nameOf = new Map(
+      allNodes({ pages })
+        .filter((n) => n.type === 'device')
+        .map((n) => {
+          const d = n.data as DeviceNodeData;
+          return [n.id, d.hostname || d.label] as const;
+        }),
+    );
+    const drawn: DrawnLink[] = allEdges({ pages })
+      .map((e) => ({ a: nameOf.get(e.source) ?? '', b: nameOf.get(e.target) ?? '' }))
+      .filter((l) => l.a && l.b);
+    // The user's own rules, judged against the same crawl.
+    return [...crawlFindings(result, drawn), ...intentFindings(result.devices, intentRules)];
+  }, [pages, intentRules, result]);
+  const unjudged = useMemo(() => intentUnjudged(result.devices, intentRules), [intentRules, result]);
+  return (
+    <>
+      {findings.length === 0 ? (
+        <EmptyState what={t('empty.findings.what')} why={t('empty.findings.why')} />
+      ) : (
+        <details className="cv-findings" open>
+          <summary>
+            Findings <span className="cv-palette-count">{findings.length}</span>
+          </summary>
+          <ul>
+            {findings.map((f, i) => (
+              <li key={i} className={`is-${f.severity}`} data-kind={f.kind}>
+                <span className="cv-finding-kind">{FINDING_LABEL[f.kind]}</span> {f.message}{' '}
+                <button type="button" className="cv-btn cv-btn-small cv-finding-open"
+                  onClick={() => useStore.getState().openDrawer({ kind: 'finding', finding: f })}>
+                  {t('drawer.openFinding')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {unjudged.length > 0 && (
+        <p className="cv-help cv-intent-unjudged">
+          {t('intent.unjudged', { count: unjudged.length })} {unjudged.map(ruleLabel).join('; ')}.
+        </p>
+      )}
+      <IntentRulesEditor />
+    </>
+  );
+}
+
+/** The rules about how the estate is meant to be. Kept in the
+ *  project; nothing ships pre-filled. */
+function IntentRulesEditor() {
+  const rules = useStore((s) => s.doc.intentRules) ?? NO_RULES;
+  const setRules = useStore((s) => s.setIntentRules);
+  const [kind, setKind] = useState<IntentKind>('trunkCarriesVlan');
+  const [value, setValue] = useState('');
+  const takes = INTENT_KINDS.find((k) => k.kind === kind)?.takes ?? null;
+  const add = () => {
+    const rule = newIntentRule(kind, value);
+    if (!ruleComplete(rule)) return;
+    setRules([...rules, rule]);
+    setValue('');
+  };
+  return (
+    <details className="cv-intent-rules">
+      <summary>
+        {t('intent.title')} <span className="cv-palette-count">{rules.length}</span>
+      </summary>
+      <p className="cv-help">{t('intent.help')}</p>
+      {rules.length > 0 && (
+        <ul className="cv-intent-list">
+          {rules.map((r) => (
+            <li key={r.id} data-kind={r.kind}>
+              <span>{ruleLabel(r)}</span>
+              <button type="button" className="cv-btn cv-btn-small" onClick={() => setRules(rules.filter((x) => x.id !== r.id))}>
+                {t('intent.remove')}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="cv-before-after-pick">
+        <label className="cv-field cv-field-wide">
+          <span>{t('intent.rule')}</span>
+          <select className="cv-input" value={kind} onChange={(e) => setKind(e.target.value as IntentKind)}>
+            {INTENT_KINDS.map((k) => <option key={k.kind} value={k.kind}>{k.label}</option>)}
+          </select>
+        </label>
+        {takes && (
+          <label className="cv-field cv-field-narrow">
+            <span>{takes === 'vlan' ? t('intent.vlan') : takes === 'vlans' ? t('intent.vlans') : t('intent.days')}</span>
+            <input className="cv-input cv-mono" value={value} onChange={(e) => setValue(e.target.value)} />
+          </label>
+        )}
+        <button type="button" className="cv-btn cv-btn-small" onClick={add} disabled={!ruleComplete(newIntentRule(kind, value))}>
+          {t('intent.add')}
+        </button>
+      </div>
+    </details>
+  );
+}
+
+const KIND_HEADING: Record<Change['kind'], string> = {
+  added: 'New',
+  changed: 'Changed',
+  moved: 'Moved — not applied unless ticked',
+  removed: 'Not found this time — not removed unless ticked',
+};
+
+/** Each change a crawl would make, to accept or reject. */
+/** A crawl's devices, then the neighbours it only heard about, as table rows —
+ *  skipping any key already shown. Shared by a live crawl and by walk files
+ *  read from disk. */
+function resultRows(r: { devices: CrawledDevice[]; notVisited: Neighbor[] }, seen: Set<string>): Row[] {
+  const next: Row[] = [];
+  const add = (row: Row) => {
+    if (seen.has(row.key)) return;
+    seen.add(row.key);
+    next.push(row);
+  };
+  r.devices.forEach((d: CrawledDevice) =>
+    add({
+      key: d.hostname,
+      name: d.hostname,
+      address: d.address,
+      probeTarget: d.probeTarget,
+      klass: d.class,
+      platform: d.platform,
+      reached: true,
+      via: d.reachedBy,
+      picked: true,
+    }),
+  );
+  r.notVisited.forEach((n: Neighbor) =>
+    add({
+      key: n.shortName,
+      name: n.shortName,
+      address: n.addresses[0]?.ip ?? '',
+      probeTarget: n.addresses[0]?.ip ?? '',
+      klass: n.class,
+      platform: n.platform,
+      reached: false,
+      via: null,
+      // Only what we logged into is ticked to begin with. Everything
+      // else is a claim from a neighbour, not something confirmed.
+      picked: false,
+    }),
+  );
+  return next;
+}
+
+function ReconcileReview({
+  review,
+  onToggle,
+  onApply,
+  onCancel,
+}: {
+  review: { changes: Change[]; ticked: Set<string> };
+  onToggle: (id: string) => void;
+  onApply: () => void;
+  onCancel: () => void;
+}) {
+  const kinds = (['added', 'changed', 'moved', 'removed'] as const).filter((k) => review.changes.some((c) => c.kind === k));
+  return (
+    <section className="cv-reconcile" aria-label="Review the crawl's changes">
+      <header>
+        <strong>Review the changes</strong>
+        <span className="cv-help">Nothing has been changed yet. Untick anything you do not want.</span>
+      </header>
+      {review.changes.length === 0 && <p className="cv-help">The diagram already matches what the crawl found.</p>}
+      {kinds.map((kind) => (
+        <div key={kind} className={`cv-reconcile-group is-${kind}`}>
+          <h4>{KIND_HEADING[kind]}</h4>
+          <ul>
+            {review.changes.filter((c) => c.kind === kind).map((c) => (
+              <li key={c.id}>
+                <label className="cv-check">
+                  <input type="checkbox" checked={review.ticked.has(c.id)} onChange={() => onToggle(c.id)} />
+                  <span className="cv-reconcile-title">{c.title}</span>
+                </label>
+                {c.details.length > 0 && <span className="cv-reconcile-detail">{c.details.join(' · ')}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      <div className="cv-discover-actions">
+        <button type="button" className="cv-btn cv-btn-small cv-btn-start" onClick={onApply} disabled={review.ticked.size === 0}>
+          Apply {t('plural.change', { count: review.ticked.size })}
+        </button>
+        <button type="button" className="cv-btn cv-btn-small" onClick={onCancel}>Cancel</button>
+      </div>
+    </section>
+  );
+}

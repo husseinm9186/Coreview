@@ -1,0 +1,10 @@
+Capability codes:
+	R:Router, B:Bridge, T:Telephone, C:DOCSIS Cable Device
+MED type codes:
+	Generic:Generic Endpoint (Class 1), Media:Media Endpoint (Class 2)
+
+  Portname    Status   Device-name                 TTL   Capability  MED-type  Port-ID
+  __________  _______  __________________________  ____  __________  ________  _______
+  port1       Down     -                           -     -           -         -
+  port13      Up       -                           -     -           -         -
+  port24      Up       LAB-SW1.lab.example.net     120   BR          -         Gi0/9

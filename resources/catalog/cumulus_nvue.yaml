@@ -1,0 +1,284 @@
+# Coreview discovery catalog — NVIDIA Cumulus Linux 5.x, NVUE (cumulus_nvue)
+#
+# 2026-10-01: first built from NVIDIA's documentation for the SN2010.
+# 2026-10-06: rebuilt on real captures from an
+# SN2010 on Cumulus Linux 5.18 (crates/coreview-discover/fixtures/cumulus5,
+# reduced), where every `nv show` takes `-o json`.
+# Each NVUE command is sent with `-o json` and read as NVIDIA's published
+# NVUE object model (the OpenAPI schema); its `fallback` is the
+# table that was captured, sent when the JSON reads to nothing and read by the
+# same reader (`coreview_discover::nvue`, which the classic crawler reads
+# with too). `sudo` is never sent — the read-only guard refuses it — so
+# OSPF and LLDP come from NVUE's own views, not `vtysh` or `lldpcli`.
+# The ARP table, the FDB and the kernel's FIB stay Linux's JSON.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+# An NVUE entry is `docs` while its JSON form has met only the schema, even
+# where its table form (the fallback) is a real capture; the
+# evidence says which.
+vendor: NVIDIA
+os: cumulus_nvue
+name: Cumulus Linux 5 (NVUE)
+ntc_platform: linux
+phase: 1
+fingerprint:
+  probe: nv show system
+  match_regex: 'Cumulus Linux'
+session:
+  source: scrapli_community scrapli_community.cumulus.linux.sync_driver (prompt `user@host:vrf:~$`)
+  privilege_levels:
+    exec:
+      pattern: ^\S+@\S+:\S+:\S+\$\s*$
+  default_privilege: exec
+  failed_when_contains:
+    - "command not found"
+    - "Permission denied"
+    - "ERROR:"
+  on_close:
+    - exit
+role_hint:
+  - match: Cumulus Linux
+    role: l3_switch
+role_defaults:
+  l3_switch:
+    - switching
+    - routing
+    - lldp
+caps_probe:
+  # A VRF of its own beside `default` — every Cumulus 5 has `mgmt`
+  # (table 1001 and up) — expands the per-VRF RIB below.
+  - id: nv_show_vrf_probe
+    cmd: 'nv show vrf'
+    flags:
+      vrf: '(?m)^\S+\s+1\d{3,}\b'
+    timeout: 30
+commands:
+  - id: nv_show_system
+    cmd: 'nv show system -o json'
+    gate: always
+    parser: reader:nvue_identity
+    fallback: 'nv show system'
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: 'NVUE schema `/system`; the table form is NVIDIA''s documented layout'
+    coreview_reader: true
+  - id: nv_show_platform
+    cmd: 'nv show platform -o json'
+    gate: always
+    parser: reader:nvue_identity
+    fallback: 'nv show platform'
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: 'the table form is a real SN2010 capture (Cumulus 5.18); the JSON form is NVIDIA''s NVUE OpenAPI schema'
+    coreview_reader: true
+  - id: nv_show_system_version
+    cmd: 'nv show system version -o json'
+    gate: always
+    parser: reader:nvue_identity
+    fallback: 'nv show system version'
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: 'the table form is a real SN2010 capture (Cumulus 5.18); the JSON form is NVIDIA''s NVUE OpenAPI schema'
+    coreview_reader: true
+  - id: nv_show_interface
+    cmd: 'nv show interface -o json'
+    gate: always
+    parser: reader:nvue_interfaces
+    fallback: 'nv show interface'
+    feeds:
+      - interface
+      - ip_address
+    weight: heavy
+    timeout: 60
+    verified: docs
+    evidence: 'the table form is a real SN2010 capture (Cumulus 5.18); the JSON form is NVIDIA''s NVUE OpenAPI schema; VRR''s virtual addresses are `kind: vrr`'
+    coreview_reader: true
+  - id: nv_show_interface_lldp_detail
+    cmd: 'nv show interface lldp-detail -o json'
+    gate: always
+    parser: reader:nvue_lldp
+    fallback: 'nv show interface lldp-detail'
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 60
+    verified: docs
+    evidence: 'the table form is lldpd''s detail layout, read against a real `lldpcli show neighbors details` capture, which NVIDIA documents `lldp-detail` as printing; the JSON form is the schema''s `lldp.neighbor`'
+    coreview_reader: true
+  - id: nv_show_interface_bonds
+    cmd: 'nv show interface -o json'
+    gate: always
+    parser: reader:nvue_bonds
+    fallback: 'nv show interface bond-members'
+    feeds:
+      - lag
+    weight: heavy
+    timeout: 60
+    verified: docs
+    evidence: 'NVUE schema `bond.member`; the fallback is NVIDIA''s documented `bond-members` table'
+    coreview_reader: true
+  - id: nv_show_mlag
+    cmd: 'nv show mlag -o json'
+    gate: always
+    parser: reader:nvue_mlag
+    fallback: 'nv show mlag'
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: 'NVUE schema `/mlag`; a real `stp port` capture shows an MLAG pair (clag-role secondary, peerlink the ISL)'
+    coreview_reader: true
+  - id: nv_show_bridge_domain_vlan
+    cmd: 'nv show bridge domain br_default vlan -o json'
+    gate: always
+    parser: reader:nvue_vlans
+    fallback: 'nv show bridge domain br_default vlan'
+    feeds:
+      - vlan
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: 'the table form is a real SN2010 capture (Cumulus 5.18); the JSON form is NVIDIA''s NVUE OpenAPI schema'
+    coreview_reader: true
+  - id: nv_show_bridge_domain_port
+    cmd: 'nv show bridge domain br_default port -o json'
+    gate: always
+    parser: reader:nvue_port_vlans
+    fallback: 'nv show bridge domain br_default port vlan'
+    feeds:
+      - interface
+    weight: heavy
+    timeout: 60
+    verified: docs
+    evidence: 'the table form is a real SN2010 capture (Cumulus 5.18); the JSON form is NVIDIA''s NVUE OpenAPI schema (`port vlan`)'
+    coreview_reader: true
+  - id: nv_show_bridge_domain_stp
+    cmd: 'nv show bridge domain br_default stp -o json'
+    gate: always
+    parser: reader:nvue_stp
+    fallback: 'nv show bridge domain br_default stp'
+    feeds:
+      - stp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: 'the table form is a real SN2010 capture (Cumulus 5.18); the JSON form is NVIDIA''s NVUE OpenAPI schema'
+    coreview_reader: true
+  - id: nv_show_vrf
+    cmd: 'nv show vrf -o json'
+    gate: always
+    parser: reader:nvue_vrf
+    fallback: 'nv show vrf'
+    feeds:
+      - vrf
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: 'the table form is a real SN2010 capture (Cumulus 5.18); the JSON form is NVIDIA''s NVUE OpenAPI schema'
+    coreview_reader: true
+  - id: nv_show_rib_ipv4
+    cmd: 'nv show vrf default router rib ipv4 route -o json'
+    gate: always
+    parser: reader:nvue_rib
+    fallback: 'nv show vrf default router rib ipv4 route'
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: 'the table form is a real SN2010 capture (Cumulus 5.18); the JSON form is NVIDIA''s NVUE OpenAPI schema; only the JSON names next hops — the kernel''s FIB below has them either way'
+    coreview_reader: true
+  - id: nv_show_rib_ipv6
+    cmd: 'nv show vrf default router rib ipv6 route -o json'
+    gate: always
+    parser: reader:nvue_rib
+    fallback: 'nv show vrf default router rib ipv6 route'
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: 'the table form is a real SN2010 capture (Cumulus 5.18); the JSON form is NVIDIA''s NVUE OpenAPI schema'
+    coreview_reader: true
+  - id: nv_show_rib_ipv4_vrf
+    cmd: 'nv show vrf {vrf} router rib ipv4 route -o json'
+    gate: cap.vrf
+    foreach: vrf
+    parser: reader:nvue_rib
+    fallback: 'nv show vrf {vrf} router rib ipv4 route'
+    feeds:
+      - vrf
+      - route
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: 'the table form is a real SN2010 capture (Cumulus 5.18); the JSON form is NVIDIA''s NVUE OpenAPI schema'
+    coreview_reader: true
+  - id: nv_show_ospf_neighbor
+    cmd: 'nv show vrf default router ospf neighbor -o json'
+    gate: always
+    parser: reader:nvue_ospf_neighbors
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 60
+    verified: docs
+    evidence: 'NVUE schema `/vrf/{vrf}/router/ospf/neighbor`. The real capture is FRR''s `show ip ospf neighbor detail` under `sudo vtysh`, which the reader also reads but the guard will not send'
+    coreview_reader: true
+  - id: nv_show_nve_vxlan
+    cmd: 'nv show nve vxlan -o json'
+    gate: always
+    parser: reader:nvue_vxlan
+    fallback: 'nv show nve vxlan'
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: 'the table form is a real SN2010 capture (Cumulus 5.18); the JSON form is NVIDIA''s NVUE OpenAPI schema (off on the captured switch: `state disabled`)'
+    coreview_reader: true
+  - id: ip_j_neigh
+    cmd: 'ip -j neigh'
+    gate: always
+    parser: json
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: docs
+    evidence: 'iproute2 JSON (dst, lladdr, dev, state), as the hosts catalog'
+  - id: ip_j_route_show_table_all
+    cmd: 'ip -j route show table all'
+    gate: always
+    parser: json
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: 'iproute2 JSON — the kernel''s table, what the switch forwards by'
+  - id: bridge_j_fdb_show
+    cmd: 'bridge -j fdb show'
+    gate: always
+    parser: json
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: 'iproute2 JSON (mac, ifname, vlan, state), as the hosts catalog'
+live_path: []
+note: 'Cumulus 5 / NVUE. Every `nv show` is sent as `-o json` and, when that reads to nothing, as the table captured on a real SN2010 (Cumulus 5.18). `sudo` is never sent: OSPF comes from NVUE (`nv show vrf default router ospf neighbor`), not `sudo vtysh`; LLDP from `nv show interface lldp-detail`, not `sudo lldpcli`. BGP EVPN is not asked: the captured switch answers `Error: The requested item does not exist.` with EVPN off, and NVUE''s EVPN JSON waits for a switch with it on. `nv config show` is not a read verb the allowlist admits, so no configuration is kept.'

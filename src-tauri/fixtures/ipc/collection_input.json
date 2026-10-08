@@ -1,0 +1,34 @@
+{
+  "projectId": "project-1",
+  "targets": "192.0.2.10\n192.0.2.11",
+  "port": 22,
+  "osHint": "cisco_ios",
+  "roleOverride": "switch",
+  "planOnly": false,
+  "lightOnly": true,
+  "credentialId": "cred-ssh",
+  "keepDiagnostic": true,
+  "askAgain": false,
+  "loginClasses": [
+    "router",
+    "switch"
+  ],
+  "transport": "sshThenTelnet",
+  "connectTimeoutSecs": 8,
+  "authTimeoutSecs": 20,
+  "apiCredentialId": "cred-api",
+  "fmcHost": "192.0.2.5",
+  "snmpCredentialId": "cred-snmp",
+  "follow": {
+    "maxHops": 3,
+    "maxDevices": 50,
+    "subnetLimit": "192.0.2.0/24"
+  },
+  "fallbackCredentialIds": [
+    "cred-ssh-2",
+    "cred-ssh-3"
+  ],
+  "scanSubnets": [
+    "192.0.2.0/24"
+  ]
+}

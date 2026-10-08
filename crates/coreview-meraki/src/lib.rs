@@ -1,0 +1,434 @@
+//! The Cisco Meraki Dashboard API, read-only.
+//!
+//! Meraki MR, MS and MX have no command line. A crawl can never log into one,
+//! so everything Coreview can know about a Meraki estate comes from this API
+//! or from what a neighbouring switch happens to say about it.
+//!
+//! **Read-only by construction.** Every call here is a GET, and [`http`] has
+//! no other method — not "does not currently send a POST", but no code that
+//! could. That is what makes the promise checkable rather than a claim:
+//! this cannot change a customer's configuration however it is called.
+//!
+//! **One named family of hosts.** `api.meraki.com`, and the regional shards it
+//! redirects an organisation to — `nNNN.meraki.com`, `api.meraki.ca`,
+//! `api.meraki.cn` — or a loopback address for the tests (amended by
+//! 7). A redirect or a `Link: rel=next` pointing anywhere else
+//! is refused with the host named, and the key never goes there. A client
+//! that could be pointed anywhere is a general-purpose HTTP client, which is
+//! the thing Q-008 rules out.
+//!
+//! **Built from a working program, not from documentation.** The endpoints,
+//! the field names and the paging come from working scripts that have
+//! been run against the live API. What has *not* happened is Coreview's own
+//! client getting an answer from Meraki: there is no key on the machine this
+//! was written on. [`Client::verified_against_api`] says so, and says it until
+//! somebody changes it after watching it work.
+
+pub mod api;
+pub mod backup;
+pub mod checks;
+pub mod collect;
+pub mod discover;
+pub mod health;
+mod http;
+
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+pub use api::{Device, Network, Organization};
+pub use http::{Response, Url};
+
+/// Where the real thing lives.
+pub const BASE: &str = "https://api.meraki.com/api/v1";
+
+/// Just under the documented five requests per second, per organisation. The
+/// reference script uses the same figure for the same reason: the limit is
+/// per organisation and a burst that trips it costs more time than it saves.
+const MIN_GAP: Duration = Duration::from_millis(220);
+
+const TIMEOUT: Duration = Duration::from_secs(60);
+const RETRIES: u32 = 4;
+/// A redirect chain longer than this is a loop, not a shard.
+const MAX_REDIRECTS: u32 = 5;
+/// Enough for any organisation this is pointed at, and a stop either way: a
+/// paging loop that cannot end is worse than an incomplete answer.
+const MAX_PAGES: usize = 50;
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("the Meraki API refused the key — check it is a current, read-only key")]
+    Unauthorised,
+    #[error("the Meraki API said: {message}")]
+    Api { status: u16, message: String },
+    #[error("could not reach api.meraki.com: {0}")]
+    Network(String),
+    #[error("the Meraki API sent something this does not understand: {0}")]
+    Decode(String),
+    #[error("{0}")]
+    Refused(String),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+pub struct Client {
+    key: String,
+    base: String,
+    /// A test client may be sent only to loopback; the real one only
+    /// to Meraki's own hosts. Which rule applies is fixed when the client is
+    /// made, so a redirect cannot widen it.
+    loopback_only: bool,
+    min_gap: Duration,
+    /// When the last request went out, so the next one can wait its turn.
+    last: Mutex<Option<Instant>>,
+}
+
+impl Client {
+    /// A client for the real API.
+    pub fn new(key: impl Into<String>) -> Client {
+        Client {
+            key: key.into(),
+            base: BASE.to_string(),
+            loopback_only: false,
+            min_gap: MIN_GAP,
+            last: Mutex::new(None),
+        }
+    }
+
+    /// A client pointed at a test server.
+    ///
+    /// Loopback only. Not because a test could not use a public address, but
+    /// because this is the one door in the wall put around the host
+    /// this talks to, and a door that opens anywhere is not a wall.
+    pub fn for_testing(base: &str, key: impl Into<String>) -> Result<Client> {
+        let url = Url::parse(base).ok_or_else(|| Error::Refused(format!("not a URL: {base}")))?;
+        if !url.is_loopback() {
+            return Err(Error::Refused(
+                "a test client may only talk to loopback; the real API is api.meraki.com".into(),
+            ));
+        }
+        Ok(Client {
+            key: key.into(),
+            base: base.trim_end_matches('/').to_string(),
+            loopback_only: true,
+            min_gap: Duration::from_millis(1),
+            last: Mutex::new(None),
+        })
+    }
+
+    /// Whether this client has ever had an answer from the real API.
+    ///
+    /// False, and honestly so (the rule): it is written from a program
+    /// that works, which is evidence about *Meraki*, not about this code.
+    pub fn verified_against_api(&self) -> bool {
+        false
+    }
+
+    /// Waits its turn, so a run of calls stays under the rate limit.
+    async fn gate(&self) {
+        let wait = {
+            let mut last = self.last.lock().expect("rate gate");
+            let now = Instant::now();
+            let wait = last
+                .map(|t| self.min_gap.saturating_sub(now.duration_since(t)))
+                .unwrap_or_default();
+            *last = Some(now + wait);
+            wait
+        };
+        if !wait.is_zero() {
+            tokio::time::sleep(wait).await;
+        }
+    }
+
+    /// Whether a URL the Dashboard handed back — a redirect, a next page — may
+    /// be followed with the key. The real client follows only to
+    /// Meraki's own hosts over TLS; a test client only to loopback.
+    fn may_follow(&self, url: &Url) -> bool {
+        if self.loopback_only {
+            url.is_loopback()
+        } else {
+            url.tls && is_meraki_host(&url.host)
+        }
+    }
+
+    /// Checks a URL the Dashboard chose, and says which host was refused.
+    fn follow(&self, url: Url, what: &str) -> Result<Url> {
+        if self.may_follow(&url) {
+            Ok(url)
+        } else {
+            Err(Error::Refused(format!(
+                "the Meraki API {what} {}, which is not Meraki; nothing was sent there",
+                url.host
+            )))
+        }
+    }
+
+    async fn fetch(&self, url: &Url) -> Result<Response> {
+        let headers = [
+            ("X-Cisco-Meraki-API-Key", self.key.as_str()),
+            ("Accept", "application/json"),
+            ("User-Agent", concat!("Coreview/", env!("CARGO_PKG_VERSION"))),
+        ];
+        let mut url = url.clone();
+        let mut attempt = 0;
+        let mut redirects = 0;
+        loop {
+            self.gate().await;
+            let answer = http::get(&url, &headers, TIMEOUT).await;
+            let response = match answer {
+                Ok(r) => r,
+                Err(e) if attempt < RETRIES => {
+                    attempt += 1;
+                    tokio::time::sleep(self.min_gap * attempt).await;
+                    let _ = e;
+                    continue;
+                }
+                Err(e) => return Err(Error::Network(e.to_string())),
+            };
+            // An organisation lives on a regional shard, and the
+            // Dashboard says so with a redirect. Followed with the key, to
+            // Meraki and nowhere else.
+            if matches!(response.status, 301 | 302 | 307 | 308) {
+                let Some(location) = response.header("location") else {
+                    return Err(Error::Decode(format!("HTTP {} with nowhere to go", response.status)));
+                };
+                redirects += 1;
+                if redirects > MAX_REDIRECTS {
+                    return Err(Error::Network("redirected too many times".into()));
+                }
+                let next = resolve(&url, location)
+                    .ok_or_else(|| Error::Decode(format!("bad redirect: {location}")))?;
+                url = self.follow(next, "redirected to")?;
+                attempt = 0;
+                continue;
+            }
+            // 429 is the rate limit and says how long to wait; a 5xx is worth
+            // one more try. Everything else is an answer, including a refusal.
+            if (response.status == 429 || response.status >= 500) && attempt < RETRIES {
+                attempt += 1;
+                let after = response
+                    .header("retry-after")
+                    .and_then(|v| v.trim().parse::<u64>().ok())
+                    .map(Duration::from_secs)
+                    .unwrap_or(self.min_gap * attempt);
+                tokio::time::sleep(after).await;
+                continue;
+            }
+            return Ok(response);
+        }
+    }
+
+    fn url(&self, path: &str, query: &[(&str, String)]) -> Result<Url> {
+        let mut raw = format!("{}{path}", self.base);
+        if !query.is_empty() {
+            let q: Vec<String> = query.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            raw.push('?');
+            raw.push_str(&q.join("&"));
+        }
+        Url::parse(&raw).ok_or_else(|| Error::Refused(format!("not a URL: {raw}")))
+    }
+
+    fn check(response: &Response) -> Result<()> {
+        if response.status < 400 {
+            return Ok(());
+        }
+        if response.status == 401 || response.status == 403 {
+            return Err(Error::Unauthorised);
+        }
+        // Meraki answers an error as `{"errors": ["..."]}`; saying what it
+        // said beats "HTTP 400".
+        let said = serde_json::from_slice::<serde_json::Value>(&response.body)
+            .ok()
+            .and_then(|v| {
+                v.get("errors")
+                    .and_then(|e| e.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_str())
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    })
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| v.get("message").and_then(|m| m.as_str()).map(str::to_string))
+            })
+            .unwrap_or_else(|| format!("HTTP {}", response.status));
+        Err(Error::Api { status: response.status, message: said })
+    }
+
+    /// One call, decoded.
+    pub async fn get<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+    ) -> Result<T> {
+        let response = self.fetch(&self.url(path, query)?).await?;
+        Self::check(&response)?;
+        serde_json::from_slice(&response.body).map_err(|e| Error::Decode(e.to_string()))
+    }
+
+    /// Every page of a list, following `Link: rel=next`.
+    pub async fn get_paged<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+    ) -> Result<Vec<T>> {
+        let mut url = self.url(path, query)?;
+        let mut out = Vec::new();
+        for _ in 0..MAX_PAGES {
+            let response = self.fetch(&url).await?;
+            // A page that is not there ends the walk rather than failing it:
+            // an endpoint that does not apply to a network answers 404, and
+            // that is an answer, not a fault.
+            if response.status == 404 {
+                break;
+            }
+            Self::check(&response)?;
+            let batch: Vec<T> =
+                serde_json::from_slice(&response.body).map_err(|e| Error::Decode(e.to_string()))?;
+            out.extend(batch);
+            match next_page(response.header("link")) {
+                Some(next) => {
+                    let parsed = Url::parse(&next).ok_or_else(|| Error::Decode(format!("bad next page: {next}")))?;
+                    url = self.follow(parsed, "pointed the next page at")?;
+                }
+                None => break,
+            }
+        }
+        Ok(out)
+    }
+
+    /// A call that is allowed to come back with nothing.
+    ///
+    /// Half these endpoints do not apply to half the networks — a network with
+    /// no appliance has no firewall rules — and a run that stopped at the
+    /// first of those would never finish. What it could not read is reported
+    /// rather than guessed at.
+    pub async fn optional<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, String)],
+    ) -> Option<T> {
+        self.get(path, query).await.ok()
+    }
+}
+
+/// The time now, as ISO 8601 UTC.
+///
+/// Hand-rolled from the civil-date algorithm rather than carrying `chrono` for
+/// one timestamp. A backup file's stamp is read by people, and it has to sort.
+pub fn now_iso8601() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+    let (h, m, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    // Howard Hinnant's civil_from_days, which is exact and short.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let mth = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if mth <= 2 { y + 1 } else { y };
+    format!("{year:04}-{mth:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
+}
+
+/// Whether a host is one of Meraki's own: the API host, or a regional
+/// shard under one of its domains. Suffix-matched on a dot, so
+/// `meraki.com.example` is not.
+pub fn is_meraki_host(host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    ["meraki.com", "meraki.ca", "meraki.cn"]
+        .iter()
+        .any(|domain| host == format!("api.{domain}") || host.ends_with(&format!(".{domain}")))
+}
+
+/// A `Location` against the URL that was asked: absolute as it is, or a path
+/// on the same host.
+fn resolve(from: &Url, location: &str) -> Option<Url> {
+    if location.contains("://") {
+        return Url::parse(location);
+    }
+    let path = location.strip_prefix('/')?;
+    Some(Url { tls: from.tls, host: from.host.clone(), port: from.port, target: format!("/{path}") })
+}
+
+/// The `next` URL out of a `Link` header, if there is one.
+fn next_page(link: Option<&str>) -> Option<String> {
+    for part in link?.split(',') {
+        let (target, rel) = part.split_once(';')?;
+        if !rel.to_ascii_lowercase().contains("rel=next") {
+            continue;
+        }
+        let trimmed = target.trim().trim_start_matches('<').trim_end_matches('>');
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_next_page_is_found_among_the_others() {
+        let header = "<https://api.meraki.com/api/v1/x?startingAfter=1>; rel=first, \
+                      <https://api.meraki.com/api/v1/x?startingAfter=9>; rel=next";
+        assert_eq!(
+            next_page(Some(header)).as_deref(),
+            Some("https://api.meraki.com/api/v1/x?startingAfter=9"),
+        );
+        // The last page says prev and nothing else.
+        assert_eq!(next_page(Some("<https://x>; rel=prev")), None);
+        assert_eq!(next_page(None), None);
+    }
+
+    #[test]
+    fn a_test_client_can_only_talk_to_loopback() {
+        assert!(Client::for_testing("http://127.0.0.1:9/api", "k").is_ok());
+        assert!(Client::for_testing("http://localhost:9/api", "k").is_ok());
+        // The one door in the wall put around the host this talks to.
+        match Client::for_testing("https://api.example.com", "k") {
+            Err(Error::Refused(why)) => assert!(why.contains("loopback"), "{why}"),
+            Err(other) => panic!("refused for the wrong reason: {other}"),
+            Ok(_) => panic!("a client was built for a host that is not Meraki"),
+        }
+    }
+
+    /// The family the real client may be sent to, and nothing beside.
+    #[test]
+    fn only_merakis_own_hosts_may_be_followed() {
+        for fine in ["api.meraki.com", "n392.meraki.com", "api.meraki.ca", "api.meraki.cn", "N1.MERAKI.COM"] {
+            assert!(is_meraki_host(fine), "{fine}");
+        }
+        for wrong in ["meraki.com.example", "api.meraki.com.evil.example", "evil.example", "meraki.co", "localhost", "127.0.0.1"] {
+            assert!(!is_meraki_host(wrong), "{wrong}");
+        }
+        let real = Client::new("k");
+        assert!(real.may_follow(&Url::parse("https://n392.meraki.com/api/v1/x").unwrap()));
+        assert!(!real.may_follow(&Url::parse("http://n392.meraki.com/api/v1/x").unwrap()), "never in the clear");
+        assert!(!real.may_follow(&Url::parse("https://127.0.0.1/api/v1/x").unwrap()), "loopback is for tests");
+        let test = Client::for_testing("http://127.0.0.1:9/api", "k").unwrap();
+        assert!(!test.may_follow(&Url::parse("https://api.meraki.com/api/v1/x").unwrap()), "a test never reaches Meraki");
+    }
+
+    #[test]
+    fn a_relative_location_stays_on_the_same_host() {
+        let from = Url::parse("https://api.meraki.com/api/v1/organizations").unwrap();
+        let same = resolve(&from, "/api/v1/organizations?shard=1").unwrap();
+        assert_eq!((same.tls, same.host.as_str(), same.port, same.target.as_str()), (true, "api.meraki.com", 443, "/api/v1/organizations?shard=1"));
+        let other = resolve(&from, "https://n1.meraki.com/api/v1/organizations").unwrap();
+        assert_eq!(other.host, "n1.meraki.com");
+        assert!(resolve(&from, "organizations").is_none(), "a bare relative path is not a shape this follows");
+    }
+
+    #[test]
+    fn nothing_here_claims_to_have_met_the_api() {
+        assert!(!Client::new("k").verified_against_api());
+    }
+}

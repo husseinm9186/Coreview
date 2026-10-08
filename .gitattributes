@@ -1,0 +1,23 @@
+# Every checkout — CI runner or laptop, any OS — sees the same bytes the
+# tests were written against. The Windows runner's autocrlf checkout once
+# turned the stencil pipeline's shebang into "#!...\r", vite's shebang strip
+# left the carriage return behind, and V8 refused the module with the error
+# blamed on the file that imported it.
+* text=auto eol=lf
+
+# Binaries, never touched.
+*.png binary
+*.ico binary
+*.icns binary
+*.pptx binary
+*.deb binary
+*.woff binary
+*.woff2 binary
+# Vendored ntc-templates data stays byte-identical to upstream: TextFSM fixtures
+# are matched as captured, so no line-ending normalisation.
+resources/templates/** -text
+
+# Cmd.exe misreads a batch file with Unix line endings — the
+# Windows build once ran a command called "m", a piece of a `rem` line.
+*.cmd text eol=crlf
+*.bat text eol=crlf

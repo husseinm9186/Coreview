@@ -1,0 +1,139 @@
+# Coreview discovery catalog — Ubiquiti EdgeOS (ubiquiti_edgeos)
+#
+# Filled 2026-10-01: ntc-templates' `ubiquiti_edgerouter` set,
+# fixtures vendored; the session is Vyatta's shell (scrapli's vyos_vyos
+# driver), `terminal length 0`. No device met yet; the lldpd detail
+# `show lldp neighbors detail` has no template and stays unverified.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+vendor: Ubiquiti
+os: ubiquiti_edgeos
+name: EdgeOS (EdgeRouter)
+ntc_platform: ubiquiti_edgerouter
+phase: 1
+fingerprint:
+  probe: show version
+  match_regex: EdgeOS|EdgeRouter
+session:
+  source: scrapli_community vyos_vyos (Vyatta's shell); netmiko ubiquiti edge_ssh.py
+  prompt_pattern: '^[\w.\-]+@[\w.\-]+:~\$\s?$'
+  privilege_levels:
+    exec:
+      pattern: '^[\w.\-]+@[\w.\-]+:~\$\s?$'
+  default_privilege: exec
+  paging:
+    off:
+      - terminal length 0
+    source: netmiko edge_ssh.py session_preparation
+  on_close:
+    - exit
+  failed_when_contains:
+    - "Invalid command"
+    - "Incomplete command"
+    - "Ambiguous command"
+role_hint:
+  - match: EdgeOS|EdgeRouter
+    role: router
+role_defaults:
+  router:
+    - routing
+    - nat
+    - lldp
+caps_probe: []
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: textfsm:ubiquiti_edgerouter_show_version
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_interfaces
+    cmd: show interfaces
+    gate: always
+    parser: textfsm:ubiquiti_edgerouter_show_interfaces
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_interfaces_ethernet_physical
+    cmd: show interfaces ethernet physical
+    gate: always
+    parser: textfsm:ubiquiti_edgerouter_show_interfaces_ethernet_physical
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_arp
+    cmd: show arp
+    gate: always
+    parser: textfsm:ubiquiti_edgerouter_show_arp
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_route
+    cmd: show ip route
+    gate: cap.routing
+    parser: textfsm:ubiquiti_edgerouter_show_ip_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_ipv6_route
+    cmd: show ipv6 route
+    gate: cap.routing
+    parser: textfsm:ubiquiti_edgerouter_show_ipv6_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_nat_rules
+    cmd: show nat rules
+    gate: cap.nat
+    parser: textfsm:ubiquiti_edgerouter_show_nat_rules
+    feeds:
+      - nat_rule
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_lldp_neighbors_detail
+    cmd: show lldp neighbors detail
+    gate: cap.lldp
+    parser: none
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_configuration_commands
+    cmd: show configuration commands
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+live_path: []
+note: 'filled from ntc-templates (ubiquiti_edgerouter) and netmiko. The lldpd detail waits for a capture.'

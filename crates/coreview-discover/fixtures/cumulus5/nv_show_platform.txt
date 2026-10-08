@@ -1,0 +1,13 @@
+               operational
+-------------  -------------------------------------------------
+system-mac     1c:34:da:00:28:3f
+manufacturer   Mellanox
+cpu            x86_64 Intel(R) Atom(TM) CPU  C2558  @ 2.40GHz x4
+memory         7.34 GB
+disk-size      14.7GB
+port-layout    18 x 25G-SFP28 & 4 x 100G-QSFP28
+part-number    Q9E63-63001
+serial-number  MT0000EXMP
+asic-model     Spectrum
+system-uuid    00000000-0000-4000-8000-000000000000
+system-type    MSN2010

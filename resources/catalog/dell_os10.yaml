@@ -1,0 +1,28 @@
+# Coreview discovery catalog — Dell OS10 (dell_os10)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from Coreview's discovery
+# specification, ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+vendor: Dell
+os: dell_os10
+name: OS10
+ntc_platform: dell_os10
+phase: 2
+fingerprint:
+  probe: show version
+  match_regex: Dell EMC Networking OS10|OS10
+session: {}
+role_hint: []
+role_defaults: {}
+caps_probe: []
+commands: []
+live_path: []
+note: "Phase-2 stub (2026-10-01): still empty on purpose — ntc-templates has dell_force10 (OS9) templates, whose layouts are not OS10's, and no OS10 set; readers from Dell's OS10 documentation or a capture are what fills this."

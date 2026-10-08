@@ -1,0 +1,3 @@
+#!/bin/sh
+# The same bridge for Linux and macOS bundles (see the .cmd beside it).
+exec cargo auditable "$@"

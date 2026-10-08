@@ -1,0 +1,27 @@
+-------------------------------------------------------------------------------
+Local chassis:
+-------------------------------------------------------------------------------
+Chassis:
+  ChassisID:    mac 0c:42:a1:00:1e:08
+  SysName:      leaf-b02
+  SysDescr:     Cumulus Linux version 5.18.0 running on Mellanox Technologies Ltd. MSN2010
+  MgmtIP:       198.51.100.12
+  MgmtIface:    2
+  Capability:   Bridge, on
+  Capability:   Router, on
+-------------------------------------------------------------------------------
+LLDP-MED:
+  Device Type:  Network Connectivity Device
+  Capability:   Capabilities, yes
+  Capability:   Policy, yes
+  Capability:   Location, yes
+  Capability:   MDI/PSE, yes
+  Capability:   MDI/PD, yes
+  Capability:   Inventory, yes
+  Inventory:
+    Software Revision: 5.18.0
+    Firmware Revision: 5.6.5
+    Serial Number: MT0000EXMP
+    Manufacturer: Mellanox Technologies Ltd.
+    Model:        MSN2010
+-------------------------------------------------------------------------------

@@ -1,0 +1,23 @@
+[package]
+name = "coreview-catalog"
+version = "2.5.0"
+authors = ["Mohammed Almoola <https://www.linkedin.com/in/malmoola>"]
+edition = "2021"
+rust-version = "1.77"
+description = "The discovery catalog: one YAML per OS (resources/catalog), its loader and schema check, the gate evaluator, the collection plan and the read-only allowlist — no Tauri, no network"
+license = "LicenseRef-Almoola-Free-Proprietary"
+# Proprietary: never published to crates.io.
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml_ng = "0.10"
+regex = "1"
+# The prompt patterns extracted from scrapli use look-around, which `regex`
+# refuses on purpose; they are compiled here only to prove they compile.
+fancy-regex = "0.19"
+thiserror = "1"
+# The TextFSM state machine. Chosen against the vendored fixtures
+# (see src/textfsm.rs); no default features — no CLI, no CSV, no YAML export.
+textfsm-rs = { version = "0.3.6", default-features = false }

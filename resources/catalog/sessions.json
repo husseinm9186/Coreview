@@ -1,0 +1,771 @@
+{
+ "_versions": {
+  "scrapli": "2026.02.20",
+  "scrapli_community": "2025.01.30"
+ },
+ "aoscx": {
+  "default_privilege": "privilege_exec",
+  "failed_when_contains": [
+   "% Command incomplete.",
+   "Invalid input:",
+   "doesn't exist"
+  ],
+  "genie_platform": "",
+  "ntc_platform": "aruba_aoscx",
+  "on_close": [
+   "exit"
+  ],
+  "on_close_source": "scrapli_community.aruba.aoscx.sync_driver.default_sync_on_close",
+  "on_open": [
+   "no page"
+  ],
+  "on_open_source": "scrapli_community.aruba.aoscx.sync_driver.default_sync_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "exit",
+    "escalate": "configure terminal",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[\\w.\\-@/:]{1,63}\\(config[\\w.\\-@/:]{0,32}\\)#\\s?$",
+    "previous": "privilege_exec"
+   },
+   "privilege_exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[\\w.\\-@/:]{1,63}#\\s?$",
+    "previous": ""
+   }
+  },
+  "prompt_pattern": null,
+  "source": "scrapli_community generic 'network' driver"
+ },
+ "arista_eos": {
+  "default_privilege": null,
+  "failed_when_contains": [
+   "% Ambiguous command",
+   "% Error",
+   "% Incomplete command",
+   "% Invalid input",
+   "% Cannot commit",
+   "% Unavailable command",
+   "% Duplicate sequence number"
+  ],
+  "ntc_platform": "arista_eos",
+  "on_close": [
+   "exit"
+  ],
+  "on_close_source": "scrapli.driver.core.arista_eos.sync_driver.eos_on_close",
+  "on_open": [
+   "terminal length 0",
+   "terminal width 32767"
+  ],
+  "on_open_source": "scrapli.driver.core.arista_eos.sync_driver.eos_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "end",
+    "escalate": "configure terminal",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [
+     "(config-s-"
+    ],
+    "pattern": "^[\\w.\\-@()/: ]{1,63}\\(config[\\w.\\-@/:+]{0,63}\\)#\\s?$",
+    "previous": "privilege_exec"
+   },
+   "exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[\\w.\\-@()/: ]{1,63}>\\s?$",
+    "previous": ""
+   },
+   "privilege_exec": {
+    "deescalate": "disable",
+    "escalate": "enable",
+    "escalate_auth": true,
+    "escalate_prompt": "^[pP]assword:\\s?$",
+    "not_contains": [
+     "(config"
+    ],
+    "pattern": "^[\\w.\\-@()/: ]{1,63}#\\s?$",
+    "previous": "exec"
+   }
+  },
+  "source": "scrapli scrapli.driver.core.arista_eos.sync_driver.EOSDriver"
+ },
+ "cisco_asa": {
+  "default_privilege": "privilege_exec",
+  "failed_when_contains": [
+   "% Invalid input detected",
+   "% Ambiguous command",
+   "% Incomplete command"
+  ],
+  "genie_platform": "asa",
+  "ntc_platform": "cisco_asa",
+  "on_close": [
+   "logout"
+  ],
+  "on_close_source": "scrapli_community.cisco.asa.sync_driver.default_sync_on_close",
+  "on_open": [
+   "terminal pager 0"
+  ],
+  "on_open_source": "scrapli_community.cisco.asa.sync_driver.default_sync_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "exit",
+    "escalate": "configure terminal",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[\\w\\./-]{1,63}\\([\\w-]{0,32}\\)#\\s?$",
+    "previous": "privilege_exec"
+   },
+   "exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[\\w\\./-]{1,63}>\\s?$",
+    "previous": ""
+   },
+   "privilege_exec": {
+    "deescalate": "disable",
+    "escalate": "enable",
+    "escalate_auth": true,
+    "escalate_prompt": "^(P|p)assword:\\s?$",
+    "not_contains": [],
+    "pattern": "^[\\w\\./-]{1,63}#\\s?$",
+    "previous": "exec"
+   }
+  },
+  "prompt_pattern": null,
+  "source": "scrapli_community generic 'network' driver"
+ },
+ "cisco_ftd": {
+  "default_privilege": "exec",
+  "failed_when_contains": [
+   "Syntax error:"
+  ],
+  "ntc_platform": "cisco_ftd",
+  "on_close": [
+   "logout"
+  ],
+  "on_close_source": "scrapli_community.cisco.ftd.sync_driver.default_sync_on_close",
+  "on_open": [],
+  "on_open_source": "scrapli_community.cisco.ftd.sync_driver.default_sync_on_open",
+  "privilege_levels": {
+   "exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^>\\s*",
+    "previous": ""
+   },
+   "expert": {
+    "deescalate": "exit",
+    "escalate": "expert",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[\\w.-]{1,63}@[^$]+\\$\\s*$",
+    "previous": "exec"
+   },
+   "root": {
+    "deescalate": "exit",
+    "escalate": "sudo su -",
+    "escalate_auth": true,
+    "escalate_prompt": "Password:",
+    "not_contains": [],
+    "pattern": "^root@[^#]+#\\s*$",
+    "previous": "expert"
+   }
+  },
+  "prompt_pattern": null,
+  "source": "scrapli_community generic 'network' driver"
+ },
+ "cisco_ios": {
+  "default_privilege": null,
+  "failed_when_contains": [
+   "% Ambiguous command",
+   "% Incomplete command",
+   "% Invalid input detected",
+   "% Unknown command"
+  ],
+  "ntc_platform": "cisco_ios",
+  "on_close": [
+   "exit"
+  ],
+  "on_close_source": "scrapli.driver.core.cisco_iosxe.sync_driver.iosxe_on_close",
+  "on_open": [
+   "terminal length 0",
+   "terminal width 512"
+  ],
+  "on_open_source": "scrapli.driver.core.cisco_iosxe.sync_driver.iosxe_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "end",
+    "escalate": "configure terminal",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [
+     "tcl)"
+    ],
+    "pattern": "^[\\w.\\-@/:]{1,63}\\([\\w.\\-@/:+]{0,32}\\)#\\s*$",
+    "previous": "privilege_exec"
+   },
+   "exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[\\w.\\-@/:]{1,63}>\\s*$",
+    "previous": ""
+   },
+   "privilege_exec": {
+    "deescalate": "disable",
+    "escalate": "enable",
+    "escalate_auth": true,
+    "escalate_prompt": "^(?:enable\\s){0,1}password:\\s?$",
+    "not_contains": [],
+    "pattern": "^[\\w.\\-@/:]{1,63}#\\s*$",
+    "previous": "exec"
+   },
+   "tclsh": {
+    "deescalate": "tclquit",
+    "escalate": "tclsh",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^([\\w.\\-@/+>:]+\\(tcl\\)[>#]|\\+>)\\s*$",
+    "previous": "privilege_exec"
+   }
+  },
+  "source": "scrapli scrapli.driver.core.cisco_iosxe.sync_driver.IOSXEDriver"
+ },
+ "cisco_iosxr": {
+  "default_privilege": null,
+  "failed_when_contains": [
+   "% Ambiguous command",
+   "% Incomplete command",
+   "% Invalid input detected"
+  ],
+  "ntc_platform": "cisco_xr",
+  "on_close": [
+   "exit"
+  ],
+  "on_close_source": "scrapli.driver.core.cisco_iosxr.sync_driver.iosxr_on_close",
+  "on_open": [
+   "terminal length 0",
+   "terminal width 512"
+  ],
+  "on_open_source": "scrapli.driver.core.cisco_iosxr.sync_driver.iosxr_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "end",
+    "escalate": "configure terminal",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[\\w.\\-@/:]{1,63}\\(config[\\w.\\-@/:]{0,32}\\)#\\s?$",
+    "previous": "privilege_exec"
+   },
+   "configuration_exclusive": {
+    "deescalate": "end",
+    "escalate": "configure exclusive",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[\\w.\\-@/:]{1,63}\\(config[\\w.\\-@/:]{0,32}\\)#\\s?$",
+    "previous": "privilege_exec"
+   },
+   "privilege_exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[\\w.\\-@/:]{1,63}#\\s?$",
+    "previous": ""
+   }
+  },
+  "source": "scrapli scrapli.driver.core.cisco_iosxr.sync_driver.IOSXRDriver"
+ },
+ "cisco_nxos": {
+  "default_privilege": null,
+  "failed_when_contains": [
+   "% Ambiguous command",
+   "% Incomplete command",
+   "% Invalid input detected",
+   "% Invalid command at",
+   "% Invalid parameter"
+  ],
+  "ntc_platform": "cisco_nxos",
+  "on_close": [
+   "exit"
+  ],
+  "on_close_source": "scrapli.driver.core.cisco_nxos.sync_driver.nxos_on_close",
+  "on_open": [
+   "terminal length 0",
+   "terminal width 511"
+  ],
+  "on_open_source": "scrapli.driver.core.cisco_nxos.sync_driver.nxos_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "end",
+    "escalate": "configure terminal",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [
+     "config-tcl",
+     "config-s)",
+     "config-s-"
+    ],
+    "pattern": "^[\\w.\\-]{1,63}(\\(maint\\-mode\\))?\\(conf[\\w.\\-@/:\\+]{0,32}\\)#\\s?$",
+    "previous": "privilege_exec"
+   },
+   "exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[\\w.\\-]{1,63}(\\(maint\\-mode\\))?>\\s?$",
+    "previous": ""
+   },
+   "privilege_exec": {
+    "deescalate": "disable",
+    "escalate": "enable",
+    "escalate_auth": true,
+    "escalate_prompt": "^[pP]assword:\\s?$",
+    "not_contains": [
+     "-tcl"
+    ],
+    "pattern": "^[\\w.\\-]{1,63}(\\(maint\\-mode\\))?#\\s?$",
+    "previous": "exec"
+   },
+   "tclsh": {
+    "deescalate": "tclquit",
+    "escalate": "tclsh",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "(^[\\w.\\-]{1,63}\\-tcl#\\s?$)|(^[\\w.\\-]{1,63}\\(config\\-tcl\\)#\\s?$)|(^>\\s?$)|(^[\\w.\\-]{1,63}\\(maint\\-mode\\-tcl\\)#\\s?$)|(^[\\w.\\-]{1,63}\\(maint\\-mode\\)\\(config\\-tcl\\)#\\s?$)",
+    "previous": "privilege_exec"
+   }
+  },
+  "source": "scrapli scrapli.driver.core.cisco_nxos.sync_driver.NXOSDriver"
+ },
+ "cisco_wlc_aireos": {
+  "default_privilege": "exec",
+  "failed_when_contains": [
+   "Incorrect Usage. Use the '?' or <TAB> key to list commands.",
+   "Incorrect input!"
+  ],
+  "genie_platform": "",
+  "ntc_platform": "cisco_wlc_ssh",
+  "on_close": [
+   "logout"
+  ],
+  "on_close_source": "scrapli_community.cisco.aireos.sync_driver.default_sync_on_close",
+  "on_open": [
+   "config paging disable"
+  ],
+  "on_open_source": "scrapli_community.cisco.aireos.sync_driver.default_sync_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "exit",
+    "escalate": "config",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^\\([\\w. -]{1,31}\\) config>$",
+    "previous": "exec"
+   },
+   "exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^\\([\\w. -]{1,31}\\) >$",
+    "previous": ""
+   }
+  },
+  "prompt_pattern": null,
+  "source": "scrapli_community generic 'network' driver"
+ },
+ "cumulus": {
+  "default_privilege": "exec",
+  "failed_when_contains": [
+   "Permission denied",
+   "ERROR:"
+  ],
+  "genie_platform": "",
+  "ntc_platform": "",
+  "on_close": [
+   "exit"
+  ],
+  "on_close_source": "scrapli_community.cumulus.linux.sync_driver.default_sync_on_close",
+  "on_open": [],
+  "on_open_source": "scrapli_community.cumulus.linux.sync_driver.default_sync_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "exit",
+    "escalate": "sudo su",
+    "escalate_auth": true,
+    "escalate_prompt": ": ",
+    "not_contains": [],
+    "pattern": "^\\S+@\\S+:\\S+:\\S+#\\s*$",
+    "previous": "exec"
+   },
+   "exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^\\S+@\\S+:\\S+:\\S+\\$\\s*$",
+    "previous": ""
+   }
+  },
+  "prompt_pattern": null,
+  "source": "scrapli_community generic 'network' driver"
+ },
+ "fortios": {
+  "default_privilege": null,
+  "failed_when_contains": [],
+  "method_source": {
+   "_to_system": "    def _to_system(self) -> None:\n        \"\"\"Abort everything and go to the root prompt\n\n        Note:\n            This can't handle all cases, user needs to ensure all command blocks are closed.\n            This won't exit deeply nested config blocks!\n        \"\"\"\n        prompt = self.get_prompt()\n        if \"(\" in prompt:\n            self.send_commands([\"abort\", \"end\"])\n",
+   "_vdoms_status": "    def _vdoms_status(self) -> bool:\n        \"\"\"Determine whether virtual domains are enabled or not\n\n        Returns:\n            True is device is configured with multi VDOM mode\n        \"\"\"\n        output = self.send_command('get system status | grep \"Virtual domain configuration\"')\n\n        return bool(re.search(r\"Virtual domain configuration: (multiple|enable)\", output.result))\n",
+   "cleanup_session": "    def cleanup_session(self) -> None:\n        \"\"\"Restore paging if necessary\"\"\"\n        if self._original_console != \"standard\":\n            if self._vdoms_enabled:\n                self.context(\"global\")\n            else:\n                self._to_system()\n            restore_console = textwrap.dedent(\n                f\"\"\"\\\n                config system console\n                set output {self._original_console}\n                end\"\"\"\n            )\n            self.send_commands(restore_console.splitlines())\n",
+   "context": "    def context(self, context: str) -> Union[None, str]:\n        \"\"\"Change context / VDOM\n\n        This method will abort any config block / VDOM and change to the specified context.\n        If device is not in multi-VDOM mode, do nothing. If specified VDOM is not pre-defined,\n        query device for available VDOMs to check if it's possible.\n\n        Pre-defined contexts:\n            * system : root prompt, not in any config block or VDOM\n            * global : in global context\n            * root : default VDOM which cannot be renamed\n\n        Args:\n            context (str): VDOM name or pre-defined context name\n\n        Returns:\n            None if context change is not possible or context name\n\n        Raises:\n            ScrapliCommandFailure: on context changing errors\n\n        \"\"\"\n        self.logger.debug(\"Changing to context %s\", context)\n        if not self._vdoms_enabled:\n            return None\n        # if context is a non-predefined one, gather VDOM list from device\n        if not self._vdom_list and context not in [\"system\", \"global\", \"root\"]:\n            # gather list of VDOMs\n            self.gather_vdoms()  # slow :(\n        else:\n            self._to_system()\n        if context == \"system\":\n            # we are already here\n            pass\n        elif context == \"global\":\n            response = self.send_command(\"config global\")\n            if response.failed:\n                raise ScrapliCommandFailure(f\"Couldn't change to {context} context!\")\n        elif context in self._vdom_list or context == \"root\":\n            responses = self.send_commands([\"config vdom\", f\"edit {context}\"])\n            if responses[-1].failed:\n                raise ScrapliCommandFailure(f\"Couldn't change to {context} context!\")\n        else:\n            raise ScrapliCommandFailure(f\"Tried to change to {context}, but it doesn't exists!\")\n\n        return context\n",
+   "gather_vdoms": "    def gather_vdoms(self) -> Union[None, List[str]]:\n        \"\"\"Gather list of VDOMs\n\n        Returns:\n            None: if device is not in multi VDOM mode\n            List[str]: list of VDOM names configured\n        \"\"\"\n\n        if not self._vdoms_enabled:\n            # device is not in multi VDOM mode\n            return None\n        self._to_system()\n        output = self.send_command('show | grep \"config vdom\" -f -A1')\n        # \"\"\"\n        # FIREWALL # show | grep \"config vdom\" -f -A1\n        # config vdom\n        # edit root\n        # --\n        # config vdom\n        # edit root\n        # --\n        # config vdom\n        # edit test1\n        # \"\"\"\n        self._vdom_list = list(set(re.findall(r\"^edit (\\w+)$\", output.result, re.M)))\n        return self._vdom_list\n",
+   "prepare_session": "    def prepare_session(self) -> None:\n        \"\"\"Prepare session\"\"\"\n\n        # check if user configured post-login banner which requires acceptance\n        # config system global\n        #     set post-login-banner enable\n        # end\n        initial = self.channel.read()\n        if \"(Press 'a' to accept):\" in str(initial):\n            self.channel.write(\"a\")\n        self.get_prompt()\n        self._vdoms_enabled = self._vdoms_status()\n        if self._vdoms_enabled:\n            self.context(\"global\")\n        response = self.send_command(\"get system console | grep ^output\")\n        self._original_console = re.findall(r\".*: (\\w+)\", response.result)[0]\n        if self._original_console != \"standard\":\n            disable_paging = textwrap.dedent(\n                \"\"\"\\\n                config system console\n                set output standard\n                end\"\"\"\n            )\n            if self._vdoms_enabled:  # we exit from global too\n                disable_paging += \"\\nend\"\n            self.send_commands(disable_paging.splitlines())\n        elif self._vdoms_enabled:\n            self.context(\"system\")\n"
+  },
+  "on_close": [
+   "exit"
+  ],
+  "on_close_source": "scrapli_community.fortinet.fortios.sync_driver.default_sync_on_close",
+  "on_open": [],
+  "on_open_source": "scrapli_community.fortinet.fortios.sync_driver.default_sync_on_open",
+  "privilege_levels": {},
+  "prompt_pattern": "[\\w_-]+ (\\([\\w-]+\\) )?[$#]",
+  "source": "scrapli_community scrapli_community.fortinet.fortios.sync_driver.FortinetFortiOSDriver"
+ },
+ "hpe_comware": {
+  "default_privilege": "privilege_exec",
+  "failed_when_contains": [
+   "% Unrecognized command found at '^' position."
+  ],
+  "genie_platform": "",
+  "ntc_platform": "hp_comware",
+  "on_close": [
+   "quit"
+  ],
+  "on_close_source": "scrapli_community.hp.comware.sync_driver.default_sync_on_close",
+  "on_open": [
+   "screen-length disable"
+  ],
+  "on_open_source": "scrapli_community.hp.comware.sync_driver.default_sync_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "quit",
+    "escalate": "system-view",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^(?=\\[[a-z0-9.\\-_@/:]{1,64}\\]$).*$",
+    "previous": "privilege_exec"
+   },
+   "privilege_exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^<[a-z0-9.\\-_@()/:]{1,48}>\\s*$",
+    "previous": ""
+   }
+  },
+  "prompt_pattern": null,
+  "source": "scrapli_community scrapli_community.hp.comware.sync_driver.HPComwareDriver"
+ },
+ "huawei_vrp": {
+  "default_privilege": "privilege_exec",
+  "failed_when_contains": [
+   "Error:"
+  ],
+  "genie_platform": "",
+  "ntc_platform": "huawei_vrp",
+  "on_close": [
+   "exit"
+  ],
+  "on_close_source": "scrapli_community.huawei.vrp.sync_driver.default_sync_on_close",
+  "on_open": [
+   "screen-length 0 temporary",
+   "screen-width 256\\ny\\n\\n"
+  ],
+  "on_open_source": "scrapli_community.huawei.vrp.sync_driver.default_sync_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "quit",
+    "escalate": "system-view",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^(?!\\[V\\d{3}R\\d{3}C\\d{2,3}.*\\])(?=(?:hrp_[a|m|s])?\\[\\~{0,1}\\*{0,1}[a-z0-9.\\-_@/:]{1,64}\\]$).*$",
+    "previous": "privilege_exec"
+   },
+   "privilege_exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^(?:hrp_[a|m|s])?<[a-z0-9.\\-_@()/:]{1,48}>\\s*$",
+    "previous": ""
+   }
+  },
+  "prompt_pattern": null,
+  "source": "scrapli_community scrapli_community.huawei.vrp.sync_driver.HuaweiVRPDriver"
+ },
+ "juniper_junos": {
+  "default_privilege": null,
+  "failed_when_contains": [
+   "is ambiguous",
+   "No valid completions",
+   "unknown command",
+   "syntax error",
+   "missing mandatory argument",
+   "invalid numeric value"
+  ],
+  "ntc_platform": "juniper_junos",
+  "on_close": [
+   "exit"
+  ],
+  "on_close_source": "scrapli.driver.core.juniper_junos.sync_driver.junos_on_close",
+  "on_open": [
+   "set cli screen-length 0",
+   "set cli screen-width 511",
+   "set cli complete-on-space off"
+  ],
+  "on_open_source": "scrapli.driver.core.juniper_junos.sync_driver.junos_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "exit configuration-mode",
+    "escalate": "configure",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^({\\w+(:(\\w+){0,1}\\d){0,1}}\\[edit\\]\\n){0,1}[\\w\\-@()/:\\.]{1,63}#\\s?$",
+    "previous": "exec"
+   },
+   "configuration_exclusive": {
+    "deescalate": "exit configuration-mode",
+    "escalate": "configure exclusive",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^({\\w+(:(\\w+){0,1}\\d){0,1}}\\[edit\\]\\n){0,1}[\\w\\-@()/:\\.]{1,63}#\\s?$",
+    "previous": "exec"
+   },
+   "configuration_private": {
+    "deescalate": "exit configuration-mode",
+    "escalate": "configure private",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^({\\w+(:(\\w+){0,1}\\d){0,1}}\\[edit\\]\\n){0,1}[\\w\\-@()/:\\.]{1,63}#\\s?$",
+    "previous": "exec"
+   },
+   "exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^({\\w+(:(\\w+){0,1}\\d){0,1}}\\n){0,1}[\\w\\-@()/:\\.]{1,63}>\\s?$",
+    "previous": ""
+   },
+   "root_shell": {
+    "deescalate": "exit",
+    "escalate": "start shell user root",
+    "escalate_auth": true,
+    "escalate_prompt": "^[pP]assword:\\s?$",
+    "not_contains": [],
+    "pattern": "^.*root@(?:\\S*:?\\S*\\s?)?[%\\#]\\s?$",
+    "previous": "exec"
+   },
+   "shell": {
+    "deescalate": "exit",
+    "escalate": "start shell",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [
+     "root"
+    ],
+    "pattern": "^.*[%\\$]\\s?$",
+    "previous": "exec"
+   }
+  },
+  "source": "scrapli scrapli.driver.core.juniper_junos.sync_driver.JunosDriver"
+ },
+ "mikrotik_routeros": {
+  "default_privilege": null,
+  "failed_when_contains": [],
+  "method_source": {
+   "send_command": "    def send_command(\n        self,\n        command: str,\n        *,\n        strip_prompt: bool = True,\n        failed_when_contains: Optional[Union[str, List[str]]] = None,\n        eager_input: bool = False,\n        timeout_ops: Optional[float] = None,\n    ) -> Response:\n        \"\"\"\n        mikrotik_routeros send_command method\n\n        Args:\n            command: string to send to device in privilege exec mode\n            strip_prompt: True/False strip prompt from returned output\n            failed_when_contains: string or list of strings indicating failure if found in response\n            eager_input: when true does *not* try to read our input off the channel -- generally\n                this should be left alone unless you know what you are doing!\n            timeout_ops: timeout ops value for this operation; only sets the timeout_ops value for\n                the duration of the operation, value is reset to initial value after operation is\n                completed\n\n        Returns:\n            Response: Scrapli Response object\n\n        Raises:\n            N/A\n\n        \"\"\"\n\n        # RouterOS echoes the prompt/pattern twice after sending a command,\n        # modify the prompt pattern accordingly to catch both echoes.\n        #\n        # [user@HOSTNAME]> /command\\r\\n[user@HOSTNAME]> /command\\r\\nOUTPUT...\n        #\n        old_comms_prompt_pattern = self.comms_prompt_pattern\n        self.comms_prompt_pattern = f\"{old_comms_prompt_pattern}.*{old_comms_prompt_pattern}\"\n\n        response = super().send_command(\n            command,\n            strip_prompt=strip_prompt,\n            failed_when_contains=failed_when_contains,\n            eager_input=eager_input,\n            timeout_ops=timeout_ops,\n        )\n\n        # Change the prompt pattern back to the original one.\n        self.comms_prompt_pattern = old_comms_prompt_pattern\n\n        # Since the command is echoed twice, and scrapli only removes it once, we need to\n        # manually remove the second command echo by stripping the first line from the output.\n        if response.result.count(\"\\n\") > 0 and command in response.result.split(\"\\n\")[0]:\n            response.result = \"\\n\".join(response.result.split(\"\\n\")[1:])\n\n        return response\n"
+  },
+  "on_close": [
+   "/quit"
+  ],
+  "on_close_source": "scrapli_community.mikrotik.routeros.sync_driver.default_sync_on_close",
+  "on_open": [],
+  "privilege_levels": {},
+  "prompt_pattern": "\\[[a-z0-9@.\\-_+\\s]{1,48}@[a-z0-9.\\-_\\s]{1,64}\\].{1,16}>",
+  "source": "scrapli_community scrapli_community.mikrotik.routeros.sync_driver.MikrotikRouterOSDriver"
+ },
+ "panos": {
+  "default_privilege": "exec",
+  "failed_when_contains": [
+   "Unknown command:",
+   "Invalid syntax.",
+   "Server error",
+   "Validation Error:"
+  ],
+  "genie_platform": "",
+  "ntc_platform": "paloalto_panos",
+  "on_close": [
+   "exit"
+  ],
+  "on_close_source": "scrapli_community.paloalto.panos.sync_driver.default_sync_on_close",
+  "on_open": [
+   "set cli scripting-mode on",
+   "set cli pager off"
+  ],
+  "on_open_source": "scrapli_community.paloalto.panos.sync_driver.default_sync_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "exit",
+    "escalate": "configure",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[\\w\\._-]+@[\\w\\.\\(\\)_-]+#\\s?$",
+    "previous": "exec"
+   },
+   "exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[\\w\\._-]+@[\\w\\.\\(\\)_-]+>\\s?$",
+    "previous": ""
+   }
+  },
+  "prompt_pattern": null,
+  "source": "scrapli_community generic 'network' driver"
+ },
+ "ruckus_icx": {
+  "default_privilege": "privilege_exec",
+  "failed_when_contains": [
+   "Error -",
+   "Invalid input -"
+  ],
+  "genie_platform": "",
+  "ntc_platform": "ruckus_fastiron",
+  "on_close": [
+   "exit"
+  ],
+  "on_close_source": "scrapli_community.ruckus.fastiron.sync_driver.default_sync_on_close",
+  "on_open": [
+   "skip-page-display"
+  ],
+  "on_open_source": "scrapli_community.ruckus.fastiron.sync_driver.default_sync_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "end",
+    "escalate": "configure terminal",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[a-z0-9 .\\-_@/:]{1,63}\\(conf[a-z0-9.\\-@/:\\+]{0,32}\\)#$",
+    "previous": "privilege_exec"
+   },
+   "exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[a-z0-9 .\\-_@()/:]{1,63}>$",
+    "previous": ""
+   },
+   "privilege_exec": {
+    "deescalate": "quit",
+    "escalate": "enable",
+    "escalate_auth": true,
+    "escalate_prompt": "^[pP]assword:\\s?$",
+    "not_contains": [],
+    "pattern": "^[a-z0-9 .\\-_@/:]{1,63}#$",
+    "previous": "exec"
+   }
+  },
+  "prompt_pattern": null,
+  "source": "scrapli_community generic 'network' driver"
+ },
+ "vyos": {
+  "default_privilege": "privilege_exec",
+  "failed_when_contains": [
+   "Ambiguous command",
+   "Incomplete command",
+   "Invalid command",
+   "Invalid value",
+   "Need to specify the config node to set",
+   "Set failed"
+  ],
+  "genie_platform": "",
+  "ntc_platform": "",
+  "on_close": [
+   "exit"
+  ],
+  "on_close_source": "scrapli_community.vyos.vyos.sync_driver.default_sync_on_close",
+  "on_open": [
+   "stty cols 100000"
+  ],
+  "on_open_source": "scrapli_community.vyos.vyos.sync_driver.default_sync_on_open",
+  "privilege_levels": {
+   "configuration": {
+    "deescalate": "exit",
+    "escalate": "configure",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[a-z0-9\\.\\--_()/:~]{1,1000}@[a-z0-9\\.\\--_()/:~]{1,1000}#",
+    "previous": "privilege_exec"
+   },
+   "privilege_exec": {
+    "deescalate": "",
+    "escalate": "",
+    "escalate_auth": false,
+    "escalate_prompt": "",
+    "not_contains": [],
+    "pattern": "^[a-z0-9\\.\\--_()/:~]{1,1000}@[a-z0-9\\.\\--_()/:~]{1,1000}\\$",
+    "previous": ""
+   }
+  },
+  "prompt_pattern": null,
+  "source": "scrapli_community generic 'network' driver"
+ }
+}

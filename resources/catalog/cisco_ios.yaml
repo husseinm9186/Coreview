@@ -1,0 +1,836 @@
+# Coreview discovery catalog — Cisco IOS / IOS-XE (cisco_ios)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from Coreview's discovery
+# specification, ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+vendor: Cisco
+os: cisco_ios
+name: IOS / IOS-XE
+ntc_platform: cisco_ios
+phase: 1
+fingerprint:
+  probe: show version
+  match_regex: Cisco IOS(-| )XE Software|Cisco IOS Software
+session:
+  source: scrapli scrapli.driver.core.cisco_iosxe.sync_driver.IOSXEDriver
+  privilege_levels:
+    exec:
+      pattern: ^[\w.\-@/:]{1,63}>\s*$
+    privilege_exec:
+      pattern: ^[\w.\-@/:]{1,63}#\s*$
+      escalate: enable
+      escalate_auth: true
+      escalate_prompt: ^(?:enable\s){0,1}password:\s?$
+      previous: exec
+  failed_when_contains:
+    - "% Ambiguous command"
+    - "% Incomplete command"
+    - "% Invalid input detected"
+    - "% Unknown command"
+  on_open:
+    - terminal length 0
+    - terminal width 512
+  on_close:
+    - exit
+  ntc_platform: cisco_ios
+  paging:
+    off:
+      - terminal length 0
+      - terminal width 511
+    source: scrapli IOSXEDriver on_open; netmiko cisco_ios.py session_preparation (terminal width 511)
+  default_privilege: privilege_exec
+role_hint:
+  - match: C9[2-6]\d\d|C3[5678]50|C2960|WS-C|C4[59]00|C6[58]00
+    role: switch
+  - match: ISR|ASR1|CSR1|C8[0-5]00
+    role: router
+  - match: C9800
+    role: wlc
+role_defaults:
+  switch:
+    - switching
+    - cdp
+    - lldp
+    - stack
+  router:
+    - routing
+    - cdp
+    - lldp
+  wlc:
+    - wlc
+    - cdp
+    - lldp
+caps_probe:
+  - id: show_ip_protocols
+    cmd: show ip protocols
+    flags:
+      ospf: ^Routing Protocol is "ospf
+      eigrp: ^Routing Protocol is "eigrp
+      bgp: ^Routing Protocol is "bgp
+      isis: ^Routing Protocol is "isis
+      rip: ^Routing Protocol is "rip
+      routing: ^Routing Protocol is "
+    timeout: 30
+  - id: show_run_include_ip_routing_router_ip_route_vrf_definition_i
+    cmd: show run | include ^ip routing|^router |^ip route |^vrf definition|^ip vrf |^interface Tunnel|^ip nat |^crypto |^ip policy|^mpls |^interface Port-channel|^ standby|^ vrrp|^ glbp
+    flags:
+      routing: "^ip routing|^router |^ip route "
+      ospf: ^router ospf
+      eigrp: ^router eigrp
+      bgp: ^router bgp
+      isis: ^router isis
+      rip: ^router rip
+      vrf: "^vrf definition|^ip vrf "
+      gre: ^interface Tunnel
+      nat: "^ip nat "
+      ipsec: "^crypto "
+      pbr: ^ip policy
+      mpls: "^mpls "
+      switching: ^interface Port-channel
+      fhrp: ^ standby|^ vrrp|^ glbp
+      dmvpn: ^interface Tunnel
+    timeout: 30
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: textfsm:cisco_ios_show_version
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (9 captures); Coreview cisco_ios reader
+    coreview_reader: true
+  - id: show_inventory
+    cmd: show inventory
+    gate: always
+    parser: textfsm:cisco_ios_show_inventory
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures); Coreview cisco_ios reader
+    coreview_reader: true
+  - id: show_ip_interface_brief
+    cmd: show ip interface brief
+    gate: always
+    parser: textfsm:cisco_ios_show_ip_interface_brief
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures); Coreview cisco_ios reader
+    coreview_reader: true
+  - id: show_interfaces_description
+    cmd: show interfaces description
+    gate: always
+    parser: textfsm:cisco_ios_show_interfaces_description
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_cdp_neighbors_detail
+    cmd: show cdp neighbors detail
+    gate: always
+    parser: textfsm:cisco_ios_show_cdp_neighbors_detail
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures); Coreview cisco_ios reader
+    coreview_reader: true
+  - id: show_lldp_neighbors_detail
+    cmd: show lldp neighbors detail
+    gate: always
+    parser: textfsm:cisco_ios_show_lldp_neighbors_detail
+    feeds:
+      - neighbor
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (9 captures); Coreview cisco_ios reader
+    coreview_reader: true
+  - id: show_switch
+    cmd: show switch
+    gate: cap.stack
+    parser: textfsm:cisco_ios_show_switch_detail
+    also:
+      - textfsm:cisco_ios_show_switch_detail_stack_ports
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (6 captures)
+    coreview_reader: true
+  - id: show_module
+    cmd: show module
+    gate: cap.stack
+    parser: textfsm:cisco_ios_show_module
+    also:
+      - textfsm:cisco_ios_show_module_status
+      - textfsm:cisco_ios_show_module_submodule
+      - textfsm:cisco_ios_show_module_online_diag
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (7 captures)
+  - id: show_redundancy
+    cmd: show redundancy
+    gate: cap.stack
+    parser: textfsm:cisco_ios_show_redundancy
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (5 captures)
+  - id: show_stackwise_virtual
+    cmd: show stackwise-virtual
+    gate: cap.stack
+    parser: none
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    coreview_reader: true
+  - id: show_interfaces_status
+    cmd: show interfaces status
+    gate: cap.switching
+    parser: textfsm:cisco_ios_show_interfaces_status
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures); Coreview cisco_ios reader
+    coreview_reader: true
+  - id: show_interfaces_switchport
+    cmd: show interfaces switchport
+    gate: cap.switching
+    parser: textfsm:cisco_ios_show_interfaces_switchport
+    feeds:
+      - interface
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (8 captures)
+  - id: show_interfaces_trunk
+    cmd: show interfaces trunk
+    gate: cap.switching
+    parser: textfsm:cisco_ios_show_interfaces
+    feeds:
+      - interface
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (7 captures)
+  - id: show_vlan_brief
+    cmd: show vlan brief
+    gate: cap.switching
+    parser: textfsm:cisco_ios_show_vlan
+    feeds:
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_vtp_status
+    cmd: show vtp status
+    gate: cap.switching
+    parser: textfsm:cisco_ios_show_vtp_status
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_spanning_tree
+    cmd: show spanning-tree
+    gate: cap.switching
+    parser: textfsm:cisco_ios_show_spanning-tree
+    feeds:
+      - stp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_spanning_tree_root
+    cmd: show spanning-tree root
+    gate: cap.switching
+    parser: textfsm:cisco_ios_show_spanning-tree_root
+    feeds:
+      - stp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_etherchannel_summary
+    cmd: show etherchannel summary
+    gate: cap.switching
+    parser: textfsm:cisco_ios_show_etherchannel_summary
+    feeds:
+      - lag
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures); Coreview cisco_ios reader
+    coreview_reader: true
+  - id: show_ip_dhcp_snooping_binding
+    cmd: show ip dhcp snooping binding
+    gate: cap.switching
+    parser: textfsm:cisco_ios_show_ip_dhcp_snooping_binding
+    feeds:
+      - endpoint
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_device_tracking_database
+    cmd: show device-tracking database
+    gate: cap.switching
+    parser: none
+    feeds:
+      - arp
+      - endpoint
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_ipv6_interface_brief
+    cmd: show ipv6 interface brief
+    gate: cap.routing
+    parser: textfsm:cisco_ios_show_ipv6_interface_brief
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ipv6_neighbors
+    cmd: show ipv6 neighbors
+    gate: cap.routing
+    parser: textfsm:cisco_ios_show_ipv6_neighbors
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_policy
+    cmd: show ip policy
+    gate: cap.routing && cap.pbr
+    parser: none
+    feeds:
+      - policy_route
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    coreview_reader: true
+  - id: show_vrf
+    cmd: show vrf
+    gate: cap.vrf
+    parser: textfsm:cisco_ios_show_vrf
+    feeds:
+      - vrf
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (6 captures)
+    coreview_reader: true
+  - id: show_ip_vrf
+    cmd: show ip vrf
+    gate: cap.vrf
+    parser: none
+    feeds:
+      - vrf
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    coreview_reader: true
+    note: an older spelling; sent only when the newer one is rejected
+  - id: show_ip_protocols_vrf_vrf
+    cmd: show ip protocols vrf {vrf}
+    gate: cap.vrf
+    foreach: vrf
+    parser: none
+    feeds:
+      - vrf
+      - routing_neighbor
+      - device
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_ip_ospf_neighbor
+    cmd: show ip ospf neighbor
+    gate: cap.ospf
+    parser: textfsm:cisco_ios_show_ip_ospf_neighbor
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_ip_ospf_interface_brief
+    cmd: show ip ospf interface brief
+    gate: cap.ospf
+    parser: textfsm:cisco_ios_show_ip_ospf_interface_brief
+    feeds:
+      - interface
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_ip_eigrp_neighbors
+    cmd: show ip eigrp neighbors
+    gate: cap.eigrp
+    parser: textfsm:cisco_ios_show_ip_eigrp_neighbors
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+  - id: show_ip_eigrp_vrf_vrf_neighbors
+    cmd: show ip eigrp vrf {vrf} neighbors
+    gate: cap.eigrp
+    foreach: vrf
+    parser: none
+    feeds:
+      - vrf
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_bgp_all_summary
+    cmd: show bgp all summary
+    gate: cap.bgp
+    parser: none
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_ip_bgp_vpnv4_all_summary
+    cmd: show ip bgp vpnv4 all summary
+    gate: cap.bgp && cap.vrf
+    parser: textfsm:cisco_ios_show_ip_bgp
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (8 captures)
+  - id: show_isis_neighbors
+    cmd: show isis neighbors
+    gate: cap.isis
+    parser: textfsm:cisco_ios_show_isis_neighbors
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_standby_brief
+    cmd: show standby brief
+    gate: cap.fhrp
+    parser: textfsm:cisco_ios_show_standby_brief
+    feeds:
+      - fhrp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_vrrp_brief
+    cmd: show vrrp brief
+    gate: cap.fhrp
+    parser: textfsm:cisco_ios_show_vrrp_brief
+    feeds:
+      - fhrp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_glbp_brief
+    cmd: show glbp brief
+    gate: cap.fhrp
+    parser: none
+    feeds:
+      - fhrp
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_crypto_session_brief
+    cmd: show crypto session brief
+    gate: (cap.ipsec || cap.dmvpn)
+    parser: none
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_crypto_ipsec_sa
+    cmd: show crypto ipsec sa
+    gate: (cap.ipsec || cap.dmvpn)
+    parser: none
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_dmvpn
+    cmd: show dmvpn
+    gate: (cap.ipsec || cap.dmvpn)
+    parser: textfsm:cisco_ios_show_dmvpn
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_nat_statistics
+    cmd: show ip nat statistics
+    gate: cap.nat
+    parser: none
+    feeds:
+      - nat_rule
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_mpls_interfaces
+    cmd: show mpls interfaces
+    gate: cap.mpls
+    parser: textfsm:cisco_ios_show_mpls_interfaces
+    feeds:
+      - interface
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_mpls_ldp_neighbor_brief
+    cmd: show mpls ldp neighbor brief
+    gate: cap.mpls
+    parser: none
+    feeds:
+      - routing_neighbor
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_ap_summary
+    cmd: show ap summary
+    gate: role.wlc
+    parser: textfsm:cisco_ios_show_ap_summary
+    feeds:
+      - ap
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_ap_cdp_neighbors
+    cmd: show ap cdp neighbors
+    gate: role.wlc
+    parser: textfsm:cisco_ios_show_ap_cdp_neighbors
+    feeds:
+      - neighbor
+      - ap
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ap_lldp_neighbors
+    cmd: show ap lldp neighbors
+    gate: role.wlc
+    parser: none
+    feeds:
+      - neighbor
+      - routing_neighbor
+      - ap
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    note: 'the spec marks this command "verify": its spelling is not confirmed'
+  - id: show_wlan_summary
+    cmd: show wlan summary
+    gate: role.wlc
+    parser: none
+    feeds:
+      - ap
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_wireless_mobility_summary
+    cmd: show wireless mobility summary
+    gate: role.wlc
+    parser: none
+    feeds:
+      - ap
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_interfaces
+    cmd: show interfaces
+    gate: always
+    parser: textfsm:cisco_ios_show_interfaces
+    feeds:
+      - interface
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (7 captures)
+  - id: show_ip_arp
+    cmd: show ip arp
+    gate: always
+    parser: textfsm:cisco_ios_show_ip_arp
+    feeds:
+      - arp
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures); Coreview cisco_ios reader
+    coreview_reader: true
+  - id: show_running_config
+    cmd: show running-config
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+  - id: show_mac_address_table
+    cmd: show mac address-table
+    gate: cap.switching
+    parser: textfsm:cisco_ios_show_mac-address-table
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (11 captures); Coreview cisco_ios reader
+    coreview_reader: true
+  - id: show_mac_address_table_2
+    cmd: show mac-address-table
+    gate: cap.switching
+    parser: textfsm:cisco_ios_show_mac-address-table
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (11 captures)
+    note: an older spelling; sent only when the newer one is rejected
+  - id: show_ip_route_summary
+    cmd: show ip route summary
+    gate: cap.routing
+    parser: textfsm:cisco_ios_show_ip_route_summary
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+  - id: show_ip_route
+    cmd: show ip route
+    gate: cap.routing
+    parser: textfsm:cisco_ios_show_ip_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (4 captures); Coreview cisco_ios reader
+    coreview_reader: true
+  - id: show_ip_route_static
+    cmd: show ip route static
+    gate: cap.routing
+    parser: textfsm:cisco_ios_show_ip_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+  - id: show_ipv6_route
+    cmd: show ipv6 route
+    gate: cap.routing
+    parser: textfsm:cisco_ios_show_ipv6_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_route_map
+    cmd: show route-map
+    gate: cap.routing
+    parser: textfsm:cisco_ios_show_route-map
+    feeds:
+      - policy_route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_route_vrf_vrf
+    cmd: show ip route vrf {vrf}
+    gate: cap.vrf
+    foreach: vrf
+    parser: textfsm:cisco_ios_show_ip_route
+    feeds:
+      - vrf
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+  - id: show_ip_arp_vrf_vrf
+    cmd: show ip arp vrf {vrf}
+    gate: cap.vrf
+    foreach: vrf
+    parser: textfsm:cisco_ios_show_ip_arp
+    feeds:
+      - arp
+      - vrf
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_nat_translations
+    cmd: show ip nat translations
+    gate: cap.nat
+    parser: textfsm:cisco_ios_show_ip_nat_translations
+    feeds:
+      - nat_rule
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_mpls_forwarding_table
+    cmd: show mpls forwarding-table
+    gate: cap.mpls
+    parser: none
+    feeds:
+      - route
+      - tunnel
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_wireless_client_summary
+    cmd: show wireless client summary
+    gate: role.wlc
+    parser: none
+    feeds:
+      - ap
+      - endpoint
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  # The forwarding table, which the path builder walks before the RIB.
+  - id: show_ip_cef
+    cmd: show ip cef
+    gate: cap.routing
+    parser: textfsm:cisco_ios_show_ip_cef
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: ntc-templates template (no fixture in its tests); CEF's attached/receive/drop words become the RIB's
+  - id: show_ip_cef_vrf_vrf
+    cmd: show ip cef vrf {vrf}
+    gate: cap.vrf
+    foreach: vrf
+    parser: textfsm:cisco_ios_show_ip_cef
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: ntc-templates template (no fixture in its tests)
+live_path:
+  - id: show_ip_route_dst
+    cmd: show ip route {dst}
+    gate: always
+    parser: textfsm:cisco_ios_show_ip_route
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+    phase: 3
+  - id: show_ip_cef_exact_route_src_dst
+    cmd: show ip cef exact-route {src} {dst}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    phase: 3
+  - id: show_ip_arp_nh
+    cmd: show ip arp {nh}
+    gate: always
+    parser: textfsm:cisco_ios_show_ip_arp
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+    phase: 3
+  - id: show_mac_address_table_address_mac
+    cmd: show mac address-table address {mac}
+    gate: always
+    parser: textfsm:cisco_ios_show_mac-address-table
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (11 captures)
+    phase: 3
+  - id: traceroute_dst_source_src
+    cmd: traceroute {dst} source {src}
+    gate: always
+    parser: textfsm:cisco_ios_traceroute
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (8 captures)
+    phase: 3

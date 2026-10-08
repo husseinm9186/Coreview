@@ -1,0 +1,39 @@
+ Neighbor 10.254.254.254, interface address 10.66.250.1
+    In the area 0.0.0.0 via interface vlan250 local interface IP 10.66.250.3
+    Neighbor priority is 1, State is Full/DROther, Role is DROther, 4 state changes
+    Most recent state change statistics:
+      Progressive change 3d09h16m ago
+    DR is 10.254.254.2, BDR is 10.254.254.1
+    Options 2 *|-|-|-|-|-|E|-
+    Dead timer due in 37.057s
+    Database Summary List 0
+    Link State Request List 0
+    Link State Retransmission List 0
+    Thread Inactivity Timer on
+    Thread Database Description Retransmision off
+    Thread Link State Request Retransmission off
+    Thread Link State Update Retransmission on
+
+    Graceful restart Helper info:
+      Graceful Restart HELPER Status : None
+
+ Neighbor 10.254.254.1, interface address 10.66.250.2
+    In the area 0.0.0.0 via interface vlan250 local interface IP 10.66.250.3
+    Neighbor priority is 1, State is Full/Backup, Role is Backup, 6 state changes
+    Most recent state change statistics:
+      Progressive change 4d14h07m ago
+      Regressive change 4d14h07m ago, due to 1-WayReceived
+    DR is 10.254.254.2, BDR is 10.254.254.1
+    Options 2 *|-|-|-|-|-|E|-
+    Dead timer due in 37.057s
+    Database Summary List 0
+    Link State Request List 0
+    Link State Retransmission List 0
+    Thread Inactivity Timer on
+    Thread Database Description Retransmision off
+    Thread Link State Request Retransmission off
+    Thread Link State Update Retransmission on
+
+    Graceful restart Helper info:
+      Graceful Restart HELPER Status : None
+

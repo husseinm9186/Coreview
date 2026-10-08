@@ -1,0 +1,122 @@
+# Coreview discovery catalog — Cisco SD-WAN vEdge / vManage / vSmart / vBond (cisco_viptela)
+#
+# 2026-10-01: the Viptela OS devices of an SD-WAN fabric (a cEdge
+# is IOS-XE and belongs to cisco_ios). ntc-templates' `cisco_viptela` set
+# (fixtures vendored); the session from netmiko's cisco_viptela.py —
+# `paginate false`. `show version` on Viptela prints only the
+# number, so the fingerprint is `show system status`. No device met yet.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+vendor: Cisco
+os: cisco_viptela
+name: SD-WAN vEdge / vManage (Viptela)
+ntc_platform: cisco_viptela
+phase: 1
+fingerprint:
+  probe: show system status
+  match_regex: Viptela|vEdge|vManage|vSmart|vBond
+session:
+  prompt_pattern: '^[\w.\-]+(\(config[^)]*\))?#\s?$'
+  privilege_levels:
+    exec:
+      pattern: '^[\w.\-]+#\s?$'
+  default_privilege: exec
+  paging:
+    off:
+      - paginate false
+    source: netmiko cisco_viptela.py session_preparation
+  on_close:
+    - exit
+  failed_when_contains:
+    - "syntax error"
+    - "Error:"
+  source: netmiko cisco_viptela.py (no scrapli platform)
+role_hint:
+  - match: vEdge|vedge
+    role: router
+  - match: vManage|vSmart|vBond
+    role: router
+role_defaults:
+  router:
+    - routing
+    - sdwan
+    - bgp
+    - ospf
+caps_probe: []
+commands:
+  - id: show_system_status
+    cmd: show system status
+    gate: always
+    parser: none
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_interface
+    cmd: show interface
+    gate: always
+    parser: textfsm:cisco_viptela_show_interface
+    feeds:
+      - interface
+      - ip_address
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_arp
+    cmd: show arp
+    gate: always
+    parser: textfsm:cisco_viptela_show_arp
+    feeds:
+      - arp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_omp_peers
+    cmd: show omp peers
+    gate: cap.sdwan
+    parser: textfsm:cisco_viptela_show_omp_peers
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_control_connections
+    cmd: show control connections
+    gate: cap.sdwan
+    parser: textfsm:cisco_viptela_show_control_connections
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ip_route
+    cmd: show ip route
+    gate: cap.routing
+    parser: none
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_running_config
+    cmd: show running-config
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+live_path: []
+note: 'Viptela OS, from ntc-templates and netmiko. `show ip route` and `show system status` have no template and wait for a capture.'

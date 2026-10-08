@@ -1,0 +1,170 @@
+vlan5 is up
+  ifindex 38, MTU 9216 bytes, BW 200000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.77.0.3/16, Broadcast 10.77.255.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 10.254.254.2, Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 10.254.254.2 Interface Address 10.77.0.3/16
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+vlan110 is up
+  ifindex 33, MTU 9216 bytes, BW 200000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.66.110.3/24, Broadcast 10.66.110.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 10.254.254.2, Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 10.254.254.2 Interface Address 10.66.110.3/24
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+vlan120 is up
+  ifindex 35, MTU 9216 bytes, BW 200000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.66.120.3/24, Broadcast 10.66.120.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 10.254.254.2, Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 10.254.254.2 Interface Address 10.66.120.3/24
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+vlan150 is up
+  ifindex 40, MTU 9216 bytes, BW 200000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.66.150.3/24, Broadcast 10.66.150.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 10.254.254.2, Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 10.254.254.2 Interface Address 10.66.150.3/24
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+vlan160 is up
+  ifindex 42, MTU 9216 bytes, BW 200000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.66.160.3/24, Broadcast 10.66.160.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 10.254.254.2, Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 10.254.254.2 Interface Address 10.66.160.3/24
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+vlan170 is up
+  ifindex 44, MTU 9216 bytes, BW 200000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.66.170.3/24, Broadcast 10.66.170.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 10.254.254.2, Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 10.254.254.2 Interface Address 10.66.170.3/24
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+vlan180 is up
+  ifindex 46, MTU 9216 bytes, BW 200000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.66.180.3/24, Broadcast 10.66.180.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 10.254.254.2, Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 10.254.254.2 Interface Address 10.66.180.3/24
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+vlan190 is up
+  ifindex 48, MTU 9216 bytes, BW 200000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.66.190.3/24, Broadcast 10.66.190.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 10.254.254.2, Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 10.254.254.2 Interface Address 10.66.190.3/24
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+vlan210 is up
+  ifindex 50, MTU 9216 bytes, BW 200000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.66.210.3/24, Broadcast 10.66.210.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 10.254.254.2, Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 10.254.254.2 Interface Address 10.66.210.3/24
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+vlan220 is up
+  ifindex 52, MTU 9216 bytes, BW 200000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.66.220.3/24, Broadcast 10.66.220.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 10.254.254.2, Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 10.254.254.2 Interface Address 10.66.220.3/24
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+vlan230 is up
+  ifindex 54, MTU 9216 bytes, BW 200000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.66.230.3/24, Broadcast 10.66.230.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 10.254.254.2, Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 10.254.254.2 Interface Address 10.66.230.3/24
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+vlan240 is up
+  ifindex 56, MTU 9216 bytes, BW 200000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.66.240.3/24, Broadcast 10.66.240.255, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 10.254.254.2, Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 10.254.254.2 Interface Address 10.66.240.3/24
+  No backup designated router on this network
+  Multicast group memberships: <None>
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    No Hellos (Passive interface)
+  Neighbor Count is 0, Adjacent neighbor count is 0
+  Graceful Restart hello delay: 10s
+vlan250 is up
+  ifindex 37, MTU 1500 bytes, BW 200000 Mbit <UP,BROADCAST,RUNNING,MULTICAST>
+  Internet Address 10.66.250.3/29, Broadcast 10.66.250.7, Area 0.0.0.0
+  MTU mismatch detection: enabled
+  Router ID 10.254.254.2, Network Type BROADCAST, Cost: 1
+  Transmit Delay is 1 sec, State DR, Priority 1
+  Designated Router (ID) 10.254.254.2 Interface Address 10.66.250.3/29
+  Backup Designated Router (ID) 10.254.254.1, Interface Address 10.66.250.2
+  Saved Network-LSA sequence number 0x800001b9
+  Multicast group memberships: OSPFAllRouters OSPFDesignatedRouters
+  Timer intervals configured, Hello 10s, Dead 40s, Wait 40s, Retransmit 5
+    Hello due in 6.807s
+  Neighbor Count is 2, Adjacent neighbor count is 2
+  Graceful Restart hello delay: 10s

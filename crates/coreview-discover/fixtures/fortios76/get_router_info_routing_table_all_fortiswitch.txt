@@ -1,0 +1,7 @@
+Codes: K - kernel route, C - connected, L - local, S - static,
+       > - selected route, * - FIB route, q - queued, r - rejected, b - backup, ^ - HW install failed
+
+VRF default:
+C>*  192.0.2.0/24 is directly connected, internal, 02:53:12
+L>*  192.0.2.203/32 is directly connected, internal, 02:53:12
+S>*  0.0.0.0/0 [10/0] via 192.0.2.1, internal, 02:53:12

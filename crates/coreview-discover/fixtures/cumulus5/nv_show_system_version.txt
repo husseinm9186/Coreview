@@ -1,0 +1,9 @@
+                 operational
+---------------  ----------------------------
+onie             2018.08-5.2.0006-115200
+kernel           6.1.0-cl-1-amd64
+base-os          Debian GNU/Linux 12.15
+product-release  5.18.0
+image
+  build-id       5.18.0.0045
+  build-date     Sat Aug 01 15:01:36 UTC 2026

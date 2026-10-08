@@ -1,0 +1,14 @@
+# Advisories the sidecar's pip-audit gate does not fail on, one per
+# line as `ID  # reason`. The rule is audit.toml's: every entry says why it
+# cannot reach Coreview or why it is accepted, and is removed the day it can
+# be fixed.
+
+# CVE-2026-44405 / GHSA-r374-rxx8-8654: paramiko accepts RSA signatures over
+# SHA-1 (`ssh-rsa`). Fixed in paramiko 4.0.0+, which scrapli 2026.2.20 does not
+# allow (`paramiko<4.0.0`). Accepted, not ignored in spirit: the switches
+# Coreview is pointed at include ones that offer nothing but `ssh-rsa`,
+# and the host key is pinned by Coreview's own host-key store, so a
+# forged SHA-1 signature from a different host is refused on the fingerprint
+# before a password is sent. Leaves with the sidecar (Phase 4) or when scrapli
+# allows paramiko 4.
+PYSEC-2026-2858

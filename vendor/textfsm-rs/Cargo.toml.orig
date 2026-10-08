@@ -1,0 +1,79 @@
+[package]
+name = "textfsm-rs"
+version = "0.3.6"
+edition = "2024"
+description = "A Rust implementation of TextFSM"
+license = "Apache-2.0"
+repository = "https://github.com/itsvrushabh/textfsm-rs"
+authors = ["Rust User <itsvrushabh@gmail.com>"]
+keywords = ["textfsm", "parser", "network", "automation", "switch"]
+categories = ["network-programming", "parsing"]
+exclude = [
+    "tests/real_data",
+    "tests/basic_template",
+    "tests/end_to_end",
+    "tests/parser",
+    "tests/main.rs"
+]
+
+[lib]
+name = "textfsm_rs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "textfsm"
+path = "src/bin/textfsm.rs"
+required-features = ["binary"]
+
+[[example]]
+name = "cli-table"
+required-features = ["clitable", "yaml"]
+
+[[example]]
+name = "verify-ntctemplates"
+required-features = ["yaml"]
+
+[[example]]
+name = "verifyfsm"
+required-features = ["yaml"]
+
+[[example]]
+name = "runfsm"
+required-features = ["yaml"]
+
+[[example]]
+name = "loadfsm"
+required-features = ["yaml"]
+
+[dependencies]
+pest = "2.8.5"
+pest_derive = "2.8.5"
+regex = "1.12.2"
+fancy-regex = "0.17.0"
+serde = { version = "1.0.228", features = ["derive"] }
+log = "0.4.29"
+thiserror = "2.0.17"
+
+# Optional dependencies for features
+serde_yaml = { version = "0.9", optional = true }
+serde_json = { version = "1.0.149", optional = true }
+csv = { version = "1.4.0", optional = true }
+clap = { version = "4.5", features = ["derive"], optional = true }
+anyhow = { version = "1.0", optional = true }
+
+[dev-dependencies]
+criterion = "0.5"
+tempfile = "3.24.0"
+env_logger = "0.11.8"
+
+[features]
+default = ["clitable", "yaml", "json", "csv_export"]
+binary = ["dep:clap", "dep:anyhow", "yaml", "json", "clitable"]
+clitable = ["dep:csv"]
+yaml = ["dep:serde_yaml"]
+json = ["dep:serde_json"]
+csv_export = ["dep:csv"]
+
+[[bench]]
+name = "parsing_benchmark"
+harness = false

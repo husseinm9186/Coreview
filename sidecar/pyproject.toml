@@ -1,0 +1,10 @@
+[project]
+name = "coreview-sidecar"
+version = "0.1.0"
+description = "Coreview's Phase-1 collector bridge: scrapli + TextFSM over JSON lines on stdio"
+requires-python = ">=3.12"
+license = { text = "LicenseRef-Almoola-Free-Proprietary" }
+authors = [{ name = "Mohammed Almoola" }]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,11 @@
+== [onboard]
+	==[internal]
+		mode: static
+		ip: 192.0.2.203 255.255.255.0
+		ipv6: ::/0
+		status: up
+		speed: n/a (Duplex: n/a)
+	==[mgmt]
+		mode: dhcp
+		ip: 0.0.0.0 0.0.0.0
+		status: down

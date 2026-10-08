@@ -1,0 +1,321 @@
+# Coreview discovery catalog — Aruba (HPE) ArubaOS-Switch / ProCurve (aoss)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from Coreview's discovery
+# specification, ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+vendor: Aruba (HPE)
+os: aoss
+name: ArubaOS-Switch / ProCurve
+ntc_platform: hp_procurve
+phase: 1
+fingerprint:
+  probe: show system
+  match_regex: Software revision|ProCurve|Aruba
+session:
+  banner:
+    prompt: any key to continue
+    answer: ""
+    source: netmiko hp_procurve.py session_preparation
+  prompt_pattern: "[>#]"
+  privilege_levels:
+    exec:
+      pattern: ^[\w.\-@/:()]{1,63}>\s?$
+    privilege_exec:
+      pattern: ^[\w.\-@/:()]{1,63}#\s?$
+      escalate: enable
+      escalate_auth: true
+      escalate_prompt: (username|login|user name|password)
+      source: "netmiko hp_procurve.py enable: may ask for the username before the password"
+  default_privilege: privilege_exec
+  paging:
+    off:
+      - terminal width 511
+      - no page
+    needs_enable: true
+    source: netmiko hp_procurve.py session_preparation ("requires elevated privileges to disable output paging"); Coreview arubasw dialect (verified on the lab 2930M)
+  on_close:
+    steps:
+      - logout
+    confirm:
+      prompt: Do you want
+      answer: y
+    source: netmiko hp_procurve.py cleanup
+  ansi:
+    strip: true
+    source: netmiko hp_procurve.py ansi_escape_codes = True
+  ssh_note: netmiko hp_procurve.py disables rsa-sha2-256/512 pubkey algorithms; kex quirks on old firmware are not handled yet
+  failed_when_contains:
+    - "Invalid input:"
+    - "Incomplete input:"
+    - "Ambiguous input:"
+  source: netmiko hp_procurve.py (no scrapli platform in the pinned release)
+role_hint:
+  - match: 2530|2540|2920|2930|3810|5400|J[89]\d{3}A
+    role: switch
+role_defaults:
+  switch:
+    - switching
+    - lldp
+    - cdp
+caps_probe:
+  - id: show_running_config_include_ip_routing_router_ip_route_vrrp_
+    cmd: show running-config | include ^ip routing|^router |^ip route |^vrrp|^trunk |^stacking
+    flags:
+      routing: "^ip routing|^router |^ip route "
+      ospf: ^router ospf
+      bgp: ^router bgp
+      rip: ^router rip
+      fhrp: ^vrrp
+      switching: "^trunk "
+      stack: ^stacking
+    timeout: 30
+commands:
+  - id: show_system
+    cmd: show system
+    gate: always
+    parser: textfsm:hp_procurve_show_system
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures); Coreview aoss reader
+    coreview_reader: true
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: textfsm:hp_procurve_show_version
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures); Coreview aoss reader
+    coreview_reader: true
+  - id: show_modules
+    cmd: show modules
+    gate: always
+    parser: none
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_interfaces_brief
+    cmd: show interfaces brief
+    gate: always
+    parser: textfsm:hp_procurve_show_interfaces_brief
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (6 captures)
+  - id: show_name
+    cmd: show name
+    gate: always
+    parser: none
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_ip
+    cmd: show ip
+    gate: always
+    parser: textfsm:hp_procurve_show_ip
+    feeds:
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures); Coreview aoss reader
+    coreview_reader: true
+  - id: show_lldp_info_remote_device
+    cmd: show lldp info remote-device
+    gate: always
+    parser: textfsm:hp_procurve_show_lldp_info_remote-device
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures); Coreview aoss reader
+    coreview_reader: true
+  - id: show_lldp_info_remote_device_detail
+    cmd: show lldp info remote-device detail
+    gate: always
+    parser: textfsm:hp_procurve_show_lldp_info_remote-device_detail
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures); Coreview aoss reader
+    coreview_reader: true
+  - id: show_cdp_neighbors_detail
+    cmd: show cdp neighbors detail
+    gate: always
+    parser: textfsm:hp_procurve_show_cdp_neighbors_detail
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_stacking
+    cmd: show stacking
+    gate: cap.stack
+    parser: none
+    feeds:
+      - ha_pair
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    coreview_reader: true
+  - id: show_vlans
+    cmd: show vlans
+    gate: cap.switching
+    parser: textfsm:hp_procurve_show_vlans
+    feeds:
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+  - id: show_vlans_ports_all_detail
+    cmd: show vlans ports all detail
+    gate: cap.switching
+    parser: textfsm:hp_procurve_show_vlans
+    feeds:
+      - interface
+      - vlan
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (4 captures)
+  - id: show_trunks
+    cmd: show trunks
+    gate: cap.switching
+    parser: textfsm:hp_procurve_show_trunks
+    feeds:
+      - lag
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures); Coreview aoss reader
+    coreview_reader: true
+  - id: show_lacp
+    cmd: show lacp
+    gate: cap.switching
+    parser: none
+    feeds:
+      - lag
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_spanning_tree
+    cmd: show spanning-tree
+    gate: cap.switching
+    parser: none
+    feeds:
+      - stp
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_ip_ospf_neighbor
+    cmd: show ip ospf neighbor
+    gate: cap.routing && cap.ospf
+    parser: textfsm:hp_procurve_show_ip
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+  - id: show_vrrp
+    cmd: show vrrp
+    gate: cap.routing && cap.fhrp
+    parser: none
+    feeds:
+      - fhrp
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_ip_bgp_summary
+    cmd: show ip bgp summary
+    gate: cap.routing && cap.bgp
+    parser: textfsm:hp_procurve_show_ip
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (3 captures)
+  - id: show_arp
+    cmd: show arp
+    gate: always
+    parser: textfsm:hp_procurve_show_arp
+    feeds:
+      - arp
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (3 captures); Coreview aoss reader
+    coreview_reader: true
+  - id: show_running_config
+    cmd: show running-config
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+  - id: show_mac_address
+    cmd: show mac-address
+    gate: cap.switching
+    parser: textfsm:hp_procurve_show_mac-address
+    feeds:
+      - mac_table
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (2 captures); Coreview aoss reader
+    coreview_reader: true
+  - id: show_ip_route
+    cmd: show ip route
+    gate: cap.routing
+    parser: textfsm:hp_procurve_show_ip_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures); Coreview aoss reader
+    coreview_reader: true
+live_path:
+  - id: traceroute_dst_source_src
+    cmd: traceroute {dst} source {src}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    phase: 3

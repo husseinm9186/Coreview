@@ -1,0 +1,460 @@
+# Coreview discovery catalog — Cisco IOS XR (cisco_iosxr)
+#
+# First built 2026-09-29 by scripts/build-catalog.mjs from Coreview's discovery
+# specification, ntc-templates' index
+# (resources/templates/ntc, ntc-templates 9.3.0), and the scrapli drivers
+# (scrapli 2026.02.20, scrapli_community 2025.01.30) plus netmiko 4.8.0 where
+# named. Maintained by hand from here on; catalog.test.ts holds every
+# command to the ntc index and the read-only allowlist.
+#
+# verified: lab = a real capture parses (ntc-templates' tests, or a
+# Coreview reader that met real hardware); docs = documented,
+# structured, or a template with no fixture; unverified = no template, no
+# structured output, no capture yet — the list. Never invent a command.
+vendor: Cisco
+os: cisco_iosxr
+name: IOS XR
+ntc_platform: cisco_xr
+phase: 1
+fingerprint:
+  probe: show version
+  match_regex: Cisco IOS XR Software
+session:
+  source: scrapli scrapli.driver.core.cisco_iosxr.sync_driver.IOSXRDriver
+  privilege_levels:
+    privilege_exec:
+      pattern: ^[\w.\-@/:]{1,63}#\s?$
+  failed_when_contains:
+    - "% Ambiguous command"
+    - "% Incomplete command"
+    - "% Invalid input detected"
+  on_open:
+    - terminal length 0
+    - terminal width 512
+  on_close:
+    - exit
+  ntc_platform: cisco_xr
+  paging:
+    off:
+      - terminal length 0
+      - terminal width 511
+    source: scrapli IOSXRDriver on_open; netmiko cisco_xr.py session_preparation
+  default_privilege: privilege_exec
+role_hint:
+  - match: ASR9|NCS|CRS|XRv
+    role: router
+role_defaults:
+  router:
+    - routing
+    - lldp
+    - cdp
+caps_probe:
+  - id: show_run_include_router_route_policy_vrf_interface_tunnel_mp
+    cmd: show run | include ^router |^route-policy|^vrf |^interface tunnel|^mpls|^l2vpn|^evpn
+    flags:
+      routing: "^router "
+      ospf: ^router ospf
+      bgp: ^router bgp
+      isis: ^router isis
+      pbr: ^route-policy
+      vrf: "^vrf "
+      gre: ^interface tunnel
+      mpls: ^mpls
+      l2vpn: ^l2vpn|^evpn
+      vxlan_evpn: ^evpn
+    timeout: 30
+commands:
+  - id: show_version
+    cmd: show version
+    gate: always
+    parser: textfsm:cisco_xr_show_version
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (5 captures)
+  - id: show_inventory
+    cmd: show inventory
+    gate: always
+    parser: textfsm:cisco_xr_admin_show_inventory
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (6 captures)
+  - id: show_platform
+    cmd: show platform
+    gate: always
+    parser: textfsm:cisco_xr_admin_show_platform
+    feeds:
+      - device
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_interfaces_description
+    cmd: show interfaces description
+    gate: always
+    parser: textfsm:cisco_xr_show_interfaces_description
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ipv4_interface_brief
+    cmd: show ipv4 interface brief
+    gate: always
+    parser: textfsm:cisco_xr_show_ip_interface_brief
+    feeds:
+      - interface
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_ipv6_interface_brief
+    cmd: show ipv6 interface brief
+    gate: always
+    parser: none
+    feeds:
+      - interface
+      - ip_address
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_lldp_neighbors_detail
+    cmd: show lldp neighbors detail
+    gate: always
+    parser: textfsm:cisco_xr_show_lldp_neighbors_detail
+    feeds:
+      - neighbor
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_cdp_neighbors_detail
+    cmd: show cdp neighbors detail
+    gate: always
+    parser: textfsm:cisco_xr_show_cdp_neighbors_detail
+    feeds:
+      - neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_bundle
+    cmd: show bundle
+    gate: always
+    parser: none
+    feeds:
+      - interface
+      - lag
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_lacp
+    cmd: show lacp
+    gate: always
+    parser: none
+    feeds:
+      - lag
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_vrf_all
+    cmd: show vrf all
+    gate: cap.vrf
+    parser: none
+    feeds:
+      - vrf
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_route_static
+    cmd: show route static
+    gate: cap.routing
+    parser: textfsm:cisco_xr_show_ip_route
+    feeds:
+      - route
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (5 captures)
+  - id: show_ospf_vrf_all_neighbor
+    cmd: show ospf vrf all neighbor
+    gate: cap.ospf
+    parser: textfsm:cisco_xr_show_ospf_vrf_all_neighbor
+    feeds:
+      - vrf
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_isis_neighbors
+    cmd: show isis neighbors
+    gate: cap.isis
+    parser: textfsm:cisco_xr_show_isis_neighbors
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_bgp_summary
+    cmd: show bgp summary
+    gate: cap.bgp
+    parser: textfsm:cisco_xr_show_bgp
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_bgp_vrf_all_summary
+    cmd: show bgp vrf all summary
+    gate: cap.bgp
+    parser: textfsm:cisco_xr_show_bgp
+    feeds:
+      - vrf
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_bgp_vpnv4_unicast_summary
+    cmd: show bgp vpnv4 unicast summary
+    gate: cap.bgp
+    parser: textfsm:cisco_xr_show_bgp
+    feeds:
+      - routing_neighbor
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_hsrp_brief
+    cmd: show hsrp brief
+    gate: cap.fhrp
+    parser: textfsm:cisco_xr_show_hsrp
+    feeds:
+      - fhrp
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_vrrp_brief
+    cmd: show vrrp brief
+    gate: cap.fhrp
+    parser: none
+    feeds:
+      - fhrp
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_mpls_interfaces
+    cmd: show mpls interfaces
+    gate: cap.mpls
+    parser: none
+    feeds:
+      - interface
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_mpls_ldp_neighbor_brief
+    cmd: show mpls ldp neighbor brief
+    gate: cap.mpls
+    parser: textfsm:cisco_xr_show_mpls_ldp_neighbor_brief
+    feeds:
+      - routing_neighbor
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_l2vpn_bridge_domain_brief
+    cmd: show l2vpn bridge-domain brief
+    gate: (cap.mpls || cap.vxlan_evpn)
+    parser: none
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_l2vpn_xconnect
+    cmd: show l2vpn xconnect
+    gate: (cap.mpls || cap.vxlan_evpn)
+    parser: none
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_evpn_evi
+    cmd: show evpn evi
+    gate: (cap.mpls || cap.vxlan_evpn)
+    parser: none
+    feeds:
+      - tunnel
+    weight: light
+    timeout: 30
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  - id: show_interfaces
+    cmd: show interfaces
+    gate: always
+    parser: textfsm:cisco_xr_show_interfaces
+    feeds:
+      - interface
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (1 captures)
+  - id: show_arp
+    cmd: show arp
+    gate: always
+    parser: textfsm:cisco_xr_show_arp
+    feeds:
+      - arp
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_running_config
+    cmd: show running-config
+    gate: always
+    parser: raw
+    feeds:
+      - raw_config
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: a configuration; no parser to verify
+  - id: show_route_vrf_vrf
+    cmd: show route vrf {vrf}
+    gate: cap.vrf
+    foreach: vrf
+    parser: textfsm:cisco_xr_show_ip_route
+    feeds:
+      - vrf
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (5 captures)
+  - id: show_arp_vrf_vrf
+    cmd: show arp vrf {vrf}
+    gate: cap.vrf
+    foreach: vrf
+    parser: textfsm:cisco_xr_show_arp
+    feeds:
+      - arp
+      - vrf
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (2 captures)
+  - id: show_route
+    cmd: show route
+    gate: cap.routing
+    parser: textfsm:cisco_xr_show_ip_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (5 captures)
+  - id: show_route_ipv6_unicast
+    cmd: show route ipv6 unicast
+    gate: cap.routing
+    parser: textfsm:cisco_xr_show_ip_route
+    feeds:
+      - route
+    weight: heavy
+    timeout: 120
+    verified: lab
+    evidence: ntc-templates tests (5 captures)
+  - id: show_mpls_forwarding
+    cmd: show mpls forwarding
+    gate: cap.mpls
+    parser: none
+    feeds:
+      - route
+      - tunnel
+    weight: heavy
+    timeout: 120
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+  # The forwarding table, which the path builder walks before the RIB.
+  - id: show_cef_ipv4
+    cmd: show cef ipv4
+    gate: cap.routing
+    parser: reader:iosxr_cef
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview cisco reader; IOS-XR command reference `show cef ipv4`
+    coreview_reader: true
+  - id: show_cef_vrf_vrf_ipv4
+    cmd: show cef vrf {vrf} ipv4
+    gate: cap.vrf
+    foreach: vrf
+    parser: reader:iosxr_cef
+    feeds:
+      - fib
+    weight: heavy
+    timeout: 120
+    verified: docs
+    evidence: Coreview cisco reader; IOS-XR command reference `show cef vrf <name> ipv4`
+    coreview_reader: true
+live_path:
+  - id: show_route_dst_detail
+    cmd: show route {dst} detail
+    gate: always
+    parser: textfsm:cisco_xr_show_ip_route
+    feeds:
+      - path_probe
+    verified: lab
+    evidence: ntc-templates tests (5 captures)
+    phase: 3
+  # Which equal-cost member the hardware's hash picks for this flow.
+  - id: show_cef_ipv4_exact_route_src_dst
+    cmd: show cef ipv4 exact-route {src} {dst}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet; the reply's next hop is read by the live check
+    phase: 3
+  - id: show_cef_dst
+    cmd: show cef {dst}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    phase: 3
+  - id: traceroute_dst_source_src
+    cmd: traceroute {dst} source {src}
+    gate: always
+    parser: none
+    feeds:
+      - path_probe
+    verified: unverified
+    evidence: no template, no structured output, no capture yet
+    phase: 3

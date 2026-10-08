@@ -1,0 +1,3 @@
+Domain      MAC address        Type        Encap   Ageing  Stp Mode  Vlan VNI Offset  Mcast Snooping
+----------  -----------------  ----------  ------  ------  --------  ---------------  --------------
+br_default  1c:34:da:00:28:3f  vlan-aware  802.1Q  1800    rstp      0                disabled

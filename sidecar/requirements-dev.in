@@ -1,0 +1,6 @@
+# Tests and audits only; never shipped.
+-c requirements.txt
+pytest
+pyyaml
+pip-audit
+pip-tools

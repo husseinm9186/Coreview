@@ -1,0 +1,10 @@
+{
+  "timeoutMs": 800,
+  "concurrency": 64,
+  "identify": true,
+  "scanPorts": true,
+  "ports": [
+    22,
+    161
+  ]
+}

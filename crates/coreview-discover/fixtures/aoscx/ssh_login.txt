@@ -1,0 +1,29 @@
+The authenticity of host '198.51.100.4 (198.51.100.4)' can't be established.
+ED25519 key fingerprint is SHA256:ExampleExampleExampleExampleExampleExample0.
+This key is not known by any other names.
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+Warning: Permanently added '198.51.100.4' (ED25519) to the list of known hosts.
+
+ (C) Copyright 2017-2026 Hewlett Packard Enterprise Development LP
+
+                      RESTRICTED RIGHTS LEGEND
+ Confidential computer software. Valid license from Hewlett Packard Enterprise
+ Development LP required for possession, use, or copying. License found at
+  https://www.hpe.com/software/SWLicensing.
+ By using the software, you acknowledge that you have read and understand
+ the license, represent you are authorized to accept this license, and agree
+ to be bound by its terms. If you do not agree to these terms, do not use the
+ software. Consistent with FAR 12.211 and 12.212, Commercial Computer Software,
+ Computer Software Documentation, and Technical Data for Commercial Items are
+ licensed to the U.S. Government under vendor's standard commercial license.
+
+We'd like to keep you up to date about:
+  * Software feature updates
+  * New product announcements
+  * Special events
+Please register your products now at: https://networkingsupport.hpe.com
+
+
+netops@198.51.100.4's password:
+Last login: 2026-10-06 17:13:33 from 198.51.100.36
+User "netops" has logged in 7 times in the past 30 days
