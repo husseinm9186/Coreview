@@ -2,6 +2,18 @@
 
 Newest first.
 
+## 2.7.1 — 2026-10-08
+
+**Documentation**
+- README, the Windows install guide, the signing notes and the architecture
+  notes brought up to date: the installers CI publishes and their artifact
+  names, the dependency and command counts, and where secrets live.
+- The user guide describes every saved login being tried wherever Coreview
+  logs in.
+
+Nothing in the application changed since 2.7.0; this release rebuilds both
+installers from the same code.
+
 ## 2.7.0 — 2026-10-08
 
 **Discovery**

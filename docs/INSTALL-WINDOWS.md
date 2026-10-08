@@ -9,7 +9,8 @@ it changes, and what it does not.
 
 ## What comes with each build
 
-From a green CI run's `coreview-windows` artifact:
+From a green CI run's `coreview-windows-v<version>` artifact (for example
+`coreview-windows-v2.7.1`):
 
 | File | What it is |
 | --- | --- |
@@ -24,7 +25,7 @@ No private key is ever in any of these.
 ## 1. Check the file is the one that was built
 
 ```powershell
-(Get-FileHash .\Coreview_2.4.9_x64-setup.exe -Algorithm SHA256).Hash.ToLower()
+(Get-FileHash .\Coreview_2.7.1_x64-setup.exe -Algorithm SHA256).Hash.ToLower()
 Get-Content .\SHA256SUMS.txt
 ```
 
@@ -66,7 +67,7 @@ certificate under **Trusted Publishers**.
 Check it took:
 
 ```powershell
-Get-AuthenticodeSignature .\Coreview_2.4.9_x64-setup.exe | Format-List Status, SignerCertificate
+Get-AuthenticodeSignature .\Coreview_2.7.1_x64-setup.exe | Format-List Status, SignerCertificate
 ```
 
 `Status : Valid`, signer `CN=COREVIEW-APP Code Signing`. Before step 2 the
@@ -85,7 +86,7 @@ Being plain about this, because it is the question every administrator asks:
   looks at files that carry the *Mark of the Web* — files downloaded through
   a browser. So:
   - on one machine, clear the mark before running it:
-    `Unblock-File .\Coreview_2.4.9_x64-setup.exe` (or *Properties →
+    `Unblock-File .\Coreview_2.7.1_x64-setup.exe` (or *Properties →
     Unblock*);
   - across an estate, deploy the installer the way managed software is
     deployed — Intune, Configuration Manager, a file share, a GPO software
@@ -112,8 +113,8 @@ that takes a certificate from a public authority; the decision on record
   build has passed VirusTotal before it was published, so it is not a
   detection. Three ways past it, from best to worst:
   1. Fetch the artifact without a browser. From a terminal with the GitHub
-     CLI signed in: `gh run download <run id> -n coreview-windows -R
-     <owner>/<repo>` (the run id is in the Actions URL). Nothing is
+     CLI signed in: `gh run download <run id> -n coreview-windows-v<version>
+     -R <owner>/<repo>` (the run id is in the Actions URL). Nothing is
      flagged, and the file arrives without the Mark of the Web.
   2. Download with Edge, which warns but offers *Keep*.
   3. In Chrome, *chrome://settings/security* → Safe Browsing → *No

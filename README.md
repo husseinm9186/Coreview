@@ -31,10 +31,11 @@ outbound requests at all (see below).
 
 Check it yourself. `git grep -i openai` returns exactly one hit outside this
 README, and it is worth knowing what it is: a company name inside
-`crates/coreview-discover/src/oui_data.rs`, the offline IEEE OUI table that
-turns a MAC address prefix into a manufacturer name. It sits alongside 19,858
-others — Cisco, Netgear, Hewlett Packard. It is a static string in a lookup
-table, compiled into the binary, and nothing dials it.
+`crates/coreview-probe/src/oui_data.rs`, the offline IEEE OUI table that
+turns a MAC address prefix into a manufacturer name. It sits alongside some
+forty thousand other prefixes — Cisco, Netgear, Hewlett Packard. It is a
+static string in a lookup table, compiled into the binary, and nothing dials
+it.
 
 The same goes for `git grep -iE "telemetry|analytics|sentry"`: every hit is
 either a vendor name in that same OUI table ("Adcon Telemetry", "Honeywell
@@ -51,8 +52,11 @@ Analytics") or a line of the app's own text promising there is none.
 - No cloud sync, no vendor backend. There is no Coreview server. It does not
   exist, so it cannot be breached, subpoenaed, or quietly switched on.
 
-The frontend ships **eight** runtime dependencies — the Tauri API, its dialog
-plugin, React, React DOM, React Flow and Zustand. None of them phone home.
+The frontend ships **twelve** runtime dependencies — the Tauri API and its
+dialog plugin, React, React DOM, React Flow, Zustand, the xterm terminal and
+two of its add-ons, a YAML reader, and two Tauri plugins (`plugin-fs`,
+`plugin-opener`) that are listed but imported nowhere. None of them phone
+home.
 
 ### The interface physically cannot reach the network
 
@@ -77,11 +81,12 @@ Fonts, no remote images, no web analytics pixel. Fonts are the ones already on
 your machine. Device icons are drawn in-repo as SVG. Vendor stencils are
 compiled in at build time and read from disk.
 
-### The Rust side is a fixed list of 53 commands, not a general escape hatch
+### The Rust side is a fixed list of named commands, not a general escape hatch
 
 The webview cannot run a program, read an arbitrary file, or open a socket. It
-can call 53 named Rust commands and nothing else — there is no generic
-`execute`, no `eval`, no path passthrough.
+can call the named Rust commands listed in `src-tauri/src/main.rs` (122 at
+this release) and nothing else — there is no generic `execute`, no `eval`, no
+path passthrough.
 
 The Tauri capability allowlist (`src-tauri/capabilities/default.json`) grants
 only: core defaults, set-window-title, the event channel, and the native
@@ -211,8 +216,8 @@ Stated so the list above is not mistaken for more than it is:
 
 ## Install
 
-Builds for all three platforms are produced by CI on every push. Download from
-the **Actions** tab → a green run → **Artifacts**.
+The Windows and macOS installers are produced by CI on every push. Download
+from the **Actions** tab → a green run → **Artifacts**.
 
 | Platform | Artifact | Contents |
 | --- | --- | --- |
@@ -281,9 +286,12 @@ before the app is handed to anyone who did not build it.
 
 ### Linux
 
-The `.deb` declares `iputils-ping` and `traceroute` as dependencies. The
-AppImage carries its own WebKit — there is a CI job that boots it in a
-container with no `libwebkit2gtk` installed specifically to prove it.
+The Linux bundle is switched off in the workflow (see above), so no `.deb` or
+AppImage is published at present; `npm run tauri build` on a Linux machine
+still produces both. The `.deb` declares `iputils-ping` and `traceroute` as
+dependencies. The AppImage carries its own WebKit, and the workflow keeps a
+job (also switched off) that boots it in a container with no `libwebkit2gtk`
+installed to prove it.
 
 ---
 
@@ -560,9 +568,11 @@ Note that `npm run rust:test` covers the probe
 engine and the app backend but not `coreview-discover`; `cargo test
 --workspace` is the one that runs everything.
 
-CI runs the suites on Ubuntu and Windows, then bundles for all three
-platforms — plus a job that boots the AppImage in a container with no WebKit
-installed, to check it really carries its own.
+CI runs the suites on Ubuntu and Windows, then bundles the Windows and macOS
+installers, signs and scans the Windows one, and installs it on a clean
+Windows runner to check it starts. The Linux bundle and the job that boots
+the AppImage in a container with no WebKit installed are in the workflow,
+switched off.
 
 ### Build installers
 
@@ -585,7 +595,9 @@ a job per platform.
   rejected. Unit tests cover the injection cases directly.
 - **`ping` is invoked with an argument vector.** No `cmd.exe`, no PowerShell, no
   string interpolation, and no shell plugin in the capability set.
-- **The IPC surface is 53 named commands.** No generic execute.
+- **The IPC surface is a fixed list of named commands** (122 at this
+  release), each registered by name in `src-tauri/src/main.rs`. No generic
+  execute.
 - **File access is mediated by Rust**, and writes go only to a path or folder
   chosen in a native dialog. A capture path cannot escape the backup folder,
   and a stencil pack name cannot escape the stencils folder — both asserted by
@@ -651,7 +663,7 @@ Copyright © 2026 Mohammed Almoola. All rights reserved. The full terms are in
 as a trademark.
 
 **The components it is built on keep their own licences**, and nothing above
-changes them. All of them — 34 npm packages and 729 crates — are credited in
+changes them. All of them — 37 npm packages and 727 crates — are credited in
 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) with their licence texts in
 full, generated from the real dependency trees. That file and `LICENSE` are
 installed beside the application, so they travel with any copy you pass on.

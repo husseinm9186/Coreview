@@ -129,10 +129,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The NSIS installer only — "don't build any installer yet
-          # please except the NSIS for windows". The seventh change to this
-          # set, and
-          # like every one before it, one edit that deletes nothing.
+          # The NSIS installer only. The other bundles stay in this set,
+          # commented out, so switching one on is one edit that deletes
+          # nothing.
           # - os: ubuntu-latest
           #   artifact: coreview-linux
           #   bundles: deb,appimage

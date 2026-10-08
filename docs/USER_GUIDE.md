@@ -625,8 +625,9 @@ built, with **Review and draw** — which used to be a tab called Collect.
 With either engine the **Log in to** chips decide what is logged into —
 a neighbour of a kind not ticked is drawn from what its neighbour said
 and never connected to — **Reach devices over** can fall back to telnet
-when SSH does not answer (never after a rejected password), and the
-**second login** is tried where the first is refused. **At once**, **Give
+when SSH does not answer (never after a rejected password), and where a
+device refuses the login, every other login saved in this project is tried
+in turn, then the **second login** typed for the run. **At once**, **Give
 up after**, **Retries** and **Also read from each device** are the classic
 crawler's; with the collector a line says so.
 
@@ -802,6 +803,14 @@ credentials, lists every time one was offered to a device — for a crawl, a
 backup, an SNMP check, a ping from a device — with when and how often. It is kept
 on this machine only, and can be cleared.
 
+**Every saved login is tried.** Wherever Coreview logs in — a crawl under
+either engine, a backup, an SSH tab, Path check, Tracert, and Path-Trace's
+checks from a device — a device that refuses the chosen login is offered
+every other SSH login saved in this project, in turn, before it is given up
+on. Only a refused login moves on to the next: a device that does not answer,
+or whose host key has changed, is reported at once rather than tried once per
+login. Each login offered is listed under **Where they were used**.
+
 **Starting too often.** A crawl, sweep, backup or validation started many times
 within a minute is refused with how long to wait. A person never meets this; it
 stops a fault from scanning a network in a loop.
@@ -830,7 +839,8 @@ read appears in the device's inspector under **From the last crawl**.
 **Which login where.** The discovery form offers the project's saved login as a
 tick box, named, and **off until you tick it** — a crawl logs into a whole
 estate, so it does not start doing that on its own. Ticked, it is tried first;
-anything typed below it is tried after. The same goes for each SNMP row.
+the project's other saved logins follow, then anything typed below it. The
+same goes for each SNMP row.
 In a device's inspector, **Log in with** and **SNMP with**
 pick saved credentials to try on that device first. **Saved credentials by subnet
 or vendor** in the crawl panel does the same for a subnet or for every device a
@@ -838,7 +848,8 @@ neighbour reports as, say, a FortiSwitch. The most specific match is tried first
 Only the vault's reference is sent; the password never leaves the vault.
 
 **A shell on a device.** Right-click a device and choose **SSH to this
-device**. It logs in with the device's own saved login and opens as a tab in
+device**. It logs in with the device's own saved login — the project's other
+saved logins in turn if that is refused — and opens as a tab in
 the bottom panel's **SSH** section, beside every other shell you have open —
 a real terminal, so line editing, colour and `?` completion all work as they do
 on the device. Switching tabs keeps everything the device has said. A device

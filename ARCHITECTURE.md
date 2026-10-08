@@ -13,7 +13,7 @@
 │                                  │                                                             │
 │                          lib/ipc.ts  ← the only IPC surface                                    │
 └──────────────────────────────────┬─────────────────────────────────────────────────────────────┘
-                                   │ 14 named Tauri commands + 1 event channel
+                                   │ named Tauri commands (122 at this release) + 1 event channel
 ┌──────────────────────────────────┴─────────────────────────────────────────────────────────────┐
 │  Rust                                                                                          │
 │                                                                                                │
@@ -153,8 +153,9 @@ working explanation is `docs/BRAND_AND_LICENSING.md`).
 
 ## Security boundaries
 
-1. **JS → Rust.** Fourteen named commands. No shell plugin, no HTTP plugin, no
-   generic exec. Listed explicitly in `main.rs`.
+1. **JS → Rust.** A fixed list of named commands (122 at this release). No
+   shell plugin, no HTTP plugin, no generic exec. Listed explicitly in
+   `main.rs`; `isolation/` checks its command table against that list.
 2. **Rust → OS.** `parse_target` must succeed before any target reaches an argv,
    a socket or the resolver. `ping` gets an argument vector, never a string.
 3. **Filesystem.** Tauri capability scopes limit reads and writes to
@@ -162,6 +163,9 @@ working explanation is `docs/BRAND_AND_LICENSING.md`).
 4. **Untrusted display data.** Device names, labels, notes and imported CSV
    values are rendered as React text nodes, never as HTML. CSV export escapes
    leading formula characters.
-5. **Secrets.** None are stored. The probe config has no credential field. When
-   SNMP or API checks arrive they should hold a Windows Credential Manager
-   reference, not a value.
+5. **Secrets.** A probe has no credential field. Device, SNMP, API and Meraki
+   logins live in the encrypted vault (`crates/coreview-discover/src/vault.rs`,
+   driven by `src-tauri/src/vault_commands.rs`): Argon2id derives the key from
+   a passphrase that is never stored, XChaCha20-Poly1305 seals each entry, and
+   the webview only ever holds an id. Live SSH sessions belong to the window
+   and are never written down.

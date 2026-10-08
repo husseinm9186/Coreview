@@ -58,9 +58,9 @@ thumbprint. Signatures are timestamped against
 `http://timestamp.digicert.com`: without a timestamp a signature stops
 validating the day the certificate expires, and an installer outlives that.
 
-Both Windows artifacts are signed — the 7 MB default and the 500 MB offline
-one — and so is every PE inside the collector sidecar that its publisher has
-not already signed (`sidecar/build/sign.ps1`). Each installer is then
+The installer is signed, and so is the offline installer when that job is
+switched on, and so is every PE inside the collector sidecar that its
+publisher has not already signed (`sidecar/build/sign.ps1`). Each installer is then
 scanned on VirusTotal and fails the build on any detection; its SHA-256 goes
 into `SHA256SUMS.txt`, and CycloneDX SBOMs into `sbom/`.
 
@@ -69,7 +69,7 @@ into `SHA256SUMS.txt`, and CycloneDX SBOMs into `sbom/`.
 On Windows:
 
 ```powershell
-Get-AuthenticodeSignature .\Coreview_2.4.9_x64-setup.exe | Format-List
+Get-AuthenticodeSignature .\Coreview_2.7.1_x64-setup.exe | Format-List
 ```
 
 `Status` reads `Valid` on a machine that trusts the root, and
