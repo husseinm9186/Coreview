@@ -942,7 +942,7 @@ pub fn set_setting(
     // This table is plain text in the same database as the projects, and
     // nothing typed into Coreview is ever written where it could leave the
     // machine.
-    const ALLOWED: [&str; 27] = [
+    const ALLOWED: [&str; 31] = [
         // The shadow-mode feature flag, per project.
         "collectorShadow",
         "backupFolder",
@@ -996,6 +996,14 @@ pub fn set_setting(
         // Clipboard manners in the terminal.
         "sshCopyOnSelect",
         "sshPasteOnRight",
+        // The SFTP server a Cisco device is told to send its configuration
+        // to when a backup is asked for over SNMP: host, port and folder,
+        // and the saved login by its vault id. Per project, like the
+        // backup folder; no secret here.
+        "sftpHost",
+        "sftpPort",
+        "sftpFolder",
+        "sftpCredentialId",
     ];
     if !ALLOWED.contains(&key.as_str()) {
         return Err(format!("{key} is not a setting Coreview stores"));

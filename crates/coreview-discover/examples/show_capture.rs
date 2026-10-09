@@ -87,6 +87,7 @@ async fn main() {
         // E.g. CV_PATTERN='{site}_{device}_{stamp}_{kind}'.
         file_pattern: std::env::var("CV_PATTERN").ok(),
         fallback_credentials: Vec::new(),
+        snmp_copy: None,
     };
 
     let (tx, mut rx) = mpsc::channel(256);

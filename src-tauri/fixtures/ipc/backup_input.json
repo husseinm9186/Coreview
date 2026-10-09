@@ -20,5 +20,9 @@
     "show inventory"
   ],
   "paging": "auto",
-  "filePattern": "{device}-{stamp}"
+  "filePattern": "{device}-{stamp}",
+  "snmpCopy": {
+    "credentialId": "cred-snmp-rw",
+    "port": 161
+  }
 }

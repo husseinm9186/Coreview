@@ -38,7 +38,7 @@ const payloads: Record<string, unknown> = {
   }),
   backup_input: backupInput({
     credentialId: 'cred-ssh', targets: [{ address: '192.0.2.10', name: 'CORE-SW1', commands: ['show version'], site: 'HQ', ...extra }],
-    kinds: ['running', 'startup'], secondFactor: false, port: 22, showCommands: ['show inventory'], paging: 'auto', filePattern: '{device}-{stamp}', ...extra,
+    kinds: ['running', 'startup'], secondFactor: false, port: 22, showCommands: ['show inventory'], paging: 'auto', filePattern: '{device}-{stamp}', snmpCopy: { credentialId: 'cred-snmp-rw', port: 161, ...extra }, ...extra,
   }),
   sweep_options: sweepOptions({ timeoutMs: 800, concurrency: 64, identify: true, scanPorts: true, ports: [22, 161], ...extra }),
   topology_view_options: topologyViewOptions({ collapseBundles: true, collapseStacks: false, placeholders: true, minConfidence: 0.7, vlan: '10', vrf: 'default', seeds: ['192.0.2.1'], ...extra }),

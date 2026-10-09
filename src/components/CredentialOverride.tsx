@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { t } from '../i18n';
 import {
+  sftpDraft,
   snmpDraft,
   snmpOverrideProblem,
   sshDraft,
@@ -38,7 +39,9 @@ export function CredentialOverride({
   disabled = false,
   scope = 'device',
 }: {
-  kind: 'ssh' | 'snmp';
+  /** `sftp` is the server a device sends its configuration to under a
+   *  backup over SNMP: a username and password, never offered to a device. */
+  kind: 'ssh' | 'snmp' | 'sftp';
   /** What the device is called, which is what the saved credential is named after. */
   device: string;
   /** Where to try the login. A device knows its own; the project's
@@ -81,7 +84,7 @@ export function CredentialOverride({
   }, [refresh, vaultRevision]);
 
   const held = credentialId ? saved.find((c) => c.id === credentialId) : undefined;
-  const problemNow = kind === 'ssh' ? sshOverrideProblem(ssh) : snmpOverrideProblem(snmp);
+  const problemNow = kind === 'snmp' ? snmpOverrideProblem(snmp) : sshOverrideProblem(ssh);
 
   /** Put the secret in the vault under this device's name and keep its id. */
   const save = () => {
@@ -91,7 +94,7 @@ export function CredentialOverride({
     }
     setBusy(true);
     setProblem(null);
-    const draft = kind === 'ssh' ? sshDraft(device, ssh) : snmpDraft(device, snmp);
+    const draft = kind === 'ssh' ? sshDraft(device, ssh) : kind === 'sftp' ? sftpDraft(device, ssh) : snmpDraft(device, snmp);
     // Replacing keeps the same record so anything else pointing at it follows;
     // a new one gets a new id.
     void ipc
@@ -163,7 +166,7 @@ export function CredentialOverride({
   if (!isDesktop) return <p className="cv-help">{t('cred.desktopOnly')}</p>;
 
   const fields =
-    kind === 'ssh' ? (
+    kind === 'ssh' || kind === 'sftp' ? (
       <>
         <label className="cv-field cv-field-narrow">
           <span>{t('cred.username')}</span>
@@ -175,11 +178,13 @@ export function CredentialOverride({
           <input className="cv-input" type="password" value={ssh.password} autoComplete="new-password"
             disabled={disabled || busy} onChange={(e) => setSsh({ ...ssh, password: e.target.value })} />
         </label>
-        <label className="cv-field cv-field-narrow">
-          <span>{t('cred.enable')}</span>
-          <input className="cv-input" type="password" value={ssh.enable ?? ''} autoComplete="new-password"
-            disabled={disabled || busy} onChange={(e) => setSsh({ ...ssh, enable: e.target.value })} />
-        </label>
+        {kind === 'ssh' && (
+          <label className="cv-field cv-field-narrow">
+            <span>{t('cred.enable')}</span>
+            <input className="cv-input" type="password" value={ssh.enable ?? ''} autoComplete="new-password"
+              disabled={disabled || busy} onChange={(e) => setSsh({ ...ssh, enable: e.target.value })} />
+          </label>
+        )}
       </>
     ) : (
       <>
@@ -245,9 +250,11 @@ export function CredentialOverride({
     <div className="cv-cred-override" data-kind={kind}>
       <div className="cv-cred-override-head">
         <strong>
-          {t(scope === 'project'
-            ? (kind === 'ssh' ? 'cred.sshProject' : 'cred.snmpProject')
-            : (kind === 'ssh' ? 'cred.ssh' : 'cred.snmp'))}
+          {t(kind === 'sftp'
+            ? 'cred.sftpProject'
+            : scope === 'project'
+              ? (kind === 'ssh' ? 'cred.sshProject' : 'cred.snmpProject')
+              : (kind === 'ssh' ? 'cred.ssh' : 'cred.snmp'))}
         </strong>
         <span className="cv-help">{t(scope === 'project' ? 'cred.projectHint' : 'cred.override')}</span>
       </div>

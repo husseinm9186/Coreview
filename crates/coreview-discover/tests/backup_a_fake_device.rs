@@ -240,6 +240,7 @@ fn options(root: std::path::PathBuf, port: u16, kinds: Vec<BackupKind>) -> Backu
         show: None,
         file_pattern: None,
         fallback_credentials: Vec::new(),
+        snmp_copy: None,
     }
 }
 

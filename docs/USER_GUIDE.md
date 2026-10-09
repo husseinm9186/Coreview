@@ -1051,6 +1051,41 @@ that, **Tools ▸ Settings ▸ Display ▸ Interface size** sets it from 85 % to
 with strong status colours and a bold yellow focus ring. It starts on by itself
 when the system asks for more contrast.
 
+## Back up a Cisco over SNMP
+
+SNMP cannot read a configuration — no object returns one — but Cisco IOS,
+IOS-XE and NX-OS carry a table a manager can write a *request* into: send
+your running or startup configuration to this server, as this file. That is
+what the **Ask Cisco devices to send their configuration over SNMP** tick on
+the Backups tab does. Off every run until you tick it, because it is a
+write to the device, small as it is.
+
+**What you need.** An SFTP server the devices can reach, named under
+**Tools ▸ Settings** with its port and the folder to drop into, and the
+login the devices are given for it — typed there, saved in the vault as its
+own kind, and never offered to a device as an SSH login. Then a saved SNMP
+credential the device accepts a write from: a read-write community, or a v3
+user with write access. The tick shows a picker for it.
+
+**What happens.** For each device, one SNMP write creates a row in the copy
+table — protocol SFTP, the configuration asked for, your server, the file
+name, the login — then Coreview polls the device once a second until it
+reports the copy done, destroys the row, logs in to your server, reads the
+file, and files it in the backup folder under the device's own name exactly
+as an SSH capture is. History and **Before and after** work unchanged. The
+file stays on your server; Coreview reads a copy. Both uses are listed under
+**Where they were used**.
+
+**What it costs.** The device logs in to the server itself, so it is given
+the SFTP login inside the SNMP write: encrypted under v3 with privacy, in
+clear under v2c, like the community beside it. A read-only credential is
+refused by the device and the run says so. A device without the table —
+most makers other than Cisco — is read over SSH as usual, and the run says
+why. Show commands always go over SSH. Nothing listens on this machine.
+
+Built from the MIB's definition; the first Cisco to answer one of these for
+real is what verifies it, so a diagnostic of that run is worth keeping.
+
 ## Capture show commands
 
 The **Backups** tab takes more than configurations. Tick **Show commands** and

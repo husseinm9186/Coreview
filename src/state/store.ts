@@ -295,6 +295,13 @@ export interface AppSettings {
   backupFolder: string | null;
   /** Where exports land without prompting. Null falls back to a save dialog. */
   exportFolder: string | null;
+  /** The SFTP server a Cisco device sends its configuration to under a
+   *  backup over SNMP, and the saved login it is given, by vault id. A
+   *  project's, like the folders: a customer's server. Empty when unset. */
+  sftpHost: string;
+  sftpPort: string;
+  sftpFolder: string;
+  sftpCredentialId: string;
   /** How the SSH terminal behaves. How somebody likes to read and
    *  work, so these belong to the machine and never to a project. */
   terminal: TerminalSettings;
@@ -1294,6 +1301,10 @@ export const useStore = create<Store>((set, get) => ({
     ground: 'dark',
     backupFolder: null,
     exportFolder: null,
+    sftpHost: '',
+    sftpPort: '',
+    sftpFolder: '',
+    sftpCredentialId: '',
     terminal: TERMINAL_DEFAULTS,
   },
   tracertRun: { busy: false, began: null, fromDevice: false, hops: null, complete: true, ran: null, problem: null, hadPrevious: false, changed: [] },
@@ -1482,7 +1493,7 @@ export const useStore = create<Store>((set, get) => ({
     // and what this one chose is dropped rather than left in the form for the
     // next project to inherit, which is the whole.
     await setCurrentProject(null).catch(() => undefined);
-    set((s) => ({ settings: { ...s.settings, backupFolder: null, exportFolder: null } }));
+    set((s) => ({ settings: { ...s.settings, backupFolder: null, exportFolder: null, sftpHost: '', sftpPort: '', sftpFolder: '', sftpCredentialId: '' } }));
     if (recoveryTimer) {
       clearInterval(recoveryTimer);
       recoveryTimer = null;
@@ -3880,6 +3891,10 @@ export const useStore = create<Store>((set, get) => ({
         ...s.settings,
         backupFolder: stored.backupFolder ?? null,
         exportFolder: stored.exportFolder ?? null,
+        sftpHost: stored.sftpHost ?? '',
+        sftpPort: stored.sftpPort ?? '',
+        sftpFolder: stored.sftpFolder ?? '',
+        sftpCredentialId: stored.sftpCredentialId ?? '',
         terminal: terminalFromStored(stored, s.settings.terminal),
       },
       iconLibraryDir: stored.iconLibraryDir ?? s.iconLibraryDir,

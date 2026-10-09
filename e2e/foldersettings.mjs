@@ -83,6 +83,23 @@ const saved = await page.evaluate(() => window.__calls.filter((c) => c.cmd === "
 check("choosing a backup folder saves it to this project", saved?.key === "backupFolder" && saved?.projectId === "fs" && saved?.value === "/home/example/coreview-backups", JSON.stringify(saved));
 check("and shows it once kept", (await inSettings.innerText()).includes("/home/example/coreview-backups"), (await inSettings.innerText()).slice(0, 200));
 
+// The SFTP server a Cisco sends its configuration to under a backup over
+// SNMP is a project's too, and is typed here.
+const sftp = page.locator('[data-region="snmp-backup"]');
+check("Settings names the SFTP server for backups over SNMP", (await sftp.count()) === 1);
+check("and says nothing listens on this machine", /Nothing listens on this machine/.test(await sftp.innerText()), (await sftp.innerText()).slice(0, 300));
+await sftp.locator('[data-field="sftp-host"]').fill("files.example.net");
+await page.waitForTimeout(300);
+const sftpSaved = await page.evaluate(() => window.__calls.filter((c) => c.cmd === "set_setting" && c.args.key === "sftpHost").at(-1)?.args);
+check("the server is saved to this project", sftpSaved?.projectId === "fs" && sftpSaved?.value === "files.example.net", JSON.stringify(sftpSaved));
+await sftp.locator('[data-field="sftp-port"]').fill("2222");
+await sftp.locator('[data-field="sftp-folder"]').fill("/configs");
+await page.waitForTimeout(300);
+const sftpKeys = await page.evaluate(() => window.__calls.filter((c) => c.cmd === "set_setting" && /^sftp/.test(c.args.key)).map((c) => `${c.args.key}=${c.args.value}`));
+check("port and folder are kept as their own settings", sftpKeys.includes("sftpPort=2222") && sftpKeys.includes("sftpFolder=/configs"), JSON.stringify(sftpKeys));
+check("the server's login is typed beside it, as its own kind", (await sftp.locator('.cv-cred-override[data-kind="sftp"]').count()) === 1);
+check("and that login form has no enable password", (await sftp.locator('.cv-cred-override[data-kind="sftp"]').innerText()).indexOf("Enable") === -1);
+
 // A refused save is said, where it happened.
 await page.evaluate(() => { window.__refuseNext = "The disk said no."; });
 await inSettings.locator(".cv-folder-row", { hasText: "Exports" }).locator("button", { hasText: "Choose folder" }).click();

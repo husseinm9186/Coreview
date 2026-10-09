@@ -119,6 +119,8 @@ more useful than a blanket "nothing leaves the machine", which would be false:
 | HTTPS to a device's own API | Only when you pick a saved API login for a run | That device (or its FMC), on the port saved with the login; the certificate is pinned on first use |
 | HTTPS to the Meraki Dashboard | Only when you start a Meraki backup, health check or discovery with your own key | `api.meraki.com` and its regional hosts, nothing else |
 | SNMP (read-only) | Only during a crawl, and only if you supply SNMP credentials | Only the devices you listed |
+| SNMP write (one row in Cisco's configuration-copy table) | Only when a backup's **Ask Cisco devices to send their configuration over SNMP** tick is on, with a read-write credential you chose | Only the devices you selected; the device then sends the file to the SFTP server you named in Settings |
+| SFTP (read one file) | Same tick, after the device reports the copy done | Only that SFTP server |
 | Telnet | Only when you explicitly choose it for a run | Only the devices you listed |
 | Opening a link | Only when you click a hyperlink you added | Your OS browser, `http(s)` only — the Rust command rejects `file://`, `javascript:` and anything else, with tests covering it |
 
@@ -135,6 +137,18 @@ attached hosts. It earns its place because a read-only community is far easier
 to get approved than shell access, and plenty of equipment answers SNMP while
 refusing a login. Everything else you might want from SNMP belongs in a
 monitoring system, not a diagram tool.
+
+**The one SNMP write, and it is opt-in.** SNMP cannot read a configuration,
+but Cisco's `CISCO-CONFIG-COPY-MIB` lets a manager ask a device to *send*
+one. When the Backups tab's SNMP tick is on, Coreview writes one row into
+that table — protocol SFTP, source running or startup config, your server,
+your file name — polls until the device reports the copy done, destroys the
+row, and fetches the file from your SFTP server. The device is left as it
+was found. That write needs a read-write SNMP credential, and the device is
+given the SFTP login inside it, so under v2c that login crosses the network
+in clear (v3 with privacy encrypts it); the tab says so. Nothing listens on
+your machine: the file goes to a server you run. A device without the table
+is read over SSH as usual.
 
 Everything in that table is **operator-initiated and operator-addressed**.
 Nothing runs on a timer you did not start, nothing scans a range you did not
@@ -663,7 +677,7 @@ Copyright © 2026 Mohammed Almoola. All rights reserved. The full terms are in
 as a trademark.
 
 **The components it is built on keep their own licences**, and nothing above
-changes them. All of them — 37 npm packages and 727 crates — are credited in
+changes them. All of them — 37 npm packages and 731 crates — are credited in
 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) with their licence texts in
 full, generated from the real dependency trees. That file and `LICENSE` are
 installed beside the application, so they travel with any copy you pass on.

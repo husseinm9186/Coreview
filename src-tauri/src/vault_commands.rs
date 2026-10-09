@@ -511,6 +511,28 @@ pub fn ssh_credentials(state: &AppState, id: &str) -> CmdResult<Credentials> {
     })
 }
 
+/// A saved SFTP login (kind `sftp`): the server a device is told to send
+/// its configuration to under a backup over SNMP, and that Coreview then
+/// reads the file from. A kind of its own so that it is never offered to a
+/// device as an SSH login. Not a command, for the same reason as
+/// `ssh_credentials`.
+pub fn sftp_credentials(state: &AppState, id: &str) -> CmdResult<(String, Secret)> {
+    let guard = state.vault_key.lock().map_err(db_err)?;
+    let key = guard.as_ref().ok_or_else(|| vault::VaultError::Locked.to_string())?;
+    let stored = {
+        let conn = state.db.lock().map_err(db_err)?;
+        db::may_use_credential(&conn, crate::commands::open_project(state).as_deref(), id)?;
+        db::credential(&conn, id)
+            .map_err(db_err)?
+            .ok_or("That saved credential no longer exists.")?
+    };
+    if stored.kind != "sftp" {
+        return Err("That saved credential is not an SFTP login.".into());
+    }
+    let password = open_secret(key, &stored.secret)?;
+    Ok((stored.username, Secret::new(password)))
+}
+
 /// A saved API login (kind `api`), for the REST collectors. Not a
 /// command, for the same reason as `ssh_credentials`.
 pub fn api_credentials(state: &AppState, id: &str) -> CmdResult<coreview_collect::api::ApiLogin> {

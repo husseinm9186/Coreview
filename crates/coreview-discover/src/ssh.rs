@@ -232,13 +232,13 @@ pub enum SshError {
 /// russh calls this during the handshake, before authentication, which is the
 /// only correct place: a password must not be sent to a host whose identity has
 /// not been settled.
-struct Verifier {
-    host: String,
-    port: u16,
-    store: Arc<std::sync::Mutex<HostKeyStore>>,
+pub(crate) struct Verifier {
+    pub(crate) host: String,
+    pub(crate) port: u16,
+    pub(crate) store: Arc<std::sync::Mutex<HostKeyStore>>,
     /// Set when the key differed, so the connect path can report *why* it was
     /// refused rather than a bare handshake failure.
-    rejection: Arc<std::sync::Mutex<Option<String>>>,
+    pub(crate) rejection: Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl client::Handler for Verifier {
@@ -1132,7 +1132,7 @@ fn password_first(advertised: &russh::MethodSet) -> bool {
 /// password and keyboard-interactive are tried in the order the server can
 /// survive. Both exist because devices differ about which one they offer for
 /// the same credentials, and Duo lives on keyboard-interactive.
-async fn authenticate(
+pub(crate) async fn authenticate(
     handle: &mut client::Handle<Verifier>,
     host: &str,
     credentials: &Credentials,

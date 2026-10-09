@@ -60,6 +60,13 @@ export function SettingsView() {
   const snmpIds = projectDefaults?.snmp ?? [];
   const named = (id: string | undefined) => (id ? saved.find((c) => c.id === id)?.label : undefined);
 
+  /** One of the SFTP server's settings: kept in the store for the screen,
+   *  and written to the project's settings as the folders are. */
+  const keepSftp = (key: 'sftpHost' | 'sftpPort' | 'sftpFolder' | 'sftpCredentialId', value: string) => {
+    useStore.getState().setSettings({ [key]: value });
+    void ipc.setSetting(key, value.trim() || null).catch(() => {});
+  };
+
   const used = credentialsUsedBy({ pages, credentialDefaults: projectDefaults, credentialRules });
   const mine = saved.filter((c) => used.has(c.id));
 
@@ -135,6 +142,39 @@ export function SettingsView() {
       {/* This project's folders, chosen where the project is open. */}
       <section className="cv-settings-block" data-region="project-folders">
         <FolderSettings />
+      </section>
+
+      {/* The server a Cisco device sends its configuration to when a backup
+          is asked for over SNMP, and the login it is given. A project's,
+          like the folders. The tick itself is on the Backups tab. */}
+      <section className="cv-settings-block" data-region="snmp-backup">
+        <h2>{t('settings.sftp')}</h2>
+        <p className="cv-help">{t('settings.sftpHint')}</p>
+        <div className="cv-row">
+          <label className="cv-field">
+            <span>{t('settings.sftpHost')}</span>
+            <input className="cv-input cv-mono" value={settings.sftpHost} placeholder="files.example.net" spellCheck={false}
+              data-field="sftp-host" aria-label={t('settings.sftpHost')} onChange={(e) => keepSftp('sftpHost', e.target.value)} />
+          </label>
+          <label className="cv-field cv-field-narrow">
+            <span>{t('settings.sftpPort')}</span>
+            <input className="cv-input" inputMode="numeric" value={settings.sftpPort} placeholder="22"
+              data-field="sftp-port" aria-label={t('settings.sftpPort')}
+              onChange={(e) => keepSftp('sftpPort', e.target.value.replace(/[^0-9]/g, '').slice(0, 5))} />
+          </label>
+          <label className="cv-field">
+            <span>{t('settings.sftpFolder')}</span>
+            <input className="cv-input cv-mono" value={settings.sftpFolder} placeholder="/configs" spellCheck={false}
+              data-field="sftp-folder" aria-label={t('settings.sftpFolder')} onChange={(e) => keepSftp('sftpFolder', e.target.value)} />
+          </label>
+        </div>
+        <CredentialOverride
+          kind="sftp"
+          scope="project"
+          device={t('settings.sftpDevice')}
+          credentialId={settings.sftpCredentialId || undefined}
+          onChange={(id) => keepSftp('sftpCredentialId', id ?? '')}
+        />
       </section>
 
       <section className="cv-settings-block" data-region="display">

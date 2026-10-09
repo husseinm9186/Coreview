@@ -51,6 +51,8 @@ pub mod snmp;
 pub mod sonic;
 pub mod snmp_topology;
 pub mod snmp_collect;
+pub mod snmp_backup;
+pub mod sftp;
 pub mod stacking;
 pub mod subnetscan;
 pub mod showcmd;

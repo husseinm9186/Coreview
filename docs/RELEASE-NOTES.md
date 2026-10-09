@@ -2,6 +2,21 @@
 
 Newest first.
 
+## 2.8.0 — 2026-10-09
+
+**Backups**
+- A backup can be taken over SNMP from Cisco IOS, IOS-XE and NX-OS: with
+  the new tick on the Backups tab, each device is asked — one write into
+  Cisco's configuration-copy table, with a read-write SNMP credential — to
+  send its running or startup configuration to the SFTP server named under
+  Tools → Settings, and Coreview collects the file from there and files it
+  like any other capture, so history and before/after work unchanged. The
+  SFTP server and its login live in Settings; the login is a vault kind of
+  its own and is never offered to a device. A device without the table, or
+  one that refuses the write, is read over SSH as before, and the run says
+  why. Built from the MIB's definition; unverified on hardware until a
+  Cisco has answered one.
+
 ## 2.7.1 — 2026-10-08
 
 **Documentation**

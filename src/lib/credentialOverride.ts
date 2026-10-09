@@ -37,7 +37,7 @@ export interface SnmpOverride {
 /** What `ipc.saveCredential` is given, minus the id. */
 export interface CredentialDraft {
   label: string;
-  kind: 'ssh' | 'snmp';
+  kind: 'ssh' | 'snmp' | 'sftp';
   username: string;
   secret: string;
   secondSecret?: string;
@@ -51,10 +51,10 @@ export interface CredentialDraft {
  * machine and "admin" six times over tells nobody which switch is which. No
  * address is used when a name exists: a device that moves keeps its label.
  */
-export function overrideLabel(kind: 'ssh' | 'snmp', device: string, username: string): string {
+export function overrideLabel(kind: 'ssh' | 'snmp' | 'sftp', device: string, username: string): string {
   const who = username.trim();
   const what = device.trim() || 'A device';
-  const suffix = kind === 'ssh' ? 'SSH' : 'SNMP';
+  const suffix = kind === 'ssh' ? 'SSH' : kind === 'sftp' ? 'SFTP' : 'SNMP';
   return who ? `${what} — ${who} (${suffix})` : `${what} (${suffix})`;
 }
 
@@ -87,6 +87,16 @@ export function sshDraft(device: string, o: SshOverride): CredentialDraft {
     username: o.username.trim(),
     secret: o.password,
     secondSecret: o.enable || undefined,
+  };
+}
+
+/** An SFTP server's login: a username and a password, nothing to enable. */
+export function sftpDraft(device: string, o: SshOverride): CredentialDraft {
+  return {
+    label: overrideLabel('sftp', device, o.username),
+    kind: 'sftp',
+    username: o.username.trim(),
+    secret: o.password,
   };
 }
 

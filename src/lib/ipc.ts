@@ -784,6 +784,7 @@ export type BackupEvent =
   | { kind: 'started'; devices: number }
   | ({ kind: 'ssh' } & { [k: string]: unknown })
   | { kind: 'saved'; name: string; address: string; path: string; bytes: number; unchanged: boolean }
+  | { kind: 'note'; address: string; text: string }
   | { kind: 'failed'; name: string; address: string; reason: string }
   | { kind: 'finished'; saved: number; failed: number; cancelled: boolean };
 
@@ -1037,6 +1038,12 @@ export type StoredSettings = Partial<{
   /** How the terminal behaves. How somebody likes to read
    *  and work, so these are settings on the machine rather than facts about
    *  the estate — a project carries none of them. */
+  // The SFTP server a Cisco device sends its configuration to under a
+  // backup over SNMP, and the saved login it is given, by id.
+  sftpHost: string;
+  sftpPort: string;
+  sftpFolder: string;
+  sftpCredentialId: string;
   sshFontFamily: string;
   sshFontSize: string;
   sshColourise: string;
@@ -1601,6 +1608,9 @@ export const ipc = {
       paging?: PagingMode;
       /** Capture filename pattern; absent is the default. */
       filePattern?: string;
+      /** Ask Cisco devices to send their configuration over SNMP to the
+       *  project's SFTP server, with this saved read-write credential. */
+      snmpCopy?: { credentialId: string; port?: number };
     },
     credentials: CredentialInput,
     stamp: string,

@@ -74,6 +74,9 @@ pub struct BackupFailed {
 pub enum BackupEvent {
     Started { devices: usize },
     Ssh(SshProgress),
+    /// A line about one device worth showing as the run goes: what was
+    /// asked over SNMP, and why a device fell back to SSH.
+    Note { address: String, text: String },
     Saved(BackupSaved),
     Failed(BackupFailed),
     Finished { saved: usize, failed: usize, cancelled: bool },
@@ -96,6 +99,19 @@ pub struct BackupOptions {
     pub file_pattern: Option<String>,
     /// Logins tried, in order, on a device that refuses the run's own.
     pub fallback_credentials: Vec<Credentials>,
+    /// Ask each device to send its configuration over SNMP first, to the
+    /// server named here, and fetch it from there. A device that cannot —
+    /// no such table, a read-only credential, no answer — is backed up over
+    /// SSH as usual, and the run says why. Show commands always go over SSH.
+    pub snmp_copy: Option<SnmpBackup>,
+}
+
+/// A backup over SNMP: Cisco's configuration-copy table, and the SFTP
+/// server the device is told to send to. See [`crate::snmp_backup`].
+#[derive(Debug, Clone)]
+pub struct SnmpBackup {
+    pub copy: crate::snmp_backup::SnmpCopy,
+    pub server: crate::snmp_backup::SftpServer,
 }
 
 impl Default for BackupOptions {
@@ -108,6 +124,7 @@ impl Default for BackupOptions {
             show: None,
             file_pattern: None,
             fallback_credentials: Vec::new(),
+            snmp_copy: None,
         }
     }
 }
@@ -396,6 +413,9 @@ pub async fn run_backups(
     run
 }
 
+/// One device: over SNMP first when the run asked for that, then over SSH
+/// for whatever is left — the configurations a device could not send, and
+/// the show commands, which only a shell can run.
 #[allow(clippy::too_many_arguments)]
 async fn back_up_one(
     target: &BackupTarget,
@@ -411,6 +431,158 @@ async fn back_up_one(
         return Err("no backup folder has been chosen yet".into());
     }
 
+    let mut kinds: Vec<BackupKind> = options.kinds.clone();
+    let mut saved = Vec::new();
+    let mut snmp_problem: Option<String> = None;
+    if let Some(snmp) = &options.snmp_copy {
+        match back_up_over_snmp(target, snmp, options, Arc::clone(&store), stamp, events).await {
+            Ok(mut got) => {
+                saved.append(&mut got);
+                // Whatever it sent is filed; the rest of the configurations
+                // are not asked for again over a shell.
+                kinds.clear();
+            }
+            Err(why) => {
+                let _ = events
+                    .send(BackupEvent::Note {
+                        address: target.address.clone(),
+                        text: format!("SNMP: {why} — trying SSH instead"),
+                    })
+                    .await;
+                snmp_problem = Some(why);
+            }
+        }
+    }
+
+    // Is a shell still needed? For the configurations SNMP did not send,
+    // and for show commands, which have no SNMP equivalent.
+    let show_wanted = options
+        .show
+        .as_ref()
+        .map(|plan| !crate::showcmd::plan_for(&plan.commands, &target.commands).is_empty())
+        .unwrap_or(false);
+    if kinds.is_empty() && !show_wanted {
+        return Ok(saved);
+    }
+    if credentials.username.is_empty() && options.fallback_credentials.is_empty() {
+        let why = match &snmp_problem {
+            Some(p) => format!("SNMP: {p}; no SSH login was given to fall back to"),
+            None => "no SSH login was given".to_string(),
+        };
+        return if saved.is_empty() { Err(why) } else { Ok(saved) };
+    }
+    match back_up_over_ssh(target, credentials, options, &kinds, store, stamp, events, auth_gate, serialise).await {
+        Ok(mut got) => {
+            saved.append(&mut got);
+            Ok(saved)
+        }
+        Err(ssh_problem) if saved.is_empty() => Err(match snmp_problem {
+            Some(p) => format!("SNMP: {p}; SSH: {ssh_problem}"),
+            None => ssh_problem,
+        }),
+        Err(_) => Ok(saved),
+    }
+}
+
+/// The device sends each configuration to the server; each is fetched back
+/// and filed. A refusal of the first request is the device's answer for
+/// every kind, so the rest are not asked for.
+async fn back_up_over_snmp(
+    target: &BackupTarget,
+    snmp: &SnmpBackup,
+    options: &BackupOptions,
+    store: Arc<std::sync::Mutex<HostKeyStore>>,
+    stamp: &str,
+    events: &mpsc::Sender<BackupEvent>,
+) -> Result<Vec<BackupSaved>, String> {
+    use crate::snmp_backup::{file_name, request_copy, system_name, CopyError};
+
+    // The device's own name, as the SSH path uses the prompt's.
+    let name = system_name(&target.address, &snmp.copy)
+        .await
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| target.name.clone());
+
+    let mut saved = Vec::new();
+    let mut problems = Vec::new();
+    for kind in options.kinds.iter().filter(|k| matches!(k, BackupKind::Running | BackupKind::Startup)) {
+        let file = file_name(&name, *kind, stamp);
+        let _ = events
+            .send(BackupEvent::Note {
+                address: target.address.clone(),
+                text: format!("asked over SNMP to send its {} to {}", kind.slug(), snmp.server.host),
+            })
+            .await;
+        let remote = match request_copy(&target.address, &snmp.copy, &snmp.server, *kind, &file).await {
+            Ok(remote) => remote,
+            Err(e @ (CopyError::NoSuchTable { .. } | CopyError::Refused { .. } | CopyError::Snmp(_))) => {
+                problems.push(e.to_string());
+                break;
+            }
+            Err(e) => {
+                problems.push(format!("{}: {e}", kind.slug()));
+                continue;
+            }
+        };
+        let bytes = match crate::sftp::fetch(
+            &snmp.server,
+            &remote,
+            Arc::clone(&store),
+            options.ssh.connect_timeout,
+            options.ssh.auth_timeout,
+            options.ssh.command_timeout,
+        )
+        .await
+        {
+            Ok(b) => b,
+            Err(e) => {
+                problems.push(format!("{}: {e}", kind.slug()));
+                continue;
+            }
+        };
+        let text = String::from_utf8_lossy(&bytes).to_string();
+        match write_capture_named(
+            &options.root,
+            &name,
+            &target.address,
+            &target.site,
+            options.file_pattern.as_deref(),
+            stamp,
+            *kind,
+            &text,
+        ) {
+            Err(why) => problems.push(format!("{}: {why}", kind.slug())),
+            Ok((path, unchanged)) => saved.push(BackupSaved {
+                name: name.clone(),
+                address: target.address.clone(),
+                path: path.to_string_lossy().to_string(),
+                bytes: text.len(),
+                kind: *kind,
+                unchanged,
+            }),
+        }
+    }
+    if saved.is_empty() {
+        return Err(if problems.is_empty() { "nothing to send over SNMP".to_string() } else { problems.join("; ") });
+    }
+    for p in problems {
+        let _ = events.send(BackupEvent::Note { address: target.address.clone(), text: p }).await;
+    }
+    Ok(saved)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn back_up_over_ssh(
+    target: &BackupTarget,
+    credentials: &Credentials,
+    options: &BackupOptions,
+    kinds: &[BackupKind],
+    store: Arc<std::sync::Mutex<HostKeyStore>>,
+    stamp: &str,
+    events: &mpsc::Sender<BackupEvent>,
+    auth_gate: Arc<Mutex<()>>,
+    serialise: Arc<std::sync::atomic::AtomicBool>,
+) -> Result<Vec<BackupSaved>, String> {
     let (tx, mut rx) = mpsc::channel::<SshProgress>(32);
     let forward = events.clone();
     let flag = Arc::clone(&serialise);
@@ -477,7 +649,7 @@ async fn back_up_one(
 
     let mut saved = Vec::new();
     let mut problems = Vec::new();
-    for kind in &options.kinds {
+    for kind in kinds {
         // FortiOS has no running-config, and only the one
         // configuration; Read whole, defaults included.
         let command = match (fortios, kind) {

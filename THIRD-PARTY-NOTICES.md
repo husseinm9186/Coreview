@@ -71,9 +71,9 @@ MIT (23), ISC (9), MIT OR Apache-2.0 (3), Apache-2.0 OR MIT (1), BSD-3-Clause (1
 | yaml | 2.9.1 | ISC |
 | zustand | 4.5.7 | MIT |
 
-## Rust — 727 crates in the executable
+## Rust — 731 crates in the executable
 
-MIT OR Apache-2.0 (346), MIT (132), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33), Zlib OR Apache-2.0 OR MIT (18), Unicode-3.0 (18), Unlicense OR MIT (10), Apache-2.0 (8), BSD-3-Clause (7), MIT OR Apache-2.0 OR Zlib (7), MPL-2.0 (5), Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (5), ISC (4), Apache-2.0/MIT (3), Zlib (3), Apache-2.0 OR ISC OR MIT (3), MIT OR Zlib OR Apache-2.0 (2), BSD-3-Clause OR Apache-2.0 (2), BSD-3-Clause OR MIT OR Apache-2.0 (2), MIT OR Apache-2.0 OR LGPL-2.1-or-later (2), Unlicense/MIT (2), CDLA-Permissive-2.0 (2), BSD-2-Clause OR Apache-2.0 OR MIT (2), 0BSD OR MIT OR Apache-2.0 (1), BSD-2-Clause (1), ISC AND (Apache-2.0 OR ISC) (1), ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0) (1), BSD-3-Clause AND MIT (1), BSD-3-Clause/MIT (1), Apache-2.0 AND MIT (1), CC0-1.0 OR MIT-0 OR Apache-2.0 (1), MIT OR Apache-2.0 OR BSD-1-Clause (1), Apache-2.0 / MIT (1), Apache-2.0 AND ISC (1), Apache-2.0 OR BSL-1.0 (1), (MIT OR Apache-2.0) AND Unicode-3.0 (1)
+MIT OR Apache-2.0 (348), MIT (133), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33), Zlib OR Apache-2.0 OR MIT (18), Unicode-3.0 (18), Unlicense OR MIT (10), Apache-2.0 (9), BSD-3-Clause (7), MIT OR Apache-2.0 OR Zlib (7), MPL-2.0 (5), Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (5), ISC (4), Apache-2.0/MIT (3), Zlib (3), Apache-2.0 OR ISC OR MIT (3), MIT OR Zlib OR Apache-2.0 (2), BSD-3-Clause OR Apache-2.0 (2), BSD-3-Clause OR MIT OR Apache-2.0 (2), MIT OR Apache-2.0 OR LGPL-2.1-or-later (2), Unlicense/MIT (2), CDLA-Permissive-2.0 (2), BSD-2-Clause OR Apache-2.0 OR MIT (2), 0BSD OR MIT OR Apache-2.0 (1), BSD-2-Clause (1), ISC AND (Apache-2.0 OR ISC) (1), ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0) (1), BSD-3-Clause AND MIT (1), BSD-3-Clause/MIT (1), Apache-2.0 AND MIT (1), CC0-1.0 OR MIT-0 OR Apache-2.0 (1), MIT OR Apache-2.0 OR BSD-1-Clause (1), Apache-2.0 / MIT (1), Apache-2.0 AND ISC (1), Apache-2.0 OR BSL-1.0 (1), (MIT OR Apache-2.0) AND Unicode-3.0 (1)
 
 | Component | Version | Licence |
 | --- | --- | --- |
@@ -191,6 +191,7 @@ MIT OR Apache-2.0 (346), MIT (132), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33),
 | darling | 0.23.0 | MIT |
 | darling_core | 0.23.0 | MIT |
 | darling_macro | 0.23.0 | MIT |
+| dashmap | 6.2.1 | MIT |
 | data-encoding | 2.11.1 | MIT |
 | data-url | 0.3.2 | MIT OR Apache-2.0 |
 | dbus | 0.9.12 | Apache-2.0/MIT |
@@ -291,6 +292,7 @@ MIT OR Apache-2.0 (346), MIT (132), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33),
 | glib-macros | 0.18.5 | MIT |
 | glib-sys | 0.18.1 | MIT |
 | glob | 0.3.4 | MIT OR Apache-2.0 |
+| gloo-timers | 0.4.0 | MIT OR Apache-2.0 |
 | gobject-sys | 0.18.0 | MIT |
 | group | 0.14.0 | MIT/Apache-2.0 |
 | gtk | 0.18.2 | MIT |
@@ -358,7 +360,7 @@ MIT OR Apache-2.0 (346), MIT (132), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33),
 | jni-sys | 0.3.1 | MIT OR Apache-2.0 |
 | jni-sys | 0.4.1 | MIT OR Apache-2.0 |
 | jni-sys-macros | 0.4.1 | MIT OR Apache-2.0 |
-| js-sys | 0.3.104 | MIT OR Apache-2.0 |
+| js-sys | 0.3.106 | MIT OR Apache-2.0 |
 | json-patch | 3.0.1 | MIT/Apache-2.0 |
 | jsonptr | 0.6.3 | MIT OR Apache-2.0 |
 | keccak | 0.2.2 | Apache-2.0 OR MIT |
@@ -528,6 +530,7 @@ MIT OR Apache-2.0 (346), MIT (132), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33),
 | rusqlite | 0.32.1 | MIT |
 | russh | 0.63.1 | Apache-2.0 |
 | russh-cryptovec | 0.62.0 | Apache-2.0 |
+| russh-sftp | 3.0.1 | Apache-2.0 |
 | russh-util | 0.52.0 | Apache-2.0 |
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT |
 | rusticata-macros | 4.1.0 | MIT/Apache-2.0 |
@@ -558,6 +561,7 @@ MIT OR Apache-2.0 (346), MIT (132), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33),
 | selectors | 0.36.1 | MPL-2.0 |
 | semver | 1.0.28 | MIT OR Apache-2.0 |
 | serde | 1.0.229 | MIT OR Apache-2.0 |
+| serde_bytes | 0.11.19 | MIT OR Apache-2.0 |
 | serde_core | 1.0.229 | MIT OR Apache-2.0 |
 | serde_derive | 1.0.229 | MIT OR Apache-2.0 |
 | serde_derive_internals | 0.29.1 | MIT OR Apache-2.0 |
@@ -694,14 +698,14 @@ MIT OR Apache-2.0 (346), MIT (132), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33),
 | want | 0.3.1 | MIT |
 | wasi | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | wasip2 | 1.0.4+wasi-0.2.12 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
-| wasm-bindgen | 0.2.127 | MIT OR Apache-2.0 |
-| wasm-bindgen-futures | 0.4.77 | MIT OR Apache-2.0 |
-| wasm-bindgen-macro | 0.2.127 | MIT OR Apache-2.0 |
-| wasm-bindgen-macro-support | 0.2.127 | MIT OR Apache-2.0 |
-| wasm-bindgen-shared | 0.2.127 | MIT OR Apache-2.0 |
+| wasm-bindgen | 0.2.129 | MIT OR Apache-2.0 |
+| wasm-bindgen-futures | 0.4.79 | MIT OR Apache-2.0 |
+| wasm-bindgen-macro | 0.2.129 | MIT OR Apache-2.0 |
+| wasm-bindgen-macro-support | 0.2.129 | MIT OR Apache-2.0 |
+| wasm-bindgen-shared | 0.2.129 | MIT OR Apache-2.0 |
 | wasm-streams | 0.5.0 | MIT OR Apache-2.0 |
 | web_atoms | 0.2.6 | MIT OR Apache-2.0 |
-| web-sys | 0.3.104 | MIT OR Apache-2.0 |
+| web-sys | 0.3.106 | MIT OR Apache-2.0 |
 | web-time | 1.1.0 | MIT OR Apache-2.0 |
 | webkit2gtk | 2.0.2 | MIT |
 | webkit2gtk-sys | 2.0.2 | MIT |
@@ -860,6 +864,7 @@ one published by SPDX at `https://spdx.org/licenses/`.
 - dispatch2 0.3.1 — Zlib OR Apache-2.0 OR MIT
 - dlopen2 0.8.2 — MIT
 - dlopen2_derive 0.4.3 — MIT
+- gloo-timers 0.4.0 — MIT OR Apache-2.0
 - jni 0.22.4 — MIT OR Apache-2.0
 - jni-macros 0.22.4 — MIT OR Apache-2.0
 - jni-sys-macros 0.4.1 — MIT OR Apache-2.0
@@ -1354,7 +1359,7 @@ SOFTWARE.
 
 ## Rust
 
-### 275 components
+### 276 components
 
 - aead 0.5.2
 - aead 0.6.1
@@ -1483,7 +1488,7 @@ SOFTWARE.
 - inout 0.2.2
 - internal-russh-num-bigint 0.5.0
 - jni 0.21.1
-- js-sys 0.3.104
+- js-sys 0.3.106
 - keccak 0.2.2
 - keyboard-types 0.7.0
 - kurbo 0.11.3
@@ -1551,6 +1556,7 @@ SOFTWARE.
 - regex-syntax 0.8.11
 - roxmltree 0.20.0
 - rsa 0.10.0-rc.18
+- russh-sftp 3.0.1
 - rusticata-macros 4.1.0
 - rustix 1.1.4
 - rustls 0.23.45
@@ -1615,12 +1621,12 @@ SOFTWARE.
 - uuid 1.26.0
 - wasi 0.11.1+wasi-snapshot-preview1
 - wasip2 1.0.4+wasi-0.2.12
-- wasm-bindgen 0.2.127
-- wasm-bindgen-futures 0.4.77
-- wasm-bindgen-macro 0.2.127
-- wasm-bindgen-macro-support 0.2.127
-- wasm-bindgen-shared 0.2.127
-- web-sys 0.3.104
+- wasm-bindgen 0.2.129
+- wasm-bindgen-futures 0.4.79
+- wasm-bindgen-macro 0.2.129
+- wasm-bindgen-macro-support 0.2.129
+- wasm-bindgen-shared 0.2.129
+- web-sys 0.3.106
 - web_atoms 0.2.6
 - weezl 0.1.12
 - window-vibrancy 0.6.0
@@ -1836,7 +1842,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### 115 components
+### 116 components
 
 - adler2 2.0.1
 - anyhow 1.0.104
@@ -1923,6 +1929,7 @@ limitations under the License.
 - semver 1.0.28
 - serde 1.0.229
 - serde-untagged 0.1.9
+- serde_bytes 0.11.19
 - serde_core 1.0.229
 - serde_derive 1.0.229
 - serde_derive_internals 0.29.1
@@ -1980,7 +1987,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 56 components
+### 57 components
 
 - anyhow 1.0.104
 - async-trait 0.1.92
@@ -2015,6 +2022,7 @@ DEALINGS IN THE SOFTWARE.
 - semver 1.0.28
 - serde 1.0.229
 - serde-untagged 0.1.9
+- serde_bytes 0.11.19
 - serde_core 1.0.229
 - serde_derive 1.0.229
 - serde_derive_internals 0.29.1
@@ -3010,16 +3018,16 @@ THE SOFTWARE.
 ### 11 components
 
 - cfg-if 1.0.4
-- js-sys 0.3.104
+- js-sys 0.3.106
 - openssl-probe 0.2.1
 - socket2 0.6.5
 - toml_datetime 0.6.3
-- wasm-bindgen 0.2.127
-- wasm-bindgen-futures 0.4.77
-- wasm-bindgen-macro 0.2.127
-- wasm-bindgen-macro-support 0.2.127
-- wasm-bindgen-shared 0.2.127
-- web-sys 0.3.104
+- wasm-bindgen 0.2.129
+- wasm-bindgen-futures 0.4.79
+- wasm-bindgen-macro 0.2.129
+- wasm-bindgen-macro-support 0.2.129
+- wasm-bindgen-shared 0.2.129
+- web-sys 0.3.106
 
 ```
 Copyright (c) 2014 Alex Crichton
@@ -12206,6 +12214,32 @@ PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
 LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
 NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+### dashmap 6.2.1
+
+```
+MIT License
+
+Copyright (c) 2019 Acrimon
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 ### data-encoding 2.11.1

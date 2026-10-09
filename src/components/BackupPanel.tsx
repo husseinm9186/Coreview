@@ -71,7 +71,7 @@ function partStatus(p: ComparedPart): string {
   }
 }
 import { BackupChecks } from './BackupChecks';
-import { CredentialPicker } from './CredentialPicker';
+import { CredentialPicker, SavedCredentialSelect } from './CredentialPicker';
 import { allNodes } from '../lib/pages';
 
 import { FILE_TOKENS, describeCapture, describeStamp, patternProblem, previewFileName } from '../lib/fileNames';
@@ -106,6 +106,11 @@ export function BackupPanel({
   const [secondFactor, setSecondFactor] = useState(false);
   const [port, setPort] = useState(22);
   const [credentialId, setCredentialId] = useState<string | null>(null);
+  // Ask Cisco devices to send their configuration over SNMP to the
+  // project's SFTP server. Off unless ticked, every run: it is a write to
+  // the device, small as it is, and the tick says so.
+  const [snmpCopy, setSnmpCopy] = useState(false);
+  const [snmpCredentialId, setSnmpCredentialId] = useState<string | undefined>(undefined);
   const [kinds, setKinds] = useState<('running' | 'startup')[]>(['running']);
   // Show commands filed beside the configurations. Off unless ticked,
   // so an ordinary backup never runs a list someone typed last week. The list
@@ -324,6 +329,11 @@ export function BackupPanel({
             else if (detail.host) setStatus(`Connecting to ${detail.host}…`);
             break;
           }
+          case 'note':
+            // What a device was asked over SNMP, and why one fell back to
+            // SSH: shown where the connection line is, as it happens.
+            setStatus(`${e.address}: ${e.text}`);
+            break;
           case 'saved':
             setPushMessage(null);
             setSaved((prev) => [...prev, e]);
@@ -454,6 +464,7 @@ export function BackupPanel({
       showCommands: showOn ? globalCommands : [],
       paging,
       filePattern: filePattern.trim() || undefined,
+      snmpCopy: snmpCopy && snmpCredentialId ? { credentialId: snmpCredentialId } : undefined,
     };
     const credentials = { username, password, enablePassword: enablePassword || undefined };
     const plan = planGroups(groups, chosen);
@@ -549,6 +560,26 @@ export function BackupPanel({
         </label>
       </div>
 
+      <div className="cv-discover-form cv-backup-snmp" data-region="snmp-backup">
+        <label className="cv-check" title={t('backup.snmpHint')}>
+          <input type="checkbox" checked={snmpCopy} disabled={busy} data-field="snmp-copy"
+            onChange={(e) => setSnmpCopy(e.target.checked)} />
+          {t('backup.snmp')}
+        </label>
+        {snmpCopy && (
+          <>
+            <label className="cv-field cv-field-narrow">
+              <span>{t('backup.snmpWith')}</span>
+              <SavedCredentialSelect kind="snmp" value={snmpCredentialId} onChange={setSnmpCredentialId}
+                label={t('backup.snmpWith')} disabled={busy} />
+            </label>
+            <p className={settings.sftpHost ? 'cv-help' : 'cv-problem'} data-hint="snmp-backup">
+              {settings.sftpHost ? t('backup.snmpCost', { server: settings.sftpHost }) : t('backup.snmpNoServer')}
+            </p>
+          </>
+        )}
+      </div>
+
       <div className="cv-discover-run">
         {running ? (
           <button type="button" className="cv-btn cv-btn-stop" onClick={() => void ipc.cancelBackup()}>
@@ -556,7 +587,7 @@ export function BackupPanel({
           </button>
         ) : (
           <button type="button" className="cv-btn cv-btn-start" onClick={start}
-            disabled={busy || !picked.size || (!credentialId && (!username || !password)) || (!kinds.length && !anyShowCommand) || !!patternIssue}>
+            disabled={busy || !picked.size || (!credentialId && (!username || !password) && !(snmpCopy && snmpCredentialId)) || (snmpCopy && (!snmpCredentialId || !settings.sftpHost)) || (!kinds.length && !anyShowCommand) || !!patternIssue}>
             Back up {picked.size || 'selected'}
           </button>
         )}

@@ -227,6 +227,7 @@ async fn main() {
                 second_factor: false,
                 file_pattern: None,
                 fallback_credentials: Vec::new(),
+                snmp_copy: None,
             },
             store,
             "20260828-live".into(),

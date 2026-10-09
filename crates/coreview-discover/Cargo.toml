@@ -31,6 +31,7 @@ getrandom = "0.2"
 # someone pastes cannot hang on a long `show` output. Already in the lock file
 # through other crates.
 regex = "1"
+russh-sftp = "3.0.1"
 
 [dev-dependencies]
 rand = "0.10"

@@ -105,7 +105,15 @@ await context.addInitScript(({ p }) => {
         }
         return Promise.resolve();
       }
-      if (cmd === "vault_status") return Promise.resolve({ exists: false, unlocked: false });
+      // The vault is shut until a section opens it, through localStorage so
+      // it stays open across the reopen that every section starts with.
+      const vaultOpen = localStorage.getItem("cv.e2e.show.vault") === "1";
+      if (cmd === "vault_status") return Promise.resolve(vaultOpen ? { exists: true, unlocked: true } : { exists: false, unlocked: false });
+      if (cmd === "list_credentials") {
+        return Promise.resolve(vaultOpen
+          ? [{ id: "cred-snmp-rw", label: "Lab read-write (fake)", kind: "snmp", username: "", detail: "", hasSecondSecret: false }]
+          : []);
+      }
       return Promise.resolve([]);
     },
   };
@@ -374,6 +382,46 @@ check("the pattern is saved as a setting",
 await openBackups();
 check("and comes back after a restart",
   (await page.locator(".cv-file-pattern input").inputValue()) === "{site}_{device}_{stamp}_{kind}");
+
+// ------------------------------------------- a backup over SNMP, opt-in
+// Off every run; needs the project's SFTP server (Settings) and a
+// read-write SNMP credential; the payload then carries both choices and
+// no SSH login is needed.
+const snmpTick = () => page.locator('[data-region="snmp-backup"] [data-field="snmp-copy"]');
+const snmpHint = () => page.locator('[data-hint="snmp-backup"]');
+check("the Backups tab offers a backup over SNMP", (await snmpTick().count()) === 1);
+check("and it is off until ticked", !(await snmpTick().isChecked()));
+check("nothing more is shown until then", (await snmpHint().count()) === 0);
+await page.locator('input[aria-label="Back up LAB-SW-A"]').check();
+await snmpTick().check();
+await page.waitForTimeout(300);
+check("ticked with no SFTP server named, it says to name one in Settings",
+  /Name the SFTP server under Tools → Settings first/.test(await snmpHint().innerText()), await snmpHint().innerText());
+check("and the run cannot start", await backUp().isDisabled());
+
+await page.evaluate(() => {
+  localStorage.setItem("cv.e2e.show.vault", "1");
+  return window.__TAURI_INTERNALS__.invoke("set_setting", { key: "sftpHost", value: "files.example.net" });
+});
+await openBackups();
+await page.locator('input[aria-label="Back up LAB-SW-A"]').check();
+await snmpTick().check();
+await page.waitForTimeout(400);
+const rw = page.locator('[data-region="snmp-backup"] select');
+check("ticked, a saved SNMP credential is asked for", (await rw.count()) === 1);
+check("with no credential chosen and no SSH login the run still cannot start", await backUp().isDisabled());
+await rw.selectOption("cred-snmp-rw");
+await page.waitForTimeout(200);
+check("the cost is stated beside it, naming the server",
+  /logs in to files\.example\.net itself/.test(await snmpHint().innerText()) && /in clear under v2c/.test(await snmpHint().innerText()),
+  await snmpHint().innerText());
+check("and the run can start without an SSH login", !(await backUp().isDisabled()));
+await backUp().click();
+await page.waitForTimeout(400);
+const overSnmp = await lastStart();
+check("the run carries the SNMP credential by id", overSnmp?.input?.snmpCopy?.credentialId === "cred-snmp-rw", JSON.stringify(overSnmp?.input?.snmpCopy));
+check("and no SSH login", overSnmp?.credentials?.username === "" && overSnmp?.input?.credentialId === undefined, JSON.stringify(overSnmp?.credentials));
+await page.evaluate(() => localStorage.removeItem("cv.e2e.show.vault"));
 
 await browser.close();
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);

@@ -966,6 +966,65 @@ pub struct BackupInput {
     /// How capture files are named; blank or absent is the default.
     #[serde(default)]
     pub file_pattern: Option<String>,
+    /// Ask each Cisco device to send its configuration over SNMP to the
+    /// project's SFTP server (named in Settings), using the saved
+    /// read-write SNMP credential here. Absent means every device is read
+    /// over SSH. A device that cannot — no such table, a read-only
+    /// credential — is read over SSH as usual.
+    #[serde(default)]
+    pub snmp_copy: Option<SnmpCopyInput>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SnmpCopyInput {
+    /// The saved SNMP credential the device accepts a write from.
+    pub credential_id: String,
+    /// Absent means 161.
+    pub port: Option<u16>,
+}
+
+/// The SNMP backup a run asked for: the read-write credential from the
+/// vault, and the SFTP server from the project's settings — host, port,
+/// folder and the saved login the device is given. Each use is noted
+/// against its credential, as every other use is.
+fn snmp_backup_for(
+    state: &AppState,
+    project_id: &str,
+    ask: &SnmpCopyInput,
+    devices: usize,
+) -> CmdResult<coreview_discover::capture::SnmpBackup> {
+    let settings = {
+        let conn = state.db.lock().map_err(db_err)?;
+        db::project_settings(&conn, project_id).map_err(db_err)?
+    };
+    let host = settings
+        .get("sftpHost")
+        .map(|h| h.trim().to_string())
+        .filter(|h| !h.is_empty())
+        .ok_or("Name the SFTP server devices send their configuration to under Tools → Settings first.")?;
+    let port = settings.get("sftpPort").and_then(|p| p.trim().parse::<u16>().ok()).filter(|p| *p > 0).unwrap_or(22);
+    let folder = settings.get("sftpFolder").map(|f| f.trim().to_string()).unwrap_or_default();
+    let login_id = settings
+        .get("sftpCredentialId")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or("Save the SFTP server's login under Tools → Settings first.")?;
+    let (username, password) = crate::vault_commands::sftp_credentials(state, &login_id)?;
+    let auth = crate::vault_commands::snmp_credentials(state, &ask.credential_id)?;
+    crate::vault_commands::note_use(state, &ask.credential_id, "Configuration backup over SNMP (write)", &format!("{devices} device(s)"));
+    crate::vault_commands::note_use(state, &login_id, "SFTP server for backups over SNMP", &host);
+    Ok(coreview_discover::capture::SnmpBackup {
+        copy: coreview_discover::snmp_backup::SnmpCopy {
+            auth,
+            port: ask.port.filter(|p| *p > 0).unwrap_or(161),
+            timeout: std::time::Duration::from_secs(5),
+            // A large configuration over a slow management link; the device
+            // is polled once a second meanwhile.
+            wait: std::time::Duration::from_secs(180),
+        },
+        server: coreview_discover::snmp_backup::SftpServer { host, port, folder, username, password },
+    })
 }
 
 /// Backs up the given devices into the chosen backup folder.
@@ -1036,9 +1095,15 @@ pub async fn start_backup(
         coreview_discover::backup::check_pattern(p).map_err(|why| format!("Nothing was run: {why}."))?;
     }
 
+    let snmp_copy = match &input.snmp_copy {
+        None => None,
+        Some(ask) => Some(snmp_backup_for(&state, &project_id, ask, input.targets.len())?),
+    };
+
     let options = BackupOptions {
         root,
         kinds,
+        snmp_copy,
         ssh: SshOptions {
             port: input.port,
             // A FortiGate 60F's `show` took 34 s in the lab; a larger

@@ -793,6 +793,11 @@ export const en = {
   // Where a project's folders are chosen.
   'folderSettings.perProject': 'Backup and export folders are chosen for each project, so one customer\'s configurations never land in another\'s folder. Open a project, then choose them under Tools → Settings — or in Backups, which asks when it needs one.',
   'folderSettings.notKept': 'Not kept: {reason}',
+  'backup.snmp': 'Ask Cisco devices to send their configuration over SNMP',
+  'backup.snmpWith': 'Read-write SNMP',
+  'backup.snmpHint': 'One SNMP write — a row in Cisco’s configuration-copy table — asks the device to send the file to the project’s SFTP server. A device without that table, or that refuses the write, is read over SSH as usual.',
+  'backup.snmpCost': 'The device logs in to {server} itself, so it is given that login inside the SNMP write: encrypted under v3 with privacy, in clear under v2c. The file lands on your server and stays there; Coreview reads a copy. A device without Cisco’s copy table is read over SSH instead.',
+  'backup.snmpNoServer': 'Name the SFTP server under Tools → Settings first.',
   'backup.needFolder': 'Choose where this project\'s configurations are written first. They are written there and nowhere else.',
   // Folders on the project screen.
   'folders.new': 'New folder',
@@ -1228,6 +1233,12 @@ export const en = {
   'settings.thisProject': 'This project',
   'settings.inUse': 'SSH: {ssh} · SNMP: {snmp}',
   'settings.none': 'none',
+  'settings.sftp': 'Backups over SNMP: the SFTP server',
+  'settings.sftpHint': 'A Cisco device asked to back up over SNMP does not hand its configuration to Coreview — it sends the file to an SFTP server of yours, and Coreview collects it from there. Name that server here, with the login the device is given. Nothing listens on this machine. The tick is on the Backups tab.',
+  'settings.sftpHost': 'Server',
+  'settings.sftpPort': 'Port',
+  'settings.sftpFolder': 'Folder on the server',
+  'settings.sftpDevice': 'SFTP server',
   'settings.noneYet': 'Nothing saved for this project yet. A device with no login of its own has nothing to fall back to.',
   'nav.diagram': 'Diagram',
   'nav.discover': 'Discover',
@@ -1390,6 +1401,7 @@ export const en = {
   'cred.override': 'Used before anything the crawl or a session would otherwise try.',
   'cred.sshProject': 'SSH login for this project',
   'cred.snmpProject': 'SNMP for this project',
+  'cred.sftpProject': 'The SFTP server’s login',
   'cred.projectHint': 'Used by every device that has not been given one of its own.',
   // Does this login actually work?
   'cred.test': 'Test it',
