@@ -374,6 +374,24 @@ not say — a switch that has gone, a link that now lands on a different port �
 because folding those in silently would turn change detection back into
 drawing.
 
+**Backups.** Running and startup configurations, and any list of read-only
+show commands, captured over SSH into a folder you choose — one folder per
+device, timestamped, with a line-by-line diff between any two captures and
+pass/fail checks over the output. **Optionally over SNMP** for Cisco IOS,
+IOS-XE and NX-OS: tick *Ask Cisco devices to send their configuration over
+SNMP* on the Backups tab, choose a read-write SNMP credential, and each
+device is asked — through Cisco's configuration-copy table — to send its
+configuration to an SFTP server of yours, named with its login under Tools →
+Settings. Coreview waits for the device to report the copy done, collects
+the file from your server and files it like any SSH capture, so history and
+before/after work the same. It is the one SNMP write Coreview ever sends,
+it is off until you tick it, and the tab states the cost: the device is
+given the SFTP login inside that write, which v2c carries in clear and v3
+with privacy encrypts. A device without the table, or one that refuses the
+write, is read over SSH as usual and the run says why. Useful where a
+read-write community is easier to get than a shell account, or where the
+configuration should never pass through the engineer's laptop at all.
+
 **Two engines.** By default a crawl runs the catalog-driven collector: one
 YAML per OS under `resources/catalog/` names the fingerprint, the read-only
 commands, what each feeds, and whether it is verified on hardware, from
@@ -642,8 +660,10 @@ machine.
 ## Known limitations
 
 - No NetFlow, sFlow, IPFIX or vendor-API polling. Deliberate non-goals.
-  SNMP exists, but only to identify a device during a crawl,
-  not as a monitoring transport: probes are ICMP/TCP/DNS/HTTP(S).
+  SNMP exists to identify a device and read its tables during a crawl, and
+  — opt-in, Cisco only — to ask a device to send its configuration to your
+  SFTP server; never as a monitoring transport. Probes are
+  ICMP/TCP/DNS/HTTP(S).
 - Drawing exports (SVG/PNG/PDF/Visio) cover the **active page**. CSV and the
   Markdown report are project-wide, because an inventory silently missing
   devices would be a nastier surprise than a diagram of one page.
