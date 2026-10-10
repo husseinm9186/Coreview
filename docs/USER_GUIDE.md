@@ -45,7 +45,7 @@ underlined and the inspector says why.
 - **Multi-select** — drag on empty canvas, or Shift-click.
 - **Lasso** — hold `Alt` and drag a freehand outline on empty canvas; what it goes
   round (by its middle) is selected. `Alt+Shift` adds to the selection.
-- **Grid snap** — the **Grid snap on/off** button in the toolbar (or
+- **Grid snap** — the magnet button in the strip above the canvas (or
   `Ctrl+Shift+G`) makes a dragged object land on the grid, unless it is lining up
   with a neighbour: the alignment guides always win. Holding `Alt` while dragging
   does the opposite of the setting for that drag. Saved with the project; off to
@@ -302,21 +302,31 @@ dashed and a warning one outlined solid, so the colour is not the only cue.
 **Terminal**, and **Settings** at its foot. The first five open the diagram
 and the matching tab of the panel below it; Addresses and Tools are screens
 of their own, one click back to the diagram. The top bar is one row about
-the project: its name and saved state, **Start validation** with the four
-health counts in the centre, and **Search** (Ctrl+K), **Export**, **Help**
-and **⋯** (Save, Undo, Redo, About, Close project) on the right. What acts
-on the drawing — Save, Undo, Redo, Fit view, zoom, Grid snap, the page's
-ground, the Overview box and Filter — is a row along the top of the canvas;
-the drawing tools (Types, Pen, Eraser) float on the canvas below it.
+the project: its name, customer and site, its saved state with Save, Undo
+and Redo beside it, the health strip in the centre — four dots with their
+counts, dim at zero — and **Start checks**, which becomes a running pill
+with **Stop** while checks run; then search (Ctrl+K), **Export**, help, the
+**⋯** menu (About, Close project) and the clock on the right, in the format
+chosen under **Settings ▸ Display ▸ Times**; a click copies it. What acts on
+the drawing is one strip of icon buttons along the top of the canvas: fit
+and zoom; the grid and page menus, snap and the ground; the type filter,
+pen and eraser with their inks; Arrange, Filter and the overview. A button
+that is on is filled; hovering any of them names it.
 
 **The dock.** The panel under the canvas keeps every tab it had, in four
 groups: **Monitor** (Monitored objects, Event timeline, with their counts),
 **Discover** (Discover devices, Ping sweep), **Paths** (Path-Trace,
-Path check, Tracert, Where is) and **Ops** (Backups, SSH). The arrow keys
-still walk the tabs. Along its bottom runs a strip with every job that is
-running — a crawl, a backup, a sweep — with its progress and a **Cancel**,
-and the clock on the right in the format chosen under **Settings ▸ Display ▸
-Times**. **Pop out** sends the dock down the right of the window, the full
+Path check, Tracert, Where is) and **Ops** (Backups, SSH). The group the rail
+has chosen comes first and in full; the rest follow a rule, smaller, and are
+still one click away. The arrow keys walk every tab. The lists have a head
+of their own with the filter, **All · Problems · Down** and a count; when
+anything is down a strip at the top of the dock says so and leads to it.
+Drag the grip along the dock's top edge to resize it (double-click for a
+third or six tenths of the window); the maximise button gives it the
+canvas's room until restored. Along its bottom runs the status line: what
+is selected, with its address and link count, and every job that is
+running — a crawl, a backup, a sweep — with its progress and a **Cancel**.
+**Pop out** sends the dock down the right of the window, the full
 height, for a wide table; the canvas gives way and the palette and
 inspector fold with their own handles. **Dock below** puts it back, and
 either choice is remembered on this machine. **Hide** folds the dock to one
@@ -341,7 +351,15 @@ and pages — as of the last time the project was saved on this machine, so
 a project never saved here has none. The samples are on the right. The
 crumbs, drag-and-drop between folders, rename and delete are as before.
 
-**The inspector.** A device's inspector opens on **Status**: its address,
+**The inspector.** With nothing selected it is the **Diagram**: the four
+counts, the last check, what is drawn and on how many pages, the views in
+force, the filter if one is on, and three verbs — start or stop checks,
+discover more, back up devices. The check timing is one sentence that opens
+into its two numbers, and the project's own details (customer, site,
+ticket, engineer — they go on the report) are a fold that opens when they
+are empty. A device's inspector is titled with its name, its status as a
+dot and a word at the right, and its kind and address beneath; it opens on
+**Status**: its address,
 the last check and what it said, what it is plugged into and on which
 ports, who found it, its platform and serial, and the recent-status strip —
 read, not edited. **Identity** is the form: name, type, role, vendor,
@@ -499,8 +517,9 @@ hover a link.
 
 ## Start and stop validation
 
-**Start validation** in the top bar begins checking every enabled probe in the
-open project. The state pill shows *Running* and the counts fill in.
+**Start checks** in the top bar begins checking every enabled probe in the
+open project. The button becomes a pill saying what is being checked and how
+often, with **Stop** as its other half, and the counts fill in.
 
 **Stop validation** ends it. So does closing the project, and so does closing
 the window. Nothing survives in the background.
@@ -510,16 +529,24 @@ unknown — a status from a stopped session is not evidence.
 
 ## Read the canvas
 
+A device's colour is what it is — routing blue, switching cyan, security
+orange, compute violet, services rose, storage and power sand, everything
+physical slate — and never changes with its health. Health is drawn beside
+the glyph:
+
 | State | Node | Link | Motion |
 | --- | --- | --- | --- |
-| Healthy `✓` | Green badge | Green line | Green dots moving |
-| Warning `!` | Amber badge | Amber line | Slower amber dots |
-| Down `✕` | Red badge | Red dashed line | Stopped, one static dot |
-| Unknown `?` | Grey | Grey line | None |
-| Disabled `–` | Muted | Dotted | None |
-| Maintenance `⚙` | Purple | Purple dashed | None |
+| Healthy | Small green dot at the bottom right; the time the answer took under the name | Green line | Green dots moving |
+| Warning `!` | Amber ring and an `!` badge; "Warning · 180 ms" under the name | Amber dotted line | Slower amber dots |
+| Down `✕` | Red ring and an `✕` badge; "Down" under the name | Red dashed line | Stopped, one static dot |
+| Not checked | Nothing: no mark and no word | Neutral grey line | None |
+| Disabled | The glyph at half strength | Dotted | None |
+| Maintenance | Small purple dot | Purple dashed | None |
 
-Every state has a glyph as well as a colour, so nothing depends on colour alone.
+A warning or a failure has a pattern as well as a colour, so nothing depends
+on colour alone; a device nobody has checked carries no mark at all, because
+a question mark on every node is what teaches an eye to ignore the cross
+that matters.
 Turn on **Reduce motion** under **Settings ▸ Display** (the cog at the foot of
 the rail) to stop all animation.
 

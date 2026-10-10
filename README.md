@@ -162,7 +162,7 @@ is read over SSH as usual.
 Everything in that table is **operator-initiated and operator-addressed**.
 Nothing runs on a timer you did not start, nothing scans a range you did not
 type, and nothing contacts an address that is not in your own project. Probes
-run only between **Start validation** and **Stop validation**, and only for the
+run only between **Start checks** and **Stop**, and only for the
 project that is open.
 
 Two crates carry an HTTP client (`coreview-collect`, for a device's own REST

@@ -294,7 +294,7 @@ export function ProjectScreen() {
               <button key={f.id} type="button" className={`cv-proj-side-item${current ? ' is-current' : ''}`}
                 aria-current={current ? 'true' : undefined}
                 onClick={() => { setShowArchived(false); setHere(f.id); }}>
-                <span><span className="cv-pfolder-glyph" aria-hidden="true"><ChromeIcon name="chevron-right" size={12} /></span> {f.name}</span>
+                <span><span className="cv-pfolder-glyph" aria-hidden="true"><ChromeIcon name="chevron-right" size={12} /></span>{f.name}</span>
                 <span className="cv-proj-side-count">{projectCountWithin(tree, live, f.id)}</span>
               </button>
             );
@@ -394,7 +394,7 @@ export function ProjectScreen() {
                     </div>
                   ) : (
                     <button type="button" className="cv-project-open cv-pfolder-open" onClick={() => setHere(f.id)}>
-                      <span className="cv-project-title"><span className="cv-pfolder-glyph" aria-hidden="true"><ChromeIcon name="chevron-right" size={12} /></span> {f.name}</span>
+                      <span className="cv-project-title"><span className="cv-pfolder-glyph" aria-hidden="true"><ChromeIcon name="chevron-right" size={12} /></span>{f.name}</span>
                       <span className="cv-project-meta">
                         {t('folders.contents', { count: projectCountWithin(tree, live, f.id) })}
                         {childFolders(tree, f.id).length > 0 && ` · ${t('folders.subfolders', { count: childFolders(tree, f.id).length })}`}

@@ -1113,7 +1113,7 @@ details.cv-discover-advanced[open] > summary::after { content: '▾'; }
 .cv-pfolder-crumb.is-drop, .cv-project-list li.is-drop { border-color: var(--accent); border-style: dashed; }
 .cv-pfolder-new { flex: 1; display: flex; gap: 0.46153846rem; align-items: center; margin-bottom: var(--space-2); padding: 0.46153846rem; }
 .cv-pfolder-row { background: var(--panel-2); }
-.cv-pfolder-glyph { color: var(--accent); }
+.cv-pfolder-glyph { color: var(--accent); display: inline-flex; vertical-align: -0.1em; margin-right: 0.30769231rem; }
 .cv-pfolder-move { width: auto; max-width: 14rem; font-size: var(--text-sm); padding: 0.15384615rem 0.30769231rem; }
 .cv-pfolder-problem { margin: 0 0 var(--space-2); }
 

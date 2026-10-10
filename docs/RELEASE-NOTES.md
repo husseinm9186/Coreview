@@ -2,6 +2,41 @@
 
 Newest first.
 
+## 2.10.0 — 2026-10-10
+
+**The interface, redesigned**
+- One graphite palette with a faint blue bias replaces four unrelated
+  greys; status colours brightened so that *down* is the brightest of the
+  four; the type scale re-valued so that body text is 14 px and nothing in
+  the chrome is under 11 px; one uppercase treatment, for section
+  headings only.
+- A device's colour is what it is — seven families instead of twenty-six
+  tints — and never changes with its health. Health is drawn beside the
+  glyph: a ring and a badge for warning and down, a dot for healthy,
+  nothing for a device nobody has checked. "Unknown" no longer prints under
+  every node, a link nobody watches is a neutral grey, and a warning link is
+  dotted as well as amber.
+- The top bar: one health strip with dim zeros, **Start checks** as the one
+  filled button that becomes a running pill with **Stop**, names that
+  ellipsise instead of clipping, and the clock in sight on every screen.
+- One strip of icon buttons above the canvas replaces two rows of word
+  buttons and the floating drawing bar; Save, Undo and Redo move to the top
+  bar; the page tabs are underlined.
+- The dock shows the group the rail has chosen first, with underline tabs;
+  the lists get a head with the filter and **All · Problems · Down**; a grip
+  resizes the dock, a button maximises it, and a strip at its top says when
+  anything is down.
+- The inspector summarises the diagram when nothing is selected and names
+  the selected device in its title.
+- The targets table and the address register follow one contract: fixed
+  columns, numbers right-aligned, identifiers in mono, a banded meter.
+- The palette lists the network's shapes first as rows; one empty state
+  speaks for every panel; Settings sits in two panes with a section nav.
+- A chrome icon set replaces every borrowed Unicode symbol.
+- A zoom-driven level of detail was built, measured on a production build
+  against the canvas benchmark, and left out: it made nothing faster and
+  zooming a 5,000-device page slower. The far view keeps the rule it had.
+
 ## 2.9.0 — 2026-10-09
 
 **Updates**
