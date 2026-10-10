@@ -548,10 +548,13 @@ interface Store {
   /** Rearranges the page as a top-to-bottom flow. Unlike `tidyLayout`, this
    *  deliberately moves things: it is for a topology that arrived without an
    *  arrangement worth keeping. */
-  flowLayout: () => { moved: number; tiers: number; locked: number };
+  flowLayout: () => { moved: number; tiers: number; locked: number; pinned: number };
+  /** Releases the devices somebody moved by hand after an arrangement, so
+   *  the next arrangement moves them again. Returns how many there were. */
+  unpinMoved: () => number;
   /** Radial, force-directed or orthogonal — on the selection when
    *  two or more devices are selected, otherwise the page. One undo step. */
-  autoLayout: (kind: 'radial' | 'force' | 'orthogonal') => { moved: number; scope: 'selection' | 'page'; locked: number; tooMany?: number };
+  autoLayout: (kind: 'radial' | 'force' | 'orthogonal') => { moved: number; scope: 'selection' | 'page'; locked: number; pinned: number; tooMany?: number };
   routeLinks: () => number;
   addLayer: (name: string) => void;
   removeLayer: (id: string) => void;
@@ -2990,10 +2993,25 @@ export const useStore = create<Store>((set, get) => ({
     // had autosave rewrite a document identical to the stored one, and let
     // closing ask about changes nobody made. Anything else still dirties.
     const substantive = changes.some((c) => c.type !== 'select');
-    set((s) => ({
-      doc: withPage(s.doc, { nodes: moveGroups(changes, activePage(s.doc).nodes) }),
-      ...(substantive ? { dirty: true } : {}),
-    }));
+    set((s) => {
+      const before = activePage(s.doc).nodes;
+      let nodes = moveGroups(changes, before);
+      // A device an arrangement placed and somebody then moved is pinned:
+      // the next arrangement leaves it where it was put.
+      if (changes.some((c) => c.type === 'position')) {
+        const was = new Map(before.map((n) => [n.id, n.position]));
+        nodes = nodes.map((n) => {
+          const from = was.get(n.id);
+          if ((n.data as DeviceNodeData).placedBy !== 'layout' || !from) return n;
+          if (from.x === n.position.x && from.y === n.position.y) return n;
+          return { ...n, data: { ...n.data, placedBy: 'hand' } } as TopoNode;
+        });
+      }
+      return {
+        doc: withPage(s.doc, { nodes }),
+        ...(substantive ? { dirty: true } : {}),
+      };
+    });
   },
 
   groupSelected() {
@@ -3081,32 +3099,35 @@ export const useStore = create<Store>((set, get) => ({
       y: n.position.y,
       width: n.width ?? n.measured?.width ?? 76,
       height: n.height ?? n.measured?.height ?? 76,
-      locked: Boolean((n.data as DeviceNodeData).locked),
+      // Locked, or moved by hand since the last arrangement: either stays.
+      locked: Boolean((n.data as DeviceNodeData).locked) || (n.data as DeviceNodeData).placedBy === 'hand',
     }));
     const links = page.edges.map((e) => ({ source: e.source, target: e.target }));
+    const locked = chosen.filter((n) => (n.data as DeviceNodeData).locked).length;
+    const pinned = chosen.filter((n) => !(n.data as DeviceNodeData).locked && (n.data as DeviceNodeData).placedBy === 'hand').length;
     // Force-directed compares every pair on every pass: past this many it
     // would hold the window for minutes. Refused rather than started.
     if (kind === 'force' && input.length > FORCE_LAYOUT_LIMIT) {
-      return { moved: 0, scope, locked: 0, tooMany: FORCE_LAYOUT_LIMIT };
+      return { moved: 0, scope, locked: 0, pinned: 0, tooMany: FORCE_LAYOUT_LIMIT };
     }
     const moved = kind === 'radial' ? radialLayout(input, links) : kind === 'force' ? forceLayout(input, links) : orthogonalLayout(input, links);
-    const locked = input.filter((n) => n.locked).length;
     const changed = [...moved].filter(([id, at]) => {
       const n = chosen.find((c) => c.id === id)!;
       return n.position.x !== at.x || n.position.y !== at.y;
     });
-    if (changed.length === 0) return { moved: 0, scope, locked };
+    if (changed.length === 0) return { moved: 0, scope, locked, pinned };
     get().commit('Lay out');
     set((state) => ({
       doc: withPage(state.doc, {
         nodes: activePage(state.doc).nodes.map((n) => {
           const at = moved.get(n.id);
-          return at ? ({ ...n, position: at } as TopoNode) : n;
+          // Signed by the layout, so a later hand move pins the device.
+          return at ? ({ ...n, position: at, data: { ...n.data, placedBy: 'layout' } } as TopoNode) : n;
         }),
       }),
       dirty: true,
     }));
-    return { moved: changed.length, scope, locked };
+    return { moved: changed.length, scope, locked, pinned };
   },
 
   flowLayout() {
@@ -3122,13 +3143,17 @@ export const useStore = create<Store>((set, get) => ({
     // hierarchical layout that could not do it.
     const selected = allDevices.filter((n) => n.selected);
     const devices = selected.length >= 2 ? selected : allDevices;
-    const { moved, tiers, locked } = hierarchicalLayout(
+    const { moved, tiers, locked, pinned } = hierarchicalLayout(
       devices.map((n) => ({
         id: n.id,
         deviceType: (n.data as DeviceNodeData).deviceType,
         width: n.width ?? 76,
         height: n.height ?? 76,
         locked: (n.data as DeviceNodeData).locked,
+        // Moved by hand since the last arrangement: it stays where it was put.
+        pinned: (n.data as DeviceNodeData).placedBy === 'hand',
+        x: n.position.x,
+        y: n.position.y,
       })),
       // The proven direction goes with the link. Without it the
       // layout falls back to guessing tiers from the glyph, which is what put
@@ -3148,12 +3173,14 @@ export const useStore = create<Store>((set, get) => ({
       ],
       { originX: 80, originY: 80 },
     );
-    if (moved.size === 0) return { moved: 0, tiers, locked };
-    get().commit('Arrange top to bottom');
+    if (moved.size === 0) return { moved: 0, tiers, locked, pinned };
+    get().commit('Arrange by layer');
     set((state) => {
       const nodes = activePage(state.doc).nodes.map((n) => {
         const at = moved.get(n.id);
-        return at ? ({ ...n, position: at } as TopoNode) : n;
+        // The arrangement signs what it placed, so a later hand move is
+        // recognised as one and pins the device.
+        return at ? ({ ...n, position: at, data: { ...n.data, placedBy: 'layout' } } as TopoNode) : n;
       });
       // The sheet follows the drawing it holds.
       //
@@ -3166,7 +3193,26 @@ export const useStore = create<Store>((set, get) => ({
       // an export crops.
       return { doc: withPage(state.doc, { nodes, canvas: { ...activePage(state.doc).canvas, sheetRect: pageForContent(nodes) } }), dirty: true };
     });
-    return { moved: moved.size, tiers, locked };
+    return { moved: moved.size, tiers, locked, pinned };
+  },
+
+  unpinMoved() {
+    const pinned = activePage(get().doc).nodes.filter((n) => (n.data as DeviceNodeData).placedBy === 'hand');
+    if (pinned.length === 0) return 0;
+    get().commit('Unpin moved devices');
+    const ids = new Set(pinned.map((n) => n.id));
+    set((s) => ({
+      doc: withPage(s.doc, {
+        nodes: activePage(s.doc).nodes.map((n) => {
+          if (!ids.has(n.id)) return n;
+          const data = { ...n.data } as DeviceNodeData;
+          delete data.placedBy;
+          return { ...n, data } as TopoNode;
+        }),
+      }),
+      dirty: true,
+    }));
+    return pinned.length;
   },
 
   routeLinks() {

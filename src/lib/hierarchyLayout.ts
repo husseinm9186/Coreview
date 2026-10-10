@@ -19,18 +19,27 @@
  * 2. **What it is plugged into.** A device whose type says nothing — a
  *    `generic`, an imported shape — takes a tier one below the highest thing
  *    it connects to. Applied repeatedly, so a chain of unknowns resolves.
- * 3. **Nothing.** An isolated device with no useful type goes to the bottom
- *    rather than being dropped somewhere arbitrary in the middle.
+ * 3. **How far it is from the middle.** A group of unknowns joined only to
+ *    each other — a crawl that could only call everything a switch — still
+ *    has a shape: the device fewest hops from everything else is its middle
+ *    and goes at the top of the group, and each hop out is a tier down. The
+ *    group sits below every typed tier. A lone unknown with no links goes to
+ *    the bottom rather than somewhere arbitrary in the middle.
  * 4. **What the device itself said**. Where a crawl read a default
  *    route, the link carries a proven direction, and the end traffic leaves
  *    by belongs above the end it leaves from. This is applied last and beats
  *    the three above, because the first is a guess from a glyph and this is
  *    the device stating where it sends traffic it has no other route for.
  *
- * Within a tier, order is settled by the median of each node's neighbours in
- * the tier above — the standard cure for crossings, and cheap. Two sweeps: the
- * first does nearly all the work, and a layout that keeps shuffling is a
- * layout an operator cannot predict.
+ * Within a tier, the order is settled by barycentre sweeps — each device
+ * pulled towards the mean position of its neighbours in the tier above, then
+ * in the tier below, and back — and the order with the fewest crossings is
+ * the one kept. Placement is then a tree: each device centred over the span
+ * of what hangs off it, a fan of more than twelve single-link devices wrapped
+ * into two rows under its parent so one access switch does not make a row a
+ * screen wide. A locked device, or one moved by hand since the last
+ * arrangement, keeps its place; what hangs off it gathers under where it is,
+ * and anything the arrangement would have laid over it moves along its row.
  */
 import type { DeviceType } from '../types/domain';
 
@@ -41,6 +50,13 @@ export interface HierarchyNode {
   height: number;
   /** A locked node is never moved, and never counted as placed. */
   locked?: boolean;
+  /** Moved by hand since the last arrangement. Kept where it is, like a
+   *  locked node, and reported separately so the message can say so. */
+  pinned?: boolean;
+  /** Where the node is now. A locked or pinned node keeps this and the rest
+   *  flow around it; a movable node's is not read. */
+  x?: number;
+  y?: number;
 }
 
 export interface HierarchyEdge {
@@ -56,13 +72,19 @@ export interface HierarchyEdge {
 }
 
 export interface HierarchyOptions {
-  /** Space between the left edge of one node and the next in a tier. */
-  columnGap?: number;
-  /** Space between the top of one tier and the top of the next. */
-  rowGap?: number;
+  /** Space between the bottom of one tier and the top of the next. */
+  rankGap?: number;
+  /** Space between neighbours in a tier. */
+  siblingGap?: number;
+  /** Past this many single-link devices under one parent, the fan wraps
+   *  into two rows. */
+  fanLimit?: number;
   /** Where the top-left of the arrangement goes. */
   originX?: number;
   originY?: number;
+  /** The older names for `siblingGap` and `rankGap`, still read. */
+  columnGap?: number;
+  rowGap?: number;
 }
 
 export interface HierarchyResult {
@@ -71,7 +93,15 @@ export interface HierarchyResult {
   tiers: number;
   /** Nodes left where they were because they are locked. */
   locked: number;
+  /** Nodes left where they were because somebody moved them by hand. */
+  pinned: number;
 }
+
+export const RANK_GAP = 160;
+export const SIBLING_GAP = 96;
+export const FAN_LIMIT = 12;
+/** The gap between a fan's two rows: close enough to read as one fan. */
+const FAN_ROW_GAP = 48;
 
 /**
  * The tier a device belongs to purely by what it is.
@@ -112,16 +142,40 @@ export const TIER_OF_TYPE: Partial<Record<DeviceType, number>> = {
   endpoint: 7,
 };
 
+/** Each node's neighbours, once each, no self-links, sorted so nothing
+ *  depends on the order the links were drawn. */
+function adjacency(nodes: readonly HierarchyNode[], edges: readonly HierarchyEdge[]): Map<string, string[]> {
+  const ids = new Set(nodes.map((n) => n.id));
+  const sets = new Map<string, Set<string>>(nodes.map((n) => [n.id, new Set<string>()]));
+  for (const e of edges) {
+    if (!ids.has(e.source) || !ids.has(e.target) || e.source === e.target) continue;
+    sets.get(e.source)!.add(e.target);
+    sets.get(e.target)!.add(e.source);
+  }
+  return new Map([...sets].map(([id, s]) => [id, [...s].sort()]));
+}
+
+/** Hops from `start` to everything reachable. */
+function hopsFrom(start: string, adj: Map<string, string[]>): Map<string, number> {
+  const seen = new Map<string, number>([[start, 0]]);
+  const queue = [start];
+  for (let i = 0; i < queue.length; i += 1) {
+    const at = queue[i]!;
+    const d = seen.get(at)!;
+    for (const next of adj.get(at) ?? []) {
+      if (!seen.has(next)) {
+        seen.set(next, d + 1);
+        queue.push(next);
+      }
+    }
+  }
+  return seen;
+}
+
 /** The tier every node lands in, by the rules in the module comment. */
 export function tiersFor(nodes: HierarchyNode[], edges: HierarchyEdge[]): Map<string, number> {
   const ids = new Set(nodes.map((n) => n.id));
-  const neighbours = new Map<string, string[]>();
-  for (const n of nodes) neighbours.set(n.id, []);
-  for (const e of edges) {
-    if (!ids.has(e.source) || !ids.has(e.target)) continue;
-    neighbours.get(e.source)?.push(e.target);
-    neighbours.get(e.target)?.push(e.source);
-  }
+  const neighbours = adjacency(nodes, edges);
 
   const tier = new Map<string, number>();
   for (const n of nodes) {
@@ -145,9 +199,28 @@ export function tiersFor(nodes: HierarchyNode[], edges: HierarchyEdge[]): Map<st
     if (!changed) break;
   }
 
-  // Rule 3.
-  const deepest = tier.size ? Math.max(...tier.values()) : 0;
-  for (const n of nodes) if (!tier.has(n.id)) tier.set(n.id, deepest + 1);
+  // Rule 3. After rule 2 has settled, an unknown has no typed neighbour, so
+  // the unknowns left form groups joined only to each other. Each group is
+  // ranked from its middle — the node fewest hops from the rest of it, ties
+  // to more links, then the id — and sits below every typed tier.
+  const deepest = tier.size ? Math.max(...tier.values()) : -1;
+  const unknown = nodes.filter((n) => !tier.has(n.id));
+  const placed = new Set<string>();
+  for (const n of unknown) {
+    if (placed.has(n.id)) continue;
+    const members = [...hopsFrom(n.id, neighbours).keys()];
+    const ecc = new Map(members.map((id) => [id, Math.max(...hopsFrom(id, neighbours).values())]));
+    const centre = [...members].sort(
+      (a, b) =>
+        ecc.get(a)! - ecc.get(b)! ||
+        (neighbours.get(b)?.length ?? 0) - (neighbours.get(a)?.length ?? 0) ||
+        (a < b ? -1 : 1),
+    )[0]!;
+    for (const [id, hops] of hopsFrom(centre, neighbours)) {
+      tier.set(id, deepest + 1 + hops);
+      placed.add(id);
+    }
+  }
 
   // Rule 4: a proven direction outranks all three above.
   //
@@ -190,98 +263,375 @@ export function tiersFor(nodes: HierarchyNode[], edges: HierarchyEdge[]): Map<st
   return tier;
 }
 
-/** Median of a list, or undefined for an empty one. */
-function median(xs: number[]): number | undefined {
-  if (xs.length === 0) return undefined;
-  const s = [...xs].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  return s.length % 2 ? s[mid] : ((s[mid - 1] ?? 0) + (s[mid] ?? 0)) / 2;
+/** One thing in a tier's row: a device, or a fan of single-link devices
+ *  under one parent that is laid out as a block. */
+interface Item {
+  ids: string[];
+  /** The fan's parent; a single device has none. */
+  parent?: string;
+  cols: number;
+  rows: number;
+  width: number;
+  height: number;
 }
+
+/** A set of devices with no links at all is wrapped the way a fan is: a row
+ *  past the fan limit becomes two. */
+function fanShape(count: number, limit: number): { cols: number; rows: number } {
+  if (count <= limit) return { cols: count, rows: 1 };
+  return { cols: Math.ceil(count / 2), rows: 2 };
+}
+
+const mean = (xs: number[]): number | undefined =>
+  xs.length === 0 ? undefined : xs.reduce((a, b) => a + b, 0) / xs.length;
 
 /**
  * Where every device goes.
  *
- * Locked nodes keep their positions and are reported rather than moved; they
- * still take part in deciding tiers, because what they are plugged into is
- * still true.
+ * Locked and pinned nodes keep their positions and are reported rather than
+ * moved; they still take part in deciding tiers, because what they are
+ * plugged into is still true, and what hangs off them gathers under where
+ * they are.
  */
 export function hierarchicalLayout(
   nodes: HierarchyNode[],
   edges: HierarchyEdge[],
   options: HierarchyOptions = {},
 ): HierarchyResult {
-  const columnGap = options.columnGap ?? 200;
-  const rowGap = options.rowGap ?? 170;
+  const siblingGap = options.siblingGap ?? options.columnGap ?? SIBLING_GAP;
+  const rankGap = options.rankGap ?? options.rowGap ?? RANK_GAP;
+  const fanLimit = options.fanLimit ?? FAN_LIMIT;
   const originX = options.originX ?? 0;
   const originY = options.originY ?? 0;
 
   const moved = new Map<string, { x: number; y: number }>();
-  if (nodes.length === 0) return { moved, tiers: 0, locked: 0 };
+  const locked = nodes.filter((n) => n.locked).length;
+  const pinned = nodes.filter((n) => n.pinned && !n.locked).length;
+  if (nodes.length === 0) return { moved, tiers: 0, locked, pinned };
 
+  const byId = new Map(nodes.map((n) => [n.id, n]));
   const tier = tiersFor(nodes, edges);
-  const byTier = new Map<number, HierarchyNode[]>();
-  for (const n of nodes) {
-    const t = tier.get(n.id) ?? 0;
-    const row = byTier.get(t);
-    if (row) row.push(n);
-    else byTier.set(t, [n]);
-  }
-  const tiers = [...byTier.keys()].sort((a, b) => a - b);
+  const tierCount = tier.size ? Math.max(...tier.values()) + 1 : 0;
+  const adj = adjacency(nodes, edges);
+  const isFixed = (id: string) => {
+    const n = byId.get(id)!;
+    return Boolean(n.locked || n.pinned);
+  };
+  // A fixed node with no position cannot anchor anything; it is simply not
+  // moved.
+  const fixedCentre = (id: string): { x: number; y: number } | undefined => {
+    const n = byId.get(id)!;
+    if (!isFixed(id) || n.x === undefined || n.y === undefined) return undefined;
+    return { x: n.x + n.width / 2, y: n.y + n.height / 2 };
+  };
+  const movable = nodes.filter((n) => !isFixed(n.id));
+  if (movable.length === 0) return { moved, tiers: tierCount, locked, pinned };
 
-  // Order within each tier: start from whatever order the nodes came in, then
-  // pull each one towards the middle of its neighbours in the tier above.
-  const above = new Map<string, string[]>();
-  for (const e of edges) {
-    const ts = tier.get(e.source);
-    const tt = tier.get(e.target);
-    if (ts === undefined || tt === undefined) continue;
-    if (ts < tt) above.set(e.target, [...(above.get(e.target) ?? []), e.source]);
-    else if (tt < ts) above.set(e.source, [...(above.get(e.source) ?? []), e.target]);
+  // --- the items in each tier -------------------------------------------
+  //
+  // A movable node's single-link children in the tier below, past the fan
+  // limit, become one block under it. The children of a fixed node are
+  // blocked the same way, under where it is.
+  const fanOf = new Map<string, string[]>();
+  const inFan = new Set<string>();
+  for (const p of nodes) {
+    const tp = tier.get(p.id)!;
+    const leaves = (adj.get(p.id) ?? []).filter(
+      (q) => !isFixed(q) && tier.get(q) === tp + 1 && (adj.get(q)?.length ?? 0) === 1,
+    );
+    if (leaves.length > fanLimit) {
+      fanOf.set(p.id, leaves);
+      for (const q of leaves) inFan.add(q);
+    }
   }
+  const itemOf = (ids: string[], parent?: string): Item => {
+    const w = Math.max(...ids.map((id) => byId.get(id)!.width));
+    const h = Math.max(...ids.map((id) => byId.get(id)!.height));
+    const { cols, rows } = ids.length > 1 ? fanShape(ids.length, fanLimit) : { cols: 1, rows: 1 };
+    return {
+      ids,
+      parent,
+      cols,
+      rows,
+      width: cols * w + (cols - 1) * siblingGap,
+      height: rows * h + (rows - 1) * FAN_ROW_GAP,
+    };
+  };
+  const rows = new Map<number, Item[]>();
+  for (let t = 0; t < tierCount; t += 1) rows.set(t, []);
+  // Isolated nodes — no links at all — wrap like a fan, so fifty hosts no
+  // crawl could place do not make one row a screen wide.
+  const isolated = new Map<number, string[]>();
+  for (const n of movable) {
+    const t = tier.get(n.id)!;
+    if (inFan.has(n.id)) continue;
+    if ((adj.get(n.id)?.length ?? 0) === 0) {
+      isolated.set(t, [...(isolated.get(t) ?? []), n.id]);
+      continue;
+    }
+    rows.get(t)!.push(itemOf([n.id]));
+  }
+  for (const [p, leaves] of fanOf) rows.get(tier.get(p)! + 1)!.push(itemOf(leaves, p));
+  for (const [t, ids] of isolated) {
+    ids.sort();
+    if (ids.length > fanLimit) rows.get(t)!.push(itemOf(ids));
+    else for (const id of ids) rows.get(t)!.push(itemOf([id]));
+  }
+  // Seeded by id, not by the order the nodes came in, so a re-crawl that
+  // lists the same devices differently lands the same arrangement.
+  for (const row of rows.values()) row.sort((a, b) => (a.ids[0]! < b.ids[0]! ? -1 : 1));
+  const itemByNode = new Map<string, Item>();
+  for (const row of rows.values()) for (const it of row) for (const id of it.ids) itemByNode.set(id, it);
 
-  const indexOf = new Map<string, number>();
-  const reindex = () => {
-    for (const t of tiers) {
-      (byTier.get(t) ?? []).forEach((n, i) => indexOf.set(n.id, i));
+  // --- the order within each tier ----------------------------------------
+  //
+  // Barycentre sweeps: each item pulled to the mean position of its
+  // neighbours in the adjacent tier, down the tiers then up, and the order
+  // with the fewest crossings kept. Fixed nodes count at where they are.
+  const centre = new Map<Item, number>();
+  const positionRow = (row: Item[]) => {
+    let x = 0;
+    for (const it of row) {
+      centre.set(it, x + it.width / 2);
+      x += it.width + siblingGap;
     }
   };
-  reindex();
-  for (let sweep = 0; sweep < 2; sweep += 1) {
-    for (const t of tiers) {
-      const row = byTier.get(t);
-      if (!row || row.length < 2) continue;
-      const key = new Map<string, number>();
-      row.forEach((n, i) => {
-        const parents = (above.get(n.id) ?? [])
-          .map((p) => indexOf.get(p))
-          .filter((v): v is number => v !== undefined);
-        // A node with nothing above it keeps its place rather than being
-        // swept to one end.
-        key.set(n.id, median(parents) ?? i);
-      });
-      row.sort((a, b) => (key.get(a.id) ?? 0) - (key.get(b.id) ?? 0));
-      reindex();
+  for (const row of rows.values()) positionRow(row);
+  const neighbourCentres = (it: Item, inTier: number): number[] => {
+    const out: number[] = [];
+    for (const id of it.ids) {
+      for (const q of adj.get(id) ?? []) {
+        if (tier.get(q) !== inTier) continue;
+        const fixed = fixedCentre(q);
+        if (fixed) out.push(fixed.x);
+        else {
+          const other = itemByNode.get(q);
+          if (other && other !== it) out.push(centre.get(other)!);
+        }
+      }
+    }
+    return out;
+  };
+  const crossings = (): number => {
+    let n = 0;
+    for (let t = 0; t + 1 < tierCount; t += 1) {
+      const upper = rows.get(t)!;
+      const lower = rows.get(t + 1)!;
+      const iu = new Map(upper.map((it, i) => [it, i]));
+      const il = new Map(lower.map((it, i) => [it, i]));
+      const pairs: [number, number][] = [];
+      for (const it of upper) {
+        for (const id of it.ids) {
+          for (const q of adj.get(id) ?? []) {
+            const other = itemByNode.get(q);
+            if (!other || tier.get(q) !== t + 1 || other === it) continue;
+            pairs.push([iu.get(it)!, il.get(other)!]);
+          }
+        }
+      }
+      for (let i = 0; i < pairs.length; i += 1) {
+        for (let j = i + 1; j < pairs.length; j += 1) {
+          const [a, b] = pairs[i]!;
+          const [c, d] = pairs[j]!;
+          if ((a < c && b > d) || (a > c && b < d)) n += 1;
+        }
+      }
+    }
+    return n;
+  };
+  const edgeCount = edges.length;
+  const countable = edgeCount <= 3000;
+  let best = countable ? crossings() : Number.POSITIVE_INFINITY;
+  let bestOrder = new Map([...rows].map(([t, row]) => [t, [...row]]));
+  const sweep = (down: boolean) => {
+    const order = [...rows.keys()].sort((a, b) => (down ? a - b : b - a));
+    for (const t of order) {
+      const row = rows.get(t)!;
+      if (row.length < 2) continue;
+      const against = down ? t - 1 : t + 1;
+      if (against < 0 || against >= tierCount) continue;
+      const key = new Map<Item, number>();
+      for (const it of row) key.set(it, mean(neighbourCentres(it, against)) ?? centre.get(it)!);
+      const before = new Map(row.map((it, i) => [it, i]));
+      row.sort((a, b) => key.get(a)! - key.get(b)! || before.get(a)! - before.get(b)!);
+      positionRow(row);
+    }
+  };
+  for (let pass = 0; pass < (countable ? 8 : 4); pass += 1) {
+    sweep(pass % 2 === 0);
+    if (!countable) continue;
+    const now = crossings();
+    if (now < best) {
+      best = now;
+      bestOrder = new Map([...rows].map(([t, row]) => [t, [...row]]));
+    }
+    if (now === 0) break;
+  }
+  if (countable) {
+    for (const [t, row] of bestOrder) rows.set(t, row);
+    for (const row of rows.values()) positionRow(row);
+  }
+  const indexOf = new Map<Item, number>();
+  for (const row of rows.values()) row.forEach((it, i) => indexOf.set(it, i));
+
+  // --- placement, as a tree ----------------------------------------------
+  //
+  // Each item hangs off the neighbour in the tier above that the order put
+  // nearest its own barycentre; a fixed node's children hang off it at where
+  // it is. An item with no parent is a root. Each item is centred over the
+  // span of its children, so the diagram reads as a tree, and the spans of
+  // siblings never overlap.
+  const children = new Map<string, Item[]>();
+  const push = (p: string, it: Item) => children.set(p, [...(children.get(p) ?? []), it]);
+  const roots: Item[] = [];
+  for (let t = 0; t < tierCount; t += 1) {
+    for (const it of rows.get(t)!) {
+      let parent: string | undefined = it.parent;
+      if (parent === undefined) {
+        // The nearest neighbour above, by the row positions the sweeps left.
+        const cx = centre.get(it)!;
+        let bestD = Number.POSITIVE_INFINITY;
+        for (const id of it.ids) {
+          for (const q of adj.get(id) ?? []) {
+            const tq = tier.get(q)!;
+            if (tq >= t) continue;
+            const qx = fixedCentre(q)?.x ?? (itemByNode.get(q) ? centre.get(itemByNode.get(q)!)! : undefined);
+            if (qx === undefined) continue;
+            // Prefer the tier straight above; a longer edge only when
+            // nothing nearer offers.
+            const d = Math.abs(qx - cx) + (t - tq - 1) * 1e6;
+            if (d < bestD) {
+              bestD = d;
+              parent = q;
+            }
+          }
+        }
+      }
+      if (parent === undefined) roots.push(it);
+      else push(parent, it);
     }
   }
+  // Children in the order the sweeps settled.
+  for (const list of children.values()) list.sort((a, b) => tier.get(a.ids[0]!)! - tier.get(b.ids[0]!)! || indexOf.get(a)! - indexOf.get(b)!);
 
-  // Place. Each tier is centred on the widest one, so the shape reads as a
-  // tree rather than as a left-aligned list.
-  const widthOf = (row: HierarchyNode[]) =>
-    row.reduce((w, n, i) => w + (i ? columnGap : 0) + n.width, 0);
-  const widest = Math.max(...tiers.map((t) => widthOf(byTier.get(t) ?? [])));
+  // The width each item's subtree needs.
+  const span = new Map<Item, number>();
+  const measure = (it: Item): number => {
+    const kids = (it.ids.length === 1 ? children.get(it.ids[0]!) : undefined) ?? [];
+    const under = kids.reduce((w, k, i) => w + (i ? siblingGap : 0) + measure(k), 0);
+    const s = Math.max(it.width, under);
+    span.set(it, s);
+    return s;
+  };
+  // A fixed node's subtree is measured as a tree of its own.
+  const fixedRoots = nodes.filter((n) => isFixed(n.id) && (children.get(n.id)?.length ?? 0) > 0);
+  for (const r of roots) measure(r);
+  const fixedSpan = new Map<string, number>();
+  for (const f of fixedRoots) {
+    const kids = children.get(f.id)!;
+    fixedSpan.set(f.id, kids.reduce((w, k, i) => w + (i ? siblingGap : 0) + measure(k), 0));
+  }
 
-  let locked = 0;
+  // Left edges, relative: a root's subtree takes its span, its children
+  // share the span under it.
+  const left = new Map<Item, number>();
+  const place = (it: Item, from: number) => {
+    const s = span.get(it)!;
+    left.set(it, from + (s - it.width) / 2);
+    const kids = (it.ids.length === 1 ? children.get(it.ids[0]!) : undefined) ?? [];
+    const under = kids.reduce((w, k, i) => w + (i ? siblingGap : 0) + span.get(k)!, 0);
+    let at = from + (s - under) / 2;
+    for (const k of kids) {
+      place(k, at);
+      at += span.get(k)! + siblingGap;
+    }
+  };
+  let at = 0;
+  for (const r of roots) {
+    place(r, at);
+    at += span.get(r)! + siblingGap;
+  }
+  // Tier tops, from the tallest item in each tier.
+  const top = new Map<number, number>();
+  const tall = new Map<number, number>();
   let y = originY;
-  for (const t of tiers) {
-    const row = byTier.get(t) ?? [];
-    const tall = row.reduce((h, n) => Math.max(h, n.height), 0);
-    let x = originX + (widest - widthOf(row)) / 2;
-    for (const n of row) {
-      if (n.locked) locked += 1;
-      else moved.set(n.id, { x: Math.round(x), y: Math.round(y + (tall - n.height) / 2) });
-      x += n.width + columnGap;
-    }
-    y += tall + rowGap;
+  for (let t = 0; t < tierCount; t += 1) {
+    const h = Math.max(0, ...rows.get(t)!.map((it) => it.height));
+    top.set(t, y);
+    tall.set(t, h);
+    y += h + rankGap;
   }
-  return { moved, tiers: tiers.length, locked };
+  // The children of a fixed node, centred under where it is.
+  for (const f of fixedRoots) {
+    const fc = fixedCentre(f.id);
+    if (!fc) {
+      // Nowhere to hang them: they become roots on the right.
+      for (const k of children.get(f.id)!) {
+        place(k, at);
+        at += span.get(k)! + siblingGap;
+      }
+      continue;
+    }
+    let from = fc.x - fixedSpan.get(f.id)! / 2 - originX;
+    for (const k of children.get(f.id)!) {
+      place(k, from);
+      from += span.get(k)! + siblingGap;
+    }
+  }
+
+  // --- flowing round what stays put ---------------------------------------
+  //
+  // Anything laid over a fixed node moves along its row, and everything to
+  // its right in that row with it, so the order holds and nothing overlaps.
+  const fixedBoxes = nodes
+    .filter((n) => isFixed(n.id) && n.x !== undefined && n.y !== undefined)
+    .map((n) => ({ x: n.x!, y: n.y!, w: n.width, h: n.height }));
+  for (let t = 0; t < tierCount; t += 1) {
+    const row = [...rows.get(t)!].sort((a, b) => left.get(a)! - left.get(b)!);
+    const rowTop = top.get(t)!;
+    const rowH = tall.get(t)!;
+    let shift = 0;
+    for (const it of row) {
+      let x = left.get(it)! + originX + shift;
+      for (const b of fixedBoxes) {
+        const overlapsY = b.y < rowTop + rowH + rankGap / 2 && b.y + b.h > rowTop - rankGap / 2;
+        const overlapsX = b.x < x + it.width + siblingGap / 2 && b.x + b.w > x - siblingGap / 2;
+        if (overlapsY && overlapsX) {
+          const pushed = b.x + b.w + siblingGap;
+          shift += pushed - x;
+          x = pushed;
+        }
+      }
+      left.set(it, x - originX);
+    }
+  }
+
+  // --- the positions --------------------------------------------------------
+  for (let t = 0; t < tierCount; t += 1) {
+    const rowTop = top.get(t)!;
+    const rowH = tall.get(t)!;
+    for (const it of rows.get(t)!) {
+      const x0 = left.get(it)! + originX;
+      const w = Math.max(...it.ids.map((id) => byId.get(id)!.width));
+      const h = Math.max(...it.ids.map((id) => byId.get(id)!.height));
+      if (it.ids.length === 1) {
+        const n = byId.get(it.ids[0]!)!;
+        moved.set(n.id, { x: Math.round(x0), y: Math.round(rowTop + (rowH - n.height) / 2) });
+        continue;
+      }
+      // A fan: rows of `cols`, the last row centred under the first.
+      it.ids.forEach((id, i) => {
+        const r = Math.floor(i / it.cols);
+        const c = i % it.cols;
+        const inRow = r === it.rows - 1 ? it.ids.length - (it.rows - 1) * it.cols : it.cols;
+        const rowW = inRow * w + (inRow - 1) * siblingGap;
+        const n = byId.get(id)!;
+        moved.set(id, {
+          x: Math.round(x0 + (it.width - rowW) / 2 + c * (w + siblingGap) + (w - n.width) / 2),
+          y: Math.round(rowTop + r * (h + FAN_ROW_GAP) + (h - n.height) / 2),
+        });
+      });
+    }
+  }
+  return { moved, tiers: tierCount, locked, pinned };
 }

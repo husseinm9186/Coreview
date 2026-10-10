@@ -3434,8 +3434,8 @@ await dismissRecovery();
   await page.locator(".react-flow__pane").click({ position: { x: 60, y: 60 } });
   await page.locator(".react-flow__pane").click({ button: "right", position: { x: 760, y: 460 } });
   await page.waitForTimeout(250);
-  const arrange = page.locator(".cv-menu button", { hasText: "Arrange top to bottom" });
-  check("the canvas offers a top-to-bottom arrangement", (await arrange.count()) === 1);
+  const arrange = page.locator(".cv-menu button", { hasText: "Arrange by layer" });
+  check("the canvas offers the layered arrangement", (await arrange.count()) === 1);
   if (await arrange.count()) {
     await arrange.click();
     await page.waitForTimeout(600);

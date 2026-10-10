@@ -303,6 +303,11 @@ export interface DeviceNodeData extends Record<string, unknown> {
   vlan?: string;
   addresses: NodeAddress[];
   locked: boolean;
+  /** Who put the device where it is. `layout` after an arrangement placed
+   *  it; `hand` once somebody moved it after that, which pins it: the next
+   *  arrangement leaves it where it was put. Absent on anything never
+   *  arranged, which an arrangement is free to move. */
+  placedBy?: 'layout' | 'hand';
   /** Suppresses status reporting for a planned outage. */
   maintenance: boolean;
   showDetails: boolean;

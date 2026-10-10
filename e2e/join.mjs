@@ -307,7 +307,7 @@ for (const label of ["MAC address", "VLAN", "Software", "Connects to", "Open por
 
 // ----------------------------------------- arranged by what it is
 
-// "Arrange top to bottom" must put the way out at the top. The switch here
+// "Arrange by layer" must put the way out at the top. The switch here
 // forwards to 192.168.77.1; the host hangs off the switch. So the order down
 // the page is switch, then host — whatever glyph either of them happens to
 // have, which for a swept host is a plain one.

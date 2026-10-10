@@ -18,6 +18,7 @@ import { useStore } from '../state/store';
 import { CanvasFilterMenu } from './CanvasFilterMenu';
 import { CanvasTypeFilter } from './CanvasTypeFilter';
 import { ChromeIcon, IconButton } from './chromeIcons';
+import { arrangeByLayerMessage, layoutMessage } from './arrangeMessages';
 
 /** The pen's inks. Chosen to read on both grounds. */
 const COLOURS: [string, string][] = [
@@ -39,6 +40,7 @@ export function CanvasToolbar() {
   const inkHidden = pg.canvas.inkHidden ?? false;
   const inkCount = (pg.canvas.ink ?? []).length;
   const selected = pg.nodes.filter((n) => n.selected).length;
+  const pinnedCount = pg.nodes.filter((n) => (n.data as { placedBy?: string }).placedBy === 'hand').length;
   const [color, setColor] = useState(COLOURS[0]![0]);
   const [width, setWidth] = useState(3);
   const { zoom } = useViewport();
@@ -78,6 +80,7 @@ export function CanvasToolbar() {
   };
 
   const pick = (mode: 'pen' | 'eraser') => setTool(tool?.mode === mode ? null : { mode, color, width });
+  const arrangeByLayer = () => useStore.getState().setStatusMessage(arrangeByLayerMessage(useStore.getState().flowLayout()));
   const arrangeSelected = (how: 'left' | 'centre' | 'right' | 'top' | 'middle' | 'bottom' | 'across' | 'down') => {
     const ids = pg.nodes.filter((n) => n.selected).map((n) => n.id);
     const moved = useStore.getState().arrange(ids, how);
@@ -91,6 +94,9 @@ export function CanvasToolbar() {
         {/* First in the row, and first in the DOM: the zoom menu behind it
             lists "Fit view" too, and a hidden item must not come first. */}
         <IconButton icon="fit" label={t('canvasTools.fitView')} region="fit-view" onClick={fit} />
+        {/* Beside Fit, because a crawl's first two moves are "arrange it"
+            and "show me all of it". */}
+        <IconButton icon="layers" label={t('canvasTools.arrangeLayers')} region="arrange-layers" onClick={arrangeByLayer} className="cv-arrange-layers" />
         <IconButton icon="zoom-out" label={t('canvasTools.zoomOut')} shortcut="Ctrl+−" region="zoom-out" onClick={() => void rf.zoomOut()} />
         {/* The zoom as a number, and the presets behind it. */}
         <details className="cv-dropdown cv-zoom-menu">
@@ -219,7 +225,12 @@ export function CanvasToolbar() {
             <ChromeIcon name="chevron-down" className="cv-icon-caret" />
           </summary>
           <div className="cv-dropdown-menu" role="menu">
-            <button type="button" role="menuitem" onClick={(e) => { closeMenus(e); useStore.getState().flowLayout(); }}>{t('canvasTools.arrangeLayers')}</button>
+            <button type="button" role="menuitem" title={t('canvasTools.arrangeLayersHint')} onClick={(e) => { closeMenus(e); arrangeByLayer(); }}>{t('canvasTools.arrangeLayers')}</button>
+            <button type="button" role="menuitem" title={t('canvasTools.layoutRadialHint')} onClick={(e) => { closeMenus(e); useStore.getState().setStatusMessage(layoutMessage(useStore.getState().autoLayout('radial'))); }}>{t('canvasTools.layoutRadial')}</button>
+            <button type="button" role="menuitem" title={t('canvasTools.unpinMovedHint')} disabled={pinnedCount === 0} data-region="unpin-moved"
+              onClick={(e) => { closeMenus(e); const n = useStore.getState().unpinMoved(); useStore.getState().setStatusMessage(t('canvasTools.unpinned', { devices: t('plural.device', { count: n }) })); }}>
+              {t('canvasTools.unpinMoved')}{pinnedCount ? ` (${pinnedCount})` : ''}
+            </button>
             <p className="cv-help">{selected < 2 ? t('canvasTools.arrangeSelectHint') : t('canvasTools.arrangeSelected', { count: selected })}</p>
             {([
               ['left', t('canvasTools.alignLeft')], ['centre', t('canvasTools.alignCentre')], ['right', t('canvasTools.alignRight')],

@@ -2,6 +2,22 @@
 
 Newest first.
 
+## Unreleased
+
+**Arrange by layer**
+- The layered arrangement is a button beside Fit, and goes by that name
+  everywhere it appears. Tiers are 160 px apart and neighbours 96 px; the
+  order within a tier is settled by barycentre sweeps in both directions,
+  keeping the order with the fewest crossings; each device is centred over
+  what hangs off it; a fan of more than twelve single-link devices wraps
+  into two rows under its parent; a group the types say nothing about is
+  ranked from the device fewest hops from the rest of it.
+- A device moved by hand after an arrangement is pinned: the next
+  arrangement leaves it where it was put, gathers what hangs off it
+  underneath, and says how many it left. **Unpin moved devices** on the
+  Arrange menu releases them. **Lay out radially** is on the Arrange menu
+  as well.
+
 ## 2.10.0 — 2026-10-10
 
 **The interface, redesigned**

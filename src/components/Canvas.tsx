@@ -48,6 +48,7 @@ import { activePage, withPage, pageNodeById } from '../lib/pages';
 import { openSsh, openSshElsewhere } from './sshActions';
 import { isDesktop } from '../lib/ipc';
 import { t } from '../i18n';
+import { arrangeByLayerMessage, layoutMessage } from './arrangeMessages';
 import { uid } from '../lib/id';
 import { DEVICE_LABEL } from './icons';
 import { shapeDefaultFields } from '../lib/shapeCatalog';
@@ -702,35 +703,15 @@ export function Canvas() {
         ['orthogonal', 'Lay out on a grid (orthogonal)'],
       ] as const).map(([kind, label]) => ({
         label,
-        onSelect: () => {
-          const { moved, scope, locked, tooMany } = useStore.getState().autoLayout(kind);
-          useStore.getState().setStatusMessage(
-            tooMany
-              ? `A mesh layout is limited to ${tooMany.toLocaleString()} devices at once. Select part of the diagram and try again.`
-              : moved === 0
-              ? 'Nothing to lay out.'
-              : `Laid out ${t('plural.device', { count: moved })} ${scope === 'selection' ? 'in the selection' : 'on this page'}.` +
-                  (locked ? ` ${t('plural.lockedDevice', { count: locked })} left alone.` : '') +
-                  ' Undo puts it back.',
-          );
-        },
+        onSelect: () => useStore.getState().setStatusMessage(layoutMessage(useStore.getState().autoLayout(kind))),
       })),
       {
         // The other half of the pair. Tidy keeps the arrangement and fixes the
         // spacing; this replaces the arrangement, which is what a crawled or
         // imported topology usually needs and a hand-drawn one usually does
         // not. Named for what it produces rather than for the algorithm.
-        label: 'Arrange top to bottom',
-        onSelect: () => {
-          const { moved, tiers, locked } = useStore.getState().flowLayout();
-          useStore.getState().setStatusMessage(
-            moved === 0
-              ? 'Nothing to arrange on this page.'
-              : `Arranged ${t('plural.device', { count: moved })} into ${t('plural.layer', { count: tiers })}, internet at the top.` +
-                (locked ? ` ${t('plural.lockedDevice', { count: locked })} left alone.` : '') +
-                ' Undo puts it back.',
-          );
-        },
+        label: t('canvasTools.arrangeLayers'),
+        onSelect: () => useStore.getState().setStatusMessage(arrangeByLayerMessage(useStore.getState().flowLayout())),
       },
       ...(['health', 'role', 'subnet', 'tag', 'vlan'] as const)
         .filter((by) => by !== (pg.canvas.colourBy ?? 'health'))
@@ -871,7 +852,7 @@ export function Canvas() {
       { id: 'save', label: 'Save', hint: 'Ctrl+S', run: () => void s().saveProject() },
       { id: 'grid', label: 'Toggle snapping to the grid', hint: 'Ctrl+Shift+G', run: () => s().setGridSnap(!s().doc.gridSnap) },
       { id: 'page', label: 'Add a page', run: () => s().addPage('Page') },
-      { id: 'arrange', label: 'Arrange top to bottom', run: () => s().flowLayout() },
+      { id: 'arrange', label: t('canvasTools.arrangeLayers'), run: () => s().setStatusMessage(arrangeByLayerMessage(s().flowLayout())) },
       { id: 'start', label: 'Start checks', run: () => void s().startValidation() },
       { id: 'stop', label: 'Stop validation', run: () => void s().stopValidation() },
       { id: 'help', label: 'Keyboard shortcuts', hint: '?', run: () => setHelp(true) },

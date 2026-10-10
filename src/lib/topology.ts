@@ -1287,7 +1287,7 @@ export function buildTopology(
   // by hop distance this used to produce, with links crossing the whole page.
   // So new nodes are tiered, every existing node is left exactly where it is,
   // and a re-crawl's additions land clear of the drawing rather than on top of
-  // it. The layout is the same one the "Arrange top to bottom" button runs.
+  // it. The layout is the same one the "Arrange by layer" button runs.
   const existingNodes = opts.existingNodes ?? [];
   if (nodes.length > 1) {
     const fresh = new Set(nodes.map((n) => n.id));

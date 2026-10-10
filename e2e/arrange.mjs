@@ -426,6 +426,71 @@ if (await front.count()) {
   }
 }
 
+// ------------------------------------------------------------- arrange by layer
+//
+// The layered arrangement is a button beside Fit. A device moved by hand
+// after it stays where it was put through the next one, until unpinned.
+{
+  await page.keyboard.press("Escape");
+  await selectOnly();
+  await st(() => window.__cvStore.getState().updateNodeData("c", { locked: false }));
+  const names = await page.locator('[data-region="canvas-tools"] .cv-strip-group').first().locator("button .cv-sr").allInnerTexts();
+  check("Arrange by layer sits beside Fit at the head of the strip",
+    names[0] === "Fit view" && names[1] === "Arrange by layer", JSON.stringify(names));
+  const positions = () => st(() => Object.fromEntries(window.__cvStore.getState().doc.pages[0].nodes.map((n) => [n.id, n.position])));
+  const message = () => page.locator(".cv-panel-message").innerText().catch(() => "");
+  const placedBy = (id) => st((i) => window.__cvStore.getState().doc.pages[0].nodes.find((n) => n.id === i).data.placedBy, id);
+  const before = await positions();
+  await page.locator('[data-region="arrange-layers"]').click();
+  await page.waitForTimeout(500);
+  const arranged = await positions();
+  check("it arranges the page: the linked pair in two tiers, d above f", arranged.d.y < arranged.f.y, JSON.stringify(arranged));
+  const movedIds = Object.keys(arranged).filter((id) => arranged[id].x !== before[id].x || arranged[id].y !== before[id].y);
+  check("and moves the boxes", movedIds.length >= 3, movedIds.join(","));
+  check("and says what it did", /^Arranged \d+ devices into \d+ layers/.test(await message()), await message());
+  check("every box it placed is signed by the layout", (await placedBy("f")) === "layout" && (await placedBy("a")) === "layout");
+
+  // Move one by hand, well clear of the rest.
+  await page.keyboard.press("f");
+  await page.waitForTimeout(400);
+  const r = await page.locator('.react-flow__node[data-id="f"]').boundingBox();
+  await page.mouse.move(r.x + r.width / 2, r.y + r.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(r.x + r.width / 2 + 140, r.y + r.height / 2 + 90, { steps: 12 });
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  const dropped = (await positions()).f;
+  check("a box moved by hand after the arrangement is pinned", (await placedBy("f")) === "hand", String(await placedBy("f")));
+  check("and the others are not", (await placedBy("a")) === "layout");
+
+  await page.locator('[data-region="arrange-layers"]').click();
+  await page.waitForTimeout(500);
+  const second = await positions();
+  check("the next arrangement leaves it where it was put", second.f.x === dropped.x && second.f.y === dropped.y, JSON.stringify([dropped, second.f]));
+  check("and says so", /1 device you moved by hand stayed put/.test(await message()), await message());
+
+  // The Arrange menu names radial, and releases the pin.
+  await page.locator('[data-region="arrange-menu"]').click();
+  await page.waitForTimeout(200);
+  const menu = page.locator(".cv-arrange-menu .cv-dropdown-menu");
+  check("the Arrange menu offers the radial layout by name", (await menu.locator("button", { hasText: "Lay out radially" }).count()) === 1);
+  const unpin = menu.locator('[data-region="unpin-moved"]');
+  check("and Unpin moved devices, counting the one", /^Unpin moved devices \(1\)$/.test((await unpin.innerText()).trim()), await unpin.innerText());
+  await unpin.click();
+  await page.waitForTimeout(300);
+  check("unpinning says what it released", /^1 device unpinned/.test(await message()), await message());
+  check("and the box is free again", (await placedBy("f")) === undefined);
+  await page.locator('[data-region="arrange-layers"]').click();
+  await page.waitForTimeout(500);
+  const third = await positions();
+  check("so the next arrangement moves it", third.f.x !== dropped.x || third.f.y !== dropped.y, JSON.stringify([dropped, third.f]));
+  check("back under its tier", third.d.y < third.f.y && Math.abs(third.f.y - arranged.f.y) < 1, JSON.stringify([arranged.f, third.f]));
+  await page.locator('[data-region="arrange-menu"]').click();
+  await page.waitForTimeout(200);
+  check("with nothing pinned, Unpin moved devices is greyed", await menu.locator('[data-region="unpin-moved"]').isDisabled());
+  await page.keyboard.press("Escape");
+}
+
 await browser.close();
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

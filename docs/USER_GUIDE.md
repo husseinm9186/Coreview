@@ -96,13 +96,19 @@ callout) keeps its line breaks: `Shift+Enter` starts a new line, `Enter` finishe
 **Port label text** under a link's labels, to set bold, italic, size, colour and background; a device's
 name can also be aligned left, centre or right. Exports match the canvas.
 
-**Automatic layouts.** Right-click the canvas: **Arrange top to bottom** tiers
-devices by what they are; **Lay out radially** puts the device fewest links from
-everything — usually the core — in the middle with the rest in rings;
-**Lay out as a mesh** lets links pull and devices push; **Lay out on a grid** puts
-each device's hosts in a block under it, for an MDF or IDF drawing. With two or
-more devices selected, only the selection is laid out. Locked devices stay put,
-and one undo puts everything back.
+**Automatic layouts.** **Arrange by layer** — the button beside Fit, also on
+the Arrange menu and the canvas's right-click menu — tiers devices by what they
+are, the way out at the top and access at the bottom, with a fan of more than
+twelve hosts wrapped into two rows under its switch. A device you move by hand
+after that is pinned: the next Arrange by layer leaves it where you put it and
+gathers what hangs off it underneath; **Unpin moved devices** on the Arrange
+menu releases them. **Lay out radially**, on the Arrange menu, puts the device
+fewest links from everything — usually the core — in the middle with the rest
+in rings. Right-click the canvas for **Lay out as a mesh**, which lets links
+pull and devices push, and **Lay out on a grid**, which puts each device's
+hosts in a block under it, for an MDF or IDF drawing. With two or more devices
+selected, only the selection is laid out. Locked devices stay put, and one undo
+puts everything back.
 
 **Saved views.** Right-click the canvas and choose **Save this view** to remember
 where you are and how far in, as *View 1*, *View 2* and so on for that page.
@@ -770,9 +776,13 @@ than redrawing it. A device nothing is known about still gets a row.
 
 ### Arranging what was found
 
-**Arrange top to bottom** lays the page out the way an engineer draws one: the
+**Arrange by layer** lays the page out the way an engineer draws one: the
 way out at the top, then the edge, the core, the distribution and access
-layers, and the things plugged into them at the bottom.
+layers, and the things plugged into them at the bottom. Where nothing says
+what a group of devices is — a crawl that could only call everything a
+switch — the device fewest hops from the rest goes at the top of the group and
+each hop is a layer down. A switch with more than twelve hosts on it gets them
+in two rows underneath rather than one row a screen wide.
 
 It decides the order from evidence rather than from what each box looks like.
 Where a crawl read a device's default route, that device sits *below* whatever
@@ -782,7 +792,10 @@ thing on that port sits below the switch. Only what neither of those covers
 falls back to the icon.
 
 It rearranges rather than tidies, so it is on a menu rather than automatic,
-and one undo puts the whole page back. A locked device is never moved.
+and one undo puts the whole page back. A locked device is never moved, and
+neither is one you moved by hand since the last arrangement: it is pinned, what
+hangs off it gathers under where you put it, and the message says how many
+stayed. **Unpin moved devices** on the Arrange menu releases them.
 
 ### Stacks and chassis pairs
 
