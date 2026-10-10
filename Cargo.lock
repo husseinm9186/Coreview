@@ -1017,7 +1017,7 @@ dependencies = [
 
 [[package]]
 name = "coreview"
-version = "2.10.0"
+version = "2.11.0"
 dependencies = [
  "base64 0.22.1",
  "coreview-catalog",

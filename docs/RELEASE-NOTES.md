@@ -2,7 +2,7 @@
 
 Newest first.
 
-## Unreleased
+## 2.11.0 — 2026-10-10
 
 **Arrange by layer**
 - The layered arrangement is a button beside Fit, and goes by that name

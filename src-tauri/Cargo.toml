@@ -1,6 +1,6 @@
 [package]
 name = "coreview"
-version = "2.10.0"
+version = "2.11.0"
 description = "Coreview — local-first network diagram designer with live connectivity validation"
 authors = ["Mohammed Almoola <https://www.linkedin.com/in/malmoola>"]
 edition = "2021"
