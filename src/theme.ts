@@ -60,6 +60,8 @@ export interface CanvasPalette {
   labelBackground: string;
   /** A device with no status of its own. */
   neutralNode: string;
+  /** A link nobody is watching: a drawing's line, not an unanswered probe. */
+  linkNeutral: string;
 }
 
 export const CANVAS_DARK: CanvasPalette = {
@@ -69,9 +71,11 @@ export const CANVAS_DARK: CanvasPalette = {
   minimapNode: '#5a6b80',
   minimapNote: '#3a4757',
   minimapMask: 'rgba(8,10,13,0.55)',
-  selection: '#5eb8ff',
+  // Ink, not the accent: a halo that reads on every family tint.
+  selection: '#ffffff',
   labelBackground: 'rgba(12, 16, 22, 0.92)',
   neutralNode: '#8fa2b5',
+  linkNeutral: '#5f6f82',
 };
 
 export const CANVAS_LIGHT: CanvasPalette = {
@@ -81,9 +85,10 @@ export const CANVAS_LIGHT: CanvasPalette = {
   minimapNode: '#55606c',
   minimapNote: '#8a939e',
   minimapMask: 'rgba(228, 228, 228, 0.72)',
-  selection: '#0b5fce',
+  selection: '#0b0e12',
   labelBackground: 'rgba(255, 255, 255, 0.96)',
   neutralNode: '#3d4e63',
+  linkNeutral: '#3b4a5e',
 };
 
 export function canvasPalette(ground: Ground): CanvasPalette {
@@ -134,106 +139,80 @@ function luminance([r, g, b]: [number, number, number]): number {
 }
 
 /**
- * The colour a device is drawn in when nothing is watching it.
+ * The colour a device is drawn in: what it is, always.
  *
- * Health colour is the right answer for a monitored diagram and the wrong one
- * for a drawing: with no probes every device is "unknown", so a diagram that
- * has not been pointed at anything yet comes out entirely grey. That is the
- * honest reading of the data and a poor picture, and people draw the picture
- * first.
+ * Status used to take the stroke over — a down router turned red — which
+ * meant a diagram could not say two things with one colour, and an orange
+ * firewall was a warning until you looked twice. Now the stroke carries the
+ * device's family and nothing else, and status is drawn beside it as a ring,
+ * a dot or a badge (`statusMark`), so the two never fight.
  *
- * So an unmonitored device is drawn by what it is — the way every network
- * diagram has been drawn since before any of them were live — and the moment
- * a probe is attached, health takes the colour back. Nothing is invented: a
- * device with a real status still shows it.
+ * Seven families rather than a tint per type: a router and a cloud are
+ * both routing, every switch and access point is switching, and the glyph's
+ * shape carries the member. Each family reads on both grounds.
  */
-export const DEVICE_TINT_DARK: Record<string, string> = {
-  firewall: '#ff7a45',
-  router: '#4ea8f0',
-  'core-switch': '#38bdf8',
-  'distribution-switch': '#22b8cf',
-  'access-switch': '#2dd4bf',
-  'wireless-controller': '#a78bfa',
-  'access-point': '#67e8f9',
-  server: '#c084fc',
-  vm: '#d8b4fe',
-  storage: '#fbbf24',
-  database: '#818cf8',
-  application: '#f472b6',
-  endpoint: '#94a3b8',
-  printer: '#a3e635',
-  camera: '#fb7185',
-  internet: '#60a5fa',
-  'private-cloud': '#7dd3fc',
-  site: '#facc15',
-  vpn: '#f0abfc',
-  'l3-switch': '#38bdf8',
-  'l2-switch': '#2dd4bf',
-  'ip-phone': '#94a3b8',
-  'blade-chassis': '#c084fc',
-  'vm-host': '#c084fc',
-  'load-balancer': '#34d399',
-  waf: '#ff7a45',
-  'mpls-cloud': '#60a5fa',
-  rack: '#a8a29e',
-  'patch-panel': '#a8a29e',
-  pdu: '#fbbf24',
-  ups: '#fbbf24',
-  zone: '#60a5fa',
-  generic: '#94a3b8',
+export type DeviceFamily = 'routing' | 'switching' | 'security' | 'compute' | 'services' | 'storage' | 'physical';
+
+export const DEVICE_FAMILY: Record<string, DeviceFamily> = {
+  router: 'routing', internet: 'routing', 'mpls-cloud': 'routing', 'private-cloud': 'routing', cloud: 'routing', vpn: 'routing', zone: 'routing',
+  'core-switch': 'switching', 'distribution-switch': 'switching', 'access-switch': 'switching', 'l3-switch': 'switching', 'l2-switch': 'switching',
+  'wireless-controller': 'switching', 'access-point': 'switching',
+  firewall: 'security', waf: 'security',
+  server: 'compute', vm: 'compute', 'vm-host': 'compute', 'blade-chassis': 'compute',
+  application: 'services', 'load-balancer': 'services', database: 'services',
+  storage: 'storage', pdu: 'storage', ups: 'storage', site: 'storage',
+  endpoint: 'physical', 'ip-phone': 'physical', printer: 'physical', camera: 'physical', rack: 'physical', 'patch-panel': 'physical', generic: 'physical',
 };
 
-export const DEVICE_TINT_LIGHT: Record<string, string> = {
-  firewall: '#d1440a',
-  router: '#0b5fce',
-  'core-switch': '#0369a1',
-  'distribution-switch': '#0e7490',
-  'access-switch': '#0f766e',
-  'wireless-controller': '#6d28d9',
-  'access-point': '#0891b2',
-  server: '#7e22ce',
-  vm: '#9333ea',
-  storage: '#a16207',
-  database: '#4338ca',
-  application: '#be1a68',
-  endpoint: '#475569',
-  printer: '#4d7c0f',
-  camera: '#be123c',
-  internet: '#1d4ed8',
-  'private-cloud': '#0284c7',
-  site: '#a16207',
-  vpn: '#a21caf',
-  'l3-switch': '#0369a1',
-  'l2-switch': '#0f766e',
-  'ip-phone': '#475569',
-  'blade-chassis': '#7e22ce',
-  'vm-host': '#7e22ce',
-  'load-balancer': '#047857',
-  waf: '#d1440a',
-  'mpls-cloud': '#1d4ed8',
-  rack: '#57534e',
-  'patch-panel': '#57534e',
-  pdu: '#a16207',
-  ups: '#a16207',
-  zone: '#0b5fce',
-  generic: '#475569',
+export const FAMILY_TINT_DARK: Record<DeviceFamily, string> = {
+  routing: '#5aa7f5',
+  switching: '#3ec1d3',
+  // Still orange, as every whiteboard draws a firewall, but a muted
+  // terracotta that is duller than --warning and lighter than --down.
+  security: '#d8865e',
+  compute: '#b38cf5',
+  services: '#e07bb0',
+  // Sand, low in chroma, so it never reads as amber.
+  storage: '#c9b27a',
+  physical: '#94a3b8',
 };
+
+export const FAMILY_TINT_LIGHT: Record<DeviceFamily, string> = {
+  routing: '#0b5fce',
+  switching: '#0e7490',
+  security: '#b4531b',
+  compute: '#6d28d9',
+  services: '#be185d',
+  storage: '#8a6d00',
+  physical: '#475569',
+};
+
+/** Per type, for whatever still reads the old shape of this table. */
+export const DEVICE_TINT_DARK: Record<string, string> = Object.fromEntries(
+  Object.entries(DEVICE_FAMILY).map(([type, family]) => [type, FAMILY_TINT_DARK[family]]),
+);
+
+export const DEVICE_TINT_LIGHT: Record<string, string> = Object.fromEntries(
+  Object.entries(DEVICE_FAMILY).map(([type, family]) => [type, FAMILY_TINT_LIGHT[family]]),
+);
+
+/** What colour to draw a device in: its family's, on this ground. */
+export function deviceColor(deviceType: string, ground: Ground): string {
+  const tints = ground === 'light' ? FAMILY_TINT_LIGHT : FAMILY_TINT_DARK;
+  const family = DEVICE_FAMILY[deviceType];
+  return family ? tints[family] : canvasPalette(ground).neutralNode;
+}
 
 /**
- * What colour to draw a device in.
- *
- * A real status always wins — that is the whole point of the app. 'unknown'
- * is the only status that gives way, because it means nobody is watching
- * rather than that something is wrong.
+ * The colour a status is marked in beside the glyph — a ring and a badge
+ * for warning and down, a dot for healthy and maintenance — or nothing: a
+ * device nobody has checked, or one switched off, carries no mark at all.
+ * A "?" on every unknown node is the noise that teaches people to ignore
+ * the "×" that matters.
  */
-export function deviceColor(
-  deviceType: string,
-  status: HealthStatus,
-  ground: Ground,
-): string {
-  if (status !== 'unknown') return statusColors(ground)[status];
-  const tints = ground === 'light' ? DEVICE_TINT_LIGHT : DEVICE_TINT_DARK;
-  return tints[deviceType] ?? statusColors(ground).unknown;
+export function statusMark(status: HealthStatus, ground: Ground): string | null {
+  if (status === 'unknown' || status === 'disabled') return null;
+  return statusColors(ground)[status];
 }
 
 /** What a note looks like when nobody has chosen colours for it.
@@ -327,10 +306,12 @@ export const SHEET_SECTION_TINT: Record<Ground, string> = {
  */
 export const DEFAULTS = {
   /** A link with no colour of its own. Stored in the document, so it must not
-   *  depend on which ground the person drawing it happened to be using. */
-  linkColor: STATUS_COLOR_DARK.unknown,
+   *  depend on which ground the person drawing it happened to be using. A
+   *  neutral grey, not the unknown status colour: an unwatched link and a
+   *  probe that has not answered are different things. */
+  linkColor: CANVAS_DARK.linkNeutral,
   /** The accent, for a picker that needs somewhere to start. */
-  accent: DEVICE_TINT_DARK.router,
+  accent: FAMILY_TINT_DARK.routing,
   /** The paper an exported sheet is printed on when nothing says otherwise. */
   exportPaper: '#0b0e12',
   /** Where a label's colour and background pickers start. */

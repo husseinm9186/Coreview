@@ -280,11 +280,13 @@ const dragNode = async (selector, dx, dy, witnessSelector) => {
     JSON.stringify(stroke.down),
   );
 
-  // Status is never carried by colour alone.
-  const glyphs = await page.evaluate(() =>
-    [...document.querySelectorAll(".cv-edge-glyph")].map((e) => e.textContent),
+  // Status is never carried by the line's colour alone: the label leads
+  // with a dot in the status colour (hollow when nothing is watching), and
+  // a failed line is dashed as well as red.
+  const dots = await page.evaluate(() =>
+    [...document.querySelectorAll(".cv-edge-dot")].map((e) => getComputedStyle(e).backgroundColor),
   );
-  check("each link label repeats its status as a glyph", glyphs.includes("\u2713") && glyphs.includes("\u2715"), JSON.stringify(glyphs));
+  check("each link label leads with a dot in its status colour", dots.includes("rgb(53, 194, 111)") && dots.includes("rgb(255, 98, 89)"), JSON.stringify(dots));
 }
 
 // ---------------------------------------------------------------- case 2
@@ -3352,16 +3354,17 @@ await dismissRecovery();
     const mine = (el) => !!el?.closest?.('.react-flow__node[data-id="close-a"]');
     return {
       centre: !!at(0.5, 0.5)?.closest?.(".cv-glyph-hit"),
-      // Top-right is the status badge, which is meant to be there and is meant
-      // to be clickable. The other three are empty.
-      badge: !!at(0.96, 0.04)?.closest?.(".cv-glyph-badge"),
-      fellThrough: [[0.04, 0.04], [0.04, 0.96], [0.96, 0.96]].filter(([x, y]) => !mine(at(x, y))).length,
+      // A device nobody has checked carries no status mark, so all four
+      // corners are empty; a warning or down badge, when there is one,
+      // sits at the bottom right.
+      badge: !!at(0.96, 0.96)?.closest?.(".cv-glyph-badge, .cv-glyph-dot"),
+      fellThrough: [[0.04, 0.04], [0.04, 0.96], [0.96, 0.04], [0.96, 0.96]].filter(([x, y]) => !mine(at(x, y))).length,
     };
   });
   check("a device is clicked where its ring is", corners.centre);
   check("and its empty corners fall through to whatever is behind it",
-    corners.fellThrough === 3, `${corners.fellThrough}/3`);
-  check("while the status badge keeps the corner it is drawn in", corners.badge);
+    corners.fellThrough === 4, `${corners.fellThrough}/4`);
+  check("and a device nobody has checked wears no status mark", !corners.badge);
 
   // And the band must not take the device underneath away from the pointer.
   const box = await page.locator('.react-flow__node[data-id="n3"]').boundingBox();

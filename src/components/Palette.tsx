@@ -94,7 +94,7 @@ export function Palette() {
                       /* The same colour it will be on the canvas, so the
                          palette is a preview rather than a list of grey
                          outlines that turn out different when dropped. */
-                      style={{ color: deviceColor(type, 'unknown', ground) }}
+                      style={{ color: deviceColor(type, ground) }}
                     />
                     {DEVICE_LABEL[type]}
                   </button>
@@ -126,7 +126,7 @@ export function Palette() {
                 >
                   <Icon
                     className="cv-palette-icon"
-                    style={{ color: deviceColor('zone', 'unknown', ground), strokeDasharray: BOUNDARIES[k].dash }}
+                    style={{ color: deviceColor('zone', ground), strokeDasharray: BOUNDARIES[k].dash }}
                   />
                   {BOUNDARIES[k].label}
                 </button>

@@ -554,7 +554,7 @@ export function RackPanel() {
                 onClick={() => setSelected(d.id)}
               >
                 <span className="cv-racks-device-name">
-                  <DeviceGlyph type={(d.deviceType ?? 'generic') as DeviceType} className="cv-racks-device-glyph" style={{ color: d.colour ?? deviceColor(d.deviceType ?? 'generic', 'unknown', ground) }} />
+                  <DeviceGlyph type={(d.deviceType ?? 'generic') as DeviceType} className="cv-racks-device-glyph" style={{ color: d.colour ?? deviceColor(d.deviceType ?? 'generic', ground) }} />
                   {d.label}
                 </span>
                 <span className="cv-racks-units">
@@ -1017,7 +1017,7 @@ function RackView({
               {sideItems.map(({ device: d, span }) => {
                 const fraction = depthFraction(d, rack);
                 const rear = d.rackFace === 'rear';
-                const colour = d.colour ?? (d.kind === 'furniture' ? undefined : deviceColor(d.deviceType ?? 'generic', d.status ?? 'unknown', ground));
+                const colour = d.colour ?? (d.kind === 'furniture' ? undefined : deviceColor(d.deviceType ?? 'generic', ground));
                 return (
                   <button
                     key={d.id}
@@ -1155,7 +1155,7 @@ function Faceplate({ item, top, face, ground, selected, also, out, onPort, onSel
   const height = (item.top - item.bottom + 1) * UNIT_PX;
   const isFurniture = d.kind === 'furniture';
   const reserved = d.furniture === 'reserved';
-  const colour = d.colour ?? (isFurniture ? undefined : deviceColor(d.deviceType ?? 'generic', d.status ?? 'unknown', ground));
+  const colour = d.colour ?? (isFurniture ? undefined : deviceColor(d.deviceType ?? 'generic', ground));
   const air = airOn(d.airflow, face);
   const title = [
     `${d.label} — U${item.bottom}${item.top > item.bottom ? `–${item.top}` : ''}`,

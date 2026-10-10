@@ -13,10 +13,10 @@ import {
 import type { DeviceNodeData, HealthStatus, LinkData } from '../../types/domain';
 import { SHAPE_DEVICE_TYPES } from '../../types/domain';
 import type { TopoNode } from '../../state/store';
-import { STATUS_GLYPH, STATUS_LABEL } from '../../types/domain';
+import { STATUS_LABEL } from '../../types/domain';
 import { useStore } from '../../state/store';
 import { describeRule, shouldAnimate } from '../../health/evaluate';
-import { STATUS_COLOR_DARK, readableOn, statusColors } from '../../theme';
+import { STATUS_COLOR_DARK, canvasPalette, readableOn, statusColors } from '../../theme';
 import { capPath, capsFor, dashFor } from '../../lib/linkStyle';
 import { jumpsFor, withJumps } from '../../lib/lineJumps';
 import { cableTag, centreLabel } from '../../lib/cables';
@@ -415,7 +415,9 @@ function LiveEdgeInner(props: EdgeProps) {
   // something else would be the opposite of helpful.
   // The fade itself is a stylesheet rule (TraceFade), so pointing at a
   // link changes one rule rather than re-rendering every link on the page.
-  const color = statusColors(ground)[status];
+  // A link nobody is watching is a drawing's line, in a neutral grey —
+  // not the colour of a probe that has not answered.
+  const color = status === 'unknown' ? canvasPalette(ground).linkNeutral : statusColors(ground)[status];
   // The line can be given a colour of its own — a fibre run, a carrier
   // circuit, a VLAN — without the link ceasing to be a live one. Everything
   // that reports health keeps the status colour: the travelling dots, the
@@ -1056,9 +1058,10 @@ function LiveEdgeInner(props: EdgeProps) {
             title={tooltip}
             onPointerDown={beginLabelDrag('label', labelFraction)}
           >
-            <span className="cv-edge-glyph" style={{ color }} aria-hidden>
-              {STATUS_GLYPH[status]}
-            </span>
+            {/* A dot in the link's status colour, hollow when nothing is
+                watching: a "?" before every label made a documented diagram
+                look undocumented. */}
+            <span className="cv-edge-dot" style={{ background: status === 'unknown' ? 'transparent' : color, borderColor: color }} aria-hidden />
             {/* What the cable is, ahead of what it is for. */}
             {cableTag(data) && (
               <span className={`cv-cable-tag${data.label ? ' has-label' : ''}`}>{cableTag(data)}</span>

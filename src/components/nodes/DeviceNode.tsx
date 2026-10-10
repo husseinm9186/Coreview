@@ -6,7 +6,7 @@ import { glyphExtent, glyphIsRound } from '../../lib/glyphExtents';
 import { drawsStacked } from '../../lib/stacked';
 import { cssOf } from '../../lib/textStyle';
 import { BOUNDARIES, boundaryChip, boundaryIdProblem, isBoundaryKind } from '../../lib/boundaries';
-import { canvasPalette, deviceColor, statusColors } from '../../theme';
+import { canvasPalette, deviceColor, statusColors, statusMark } from '../../theme';
 import { colourForKey, keyForData } from '../../lib/tinting';
 import { useStore } from '../../state/store';
 import { openThreads } from '../../lib/comments';
@@ -256,12 +256,13 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
   const grouped = colourBy !== 'health' ? keyForData(d, colourBy) : null;
   const color = grouped
     ? colourForKey(grouped, ground)
-    : deviceColor(d.deviceType, status, ground);
-  // The status line reports health and must not borrow the device's own
-  // colour, or a blue switch reads as though blue meant something. When
-  // nothing is watching it says so quietly rather than in the device's paint.
-  const statusInk =
-    status === 'unknown' ? 'var(--text-faint)' : statusColors(ground)[status];
+    : deviceColor(d.deviceType, ground);
+  // Status is drawn beside the glyph, never on its stroke: a ring and a
+  // badge for warning and down, a dot for healthy, nothing for a device
+  // nobody has checked.
+  const mark = statusMark(status, ground);
+  const alarm = status === 'warning' || status === 'down';
+  const statusInk = mark ?? 'var(--text-faint)';
   const amber = statusColors(ground).warning;
   const primary = probes.find((p) => p.isPrimary && p.enabled) ?? probes.find((p) => p.enabled);
   const live = primary ? runtime.get(primary.id) : undefined;
@@ -350,23 +351,36 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
         <Handle type="source" position={Position.Left} id="l" className="cv-handle" />
 
         <div
-          className={`cv-glyph-art${failing ? ' is-failing' : ''}`}
+          className={`cv-glyph-art is-${status}${failing ? ' is-failing' : ''}`}
           style={{ color: d.style?.iconColor ?? color }}
         >
+          {alarm && mark && <span className="cv-glyph-ring" style={{ borderColor: mark }} aria-hidden="true" />}
           {d.imageDataUrl ? (
             <img src={d.imageDataUrl} alt="" />
           ) : (
             <DeviceGlyph type={d.deviceType} stacked={stacked} solid={solid} color={d.style?.iconColor ?? color} />
           )}
-          <span
-            key={status}
-            className="cv-glyph-badge cv-status-pulse"
-            style={{ background: color }}
-            title={`${STATUS_LABEL[status]}${live?.lastSummary ? ` — ${live.lastSummary}` : ''}`}
-          >
-            <span aria-hidden>{STATUS_GLYPH[status]}</span>
-            <span className="cv-sr">{STATUS_LABEL[status]}</span>
-          </span>
+          {alarm && mark && (
+            <span
+              key={status}
+              className="cv-glyph-badge cv-status-pulse"
+              style={{ background: mark }}
+              title={`${STATUS_LABEL[status]}${live?.lastSummary ? ` — ${live.lastSummary}` : ''}`}
+            >
+              <span aria-hidden>{STATUS_GLYPH[status]}</span>
+              <span className="cv-sr">{STATUS_LABEL[status]}</span>
+            </span>
+          )}
+          {!alarm && mark && (
+            <span
+              key={status}
+              className="cv-glyph-dot cv-status-pulse"
+              style={{ background: mark }}
+              title={`${STATUS_LABEL[status]}${live?.lastSummary ? ` — ${live.lastSummary}` : ''}`}
+            >
+              <span className="cv-sr">{STATUS_LABEL[status]}</span>
+            </span>
+          )}
           {d.locked && <span className="cv-glyph-lock" title={t('deviceNode.locked')} aria-label={t('deviceNode.locked')}>🔒</span>}
           {openThreads(d.comments) > 0 && (
             <span className="cv-comment-badge" title={t('deviceNode.openComments')} aria-label={`${openThreads(d.comments)} open comments`}>
@@ -403,14 +417,20 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
           {d.showDetails && (
             <>
               {primaryAddress && <div className="cv-glyph-addr">{primaryAddress}</div>}
-              <div className="cv-glyph-status" style={{ color: failing ? amber : statusInk }}>
-                {STATUS_LABEL[status]}
-                {missedLabel
-                  ? ` · ${missedLabel}`
-                  : live?.lastRttMs != null && status !== 'down'
-                    ? ` · ${live.lastRttMs < 1 ? '<1' : live.lastRttMs.toFixed(0)} ms`
-                    : ''}
-              </div>
+              {/* A third line only when there is something to say: what is
+                  wrong, a check that went unanswered, or the time a healthy
+                  answer took. "Unknown" under every node said nothing. */}
+              {(alarm || failing || (status === 'healthy' && live?.lastRttMs != null)) && (
+                <div className="cv-glyph-status" style={{ color: failing ? amber : statusInk }}>
+                  {failing
+                    ? missedLabel
+                    : status === 'down'
+                      ? STATUS_LABEL[status]
+                      : live?.lastRttMs != null
+                        ? `${status === 'warning' ? `${STATUS_LABEL[status]} · ` : ''}${live.lastRttMs < 1 ? '<1' : live.lastRttMs.toFixed(0)} ms`
+                        : STATUS_LABEL[status]}
+                </div>
+              )}
               {d.maintenance && <div className="cv-node-maint">{t('deviceNode.inMaintenance')}</div>}
             </>
           )}
@@ -494,13 +514,13 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
         </>
       )}
 
-      {!isText && (
+      {!isText && mark && (
         <span
           // Re-keying on status remounts the badge, which retriggers the CSS
           // pulse below. A state change gets a brief, cheap acknowledgement.
           key={status}
-          className="cv-status-badge cv-status-pulse"
-          style={{ background: color }}
+          className={`cv-status-badge cv-status-pulse${alarm ? '' : ' is-dot'}`}
+          style={{ background: mark }}
           title={`${STATUS_LABEL[status]}${live?.lastSummary ? ` — ${live.lastSummary}` : ''}`}
         >
           <span aria-hidden>{STATUS_GLYPH[status]}</span>

@@ -22,10 +22,12 @@ import {
   SHEET_SECTION_TINT,
   sheetFor,
   type Sheet,
+  canvasPalette,
   deviceColor,
   notePalette,
   readableOn,
   statusColors,
+  statusMark,
   type Ground,
 } from '../theme';
 import { glyphMarkup } from './glyphSvg';
@@ -291,7 +293,9 @@ function nodeMarkup(
   const d = n.data as DeviceNodeData;
   // The same rule the canvas uses: what a device is, until something is
   // watching it.
-  const color = deviceColor(d.deviceType, status, sheet.ground);
+  const color = deviceColor(d.deviceType, sheet.ground);
+  const mark = statusMark(status, sheet.ground);
+  const alarm = status === 'warning' || status === 'down';
   // Health, not the device's own paint — a blue switch must not read as
   // though blue said something about its state.
   const statusInk = status === 'unknown' ? sheet.inkDim : statusColors(sheet.ground)[status];
@@ -312,9 +316,19 @@ function nodeMarkup(
       d.imageDataUrl
         ? `<image x="${cx - size / 2}" y="${iconY}" width="${size}" height="${size}" href="${esc(d.imageDataUrl)}" preserveAspectRatio="xMidYMid meet"/>`
         : iconMarkup(d.deviceType, d.style?.iconColor ?? color, cx - size / 2, iconY, size, drawsStacked(d), solidOf(d)),
-      `<g><circle cx="${cx + size / 2 - 2}" cy="${iconY + 4}" r="7.5" fill="${color}" stroke="${sheet.paper}" stroke-width="2"/>` +
-        `<text x="${cx + size / 2 - 2}" y="${iconY + 7.5}" text-anchor="middle" fill="${sheet.onStatus}" font-size="9" font-weight="700">${esc(STATUS_GLYPH[status])}</text></g>`,
     ];
+    // Status beside the glyph, as on screen: a ring and a badge at the
+    // bottom right for warning and down, a dot for healthy, nothing for a
+    // device nobody has checked.
+    if (mark && alarm) {
+      parts.push(
+        `<rect x="${cx - size / 2 - 6}" y="${iconY - 6}" width="${size + 12}" height="${size + 12}" rx="${(size + 12) / 2}" fill="none" stroke="${mark}" stroke-width="3" opacity="0.9"/>` +
+          `<g><circle cx="${cx + size / 2 - 2}" cy="${iconY + size - 4}" r="7.5" fill="${mark}" stroke="${sheet.paper}" stroke-width="2"/>` +
+          `<text x="${cx + size / 2 - 2}" y="${iconY + size - 0.5}" text-anchor="middle" fill="${sheet.onStatus}" font-size="9" font-weight="700">${esc(STATUS_GLYPH[status])}</text></g>`,
+      );
+    } else if (mark) {
+      parts.push(`<circle cx="${cx + size / 2 - 2}" cy="${iconY + size - 4}" r="4" fill="${mark}" stroke="${sheet.paper}" stroke-width="1.5"/>`);
+    }
 
     let ty = iconY + size + 14;
     // Text may be wider than the node box, exactly as on screen.
@@ -334,10 +348,13 @@ function nodeMarkup(
           `<text x="${cx}" y="${ty}" text-anchor="middle" fill="${sheet.inkDim}" font-size="10" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">${esc(fit(primary, textW, 10))}</text>`,
         );
       }
-      ty += 13;
-      parts.push(
-        `<text x="${cx}" y="${ty}" text-anchor="middle" fill="${statusInk}" font-size="10" font-weight="600">${esc(STATUS_LABEL[status])}</text>`,
-      );
+      // A third line only when there is something to say.
+      if (alarm) {
+        ty += 13;
+        parts.push(
+          `<text x="${cx}" y="${ty}" text-anchor="middle" fill="${statusInk}" font-size="10" font-weight="600">${esc(STATUS_LABEL[status])}</text>`,
+        );
+      }
       if (d.maintenance) {
         ty += 13;
         parts.push(
@@ -454,12 +471,14 @@ function nodeMarkup(
     }
   }
 
-  if (!isText) {
+  if (!isText && mark && alarm) {
     // Status is never carried by colour alone; the badge repeats it as a glyph.
     parts.push(
-      `<g><circle cx="${x + w}" cy="${y}" r="8.5" fill="${color}" stroke="${sheet.paper}" stroke-width="2"/>` +
-        `<text x="${x + w}" y="${y + 3.5}" text-anchor="middle" fill="${sheet.onStatus}" font-size="10" font-weight="700">${esc(STATUS_GLYPH[status])}</text></g>`,
+      `<g><circle cx="${x + w}" cy="${y + h}" r="8.5" fill="${mark}" stroke="${sheet.paper}" stroke-width="2"/>` +
+        `<text x="${x + w}" y="${y + h + 3.5}" text-anchor="middle" fill="${sheet.onStatus}" font-size="10" font-weight="700">${esc(STATUS_GLYPH[status])}</text></g>`,
     );
+  } else if (!isText && mark) {
+    parts.push(`<circle cx="${x + w}" cy="${y + h}" r="4.5" fill="${mark}" stroke="${sheet.paper}" stroke-width="1.5"/>`);
   }
 
   return `<g>${parts.join('')}</g>`;
@@ -553,7 +572,7 @@ function edgeMarkup(
   }
   const drawn = hop ? hop(path) : path;
 
-  const color = statusColors(sheet.ground)[status];
+  const color = status === 'unknown' ? canvasPalette(sheet.ground).linkNeutral : statusColors(sheet.ground)[status];
   // A link given a colour of its own keeps it, darkened only as far as the
   // ground needs — the same rule the canvas applies.
   const lineColor =
@@ -588,8 +607,8 @@ function edgeMarkup(
   // The centre label's box is worked out first because the port labels are
   // placed around it.
   // The cable tag leads the centre label, as on the canvas.
-  const centreText = centreLabel(data) ? `${STATUS_GLYPH[status]} ${centreLabel(data)}` : null;
-  const centreW = centreText ? centreText.length * 6.2 + 12 : 0;
+  const centreText = centreLabel(data);
+  const centreW = centreText ? centreText.length * 6.2 + 24 : 0;
 
   // Port labels sit *beside* the line rather than on it. Placing them a
   // fraction along the line is what the canvas does, and it works there
@@ -623,7 +642,8 @@ function edgeMarkup(
   if (centreText) {
     parts.push(
       `<g><rect x="${labelX - centreW / 2}" y="${labelY - 9}" width="${centreW}" height="18" rx="4" fill="${safeColour(data.labelStyle?.background) ?? sheet.surface}" stroke="${color}"/>` +
-        `<text x="${labelX}" y="${labelY + 4}" text-anchor="middle"${svgTextAttrs(data.labelStyle, { size: 11, fill: sheet.ink })}>${esc(centreText)}</text></g>`,
+        `<circle cx="${labelX - centreW / 2 + 9}" cy="${labelY}" r="3" fill="${status === 'unknown' ? 'none' : color}" stroke="${color}" stroke-width="1"/>` +
+        `<text x="${labelX + 6}" y="${labelY + 4}" text-anchor="middle"${svgTextAttrs(data.labelStyle, { size: 11, fill: sheet.ink })}>${esc(centreText)}</text></g>`,
     );
   }
   return `<g>${parts.join('')}</g>`;

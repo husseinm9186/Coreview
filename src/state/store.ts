@@ -4045,8 +4045,7 @@ export const useStore = create<Store>((set, get) => ({
     const node = allNodes(get().doc).find((n) => n.id === nodeId);
     if (!node || node.type !== 'device') return;
     const d = node.data as DeviceNodeData;
-    const status = get().nodeStatus(nodeId);
-    const auto = computeDeviceColor(d.deviceType, status, get().settings.ground);
+    const auto = computeDeviceColor(d.deviceType, get().settings.ground);
     const svg = svgForDevice(d, auto);
     get().commit('Save shape');
     set((s) => ({

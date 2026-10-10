@@ -126,7 +126,7 @@ function HealthMiniMap({ health, ground }: { health: boolean; ground: Ground }) 
       nodeColor={(n) =>
         n.type === 'note'
           ? palette.minimapNote
-          : health
+          : health && status(n.id) !== 'unknown'
             ? statusColors(ground)[status(n.id)]
             : palette.minimapNode
       }

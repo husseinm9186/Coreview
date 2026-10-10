@@ -3,17 +3,20 @@ import { describe, expect, it } from 'vitest';
 import {
   CANVAS_DARK,
   CANVAS_LIGHT,
+  canvasPalette,
+  DEVICE_FAMILY,
   DEVICE_TINT_DARK,
   DEVICE_TINT_LIGHT,
+  deviceColor,
+  FAMILY_TINT_DARK,
   NOTE_DARK,
   NOTE_LIGHT,
-  STATUS_COLOR_DARK,
-  STATUS_COLOR_LIGHT,
-  canvasPalette,
-  deviceColor,
   notePalette,
   readableOn,
+  STATUS_COLOR_DARK,
+  STATUS_COLOR_LIGHT,
   statusColors,
+  statusMark,
 } from '../theme';
 import type { HealthStatus } from '../types/domain';
 
@@ -102,23 +105,39 @@ describe('readableOn', () => {
 });
 
 describe('device colours', () => {
-  it('draws an unwatched device by what it is', () => {
+  it('draws a device by what it is', () => {
     // With no probes every device is "unknown", so colouring by health alone
     // makes a diagram nobody has pointed at anything yet entirely grey.
-    expect(deviceColor('firewall', 'unknown', 'dark')).toBe(DEVICE_TINT_DARK.firewall);
-    expect(deviceColor('server', 'unknown', 'light')).toBe(DEVICE_TINT_LIGHT.server);
+    expect(deviceColor('firewall', 'dark')).toBe(DEVICE_TINT_DARK.firewall);
+    expect(deviceColor('server', 'light')).toBe(DEVICE_TINT_LIGHT.server);
   });
 
-  it('gives the colour back to health the moment something is watching', () => {
-    // The whole point of the app. A firewall that is down is red, not orange.
-    for (const s of ['healthy', 'warning', 'down', 'maintenance', 'disabled'] as const) {
-      expect(deviceColor('firewall', s, 'dark')).toBe(STATUS_COLOR_DARK[s]);
-      expect(deviceColor('firewall', s, 'light')).toBe(STATUS_COLOR_LIGHT[s]);
+  it('keeps the stroke the family\'s under every status; the mark carries the status', () => {
+    // Status is drawn beside the glyph, never on its stroke: a firewall that
+    // is down stays orange with a red ring and badge, so orange can never be
+    // mistaken for a warning and a diagram can say two things at once.
+    for (const s of ['healthy', 'warning', 'down', 'maintenance'] as const) {
+      expect(deviceColor('firewall', 'dark')).toBe(FAMILY_TINT_DARK.security);
+      expect(statusMark(s, 'dark')).toBe(STATUS_COLOR_DARK[s]);
+      expect(statusMark(s, 'light')).toBe(STATUS_COLOR_LIGHT[s]);
     }
+    // A device nobody has checked, or one switched off, carries no mark.
+    expect(statusMark('unknown', 'dark')).toBeNull();
+    expect(statusMark('disabled', 'light')).toBeNull();
   });
 
-  it('falls back to the unknown colour for a shape with no tint', () => {
-    expect(deviceColor('not-a-device', 'unknown', 'light')).toBe(STATUS_COLOR_LIGHT.unknown);
+  it('puts every device type in one of seven families, and the switches together', () => {
+    const families = new Set(Object.values(DEVICE_FAMILY));
+    expect(families.size).toBe(7);
+    for (const type of ['core-switch', 'distribution-switch', 'access-switch', 'l2-switch', 'l3-switch', 'wireless-controller', 'access-point']) {
+      expect(DEVICE_FAMILY[type], type).toBe('switching');
+    }
+    expect(DEVICE_FAMILY.firewall).toBe('security');
+    expect(DEVICE_FAMILY.router).toBe(DEVICE_FAMILY.vpn);
+  });
+
+  it('falls back to the neutral node colour for a shape with no family', () => {
+    expect(deviceColor('not-a-device', 'light')).toBe(CANVAS_LIGHT.neutralNode);
   });
 
   it('has a tint for every device the palette offers', () => {
@@ -138,11 +157,15 @@ describe('device colours', () => {
     }
   });
 
-  it('keeps the device families apart from one another', () => {
+  it('keeps the seven families apart from one another, and from every status colour', () => {
     // A router and a switch drawn the same colour is a diagram that has
-    // colour without meaning.
-    expect(new Set(Object.values(DEVICE_TINT_LIGHT)).size).toBeGreaterThan(14);
-    expect(new Set(Object.values(DEVICE_TINT_DARK)).size).toBeGreaterThan(14);
+    // colour without meaning; a family drawn in a status colour is worse,
+    // because then a healthy switch and a teal one say the same thing.
+    for (const [tints, statuses] of [[DEVICE_TINT_LIGHT, STATUS_COLOR_LIGHT], [DEVICE_TINT_DARK, STATUS_COLOR_DARK]] as const) {
+      const distinct = new Set(Object.values(tints));
+      expect(distinct.size).toBe(7);
+      for (const tint of distinct) expect(Object.values(statuses), tint).not.toContain(tint);
+    }
   });
 });
 

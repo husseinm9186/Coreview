@@ -1098,7 +1098,7 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
   // What a saved credential is named after, so the vault list is readable on
   // a machine holding several projects.
   const deviceLabel = d.hostname?.trim() || d.label?.trim() || d.addresses?.[0]?.address || '';
-  const auto = deviceColor(d.deviceType, status, ground);
+  const auto = deviceColor(d.deviceType, ground);
   const setColor = (key: keyof NonNullable<DeviceNodeData['style']>, value: string) =>
     update(nodeId, { style: { ...d.style, [key]: value } });
   const resetColor = (key: keyof NonNullable<DeviceNodeData['style']>) => {
