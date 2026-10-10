@@ -21,6 +21,7 @@ import { SshPanel } from './SshPanel';
 import { STATUS_COLOR } from './edges/LiveEdge';
 import { linkStatus } from '../health/evaluate';
 import { formatTime } from '../lib/timeFormat';
+import { ChromeIcon, IconButton } from './chromeIcons';
 import type { DeviceNodeData, HealthStatus, LinkData, ProbeRuntime } from '../types/domain';
 import { STATUS_GLYPH, STATUS_LABEL } from '../types/domain';
 import { activePage, allEdges, allNodes } from '../lib/pages';
@@ -201,7 +202,52 @@ export function StatusPanel() {
     );
     useStore.getState().select(first.id, null);
   };
-  const [problemsOnly, setProblemsOnly] = useState(false);
+  /** All, problems (warning and down), or down only. */
+  const [problems, setProblems] = useState<'all' | 'problems' | 'down'>('all');
+  const problemsOnly = problems !== 'all';
+  const dockMax = useStore((s) => s.dockMax);
+  // The dock's height, dragged on its grip and remembered on this machine.
+  const [dockHeight, setDockHeight] = useState<number | null>(() => {
+    try {
+      const v = Number(localStorage.getItem('coreview.view.dockHeight'));
+      return Number.isFinite(v) && v >= 120 ? v : null;
+    } catch {
+      return null;
+    }
+  });
+  const keepHeight = (h: number | null) => {
+    setDockHeight(h);
+    try {
+      if (h) localStorage.setItem('coreview.view.dockHeight', String(Math.round(h)));
+      else localStorage.removeItem('coreview.view.dockHeight');
+    } catch {
+      /* no storage here */
+    }
+  };
+  const panelRef = useRef<HTMLDivElement>(null);
+  const grabGrip = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const el = panelRef.current;
+    if (!el) return;
+    const startY = e.clientY;
+    const startH = el.getBoundingClientRect().height;
+    const room = (el.parentElement?.getBoundingClientRect().height ?? window.innerHeight) - 120;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => setDockHeight(Math.max(120, Math.min(room, startH + (startY - ev.clientY))));
+    const up = (ev: PointerEvent) => {
+      keepHeight(Math.max(120, Math.min(room, startH + (startY - ev.clientY))));
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  /** Double-click on the grip: a third of the body, or six tenths of it. */
+  const toggleHeight = () => {
+    const room = panelRef.current?.parentElement?.getBoundingClientRect().height ?? window.innerHeight;
+    const small = Math.round(room * 0.3);
+    keepHeight(dockHeight && dockHeight > small + 20 ? small : Math.round(room * 0.6));
+  };
 
   // Ages have to move on their own, or "3s ago" sits there saying 3s
   // forever. Only while a session is running: with nothing being checked
@@ -279,7 +325,8 @@ export function StatusPanel() {
   const filtered = useMemo(
     () =>
       rows.filter((r) => {
-        if (problemsOnly && r.status !== 'down' && r.status !== 'warning') return false;
+        if (problems === 'problems' && r.status !== 'down' && r.status !== 'warning') return false;
+        if (problems === 'down' && r.status !== 'down') return false;
         if (!query) return true;
         const q = query.toLowerCase();
         return (
@@ -290,7 +337,7 @@ export function StatusPanel() {
           r.tags.some((t) => t.toLowerCase().includes(q))
         );
       }),
-    [rows, problemsOnly, query],
+    [rows, problems, query],
   );
 
   // Tick events, then copy or save exactly those. The table
@@ -301,7 +348,8 @@ export function StatusPanel() {
   const meta = useStore((s) => s.meta);
   const exportFolder = useStore((s) => s.settings.exportFolder);
   const filteredEvents = events.filter((e) => {
-    if (problemsOnly && e.currentStatus !== 'down' && e.currentStatus !== 'warning') return false;
+    if (problems === 'problems' && e.currentStatus !== 'down' && e.currentStatus !== 'warning') return false;
+    if (problems === 'down' && e.currentStatus !== 'down') return false;
     if (!query) return true;
     const q = query.toLowerCase();
     return (
@@ -355,86 +403,126 @@ export function StatusPanel() {
     );
   }
 
+  const tall = tab === 'crawl' || tab === 'collect' || tab === 'discover' || tab === 'backup' || tab === 'ssh' || tab === 'trace' || tab === 'tracert' || tab === 'whereis';
+  const listTab = tab === 'objects' || tab === 'events';
+  const shown = tab === 'objects' ? filtered.length : filteredEvents.length;
+  const total = tab === 'objects' ? rows.length : events.length;
+  const down = counts.down ?? 0;
+  const warning = counts.warning ?? 0;
+
   return (
-    <div className={`cv-panel${tab === 'crawl' || tab === 'collect' || tab === 'discover' || tab === 'backup' || tab === 'ssh' || tab === 'trace' || tab === 'tracert' || tab === 'whereis' ? ' is-tall' : ''}`}>
-      <div className="cv-panel-head">
+    <div
+      ref={panelRef}
+      className={`cv-panel${tall ? ' is-tall' : ''}${dockMax ? ' is-max' : ''}`}
+      style={dockSide === 'bottom' && !dockMax && dockHeight ? { height: `${dockHeight}px` } : undefined}
+    >
+      {/* The grip: drag to resize, double-click for a third or six tenths. */}
+      {dockSide === 'bottom' && !dockMax && (
+        <div className="cv-dock-grip" role="separator" aria-orientation="horizontal" aria-label={t('dock.gripHint')} title={t('dock.gripHint')}
+          onPointerDown={grabGrip} onDoubleClick={toggleHeight} />
+      )}
+      <div className="cv-panel-tabs">
         <div
           className="cv-tabs"
           role="tablist"
           aria-label="Panels"
-          // Arrow keys move along the tabs, Home and End to the ends.
+          // Arrow keys move along every tab, in the groups' own order, Home
+          // and End to the ends; the group that holds the chosen tab is the
+          // one drawn first.
           onKeyDown={(e) => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-            const tabs = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="tab"]')];
-            const at = tabs.indexOf(document.activeElement as HTMLButtonElement);
-            const next = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : (at + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+            const order = DOCK_GROUPS.flatMap((g) => g.tabs);
+            const at = order.indexOf(tab);
+            const next = e.key === 'Home' ? 0 : e.key === 'End' ? order.length - 1 : (at + (e.key === 'ArrowRight' ? 1 : -1) + order.length) % order.length;
             e.preventDefault();
-            tabs[next]?.focus();
-            tabs[next]?.click();
+            const id = order[next]!;
+            // Every tab is in the row already, so the next one can take
+            // focus now; the state follows and keeps it there.
+            e.currentTarget.querySelector<HTMLButtonElement>(`button[role="tab"][data-tab="${id}"]`)?.focus();
+            setTab(id);
           }}
         >
-          {/* The same tabs, grouped by what they answer. The labels
-              are the ones the tabs always had; the groups are headings, not
-              buttons, so the arrows above still walk only the tabs. */}
-          {DOCK_GROUPS.map((g) => (
-            <span key={g.key} className="cv-tab-group" data-group={g.key}>
-              <span className="cv-tab-group-name" aria-hidden="true">{t(`dock.group.${g.key}`)}</span>
-              {g.tabs.map((id) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === id}
-                  tabIndex={tab === id ? 0 : -1}
-                  className={tab === id ? 'is-active' : ''}
-                  onClick={() => setTab(id)}
-                >
-                  {label(id)}
-                </button>
-              ))}
-            </span>
-          ))}
+          {/* The same tabs, grouped by what they answer. The group the rail
+              has chosen comes first and in full; the rest follow a rule,
+              smaller, so every tab is still one click away. The group names
+              are read, not seen. */}
+          {DOCK_GROUPS.map((g) => {
+            const current = g.tabs.includes(tab);
+            return (
+              <span key={g.key} className={`cv-tab-group${current ? ' is-current' : ''}`} data-group={g.key} role="group" aria-label={t(`dock.group.${g.key}`)}>
+                <span className="cv-tab-group-name cv-sr">{t(`dock.group.${g.key}`)}</span>
+                {g.tabs.map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    data-tab={id}
+                    aria-selected={tab === id}
+                    tabIndex={tab === id ? 0 : -1}
+                    className={tab === id ? 'is-active' : ''}
+                    onClick={() => setTab(id)}
+                  >
+                    {label(id)}
+                  </button>
+                ))}
+              </span>
+            );
+          })}
         </div>
-
-        {tab !== 'discover' && tab !== 'crawl' && tab !== 'collect' && tab !== 'backup' && tab !== 'path' && tab !== 'trace' && tab !== 'tracert' && tab !== 'whereis' && tab !== 'ssh' && (
-          <>
-            <input
-              className="cv-input cv-panel-search"
-            aria-label="Filter the list"
-              placeholder="Filter by name, IP, type, tag or status"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  jumpToFirst();
-                }
-              }}
-            />
-            <label className="cv-check cv-check-inline">
-              <input
-                type="checkbox"
-                checked={problemsOnly}
-                onChange={(e) => setProblemsOnly(e.target.checked)}
-              />
-              Warnings and down only
-            </label>
-          </>
-        )}
-        {/* The dock down the right for a wide table, and back. */}
-        <button
-          type="button"
-          className="cv-btn cv-btn-small"
-          data-action="dock-side"
-          title={dockSide === 'right' ? t('dock.dockBelowHint') : t('dock.popOutHint')}
-          onClick={() => useStore.getState().setSettings({ dockSide: dockSide === 'right' ? 'bottom' : 'right' })}
-        >
-          {dockSide === 'right' ? t('dock.dockBelow') : t('dock.popOut')}
-        </button>
-        <button type="button" className="cv-btn cv-btn-small" onClick={() => setOpen(false)}>
-          Hide
-        </button>
+        <span className="cv-panel-tools">
+          {/* The dock taking the canvas's room, down the right for a wide table, and away. */}
+          {dockSide === 'bottom' && (
+            <IconButton icon="maximise" label={dockMax ? t('dock.restore') : t('dock.maximise')} pressed={dockMax} region="dock-max"
+              onClick={() => useStore.getState().setDockMax(!dockMax)} />
+          )}
+          <button
+            type="button"
+            className="cv-icon-btn"
+            data-action="dock-side"
+            title={dockSide === 'right' ? t('dock.dockBelowHint') : t('dock.popOutHint')}
+            onClick={() => useStore.getState().setSettings({ dockSide: dockSide === 'right' ? 'bottom' : 'right' })}
+          >
+            <ChromeIcon name="pop-out" />
+            <span className="cv-sr">{dockSide === 'right' ? t('dock.dockBelow') : t('dock.popOut')}</span>
+          </button>
+          <IconButton icon="hide" label={t('dock.hide')} region="dock-hide" onClick={() => setOpen(false)} />
+        </span>
       </div>
+
+      {listTab && (
+        <div className="cv-panel-head">
+          <input
+            className="cv-input cv-panel-search"
+            aria-label="Filter the list"
+            placeholder="Filter by name, IP, type, tag or status"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                jumpToFirst();
+              }
+            }}
+          />
+          <div className="cv-seg cv-seg-small cv-panel-seg" role="group" aria-label={t('dock.filterLabel')}>
+            {(['all', 'problems', 'down'] as const).map((p) => (
+              <button key={p} type="button" className={problems === p ? 'is-on' : ''} aria-pressed={problems === p} onClick={() => setProblems(p)}>
+                {t(`dock.filter.${p}`)}
+              </button>
+            ))}
+          </div>
+          <span className="cv-panel-count">{t('dock.ofCount', { shown, total })}</span>
+        </div>
+      )}
+
+      {/* When anything is down, a strip says so on every tab, and leads to it. */}
+      {down > 0 && !(tab === 'objects' && problemsOnly) && (
+        <div className="cv-dock-problem" role="status">
+          <ChromeIcon name="alert" />
+          <span>{warning > 0 ? t('dock.problemsBoth', { down, warning }) : t('dock.problemsDown', { down })}</span>
+          <button type="button" className="cv-link-btn" onClick={() => { setTab('objects'); setProblems('problems'); }}>{t('dock.show')}</button>
+        </div>
+      )}
 
       {statusMessage && <div className="cv-panel-message" role="status" aria-live="polite">{statusMessage}</div>}
 
@@ -595,9 +683,21 @@ export function StatusPanel() {
  */
 function DockStrip({ compact = false }: { compact?: boolean }) {
   // The clock moved to the top bar, where it is in sight on every screen;
-  // the strip is the jobs' line.
+  // the strip is the status line: what is selected, and the jobs.
+  const selectedId = useStore((s) => s.selectedNodeId);
+  const pg = useStore((s) => activePage(s.doc));
+  const node = selectedId ? pg.nodes.find((n) => n.id === selectedId) : undefined;
+  const links = node ? pg.edges.filter((e) => e.source === node.id || e.target === node.id).length : 0;
+  const address = node && node.type === 'device' ? (node.data as { addresses?: { address: string; isPrimary?: boolean }[] }).addresses?.find((a) => a.isPrimary)?.address ?? (node.data as { addresses?: { address: string }[] }).addresses?.[0]?.address : undefined;
   return (
     <div className={`cv-dock-strip${compact ? ' is-compact' : ''}`} data-region="dock-strip">
+      {!compact && node && (
+        <span className="cv-strip-selection" data-region="strip-selection">
+          <span className="cv-strip-name">{(node.data as { label?: string; title?: string }).label ?? (node.data as { title?: string }).title ?? ''}</span>
+          {address && <span className="cv-mono cv-strip-addr">{address}</span>}
+          <span className="cv-strip-links">{t('plural.link', { count: links })}</span>
+        </span>
+      )}
       <JobsBar compact />
     </div>
   );

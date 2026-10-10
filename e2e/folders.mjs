@@ -142,7 +142,7 @@ check("a project created inside a folder is filed in that folder",
 check("and the screen comes back to the folder it was made in", (await heading()) === "Customer A", await heading());
 
 // ------------------------------------------------------- moving by drag
-await projectRow("Site 1 cutover").dragTo(folderRow("Site 1"));
+await projectRow("Site 1 cutover").locator(".cv-project-title").dragTo(folderRow("Site 1"));
 await page.waitForTimeout(300);
 check("dragging a project onto a sub-folder moves it there", !(await names()).includes("Site 1 cutover"), JSON.stringify(await names()));
 await folderRow("Site 1").locator(".cv-pfolder-open").click();
@@ -150,7 +150,7 @@ await page.waitForTimeout(250);
 const crumbs = await region.locator(".cv-pfolder-crumbs").innerText();
 check("two levels down, the path says so", /All projects\s*›\s*Customer A\s*›\s*Site 1/.test(crumbs), crumbs);
 check("and the dragged project is there", JSON.stringify(await names()) === JSON.stringify(["Site 1 cutover"]), JSON.stringify(await names()));
-await projectRow("Site 1 cutover").dragTo(region.locator(".cv-pfolder-crumb", { hasText: "All projects" }));
+await projectRow("Site 1 cutover").locator(".cv-project-title").dragTo(region.locator(".cv-pfolder-crumb", { hasText: "All projects" }));
 await page.waitForTimeout(300);
 check("dragging onto a crumb moves it up to that level", (await names()).length === 0);
 check("an empty folder says what to do", /This folder is empty/.test(await region.innerText()));

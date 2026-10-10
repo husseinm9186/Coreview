@@ -462,7 +462,10 @@ interface Store {
   /** Which of the dock's tabs is showing — held here so the rail
    *  can name it and open it, not only the panel's own strip. */
   dockTab: DockTab;
+  /** The dock taking the canvas's room, until it is restored. */
+  dockMax: boolean;
   setDockTab: (tab: DockTab) => void;
+  setDockMax: (on: boolean) => void;
   /** Which of the device inspector's tabs is showing. Kept across a
    *  change of selection, so editing the identities of several devices does
    *  not mean choosing Identity again for each. */
@@ -1353,6 +1356,7 @@ export const useStore = create<Store>((set, get) => ({
   collectionRun: { busy: false, live: [], finished: null },
   panelOpen: viewPref('panelOpen'),
   dockTab: 'objects',
+  dockMax: false,
   inspectorTab: 'status',
   backupHandover: null,
   discoverAdvanced: false,
@@ -1718,6 +1722,10 @@ export const useStore = create<Store>((set, get) => ({
     set({ whereIsRequest: query });
     if (query !== null) get().requestPanelTab('whereis');
   },
+  setDockMax(on) {
+    set({ dockMax: on });
+  },
+
   setDockTab(tab) {
     set({ dockTab: tab });
   },

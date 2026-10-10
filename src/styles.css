@@ -895,6 +895,7 @@ details.cv-discover-advanced[open] > summary::after { content: '▾'; }
 /* ------------------------------------------------------------------ panel */
 
 .cv-panel {
+  position: relative;
   background: var(--chrome); border-top: 1px solid var(--chrome-edge);
   display: flex; flex-direction: column;
   /* Capped against the viewport as well as fixed, so a short window keeps a
@@ -905,6 +906,31 @@ details.cv-discover-advanced[open] > summary::after { content: '▾'; }
    not fit the height the status tables need. Capped against the viewport so it
    still leaves a usable canvas at the 700px minimum window height. */
 .cv-panel.is-tall { height: min(35.38461538rem, 55vh); }
+/* The dock with the canvas's room: the body gives it everything. */
+.cv-body.is-dock-max > .cv-main { display: none; }
+.cv-body.is-dock-max > .cv-panel, .cv-body.is-dock-max > .cv-panel.is-tall { height: auto; flex: 1; min-height: 0; }
+/* The grip along the dock's top edge: a bar that shows where to drag. */
+.cv-dock-grip { position: absolute; top: -3px; left: 0; right: 0; height: 7px; cursor: row-resize; z-index: 4; }
+.cv-dock-grip::after { content: ""; position: absolute; left: 50%; top: 2px; width: 3.69230769rem; height: 3px; border-radius: 2px; background: var(--edge-strong); transform: translateX(-50%); }
+.cv-dock-grip:hover::after { background: var(--accent); }
+/* The tab row: 32 px, the tools at its right; the head below it holds the
+   filter, the segments and the count for the lists that have them. */
+.cv-panel-tabs { display: flex; align-items: center; gap: 0.76923077rem; height: 2.46153846rem; padding: 0 0.76923077rem; border-bottom: 1px solid var(--line); }
+.cv-panel-tabs > .cv-tabs { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; height: 100%; }
+.cv-panel-tools { display: inline-flex; align-items: center; gap: 0; flex: none; }
+.cv-panel-tools .cv-icon-btn { min-width: 1.84615385rem; height: 1.84615385rem; }
+.cv-panel-seg button { height: 1.84615385rem; }
+.cv-panel-count { color: var(--text-dim); font-size: var(--text-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Something is down: said at the top of the dock, with the way to it. */
+.cv-dock-problem { display: flex; align-items: center; gap: 0.61538462rem; min-height: 2.30769231rem; padding: 0 0.92307692rem; background: var(--down-soft); border-left: 3px solid var(--down); border-bottom: 1px solid var(--line); font-size: var(--text-sm); color: var(--text); }
+.cv-dock-problem svg { color: var(--down); flex: none; }
+.cv-link-btn { background: none; border: 0; color: var(--accent); font: inherit; cursor: pointer; padding: 0; }
+.cv-link-btn:hover { text-decoration: underline; }
+.cv-dock-problem .cv-link-btn { margin-left: auto; }
+/* The strip's selection summary. */
+.cv-strip-selection { display: inline-flex; align-items: center; gap: 0.61538462rem; color: var(--text-dim); white-space: nowrap; overflow: hidden; }
+.cv-strip-name { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.cv-strip-addr { font-size: var(--text-sm); }
 /* The toolbar wraps rather than pushing its own buttons off the edge. */
 .cv-topbar { flex-wrap: wrap; row-gap: 0.46153846rem; }
 .cv-panel.is-collapsed {
@@ -913,26 +939,32 @@ details.cv-discover-advanced[open] > summary::after { content: '▾'; }
 .cv-panel-summary { display: flex; gap: 0.92307692rem; font-family: var(--mono); font-size: var(--text-sm); }
 .cv-panel-head {
   display: flex; flex-wrap: wrap; align-items: center; gap: 0.46153846rem 0.76923077rem;
-  padding: 0.46153846rem 0.76923077rem; border-bottom: 1px solid var(--line);
+  min-height: 2.46153846rem; padding: 0.23076923rem 0.76923077rem; border-bottom: 1px solid var(--line);
 }
-.cv-panel-search { max-width: 24.61538462rem; }
+.cv-panel-search { max-width: 20rem; height: 1.84615385rem; padding-top: 0; padding-bottom: 0; }
 .cv-panel-message { padding: 0.46153846rem 0.92307692rem; background: var(--panel-2); color: var(--text-dim); font-size: var(--text-sm); }
 .cv-panel-body { flex: 1; overflow: auto; }
-.cv-tabs { display: flex; flex-wrap: wrap; gap: 0.30769231rem; align-items: center; }
-/* A group is its heading and its tabs, kept together when the row wraps. */
-.cv-tab-group { display: inline-flex; align-items: center; gap: 0.30769231rem; }
-.cv-tab-group + .cv-tab-group { margin-left: 0.61538462rem; }
-.cv-tab-group-name { color: var(--text-dim); font-size: var(--text-xs); letter-spacing: 0.06em; text-transform: uppercase; margin-right: 0.15384615rem; font-weight: 600;}
+.cv-tabs { display: flex; flex-wrap: wrap; gap: 0.15384615rem; align-items: stretch; }
+/* The groups keep their order in the DOM, which is the order the arrow
+   keys walk; the one the rail has chosen is drawn first and in full, the
+   rest after a rule, smaller. */
+.cv-tab-group { display: inline-flex; align-items: stretch; gap: 0.15384615rem; order: 0; }
+.cv-tab-group.is-current { order: -2; }
+.cv-panel-tabs > .cv-tabs::before { content: ""; order: -1; align-self: center; width: 1px; height: 1.07692308rem; background: var(--line); margin: 0 0.61538462rem; }
+.cv-tab-group:not(.is-current) button { color: var(--text-faint); font-size: var(--text-sm); padding: 0 0.30769231rem; }
+.cv-tab-group:not(.is-current) button:hover { color: var(--text-dim); }
 /* The strip along the dock's bottom: the jobs, and the clock on the right. */
 .cv-dock-strip { display: flex; align-items: center; gap: 0.92307692rem; padding: 0.23076923rem 0.76923077rem; border-top: 1px solid var(--line); background: var(--panel-2); font-size: var(--text-sm); min-height: 1.84615385rem; }
 .cv-dock-strip > .cv-jobs { flex: 1; }
 .cv-dock-strip.is-compact { border-top: 0; background: transparent; padding: 0; margin-left: auto; min-height: 0; }
+/* A tab is a word with an accent underline when it is the one open. */
 .cv-tabs button {
-  white-space: nowrap;
-  background: none; border: 1px solid transparent; color: var(--text-dim);
-  padding: 0.30769231rem 0.76923077rem; border-radius: var(--radius); font-size: var(--text-md); font-family: inherit; cursor: pointer;
+  white-space: nowrap; display: inline-flex; align-items: center;
+  background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text-dim);
+  padding: 0 0.46153846rem; min-height: 2.15384615rem; font-size: var(--text-md); font-weight: 500; font-family: inherit; cursor: pointer;
 }
-.cv-tabs button.is-active { background: var(--panel-2); border-color: var(--line-strong); color: var(--text); }
+.cv-tabs button:hover { color: var(--text); }
+.cv-tabs button.is-active { color: var(--text); border-bottom-color: var(--accent); }
 
 .cv-table { width: 100%; border-collapse: collapse; font-size: var(--text-md); }
 /* A column heading that sorts. Looks like the heading it replaces. */
