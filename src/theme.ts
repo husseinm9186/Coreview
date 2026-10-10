@@ -18,10 +18,13 @@ export type Ground = 'dark' | 'light';
 export const STATUS_COLOR_DARK: Record<HealthStatus, string> = {
   // Lifted from #5b6b7c and #3d4a58, which read as smudges rather than as
   // colours once a diagram had more than a few of them on it.
-  unknown: '#7c8fa3',
-  healthy: '#2fbf6b',
-  warning: '#e8a33d',
-  down: '#e4564a',
+  // The same four values as styles.css's --healthy/--warning/--down/--unknown,
+  // so a chip in the chrome and a stroke on the canvas agree; down is the
+  // brightest of the four, which is the order an eye needs.
+  unknown: '#8a9bb0',
+  healthy: '#35c26f',
+  warning: '#f2b544',
+  down: '#ff6259',
   disabled: '#55677a',
   maintenance: '#8b7ff0',
 };
@@ -30,11 +33,13 @@ export const STATUS_COLOR_LIGHT: Record<HealthStatus, string> = {
   // Full strength, not the dark palette dimmed. Each has to read as itself on
   // white at a 1.5px stroke, which is how thin a link actually is — the first
   // attempt used lighter versions of these and every diagram looked faded.
+  // Darkened until each holds on the warm desk as well as on the page: a
+  // label stack that runs off the page is drawn on the desk.
   unknown: '#44576e',
-  healthy: '#0a8a3f',
-  warning: '#b45c00',
-  down: '#c81e1e',
-  disabled: '#7d8ea1',
+  healthy: '#06693a',
+  warning: '#8f4500',
+  down: '#bf1d1d',
+  disabled: '#64768a',
   maintenance: '#5323b8',
 };
 
@@ -58,12 +63,14 @@ export interface CanvasPalette {
 }
 
 export const CANVAS_DARK: CanvasPalette = {
-  grid: '#1d2733',
-  minimapNode: '#48607a',
-  minimapNote: '#37475a',
-  minimapMask: 'rgba(8,12,17,0.75)',
+  grid: '#1f2733',
+  // At full strength: an unprobed node is information, and at 70 % it
+  // fell under the 3:1 a mark needs on the page.
+  minimapNode: '#5a6b80',
+  minimapNote: '#3a4757',
+  minimapMask: 'rgba(8,10,13,0.55)',
   selection: '#5eb8ff',
-  labelBackground: 'rgba(10, 14, 19, 0.92)',
+  labelBackground: 'rgba(12, 16, 22, 0.92)',
   neutralNode: '#8fa2b5',
 };
 

@@ -267,16 +267,16 @@ const dragNode = async (selector, dx, dy, witnessSelector) => {
     };
     return { healthy: at("e-healthy"), down: at("e-down") };
   });
-  // rgb(47, 191, 107) is #2fbf6b; rgb(228, 86, 74) is #e4564a.
+  // rgb(53, 194, 111) is #35c26f; rgb(255, 98, 89) is #ff6259 (theme.ts STATUS_COLOR_DARK).
   check(
     "a healthy link is drawn green and solid",
-    stroke.healthy?.stroke === "rgb(47, 191, 107)" &&
+    stroke.healthy?.stroke === "rgb(53, 194, 111)" &&
       (stroke.healthy?.dash === "none" || !stroke.healthy?.dash),
     JSON.stringify(stroke.healthy),
   );
   check(
     "a failed link is drawn red and dashed",
-    stroke.down?.stroke === "rgb(228, 86, 74)" && /\d/.test(stroke.down?.dash ?? ""),
+    stroke.down?.stroke === "rgb(255, 98, 89)" && /\d/.test(stroke.down?.dash ?? ""),
     JSON.stringify(stroke.down),
   );
 
@@ -958,7 +958,7 @@ const dragNode = async (selector, dx, dy, witnessSelector) => {
   const healthyStroke = await strokeOfFirstEdge();
   const dotsBefore = await dotFills();
   check("a healthy link is drawn in its health colour",
-    /rgb\(47, 191, 107\)|#2fbf6b/i.test(healthyStroke), healthyStroke);
+    /rgb\(53, 194, 111\)|#35c26f/i.test(healthyStroke), healthyStroke);
 
   // Clicked on the line itself. The centre of an edge's bounding box is
   // usually empty space, and another edge's invisible hit area often sits
@@ -995,7 +995,7 @@ const dragNode = async (selector, dx, dy, witnessSelector) => {
     await page.waitForTimeout(350);
     const restored = await strokeOfSelected();
     check("switching back restores the health colour",
-      /rgb\(47, 191, 107\)|rgb\(228, 86, 74\)/i.test(restored), restored);
+      /rgb\(53, 194, 111\)|rgb\(255, 98, 89\)/i.test(restored), restored);
   }
 }
 
@@ -1391,9 +1391,10 @@ await dismissRecovery();
   };
 
   // Kept well clear of the bottom panel, which overlaps the canvas and will
-  // swallow a pointer-down aimed at a device placed under it.
-  check("three devices can be placed", (await drop({ x: 200, y: 470 }))
-    && (await drop({ x: 460, y: 470 })) && (await drop({ x: 760, y: 470 })));
+  // swallow a pointer-down aimed at a device placed under it — and of the
+  // minimap at the pane's bottom-right, which swallows one the same way.
+  check("three devices can be placed", (await drop({ x: 200, y: 420 }))
+    && (await drop({ x: 460, y: 420 })) && (await drop({ x: 760, y: 420 })));
 
   // A freshly dropped device is selected, and a selected device is not a
   // target to line up against — it may be moving too.
@@ -2066,11 +2067,11 @@ await dismissRecovery();
     page.locator(sel).first().evaluate((el, p) => getComputedStyle(el)[p], prop);
 
   check("the desk is the warm light brown that was asked for",
-    (await read(".react-flow__pane", "backgroundColor")) === "rgb(233, 226, 211)",
+    (await read(".react-flow__pane", "backgroundColor")) === "rgb(229, 220, 203)",
     await read(".react-flow__pane", "backgroundColor"));
   check("the page is white and has an edge",
     (await read(".cv-page", "backgroundColor")) === "rgb(255, 255, 255)" &&
-      (await read(".cv-page", "borderTopColor")) === "rgb(208, 199, 179)",
+      (await read(".cv-page", "borderTopColor")) === "rgb(201, 191, 169)",
     `${await read(".cv-page", "backgroundColor")} / ${await read(".cv-page", "borderTopColor")}`);
   check("the grid is inside the page, not on the desk",
     (await page.locator(".cv-page .cv-page-grid").count()) === 1 &&
@@ -2080,7 +2081,7 @@ await dismissRecovery();
   // Had the dark ground green; Made the chrome the
   // Graphite greys. What these checks are about is unchanged — the chrome
   // does not follow the ground — only the colour it is.
-  const darkChrome = "rgb(22, 27, 34)";
+  const darkChrome = "rgb(21, 26, 33)";
   check("the top bar stays dark chrome on the white ground",
     (await read(".cv-topbar", "backgroundColor")) === darkChrome,
     await read(".cv-topbar", "backgroundColor"));
@@ -2095,7 +2096,7 @@ await dismissRecovery();
   await toggle.click();
   await page.waitForTimeout(600);
   check("the dark ground moves the same tokens",
-    (await read(".react-flow__pane", "backgroundColor")) === "rgb(11, 14, 18)" &&
+    (await read(".react-flow__pane", "backgroundColor")) === "rgb(8, 10, 13)" &&
       (await page.locator(".cv-page").count()) === 1,
     await read(".react-flow__pane", "backgroundColor"));
   check("and the chrome never moved at all",

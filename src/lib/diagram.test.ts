@@ -4,6 +4,7 @@ import { fit, renderDiagramSvg } from './diagram';
 import type { TopoEdge, TopoNode } from '../state/store';
 import type { HealthStatus, ProjectMeta } from '../types/domain';
 import { SHAPE_DEVICE_TYPES } from '../types/domain';
+import { STATUS_COLOR_DARK, STATUS_COLOR_LIGHT } from '../theme';
 
 const meta: ProjectMeta = {
   id: 'p1', name: 'Branch cutover', customer: 'Acme', site: 'HQ', ticket: 'CHG-1',
@@ -25,7 +26,7 @@ const link: TopoEdge = {
   id: 'e1', source: 'n1', target: 'n2', sourceHandle: 'r', targetHandle: 'l',
   data: {
     sourcePortLabel: 'Gi1/0/1', targetPortLabel: 'Gi0/1', label: 'Uplink',
-    pathType: 'smoothstep', direction: 'forward', width: 2, color: '#2fbf6b',
+    pathType: 'smoothstep', direction: 'forward', width: 2, color: STATUS_COLOR_DARK.healthy,
     enabled: true, maintenance: false, healthRule: { type: 'both-endpoints' },
   },
 } as TopoEdge;
@@ -122,7 +123,7 @@ describe('renderDiagramSvg', () => {
   it('carries status as a glyph as well as a colour', () => {
     const down = render([device('n1', 0, 0)], [], 'down');
     expect(down).toContain('✕');
-    expect(down).toContain('#e4564a');
+    expect(down).toContain(STATUS_COLOR_DARK.down);
     expect(down).toContain('Down');
   });
 
@@ -335,10 +336,11 @@ describe('the ground the sheet is printed on', () => {
   it('uses the colours chosen for that ground, not the other one', () => {
     const light = sheet('light');
     const dark = sheet('dark');
-    // Healthy is #0a8a3f on white and #2fbf6b on black.
-    expect(light).toContain('#0a8a3f');
-    expect(light).not.toContain('#2fbf6b');
-    expect(dark).toContain('#2fbf6b');
+    // Healthy has one value on white and another on black; each sheet
+    // carries its own and not the other's.
+    expect(light).toContain(STATUS_COLOR_LIGHT.healthy);
+    expect(light).not.toContain(STATUS_COLOR_DARK.healthy);
+    expect(dark).toContain(STATUS_COLOR_DARK.healthy);
   });
 
   it('writes text in ink that reads on the paper', () => {
