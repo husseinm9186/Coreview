@@ -12,6 +12,7 @@ import { useStore } from '../state/store';
 import { layersOf, STANDARD_LAYER_NAMES } from '../lib/layers';
 import { activePage } from '../lib/pages';
 import { t } from '../i18n';
+import { ChromeIcon } from './chromeIcons';
 
 export function Layers() {
   const canvas = useStore((s) => activePage(s.doc).canvas);
@@ -46,7 +47,7 @@ export function Layers() {
               aria-label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
               onClick={() => setLayer(layer.id, { visible: !layer.visible })}
             >
-              {layer.visible ? '◉' : '○'}
+              <ChromeIcon name={layer.visible ? 'eye' : 'eye-off'} size={14} />
             </button>
             <input
               className="cv-layer-name"
@@ -61,7 +62,7 @@ export function Layers() {
               aria-label={layer.locked ? `Unlock ${layer.name}` : `Lock ${layer.name}`}
               onClick={() => setLayer(layer.id, { locked: !layer.locked })}
             >
-              {layer.locked ? '🔒' : '🔓'}
+              <ChromeIcon name={layer.locked ? 'lock' : 'unlock'} size={14} />
             </button>
             <button
               type="button"
@@ -71,7 +72,7 @@ export function Layers() {
               aria-pressed={layer.print !== false}
               onClick={() => setLayer(layer.id, { print: layer.print === false })}
             >
-              ⎙
+              <ChromeIcon name="print" size={14} />
             </button>
             <button
               type="button"

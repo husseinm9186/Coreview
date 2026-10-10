@@ -8,6 +8,7 @@ import { guideProgress, newlyDone } from '../lib/guide';
 import { activePage } from '../lib/pages';
 import { useStore } from '../state/store';
 import { t } from '../i18n';
+import { ChromeIcon } from './chromeIcons';
 
 export function GuidePanel() {
   const guide = useStore((s) => s.doc.guide);
@@ -39,7 +40,7 @@ export function GuidePanel() {
       <ol>
         {steps.map(({ step, done }) => (
           <li key={step.id} className={done ? 'is-done' : next?.step.id === step.id ? 'is-next' : ''} aria-current={next?.step.id === step.id ? 'step' : undefined}>
-            <span className="cv-tour-mark" aria-hidden="true">{done ? '✓' : '•'}</span>
+            <span className="cv-tour-mark" aria-hidden="true">{done ? <ChromeIcon name="check" size={12} /> : '•'}</span>
             <span>
               <span className="cv-tour-title">{step.title}</span>
               {next?.step.id === step.id && <span className="cv-tour-detail">{step.detail}</span>}

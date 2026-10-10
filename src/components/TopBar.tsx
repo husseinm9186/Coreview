@@ -713,7 +713,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           role="status"
           aria-live="polite"
         >
-          {save.tone === 'acknowledged' && <span className="cv-save-tick" aria-hidden="true">✓</span>}
+          {save.tone === 'acknowledged' && <span className="cv-save-tick" aria-hidden="true"><ChromeIcon name="check" size={12} /></span>}
           {save.at === null ? save.label : `${save.label} ${new Date(save.at).toLocaleTimeString()}`}
         </span>
         {/* The document's own verbs, beside its save state. */}
@@ -789,7 +789,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
             {artwork.devices > 0 && (
               <div className="cv-dropdown-field cv-export-artwork" onClick={(e) => e.stopPropagation()}>
                 <p className="cv-help" role="note">
-                  ⚠ {t('plural.deviceUses', { count: artwork.devices })} imported stencils —
+                  <ChromeIcon name="alert" size={12} /> {t('plural.deviceUses', { count: artwork.devices })} imported stencils —
                   exports may include third-party artwork.
                   {artwork.licences.length > 0 && <> Licences: {artwork.licences.join('; ')}.</>}
                   {artwork.undescribed > 0 && <> {artwork.undescribed} with no licence statement.</>}

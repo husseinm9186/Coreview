@@ -18,6 +18,7 @@ import { useStore } from '../state/store';
 import type { DeviceNodeData } from '../types/domain';
 import { DEVICE_LABEL } from './icons';
 import { t } from '../i18n';
+import { ChromeIcon } from './chromeIcons';
 
 export function CanvasFilterMenu() {
   const nodes = useStore((s) => activePage(s.doc).nodes);
@@ -53,7 +54,7 @@ export function CanvasFilterMenu() {
   return (
     <details className="cv-dropdown cv-filter-menu">
       <summary className={`cv-btn${active ? ' is-on' : ''}`} aria-label={active ? 'Filter the canvas (on)' : 'Filter the canvas'}>
-        Filter{hidden > 0 ? ` — ${hidden} hidden` : active ? ' ●' : ''}
+        <ChromeIcon name="filter" />{hidden > 0 ? ` Filter — ${hidden} hidden` : active ? ' Filter · on' : ' Filter'}
       </summary>
       <div className="cv-dropdown-menu cv-filter-fields">
         <p className="cv-help">{t('canvasFilterMenu.whatDoesNotMatch')}</p>

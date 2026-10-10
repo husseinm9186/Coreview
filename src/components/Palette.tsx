@@ -7,6 +7,7 @@ import { DEVICE_LABEL, ICONS, PALETTE_GROUPS } from './icons';
 import { BOUNDARIES, BOUNDARY_KINDS } from '../lib/boundaries';
 import type { DeviceType } from '../types/domain';
 import { t } from '../i18n';
+import { ChromeIcon } from './chromeIcons';
 
 export function Palette() {
   const ground = useStore((s) => s.settings.ground);
@@ -37,7 +38,7 @@ export function Palette() {
         <h3>{t('palette.annotation')}</h3>
         <div className="cv-palette-grid">
           <button type="button" className="cv-palette-item" draggable onDragStart={(e) => drag(e, 'note')}>
-            <span className="cv-palette-glyph">▤</span>
+            <span className="cv-palette-glyph"><ChromeIcon name="note" size={20} /></span>
             Note
           </button>
           <button
@@ -46,7 +47,7 @@ export function Palette() {
             draggable
             onDragStart={(e) => drag(e, 'change-note')}
           >
-            <span className="cv-palette-glyph">✎</span>
+            <span className="cv-palette-glyph"><ChromeIcon name="pen" size={20} /></span>
             {t('palette.changeNote')}
           </button>
           <button
@@ -55,7 +56,7 @@ export function Palette() {
             draggable
             onDragStart={(e) => drag(e, 'sticky-note')}
           >
-            <span className="cv-palette-glyph">▣</span>
+            <span className="cv-palette-glyph"><ChromeIcon name="sticky" size={20} /></span>
             {t('palette.stickyNote')}
           </button>
         </div>

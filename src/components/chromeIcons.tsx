@@ -2,7 +2,8 @@
  * The chrome's own glyphs: one set, on a 16 px grid, 1.5 px strokes with
  * round caps, drawn in `currentColor` so a button's colour is the icon's.
  *
- * Before this the chrome borrowed Unicode symbols (✎ ▤ ▣ ⌕ ⋯ ▸) whose
+ * Before this the chrome borrowed Unicode symbols — pencils, ellipses,
+ * triangles, ticks — whose
  * weight and baseline depend on whichever font the machine falls back to,
  * so the same button looked different on every desktop. These do not. The
  * device glyphs on the canvas are a different set and live in icons.tsx.
@@ -14,7 +15,7 @@ export type ChromeIconName =
   | 'chevron-down' | 'chevron-right' | 'chevron-up' | 'check' | 'x' | 'alert'
   | 'note' | 'sticky' | 'pop-out' | 'maximise' | 'hide' | 'play' | 'stop'
   | 'plus' | 'minus' | 'lock' | 'pin' | 'terminal' | 'backup' | 'find'
-  | 'import' | 'export' | 'eye' | 'eye-off' | 'menu' | 'settings' | 'copy';
+  | 'import' | 'export' | 'eye' | 'eye-off' | 'menu' | 'settings' | 'copy' | 'unlock' | 'link' | 'comment' | 'print';
 
 /** Each glyph as the children of a 16×16 SVG. A filled part says so. */
 const GLYPHS: Record<ChromeIconName, JSX.Element> = {
@@ -63,6 +64,10 @@ const GLYPHS: Record<ChromeIconName, JSX.Element> = {
   'eye-off': <><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" /><path d="m3 3 10 10" /></>,
   menu: <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />,
   settings: <><circle cx="8" cy="8" r="2" /><path d="M8 2v1.5M8 12.5V14M2 8h1.5M12.5 8H14M3.8 3.8l1 1M11.2 11.2l1 1M3.8 12.2l1-1M11.2 4.8l1-1" /></>,
+  unlock: <><rect x="3" y="7" width="10" height="7" rx="1" /><path d="M5 7V5a3 3 0 0 1 5.8-1" /></>,
+  link: <path d="M6.5 9.5a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-1 1M9.5 6.5a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l1-1" />,
+  comment: <path d="M2.5 3.5h11v7h-6l-3 3v-3h-2z" />,
+  print: <><path d="M4.5 6V2.5h7V6M4.5 11H3V7h10v4h-1.5" /><rect x="4.5" y="9.5" width="7" height="4" rx="0.5" /></>,
   copy: <><rect x="5.5" y="5.5" width="8" height="8" rx="1" /><path d="M10.5 5.5V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" /></>,
 };
 

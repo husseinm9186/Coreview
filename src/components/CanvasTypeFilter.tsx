@@ -6,6 +6,7 @@ import { useStore } from '../state/store';
 import type { DeviceNodeData, DeviceType } from '../types/domain';
 import { DEVICE_LABEL } from './icons';
 import { t } from '../i18n';
+import { ChromeIcon } from './chromeIcons';
 
 /**
  * Filter the drawing by what a device is, from the canvas itself.
@@ -77,7 +78,7 @@ export function CanvasTypeFilter() {
         aria-label={chosen.length > 0 ? `Filter by type (${hidden} hidden)` : 'Filter by type'}
         title={t('canvasTypeFilter.showOnlyTheKinds')}
       >
-        ⚟ {chosen.length > 0 ? `${hidden} hidden` : 'Types'}
+        <ChromeIcon name="types" />{chosen.length > 0 ? ` ${hidden} hidden` : ' Types'}
       </summary>
       <div className="cv-dropdown-menu cv-type-filter-menu">
         {counts.map(([t, count]) => (

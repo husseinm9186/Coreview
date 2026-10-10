@@ -14,6 +14,7 @@ import { ContextMenu, type MenuItem } from './ContextMenu';
 import { PageNavigator } from './PageNavigator';
 import { t } from '../i18n';
 
+import { ChromeIcon } from './chromeIcons';
 export function PageTabs() {
   // The pages and which is active, not the whole document.
   const pages = useStore((s) => s.doc.pages);
@@ -60,7 +61,7 @@ export function PageTabs() {
         aria-expanded={navOpen}
         onClick={() => setNavOpen((o) => !o)}
       >
-        ☰
+        <ChromeIcon name="menu" size={14} />
       </button>
       {navOpen && <PageNavigator onClose={() => setNavOpen(false)} />}
       {pages.map((p, i) => (

@@ -9,7 +9,7 @@ const GROUPS: [string, [string, string][]][] = [
     ['F', 'Fit the sheet in the window'],
     ['Shift+F', 'Zoom to the selection'],
     ['Alt+1 … 9', 'Go back to a saved view (canvas menu: Save this view)'],
-    ['Ctrl+PageUp / PageDown', 'Previous or next page (☰ by the page tabs lists them all)'],
+    ['Ctrl+PageUp / PageDown', 'Previous or next page (the menu button by the page tabs lists them all)'],
     ['F5', 'Present: the diagram alone; arrows or Page Up/Down change page, Esc leaves'],
     ['Ctrl+F', 'Find a device'],
     ['?', 'This list'],

@@ -49,6 +49,7 @@ import {
   STATUS_LABEL,
 } from '../../types/domain';
 
+import { ChromeIcon } from '../chromeIcons';
 const CAP_OPTIONS: [string, string][] = [
   ['none', 'Nothing'],
   ['arrow', 'Arrow'],
@@ -1849,7 +1850,7 @@ function ProbeEditor({
     <div className="cv-probe">
       <div className="cv-probe-head">
         <button type="button" className="cv-probe-toggle" onClick={() => setOpen(!open)}>
-          {open ? '▾' : '▸'}
+          <ChromeIcon name={open ? 'chevron-down' : 'chevron-right'} size={12} />
         </button>
         <input
           className="cv-input cv-probe-name"

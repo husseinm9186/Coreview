@@ -181,6 +181,7 @@ export const en = {
   'hostKeySettings.forgetAll': 'Forget all',
   'hostKeySettings.clearSavedHostKeys': 'Clear saved host keys',
   'inkLayer.drawingAndFiltering': 'Drawing and filtering',
+  'ssh.logging': 'logging',
   'inkLayer.clickOrDragOver': 'Click or drag over a stroke to remove it',
   'inkLayer.penWidth': 'Pen width',
   'inkLayer.inkThatIsHidden': 'Ink that is hidden is also left out of exports',

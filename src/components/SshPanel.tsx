@@ -9,6 +9,7 @@ import { Colouriser } from '../lib/colourise';
 import { ipc, type SshEvent } from '../lib/ipc';
 import { formatTime } from '../lib/timeFormat';
 import { useStore, type SshTab } from '../state/store';
+import { ChromeIcon } from './chromeIcons';
 
 /**
  * Open shells, one tab each, with the controls that make one usable
@@ -399,9 +400,9 @@ export function SshPanel() {
               className={tab.id === active ? 'is-active' : ''}
               title={tab.status === 'closed' ? tab.reason : tab.address}
               onClick={() => setActive(tab.id)}>
-              {tab.status === 'closed' ? '○ ' : '● '}
+              <span className={`cv-ssh-dot${tab.status === 'closed' ? ' is-closed' : ''}`} aria-hidden="true" />{' '}
               {tab.label}
-              {tab.logPath ? ' ✎' : ''}
+              {tab.logPath ? <> <ChromeIcon name="pen" size={11} /><span className="cv-sr">{t('ssh.logging')}</span></> : null}
             </button>
             <button type="button" className="cv-ssh-close" aria-label={t('ssh.closeOne', { name: tab.label })}
               onClick={() => {

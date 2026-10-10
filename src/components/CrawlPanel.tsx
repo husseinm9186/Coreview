@@ -43,6 +43,7 @@ import { inferredSwitches, selectAttached, vendorCounts, attachedRows, sortAttac
 import type { DeviceNodeData } from '../types/domain';
 import { activePage } from '../lib/pages';
 
+import { ChromeIcon } from './chromeIcons';
 const CLASS_LABEL: Record<DeviceClassName, string> = {
   router: 'Router',
   switch: 'Switch',
@@ -1541,7 +1542,7 @@ export function CrawlPanel({
                       <th key={key}>
                         <button type="button" className="cv-th-sort" aria-sort={attachedSort.key === key ? (attachedSort.dir === 1 ? 'ascending' : 'descending') : undefined}
                           onClick={() => setAttachedSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : 1 }))}>
-                          {label}{attachedSort.key === key ? (attachedSort.dir === 1 ? ' ▲' : ' ▼') : ''}
+                          {label}{attachedSort.key === key ? <ChromeIcon name={attachedSort.dir === 1 ? 'chevron-up' : 'chevron-down'} size={11} /> : null}
                         </button>
                       </th>
                     ))}

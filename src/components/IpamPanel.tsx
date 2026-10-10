@@ -42,6 +42,7 @@ import type { BulkAction } from '../lib/ipamBulk';
 import { describeBulk, planBulk } from '../lib/ipamBulk';
 import { matchesFilter, parseFilter } from '../lib/ipamFilter';
 import { useStore } from '../state/store';
+import { ChromeIcon } from './chromeIcons';
 
 /** Keys built from a value, so the catalogue check cannot see them. Both
  *  halves are unions, so TypeScript still refuses one that is not in `en.ts`. */
@@ -872,7 +873,7 @@ function SubnetRows({
       <tr className="cv-ipam-subnet">
         <td>
           <button type="button" className="cv-link" aria-expanded={open} onClick={onToggle}>
-            {open ? '▾' : '▸'} {block.cidr}
+            <ChromeIcon name={open ? 'chevron-down' : 'chevron-right'} size={12} /> {block.cidr}
           </button>
         </td>
         <td>

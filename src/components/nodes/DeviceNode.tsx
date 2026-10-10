@@ -16,6 +16,7 @@ import { activePage } from '../../lib/pages';
 import type { DeviceNodeData, HealthStatus, ProbeRuntime } from '../../types/domain';
 import { SHAPE_DEVICE_TYPES, STATUS_GLYPH, STATUS_LABEL } from '../../types/domain';
 import { t } from '../../i18n';
+import { ChromeIcon } from '../chromeIcons';
 
 /** The monitored-objects table, brought to the cursor. While validation is
  *  running, the row for this device's primary probe — last result, round-trip
@@ -381,10 +382,10 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
               <span className="cv-sr">{STATUS_LABEL[status]}</span>
             </span>
           )}
-          {d.locked && <span className="cv-glyph-lock" title={t('deviceNode.locked')} aria-label={t('deviceNode.locked')}>🔒</span>}
+          {d.locked && <span className="cv-glyph-lock" title={t('deviceNode.locked')} aria-label={t('deviceNode.locked')}><ChromeIcon name="lock" size={12} /></span>}
           {openThreads(d.comments) > 0 && (
             <span className="cv-comment-badge" title={t('deviceNode.openComments')} aria-label={`${openThreads(d.comments)} open comments`}>
-              💬 {openThreads(d.comments)}
+              <ChromeIcon name="comment" size={12} /> {openThreads(d.comments)}
             </span>
           )}
           {d.link && (
@@ -398,7 +399,7 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
                 openLink();
               }}
             >
-              🔗
+              <ChromeIcon name="link" size={12} />
             </span>
           )}
         </div>
@@ -530,7 +531,7 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
 
       {d.locked && (
         <span className="cv-lock" title={t('deviceNode.locked')} aria-label={t('deviceNode.locked')}>
-          🔒
+          <ChromeIcon name="lock" size={12} />
         </span>
       )}
       {d.link && (
@@ -544,7 +545,7 @@ function DeviceNodeInner({ id, data, selected }: NodeProps) {
             openLink();
           }}
         >
-          🔗
+          <ChromeIcon name="link" size={12} />
         </span>
       )}
 

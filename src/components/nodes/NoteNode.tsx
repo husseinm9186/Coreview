@@ -7,6 +7,7 @@ import { ipc } from '../../lib/ipc';
 import type { NoteNodeData } from '../../types/domain';
 import { inlinePieces, noteBlocks } from '../../lib/noteMarkdown';
 import { t } from '../../i18n';
+import { ChromeIcon } from '../chromeIcons';
 
 /** Every link — in body text or the note's own Link field — opens the same
  *  way: through the one Rust command that actually leaves the app.
@@ -103,7 +104,7 @@ function NoteNodeInner({ data, selected }: NodeProps) {
         lineClassName="cv-resize-line"
         handleClassName="cv-resize-handle"
       />
-      {d.locked && <span className="cv-lock" title={t('noteNode.locked')}>🔒</span>}
+      {d.locked && <span className="cv-lock" title={t('noteNode.locked')}><ChromeIcon name="lock" size={12} /></span>}
       {d.link && (
         <span
           className="cv-node-link nodrag nopan"
@@ -115,7 +116,7 @@ function NoteNodeInner({ data, selected }: NodeProps) {
             openLink(d.link!);
           }}
         >
-          🔗
+          <ChromeIcon name="link" size={12} />
         </span>
       )}
       {d.title && <div className="cv-note-title">{d.title}</div>}

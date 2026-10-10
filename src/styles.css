@@ -930,6 +930,8 @@ details.cv-discover-advanced[open] > summary::after { content: '▾'; }
 /* Something is down: said at the top of the dock, with the way to it. */
 .cv-dock-problem { display: flex; align-items: center; gap: 0.61538462rem; min-height: 2.30769231rem; padding: 0 0.92307692rem; background: var(--down-soft); border-left: 3px solid var(--down); border-bottom: 1px solid var(--line); font-size: var(--text-sm); color: var(--text); }
 .cv-dock-problem svg { color: var(--down); flex: none; }
+.cv-ssh-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--healthy); vertical-align: middle; }
+.cv-ssh-dot.is-closed { background: var(--text-faint); }
 .cv-link-btn { background: none; border: 0; color: var(--accent); font: inherit; cursor: pointer; padding: 0; }
 .cv-link-btn:hover { text-decoration: underline; }
 .cv-dock-problem .cv-link-btn { margin-left: auto; }

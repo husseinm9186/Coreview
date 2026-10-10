@@ -20,6 +20,7 @@ import { DEVICE_LABEL } from './icons';
 import { t } from '../i18n';
 import { AttachmentsSection, NeighboursSection } from './inspector/DeviceRelations';
 import { InventorySection } from './inspector/InventorySection';
+import { ChromeIcon } from './chromeIcons';
 
 /** What the drawer shows. Window state, never the document. */
 export type DrawerContent = { kind: 'device'; nodeId: string } | { kind: 'finding'; finding: Finding };
@@ -57,7 +58,7 @@ export function DrawerHost() {
     <aside className="cv-drawer" role="dialog" aria-modal="false" aria-label={t('drawer.label')} data-kind={drawer.kind}>
       <div className="cv-drawer-head">
         <button ref={closeButton} type="button" className="cv-btn cv-btn-small" onClick={close} aria-label={t('drawer.close')}>
-          ✕
+          <ChromeIcon name="x" />
         </button>
         <label className="cv-check cv-check-inline">
           <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} />
