@@ -18,6 +18,8 @@
   /** Each command, and the argument names the page may send it. */
   var COMMANDS = {
     app_info: [],
+    check_for_update: [],
+    install_update: [],
     cancel_backup: [],
     cancel_crawl: [],
     job_list: [],

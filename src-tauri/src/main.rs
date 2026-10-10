@@ -22,6 +22,7 @@ mod collection_db;
 mod terminal;
 mod vault_commands;
 mod meraki;
+mod updater;
 mod db;
 
 use std::sync::{Arc, Mutex};
@@ -124,6 +125,9 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // Asks GitHub for a newer release only when told to; see updater.rs.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updater::Pending::default())
         .manage(AppState {
             engine,
             db: Mutex::new(conn),
@@ -192,6 +196,8 @@ fn main() {
             commands::list_events,
             commands::record_event,
             commands::app_info,
+            updater::check_for_update,
+            updater::install_update,
             commands::list_icon_library,
             commands::list_bundled_icons,
             commands::list_stencil_packs,

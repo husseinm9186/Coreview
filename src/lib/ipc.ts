@@ -1056,7 +1056,24 @@ export type StoredSettings = Partial<{
   /** Clipboard manners in the terminal, both off until asked for. */
   sshCopyOnSelect: string;
   sshPasteOnRight: string;
+  /** Whether to ask GitHub for a newer release when the app starts: "1"
+   *  when switched on, absent otherwise. Off until somebody turns it on. */
+  updateCheckOnStart: string;
 }>;
+
+/** What a check for a newer release found. */
+export interface UpdateCheck {
+  /** The version running now. */
+  current: string;
+  /** The newer release, when there is one. */
+  available: { version: string; notes: string | null; date: string | null } | null;
+}
+
+/** How far a download has got, for the bar. */
+export interface UpdateProgress {
+  downloaded: number;
+  total: number | null;
+}
 
 /**
  * Which project is open, for the calls that belong to one.
@@ -1408,6 +1425,28 @@ export const ipc = {
       return { version: 'dev (browser)', dataDir: 'browser localStorage', documentVersion: 1 };
     }
     return camel(await invoke('app_info'));
+  },
+
+  /** Asks GitHub whether a newer release exists: one GET of the release
+   *  manifest, sent only when this is called — by the button in Settings or,
+   *  with the setting on, at start. The browser has no installer to update. */
+  async checkForUpdate(): Promise<UpdateCheck> {
+    if (!isDesktop) return { current: 'dev (browser)', available: null };
+    return invoke<UpdateCheck>('check_for_update');
+  },
+
+  /** Downloads the release the last check found, verifies its signature,
+   *  runs the installer and restarts. Resolves only on failure: success
+   *  ends this process. */
+  async installUpdate(): Promise<void> {
+    if (!isDesktop) throw new Error('There is no installer to update in the browser.');
+    await invoke('install_update');
+  },
+
+  async onUpdateProgress(handler: (e: UpdateProgress) => void): Promise<() => void> {
+    if (!isDesktop) return () => {};
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen('coreview://update', (e) => handler(e.payload as UpdateProgress));
   },
 
   /** Validate a subnet and say how big it is, without starting anything. */

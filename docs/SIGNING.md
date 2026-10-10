@@ -43,9 +43,25 @@ Two repository secrets, at **Settings → Secrets and variables → Actions**:
 | `WINDOWS_CERTIFICATE` | `base64 -w0 coreview-codesign.pfx` |
 | `WINDOWS_CERTIFICATE_PASSWORD` | the PFX password |
 
-Nothing else. The thumbprint is read back from the certificate after it is
-imported rather than kept as a constant here, so replacing the certificate
-needs no change to the repository.
+The thumbprint is read back from the certificate after it is imported
+rather than kept as a constant here, so replacing the certificate needs no
+change to the repository.
+
+A third secret belongs to the in-app updater rather than to Authenticode:
+
+| Secret | Value |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | the minisign private key `tauri signer generate` wrote |
+
+With it set, `tauri build` writes a `.sig` beside the Windows installer and
+beside the macOS update archive (`tauri.updater.conf.json` switches that
+on), and the `release` job attaches them with `latest.json`. The matching
+public key is `plugins.updater.pubkey` in `tauri.conf.json`; an installed
+copy refuses any update whose signature does not verify against it. Losing
+the private key means every installed copy stops being able to update
+itself and has to be reinstalled by hand, so it is kept off the repository
+and backed up like the certificate. It is a different key from the code
+signing certificate: the installer is signed by both.
 
 With no secrets configured — forks, pull requests, or before this is set up —
 the build says so and produces an unsigned installer rather than failing.

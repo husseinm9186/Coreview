@@ -71,9 +71,9 @@ MIT (23), ISC (9), MIT OR Apache-2.0 (3), Apache-2.0 OR MIT (1), BSD-3-Clause (1
 | yaml | 2.9.1 | ISC |
 | zustand | 4.5.7 | MIT |
 
-## Rust — 731 crates in the executable
+## Rust — 741 crates in the executable
 
-MIT OR Apache-2.0 (348), MIT (133), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33), Zlib OR Apache-2.0 OR MIT (18), Unicode-3.0 (18), Unlicense OR MIT (10), Apache-2.0 (9), BSD-3-Clause (7), MIT OR Apache-2.0 OR Zlib (7), MPL-2.0 (5), Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (5), ISC (4), Apache-2.0/MIT (3), Zlib (3), Apache-2.0 OR ISC OR MIT (3), MIT OR Zlib OR Apache-2.0 (2), BSD-3-Clause OR Apache-2.0 (2), BSD-3-Clause OR MIT OR Apache-2.0 (2), MIT OR Apache-2.0 OR LGPL-2.1-or-later (2), Unlicense/MIT (2), CDLA-Permissive-2.0 (2), BSD-2-Clause OR Apache-2.0 OR MIT (2), 0BSD OR MIT OR Apache-2.0 (1), BSD-2-Clause (1), ISC AND (Apache-2.0 OR ISC) (1), ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0) (1), BSD-3-Clause AND MIT (1), BSD-3-Clause/MIT (1), Apache-2.0 AND MIT (1), CC0-1.0 OR MIT-0 OR Apache-2.0 (1), MIT OR Apache-2.0 OR BSD-1-Clause (1), Apache-2.0 / MIT (1), Apache-2.0 AND ISC (1), Apache-2.0 OR BSL-1.0 (1), (MIT OR Apache-2.0) AND Unicode-3.0 (1)
+MIT OR Apache-2.0 (354), MIT (134), Apache-2.0 OR MIT (99), MIT/Apache-2.0 (34), Zlib OR Apache-2.0 OR MIT (19), Unicode-3.0 (18), Unlicense OR MIT (10), Apache-2.0 (9), BSD-3-Clause (7), MIT OR Apache-2.0 OR Zlib (7), MPL-2.0 (5), Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT (5), ISC (4), Apache-2.0/MIT (3), Zlib (3), Apache-2.0 OR ISC OR MIT (3), MIT OR Zlib OR Apache-2.0 (2), BSD-3-Clause OR Apache-2.0 (2), BSD-3-Clause OR MIT OR Apache-2.0 (2), MIT OR Apache-2.0 OR LGPL-2.1-or-later (2), Unlicense/MIT (2), CDLA-Permissive-2.0 (2), BSD-2-Clause OR Apache-2.0 OR MIT (2), 0BSD OR MIT OR Apache-2.0 (1), BSD-2-Clause (1), ISC AND (Apache-2.0 OR ISC) (1), ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0) (1), BSD-3-Clause AND MIT (1), BSD-3-Clause/MIT (1), Apache-2.0 AND MIT (1), CC0-1.0 OR MIT-0 OR Apache-2.0 (1), MIT OR Apache-2.0 OR BSD-1-Clause (1), Apache-2.0 / MIT (1), Apache-2.0 AND ISC (1), Apache-2.0 OR BSL-1.0 (1), (MIT OR Apache-2.0) AND Unicode-3.0 (1)
 
 | Component | Version | Licence |
 | --- | --- | --- |
@@ -249,6 +249,7 @@ MIT OR Apache-2.0 (348), MIT (133), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33),
 | ff | 0.14.0 | MIT/Apache-2.0 |
 | fiat-crypto | 0.3.0 | MIT OR Apache-2.0 OR BSD-1-Clause |
 | field-offset | 0.3.6 | MIT OR Apache-2.0 |
+| filetime | 0.2.29 | MIT/Apache-2.0 |
 | flate2 | 1.1.10 | MIT OR Apache-2.0 |
 | float-cmp | 0.9.0 | MIT |
 | fnv | 1.0.7 | Apache-2.0 / MIT |
@@ -391,6 +392,7 @@ MIT OR Apache-2.0 (348), MIT (133), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33),
 | memoffset | 0.9.1 | MIT |
 | mime | 0.3.17 | MIT OR Apache-2.0 |
 | minimal-lexical | 0.2.1 | MIT/Apache-2.0 |
+| minisign-verify | 0.2.5 | MIT |
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 |
 | mio | 1.2.2 | MIT |
@@ -427,6 +429,7 @@ MIT OR Apache-2.0 (348), MIT (133), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33),
 | objc2-exception-helper | 0.1.1 | Zlib OR Apache-2.0 OR MIT |
 | objc2-foundation | 0.3.2 | MIT |
 | objc2-io-surface | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| objc2-osa-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-quartz-core | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-ui-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | objc2-user-notifications | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
@@ -437,6 +440,7 @@ MIT OR Apache-2.0 (348), MIT (133), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33),
 | openssl-probe | 0.2.1 | MIT OR Apache-2.0 |
 | option-ext | 0.2.0 | MPL-2.0 |
 | ordered-stream | 0.2.0 | MIT OR Apache-2.0 |
+| osakit | 0.3.1 | MIT OR Apache-2.0 |
 | p256 | 0.14.0 | Apache-2.0 OR MIT |
 | p384 | 0.14.0 | Apache-2.0 OR MIT |
 | p521 | 0.14.0 | Apache-2.0 OR MIT |
@@ -620,13 +624,17 @@ MIT OR Apache-2.0 (348), MIT (133), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33),
 | syn | 3.0.4 | MIT OR Apache-2.0 |
 | sync_wrapper | 1.0.2 | Apache-2.0 |
 | synstructure | 0.13.2 | MIT |
+| system-configuration | 0.7.0 | MIT OR Apache-2.0 |
+| system-configuration-sys | 0.6.0 | MIT OR Apache-2.0 |
 | tao | 0.35.3 | Apache-2.0 |
 | tao-macros | 0.1.4 | MIT OR Apache-2.0 |
+| tar | 0.4.46 | MIT OR Apache-2.0 |
 | tauri | 2.11.5 | Apache-2.0 OR MIT |
 | tauri-codegen | 2.6.3 | Apache-2.0 OR MIT |
 | tauri-macros | 2.6.3 | Apache-2.0 OR MIT |
 | tauri-plugin-dialog | 2.7.2 | Apache-2.0 OR MIT |
 | tauri-plugin-fs | 2.5.1 | Apache-2.0 OR MIT |
+| tauri-plugin-updater | 2.12.0 | Apache-2.0 OR MIT |
 | tauri-runtime | 2.11.3 | Apache-2.0 OR MIT |
 | tauri-runtime-wry | 2.11.4 | Apache-2.0 OR MIT |
 | tauri-utils | 2.9.3 | Apache-2.0 OR MIT |
@@ -757,6 +765,7 @@ MIT OR Apache-2.0 (348), MIT (133), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33),
 | windows-link | 0.2.1 | MIT OR Apache-2.0 |
 | windows-numerics | 0.2.0 | MIT OR Apache-2.0 |
 | windows-numerics | 0.3.1 | MIT OR Apache-2.0 |
+| windows-registry | 0.6.1 | MIT OR Apache-2.0 |
 | windows-result | 0.3.4 | MIT OR Apache-2.0 |
 | windows-result | 0.4.1 | MIT OR Apache-2.0 |
 | windows-strings | 0.4.2 | MIT OR Apache-2.0 |
@@ -781,6 +790,7 @@ MIT OR Apache-2.0 (348), MIT (133), Apache-2.0 OR MIT (98), MIT/Apache-2.0 (33),
 | wry | 0.55.1 | Apache-2.0 OR MIT |
 | x11 | 2.21.0 | MIT |
 | x11-dl | 2.21.0 | MIT |
+| xattr | 1.6.1 | MIT OR Apache-2.0 |
 | xdg-home | 1.3.0 | MIT |
 | xmlwriter | 0.1.0 | MIT |
 | yoke | 0.8.3 | Unicode-3.0 |
@@ -884,6 +894,7 @@ one published by SPDX at `https://spdx.org/licenses/`.
 - objc2-exception-helper 0.1.1 — Zlib OR Apache-2.0 OR MIT
 - objc2-foundation 0.3.2 — MIT
 - objc2-io-surface 0.3.2 — Zlib OR Apache-2.0 OR MIT
+- objc2-osa-kit 0.3.2 — Zlib OR Apache-2.0 OR MIT
 - objc2-quartz-core 0.3.2 — Zlib OR Apache-2.0 OR MIT
 - objc2-ui-kit 0.3.2 — Zlib OR Apache-2.0 OR MIT
 - objc2-user-notifications 0.3.2 — Zlib OR Apache-2.0 OR MIT
@@ -1359,7 +1370,7 @@ SOFTWARE.
 
 ## Rust
 
-### 276 components
+### 281 components
 
 - aead 0.5.2
 - aead 0.6.1
@@ -1454,6 +1465,7 @@ SOFTWARE.
 - event-listener-strategy 0.5.4
 - fastrand 2.5.0
 - ff 0.14.0
+- filetime 0.2.29
 - flate2 1.1.10
 - fnv 1.0.7
 - form_urlencoded 1.2.2
@@ -1599,7 +1611,10 @@ SOFTWARE.
 - string_cache 0.9.0
 - svgtypes 0.15.3
 - syn 1.0.109
+- system-configuration 0.7.0
+- system-configuration-sys 0.6.0
 - tao-macros 0.1.4
+- tar 0.4.46
 - tempfile 3.27.0
 - tendril 0.5.1
 - textfsm-rs 0.3.6
@@ -1633,6 +1648,7 @@ SOFTWARE.
 - wit-bindgen 0.57.1
 - wnaf 0.14.0
 - wry 0.55.1
+- xattr 1.6.1
 - zeroize 1.9.0
 - zeroize_derive 1.5.0
 - zune-core 0.5.3
@@ -1987,7 +2003,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### 57 components
+### 58 components
 
 - anyhow 1.0.104
 - async-trait 0.1.92
@@ -2006,6 +2022,7 @@ DEALINGS IN THE SOFTWARE.
 - num-conv 0.2.2
 - num_enum 0.7.6
 - num_enum_derive 0.7.6
+- osakit 0.3.1
 - pdf-writer 0.12.1
 - pin-project-lite 0.2.17
 - portable-atomic 1.15.0
@@ -2226,7 +2243,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 END OF TERMS AND CONDITIONS
 ```
 
-### 52 components
+### 53 components
 
 - windows 0.61.3
 - windows 0.62.2
@@ -2242,6 +2259,7 @@ END OF TERMS AND CONDITIONS
 - windows-link 0.2.1
 - windows-numerics 0.2.0
 - windows-numerics 0.3.1
+- windows-registry 0.6.1
 - windows-result 0.3.4
 - windows-result 0.4.1
 - windows-strings 0.4.2
@@ -2485,7 +2503,7 @@ Apache License
    limitations under the License.
 ```
 
-### 52 components
+### 53 components
 
 - windows 0.61.3
 - windows 0.62.2
@@ -2501,6 +2519,7 @@ Apache License
 - windows-link 0.2.1
 - windows-numerics 0.2.0
 - windows-numerics 0.3.1
+- windows-registry 0.6.1
 - windows-result 0.3.4
 - windows-result 0.4.1
 - windows-strings 0.4.2
@@ -2957,6 +2976,49 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <http://unlicense.org/>
 ```
 
+### 12 components
+
+- cfg-if 1.0.4
+- filetime 0.2.29
+- js-sys 0.3.106
+- openssl-probe 0.2.1
+- socket2 0.6.5
+- toml_datetime 0.6.3
+- wasm-bindgen 0.2.129
+- wasm-bindgen-futures 0.4.79
+- wasm-bindgen-macro 0.2.129
+- wasm-bindgen-macro-support 0.2.129
+- wasm-bindgen-shared 0.2.129
+- web-sys 0.3.106
+
+```
+Copyright (c) 2014 Alex Crichton
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+```
+
 ### 11 components
 
 - aho-corasick 1.1.5
@@ -3013,48 +3075,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-```
-
-### 11 components
-
-- cfg-if 1.0.4
-- js-sys 0.3.106
-- openssl-probe 0.2.1
-- socket2 0.6.5
-- toml_datetime 0.6.3
-- wasm-bindgen 0.2.129
-- wasm-bindgen-futures 0.4.79
-- wasm-bindgen-macro 0.2.129
-- wasm-bindgen-macro-support 0.2.129
-- wasm-bindgen-shared 0.2.129
-- web-sys 0.3.106
-
-```
-Copyright (c) 2014 Alex Crichton
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
 ```
 
 ### 9 components
@@ -6157,6 +6177,35 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### 3 components
 
+- tauri-plugin-dialog 2.7.2
+- tauri-plugin-fs 2.5.1
+- tauri-plugin-updater 2.12.0
+
+```
+SPDXVersion: SPDX-2.1
+DataLicense: CC0-1.0
+PackageName: tauri
+DataFormat: SPDXRef-1
+PackageSupplier: Organization: The Tauri Programme in the Commons Conservancy
+PackageHomePage: https://tauri.app
+PackageLicenseDeclared: Apache-2.0
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2019-2022, The Tauri Programme in the Commons Conservancy
+PackageSummary: <text>Tauri is a rust project that enables developers to make secure
+and small desktop applications using a web frontend.
+                </text>
+PackageComment: <text>The package includes the following libraries; see
+Relationship information.
+                </text>
+Created: 2019-05-20T09:00:00Z
+PackageDownloadLocation: git://github.com/tauri-apps/tauri
+PackageDownloadLocation: git+https://github.com/tauri-apps/tauri.git
+PackageDownloadLocation: git+ssh://github.com/tauri-apps/tauri.git
+Creator: Person: Daniel Thompson-Yvetot
+```
+
+### 3 components
+
 - time 0.3.55
 - time-core 0.1.9
 - time-macros 0.2.32
@@ -8893,30 +8942,68 @@ THE SOFTWARE.
 
 ### 2 components
 
-- tauri-plugin-dialog 2.7.2
-- tauri-plugin-fs 2.5.1
+- system-configuration 0.7.0
+- system-configuration-sys 0.6.0
 
 ```
-SPDXVersion: SPDX-2.1
-DataLicense: CC0-1.0
-PackageName: tauri
-DataFormat: SPDXRef-1
-PackageSupplier: Organization: The Tauri Programme in the Commons Conservancy
-PackageHomePage: https://tauri.app
-PackageLicenseDeclared: Apache-2.0
-PackageLicenseDeclared: MIT
-PackageCopyrightText: 2019-2022, The Tauri Programme in the Commons Conservancy
-PackageSummary: <text>Tauri is a rust project that enables developers to make secure
-and small desktop applications using a web frontend.
-                </text>
-PackageComment: <text>The package includes the following libraries; see
-Relationship information.
-                </text>
-Created: 2019-05-20T09:00:00Z
-PackageDownloadLocation: git://github.com/tauri-apps/tauri
-PackageDownloadLocation: git+https://github.com/tauri-apps/tauri.git
-PackageDownloadLocation: git+ssh://github.com/tauri-apps/tauri.git
-Creator: Person: Daniel Thompson-Yvetot
+Copyright (c) 2024 Mullvad VPN AB
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+```
+
+### 2 components
+
+- tempfile 3.27.0
+- xattr 1.6.1
+
+```
+Copyright (c) 2015 Steven Allen
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 ```
 
 ### 2 components
@@ -15882,6 +15969,70 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
+### minisign-verify 0.2.5
+
+```
+Copyright (c) 2019-2025 Frank Denis
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+--
+
+Code in the src/crypto folder is derived from the rust-crypto project:
+https://github.com/DaGenix/rust-crypto
+
+Original ISC license follows:
+
+Copyright (c) 2006-2009 Graydon Hoare
+Copyright (c) 2009-2013 Mozilla Foundation
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+```
+
 ### mio 1.2.2
 
 ```
@@ -16445,6 +16596,36 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
   This Source Code Form is "Incompatible With Secondary Licenses", as
   defined by the Mozilla Public License, v. 2.0.
+```
+
+### osakit 0.3.1
+
+```
+Copyright (c) 2024 Marat Dulin
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 ```
 
 ### p384 0.14.0
@@ -21618,10 +21799,10 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tao.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### tempfile 3.27.0
+### tar 0.4.46
 
 ```
-Copyright (c) 2015 Steven Allen
+Copyright (c) The tar-rs Project Contributors
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated

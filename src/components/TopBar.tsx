@@ -56,6 +56,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   const runtime = useStore((s) => s.runtime);
   const exportMenu = useRef<HTMLDetailsElement>(null);
   const [about, setAbout] = useState(false);
+  const updateWaiting = useStore((s) => (s.update.state === 'available' ? s.update.version : null));
   const [busy, setBusy] = useState<string | null>(null);
   // Replace imported stencils with built-in shapes in what is exported.
   const [vendorSafe, setVendorSafe] = useState(false);
@@ -755,6 +756,15 @@ export function TopBar({ onExit }: { onExit: () => void }) {
       </div>
 
       <div className="cv-topbar-actions">
+        {/* Said once a check has found a newer release — by the button, or
+            at start under the setting. Never shown otherwise. */}
+        {updateWaiting && (
+          <button type="button" className="cv-btn cv-btn-start cv-btn-update" data-action="update-available"
+            title={t('topbar.updateAvailableTitle')}
+            onClick={() => useStore.getState().setToolsOpen(true, 'settings')}>
+            {t('topbar.updateAvailable', { version: updateWaiting })}
+          </button>
+        )}
         <button type="button" className="cv-btn cv-btn-search" title={t('topbar.searchTitle')}
           onClick={() => useStore.getState().requestCommandPalette(true)}>
           <span aria-hidden>⌕</span> {t('topbar.search')}
@@ -1041,7 +1051,10 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
         <h3>Privacy</h3>
         <p>
           Diagrams, notes, probe configuration and results stay on this machine. Coreview has no
-          account, no cloud sync and no telemetry. It never contacts a server of its own.
+          account, no cloud sync and no telemetry. It never contacts a server of its own. The one
+          request it can make that you did not point at your own network is a check for a newer
+          release on GitHub, and only when you press the button under Tools → Settings or switch
+          on the automatic check there, which is off until you do.
         </p>
         <h3>What a green link actually means</h3>
         <p>

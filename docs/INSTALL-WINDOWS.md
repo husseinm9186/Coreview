@@ -130,3 +130,11 @@ Run the installer (per-machine; it asks for elevation). It installs the
 collector sidecar — a private copy of Python with its own libraries — in
 its own folder inside the installation directory. It is used only by
 Coreview, is not put on `PATH`, and is removed with Coreview.
+
+**Updating from inside the app** (Tools → Settings → **Check for updates**)
+downloads the next version's installer — the same signed `-setup.exe` that
+is on the Releases page — checks its updater signature against the key
+built into the app, and runs it. It asks for elevation exactly as a manual
+install does, and everything in sections 1 to 3 applies to it unchanged.
+Nothing is checked or downloaded unless the button is pressed or the
+automatic check beside it has been switched on; it is off by default.

@@ -37,6 +37,7 @@ export function SettingsView() {
   const vaultRevision = useStore((s) => s.vaultRevision);
   const terminal = useStore((s) => s.settings.terminal);
   const setTerminal = useStore((s) => s.setTerminalSettings);
+  const update = useStore((s) => s.update);
   const [saved, setSaved] = useState<CredentialSummary[]>([]);
   const [pruned, setPruned] = useState(0);
 
@@ -69,6 +70,23 @@ export function SettingsView() {
 
   const used = credentialsUsedBy({ pages, credentialDefaults: projectDefaults, credentialRules });
   const mine = saved.filter((c) => used.has(c.id));
+
+  /** Where the check for a newer release has got to, in one line. */
+  const updateStatus = (() => {
+    switch (update.state) {
+      case 'checking': return t('settings.updateChecking');
+      case 'latest': return t('settings.updateLatest', { version: update.current ?? '' });
+      case 'available': return t('settings.updateAvailable', { version: update.version ?? '', current: update.current ?? '' });
+      case 'installing': {
+        const mb = (n: number) => `${(n / 1_048_576).toFixed(1)} MB`;
+        const done = update.total ? `${mb(update.downloaded)} of ${mb(update.total)}` : mb(update.downloaded);
+        return t('settings.updateInstalling', { done });
+      }
+      case 'problem': return t('settings.updateProblem', { why: update.problem ?? '' });
+      default: return '';
+    }
+  })();
+  const updateBusy = update.state === 'checking' || update.state === 'installing';
 
   return (
     <div className="cv-settings">
@@ -209,6 +227,42 @@ export function SettingsView() {
             {TIME_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
           </select>
         </label>
+      </section>
+      {/* The one host nobody typed in. Nothing is sent until the button is
+          pressed or the tick, off until somebody ticks it, is on. */}
+      <section className="cv-settings-block" data-region="updates">
+        <h2>{t('settings.updates')}</h2>
+        <p className="cv-help">{t('settings.updatesHint')}</p>
+        <div className="cv-row cv-update-row">
+          <button type="button" className="cv-btn" data-action="check-updates" disabled={updateBusy}
+            onClick={() => void useStore.getState().checkForUpdate()}>
+            {t('settings.checkForUpdates')}
+          </button>
+          {updateStatus && <span className={update.state === 'problem' ? 'cv-help cv-update-problem' : 'cv-help'} data-hint="updates" role="status">{updateStatus}</span>}
+        </div>
+        {update.state === 'available' && (
+          <div className="cv-update-found" data-region="update-found">
+            {update.date && <p className="cv-help">{t('settings.updatePublished', { date: update.date.slice(0, 10) })}</p>}
+            {update.notes && (
+              <details className="cv-update-notes">
+                <summary>{t('settings.updateNotes')}</summary>
+                <pre>{update.notes}</pre>
+              </details>
+            )}
+            <button type="button" className="cv-btn cv-btn-start" data-action="install-update"
+              onClick={() => void useStore.getState().installUpdate()}>
+              {t('settings.updateInstall')}
+            </button>
+            <p className="cv-help">{t('settings.updateInstallHint')}</p>
+          </div>
+        )}
+        <label className="cv-check" title={t('settings.updateOnStartHint')}>
+          <input type="checkbox" data-field="update-on-start" checked={settings.updateCheckOnStart}
+            onChange={(e) => void useStore.getState().setUpdateCheckOnStart(e.target.checked)} />
+          {t('settings.updateOnStart')}
+        </label>
+        <p className="cv-help">{t('settings.updateOnStartHint')}</p>
+        <p className="cv-help">{t('settings.updateReleases')}</p>
       </section>
       <section className="cv-settings-block">
         <h2>{t('settings.terminal')}</h2>

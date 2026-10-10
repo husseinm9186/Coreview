@@ -510,6 +510,14 @@ a:hover { color: var(--text); }
 .cv-btn.is-danger, .cv-btn-small.is-danger { border-color: var(--danger-line); color: var(--down); }
 .cv-btn.is-danger:hover { background: var(--danger-hover); }
 .cv-btn-start { border-color: color-mix(in srgb, var(--healthy) 55%, transparent); color: var(--healthy); }
+/* The top bar's word that a newer release is waiting, and Settings' block. */
+.cv-btn-update { font-weight: 600; }
+.cv-update-row { align-items: center; }
+.cv-update-problem { color: var(--down); }
+.cv-update-found { display: flex; flex-direction: column; gap: 0.46153846rem; align-items: flex-start; margin: 0.46153846rem 0 0.76923077rem; }
+.cv-update-notes { max-width: 60ch; }
+.cv-update-notes summary { cursor: pointer; }
+.cv-update-notes pre { white-space: pre-wrap; max-height: 16rem; overflow: auto; font-size: var(--text-xs); margin: 0.30769231rem 0 0; }
 .cv-btn-stop { border-color: color-mix(in srgb, var(--down) 55%, transparent); color: var(--down); }
 
 .cv-input {

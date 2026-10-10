@@ -305,7 +305,34 @@ export interface AppSettings {
   /** How the SSH terminal behaves. How somebody likes to read and
    *  work, so these belong to the machine and never to a project. */
   terminal: TerminalSettings;
+  /** Whether to ask GitHub for a newer release when the app starts. Off
+   *  until switched on: with it off, the app never contacts GitHub. A
+   *  machine preference, kept in the database so the backend can be
+   *  asked about it before any project opens. */
+  updateCheckOnStart: boolean;
 }
+
+/** Where a check for a newer release has got to. One per window; the
+ *  Settings screen shows it and the top bar says when one is waiting. */
+export interface UpdateState {
+  state: 'idle' | 'checking' | 'latest' | 'available' | 'installing' | 'problem';
+  /** The version running now, as the backend reported it. */
+  current: string | null;
+  /** The newer release, once found. */
+  version: string | null;
+  notes: string | null;
+  date: string | null;
+  /** Why the last check or install failed, in words. */
+  problem: string | null;
+  /** The download so far, while installing. */
+  downloaded: number;
+  total: number | null;
+  /** Whether the last check was the automatic one at start, so a quiet
+   *  failure stays quiet: nobody pressed anything. */
+  automatic: boolean;
+}
+
+export const UPDATE_IDLE: UpdateState = { state: 'idle', current: null, version: null, notes: null, date: null, problem: null, downloaded: 0, total: null, automatic: false };
 
 /**
  * The terminal's preferences as they come back from the settings table.
@@ -418,6 +445,8 @@ interface Store {
   recovery: { savedAt: number } | null;
   selectedEdgeId: string | null;
   settings: AppSettings;
+  /** The check for a newer release, as far as it has got. */
+  update: UpdateState;
   /** Runtime-indexed icon library. Never persisted with the project — the
    *  project stores an iconRef plus an inlined copy instead. */
   iconLibrary: IconLibEntry[];
@@ -820,6 +849,17 @@ interface Store {
   /** A terminal preference, remembered on this machine. */
   setTerminalSettings: (patch: Partial<TerminalSettings>) => void;
   loadSettings: () => Promise<void>;
+  /** Asks GitHub for a newer release — one request, now. `automatic` marks
+   *  the check made at start under the setting, whose failures are not
+   *  shown: nobody pressed anything. */
+  checkForUpdate: (automatic?: boolean) => Promise<void>;
+  /** Downloads and installs the release the last check found, then
+   *  restarts. Only returns on failure. */
+  installUpdate: () => Promise<void>;
+  /** The at-start check, on or off, kept on this machine. */
+  setUpdateCheckOnStart: (on: boolean) => Promise<void>;
+  /** At start: checks only if the setting is on. Otherwise sends nothing. */
+  startupUpdateCheck: () => Promise<void>;
   chooseFolder: (which: 'backupFolder' | 'exportFolder') => Promise<string | null>;
   clearFolder: (which: 'backupFolder' | 'exportFolder') => Promise<void>;
   loadIconLibrary: (dir: string) => Promise<void>;
@@ -1306,7 +1346,9 @@ export const useStore = create<Store>((set, get) => ({
     sftpFolder: '',
     sftpCredentialId: '',
     terminal: TERMINAL_DEFAULTS,
+    updateCheckOnStart: false,
   },
+  update: UPDATE_IDLE,
   tracertRun: { busy: false, began: null, fromDevice: false, hops: null, complete: true, ran: null, problem: null, hadPrevious: false, changed: [] },
   collectionRun: { busy: false, live: [], finished: null },
   panelOpen: viewPref('panelOpen'),
@@ -3832,6 +3874,56 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  async checkForUpdate(automatic = false) {
+    set((s) => ({ update: { ...s.update, state: 'checking', problem: null, automatic } }));
+    try {
+      const found = await ipc.checkForUpdate();
+      set({
+        update: {
+          ...UPDATE_IDLE,
+          automatic,
+          current: found.current,
+          state: found.available ? 'available' : 'latest',
+          version: found.available?.version ?? null,
+          notes: found.available?.notes ?? null,
+          date: found.available?.date ?? null,
+        },
+      });
+    } catch (e: unknown) {
+      const why = e instanceof Error ? e.message : String(e);
+      set((s) => ({ update: { ...s.update, state: 'problem', problem: why, automatic } }));
+    }
+  },
+
+  async installUpdate() {
+    const { update } = get();
+    if (update.state !== 'available') return;
+    set({ update: { ...update, state: 'installing', problem: null, downloaded: 0, total: null } });
+    const un = await ipc.onUpdateProgress((p) => set((s) => ({ update: { ...s.update, downloaded: p.downloaded, total: p.total } })));
+    try {
+      await ipc.installUpdate();
+      // Only a failure returns; success ended this process.
+    } catch (e: unknown) {
+      const why = e instanceof Error ? e.message : String(e);
+      set((s) => ({ update: { ...s.update, state: 'problem', problem: why } }));
+    } finally {
+      un();
+    }
+  },
+
+  async setUpdateCheckOnStart(on) {
+    set((s) => ({ settings: { ...s.settings, updateCheckOnStart: on } }));
+    await ipc.setSetting('updateCheckOnStart', on ? '1' : null);
+  },
+
+  async startupUpdateCheck() {
+    if (!isDesktop) return;
+    const stored = await ipc.getSettings();
+    if (stored.updateCheckOnStart !== '1') return;
+    set((s) => ({ settings: { ...s.settings, updateCheckOnStart: true } }));
+    await get().checkForUpdate(true);
+  },
+
   setSettings(patch) {
     if (patch.minimap !== undefined) rememberView('minimap', patch.minimap);
     // A machine preference, kept like the others.
@@ -3896,6 +3988,7 @@ export const useStore = create<Store>((set, get) => ({
         sftpFolder: stored.sftpFolder ?? '',
         sftpCredentialId: stored.sftpCredentialId ?? '',
         terminal: terminalFromStored(stored, s.settings.terminal),
+        updateCheckOnStart: stored.updateCheckOnStart === '1',
       },
       iconLibraryDir: stored.iconLibraryDir ?? s.iconLibraryDir,
     }));

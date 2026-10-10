@@ -942,7 +942,7 @@ pub fn set_setting(
     // This table is plain text in the same database as the projects, and
     // nothing typed into Coreview is ever written where it could leave the
     // machine.
-    const ALLOWED: [&str; 31] = [
+    const ALLOWED: [&str; 32] = [
         // The shadow-mode feature flag, per project.
         "collectorShadow",
         "backupFolder",
@@ -1004,6 +1004,11 @@ pub fn set_setting(
         "sftpPort",
         "sftpFolder",
         "sftpCredentialId",
+        // Whether to ask GitHub for a newer release when the app starts.
+        // Off until switched on: "1" when it is, absent otherwise. A machine
+        // preference, and the only setting that makes the app speak to a
+        // host nobody typed in.
+        "updateCheckOnStart",
     ];
     if !ALLOWED.contains(&key.as_str()) {
         return Err(format!("{key} is not a setting Coreview stores"));

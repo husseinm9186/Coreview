@@ -1349,3 +1349,27 @@ plugged in. Walk with `-On` for the most complete result.
 Export the `.coreview` package, copy it over, and use **Import project** on the
 welcome screen. Diagram, metadata, probes and health rules come across. Event
 history does not — it stays with the machine that recorded it.
+
+## Keep Coreview up to date
+
+Coreview never looks for a new version on its own. When you want to know,
+open **Tools → Settings → Updates** and press **Check for updates**. That
+sends one request to this project's GitHub Releases page for the newest
+release's manifest — it carries this computer's address and the updater's
+name, and nothing about you, your projects or your network — and the line
+beside the button then says one of three things: you have the latest
+version, a newer one is available, or why GitHub could not be reached.
+
+A newer version shows its date and, under **What changed**, its release
+notes. **Install and restart** downloads it, checks its signature against
+the key built into Coreview, runs the installer and starts the new version.
+Windows asks for an administrator's approval, as it did when you first
+installed; a download whose signature does not match is refused and says so.
+Save your work before you press it.
+
+**Check automatically when Coreview starts** is off until you tick it. With
+it on, that one request goes out each time the app starts; a newer release
+is then announced by an **Update to …** button in the top bar, which opens
+this page. If the check fails quietly — a machine with no route out, say —
+nothing is announced, and this page says why if you look. Untick it and
+Coreview goes back to contacting nobody.

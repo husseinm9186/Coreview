@@ -2,6 +2,23 @@
 
 Newest first.
 
+## 2.9.0 — 2026-10-09
+
+**Updates**
+- Tools → Settings has **Check for updates**: one request to this
+  repository's GitHub Releases for the newest release's manifest, sent only
+  when the button is pressed. It says you have the latest version, or names
+  the newer one with its date and notes and offers **Install and restart**,
+  which verifies the download's signature against the key built into the app
+  before running the installer; a download that fails that check is refused
+  and says so.
+- **Check automatically when Coreview starts**, beside it, is off until
+  ticked. With it on, the same request goes out at start and a newer
+  release is announced by an **Update to …** button in the top bar. With it
+  off, which is the default, Coreview contacts nobody.
+- Every version is now published as a GitHub Release, with the installers,
+  their updater signatures and checksums, and these notes beside them.
+
 ## 2.8.0 — 2026-10-09
 
 **Backups**

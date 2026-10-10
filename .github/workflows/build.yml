@@ -8,11 +8,16 @@ name: build
 # Every installer, on every push — NSIS, MSI, .deb, AppImage, the
 # universal .dmg, and the offline Windows installer that carries the WebView2
 # runtime. The Windows-only narrowing is over; all of them are built.
+#
+# A push to main whose version has no GitHub Release yet gets one, made by
+# the `release` job at the end from the artifacts the bundle jobs uploaded:
+# the installers, their updater signatures and `latest.json`, which the
+# app's own "Check for updates" reads. The job creates the `v<version>` tag
+# itself, so nothing here triggers on tags and a release costs one run.
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -143,6 +148,7 @@ jobs:
             bundles: nsis
             paths: |
               target/release/bundle/nsis/*.exe
+              target/release/bundle/nsis/*.sig
               target/release/bundle/nsis/SHA256SUMS.txt
               target/release/bundle/nsis/sbom/*.json
               target/release/bundle/nsis/*.crt
@@ -230,12 +236,21 @@ jobs:
           & "${{ github.workspace }}\scripts\sbom\cargo-auditable-runner.cmd" --version
           if ($LASTEXITCODE -ne 0) { Write-Host "::error title=SBOM::cargo-auditable-runner.cmd does not run (exit $LASTEXITCODE)"; exit 1 }
 
+      # The updater's signature beside the installer, when the minisign key
+      # is configured — a fork without the secret still builds, without it.
       - name: Build bundles
         shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           $extra = @()
           if ("${{ matrix.os }}" -eq "windows-latest") {
             $extra = @("--config", "src-tauri/tauri.sidecar.conf.json", "--runner", "${{ github.workspace }}\scripts\sbom\cargo-auditable-runner.cmd")
+          }
+          if ($env:TAURI_SIGNING_PRIVATE_KEY) {
+            $extra += @("--config", "src-tauri/tauri.updater.conf.json")
+          } else {
+            Write-Host "::notice title=Updater::TAURI_SIGNING_PRIVATE_KEY is not set, so no updater signature is produced"
           }
           # The job log needs admin rights to read; a failure's last lines go
           # into an annotation, which does not.
@@ -397,8 +412,20 @@ jobs:
 
       - run: npm ci
 
+      # With the minisign key configured, the build also writes the
+      # update archive (Coreview.app.tar.gz) and its signature, which is
+      # what an installed copy downloads when it updates itself.
       - name: Build bundles
-        run: npm run tauri build -- --target universal-apple-darwin
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          extra=()
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            extra=(--config src-tauri/tauri.updater.conf.json)
+          else
+            echo "::notice title=Updater::TAURI_SIGNING_PRIVATE_KEY is not set, so no updater archive is produced"
+          fi
+          npm run tauri build -- --target universal-apple-darwin "${extra[@]}"
 
       - name: The build's version, for the artifact name
         id: ver
@@ -407,7 +434,10 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: coreview-macos-v${{ steps.ver.outputs.version }}
-          path: target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          path: |
+            target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            target/universal-apple-darwin/release/bundle/macos/*.tar.gz
+            target/universal-apple-darwin/release/bundle/macos/*.tar.gz.sig
           if-no-files-found: error
 
   # Does the AppImage carry WebKit, or does it quietly rely on the build host
@@ -551,3 +581,83 @@ jobs:
           $text = Get-Content captures\127.0.0.1\show-version.txt -Raw
           if ($text -notmatch 'Cisco IOS Software') { Fail "show-version.txt does not hold the switch's answer" }
           Write-Host "::notice title=Install check::collected with the installed sidecar and no Python on PATH: $(($lines | Where-Object { $_ -match '^ok' }).Count) replies ok, show version and show ip arp parsed to rows"
+
+  # The GitHub Release for this version, if there is none yet.
+  #
+  # Runs on main only, after every installer has been built and the Windows
+  # one has installed and collected on a clean runner. A version that
+  # already has a release is left alone, so a push that changes only
+  # documentation publishes nothing; a push that bumps the version
+  # publishes once. The release is what the app's "Check for updates"
+  # reads: `latest.json`, written by scripts/release-manifest.mjs from the
+  # artifacts and the version's section of docs/RELEASE-NOTES.md, names the
+  # installer per platform and the signature the app verifies before it
+  # installs anything. The tag is made here, by the release, which is why
+  # nothing in this workflow triggers on tags.
+  release:
+    name: release (GitHub Release and latest.json)
+    needs: [bundle, bundle-macos, install-check-windows]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: The version, and whether it is released already
+        id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice title=Release::v$version is already published; nothing to do"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@v8
+        if: steps.ver.outputs.exists == 'false'
+        with:
+          name: coreview-windows-v${{ steps.ver.outputs.version }}
+          path: dl/windows
+
+      - uses: actions/download-artifact@v8
+        if: steps.ver.outputs.exists == 'false'
+        with:
+          name: coreview-macos-v${{ steps.ver.outputs.version }}
+          path: dl/macos
+
+      # Fails, and so publishes nothing, when an installer or its signature
+      # is missing — a release the app cannot verify is worse than none.
+      - name: Write latest.json and the notes
+        if: steps.ver.outputs.exists == 'false'
+        run: |
+          mkdir -p release
+          node scripts/release-manifest.mjs \
+            --version "${{ steps.ver.outputs.version }}" \
+            --artifacts dl \
+            --repo "$GITHUB_REPOSITORY" \
+            --out release > release/files.txt 2> release/log.txt || { cat release/log.txt; exit 1; }
+          cat release/log.txt
+          echo "attaching:"; cat release/files.txt
+
+      - name: Publish the release
+        if: steps.ver.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -t files < release/files.txt
+          gh release create "v${{ steps.ver.outputs.version }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Coreview ${{ steps.ver.outputs.version }}" \
+            --notes-file release/notes.md \
+            "${files[@]}"
+          echo "::notice title=Release::v${{ steps.ver.outputs.version }} published with ${#files[@]} files"

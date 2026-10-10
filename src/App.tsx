@@ -17,6 +17,8 @@ import { ipc, isDesktop } from './lib/ipc';
 
 /** The keychain is asked at most once per window. */
 let keychainTried = false;
+/** The at-start check for a newer release, likewise once per window. */
+let updateCheckTried = false;
 import { useStore } from './state/store';
 import { NavRail } from './components/NavRail';
 import { CanvasToolbar } from './components/CanvasToolbar';
@@ -72,6 +74,14 @@ export default function App() {
     void ipc.unlockVaultFromKeychain().then((r) => {
       if (r === 'stale') useStore.getState().setStatusMessage('The key kept in the system keychain no longer opens the vault, so it was removed. Unlock with the passphrase.');
     }).catch((e: unknown) => useStore.getState().setStatusMessage(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  // Asks GitHub for a newer release at start only if the setting says
+  // so; with it off, which it is until switched on, nothing is sent.
+  useEffect(() => {
+    if (updateCheckTried) return;
+    updateCheckTried = true;
+    void useStore.getState().startupUpdateCheck().catch(() => undefined);
   }, []);
 
   // Engine events arrive on one channel for the life of the window.
