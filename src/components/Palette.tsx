@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { deviceColor } from '../theme';
-import { Layers } from './Layers';
 import { useStore } from '../state/store';
 import { isDesktop } from '../lib/ipc';
 import { DEVICE_LABEL, ICONS, PALETTE_GROUPS } from './icons';
@@ -8,6 +7,7 @@ import { BOUNDARIES, BOUNDARY_KINDS } from '../lib/boundaries';
 import type { DeviceType } from '../types/domain';
 import { t } from '../i18n';
 import { ChromeIcon } from './chromeIcons';
+import { Layers } from './Layers';
 
 export function Palette() {
   const ground = useStore((s) => s.settings.ground);
@@ -30,8 +30,9 @@ export function Palette() {
       />
 
       {/* Above the shapes: which views are on decides what the whole canvas
-          is showing, so it should not be at the bottom of a long list of
-          icons. */}
+          is showing, whatever is selected — so it lives here, where it can
+          be reached with a device open in the inspector, and the diagram
+          summary only reports it. */}
       <Layers />
 
       <div className="cv-palette-group">

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { DEFAULTS, deviceColor } from '../../theme';
+import { DEFAULTS, deviceColor, statusMark } from '../../theme';
 
 import { useStore, type InspectorTab } from '../../state/store';
 import { openSsh } from '../sshActions';
@@ -7,6 +7,7 @@ import { InventorySection } from './InventorySection';
 import { whySays } from '../../lib/evidence';
 // The catalogue's `t`, aliased: this file already has a `t` of its own.
 import { t as tr } from '../../i18n';
+import { allEdges, allNodes } from '../../lib/pages';
 import { ProbeHistory } from './ProbeHistory';
 import { AttachmentsSection, NeighboursSection } from './DeviceRelations';
 import { PortView } from './PortView';
@@ -30,7 +31,7 @@ import { describeSelection, shared, withTag, withoutTag } from '../../lib/bulkEd
 import type { Shared } from '../../lib/bulkEdit';
 import { buildTimeline, shortDuration, totals } from '../../lib/statusHistory';
 import { capsFor } from '../../lib/linkStyle';
-import { layersOf, toggleOn } from '../../lib/layers';
+import { layersOf, toggleOn, type Layer } from '../../lib/layers';
 import { activePage } from '../../lib/pages';
 import type {
   DeviceNodeData,
@@ -47,6 +48,7 @@ import {
   PROBE_DEFAULTS,
   STATUS_GLYPH,
   STATUS_LABEL,
+  SHAPE_DEVICE_TYPES,
 } from '../../types/domain';
 
 import { ChromeIcon } from '../chromeIcons';
@@ -239,7 +241,7 @@ export function Inspector() {
       ) : selectedEdgeId ? (
         <LinkInspector edgeId={selectedEdgeId} />
       ) : (
-        <ProjectInspector />
+        <DiagramInspector />
       )}
     </aside>
   );
@@ -875,64 +877,141 @@ function LayerPicker({
   );
 }
 
-function ProjectInspector() {
+/**
+ * What the inspector says when nothing is selected: how the diagram is,
+ * not a form. The four counts, the last check, what is on the page, the
+ * views it is drawn in, the filter in force, and the three verbs that act
+ * on all of it. The project's own details — customer, site, ticket,
+ * engineer — are a disclosure, folded when they are empty: they go on the
+ * report, and a form nobody is filling in is a worse first screen than a
+ * diagram.
+ */
+function DiagramInspector() {
   const meta = useStore((s) => s.meta)!;
   const updateMeta = useStore((s) => s.updateMeta);
+  const doc = useStore((s) => s.doc);
+  const session = useStore((s) => s.session);
+  const runtime = useStore((s) => s.runtime);
+  const nodeStatus = useStore((s) => s.nodeStatus);
+  const filter = useStore((s) => s.canvasFilter);
+  const timeFormat = useStore((s) => s.settings.timeFormat);
+  const probes = doc.probes;
+  const counts: Record<HealthStatus, number> = { unknown: 0, healthy: 0, warning: 0, down: 0, disabled: 0, maintenance: 0 };
+  let devices = 0;
+  for (const n of allNodes(doc)) {
+    if (n.type !== 'device' || SHAPE_DEVICE_TYPES.has((n.data as DeviceNodeData).deviceType)) continue;
+    devices += 1;
+    counts[nodeStatus(n.id)] += 1;
+  }
+  const links = allEdges(doc).length;
+  let lastCheck: number | null = null;
+  for (const r of runtime.values()) {
+    const at = Math.max(r.lastSuccessMs ?? 0, r.lastFailureMs ?? 0);
+    if (at > 0 && (lastCheck === null || at > lastCheck)) lastCheck = at;
+  }
+  // The views, which are chosen in the palette, reported here.
+  const views: Layer[] = activePage(doc).canvas.layers ?? [];
+  const hiddenViews = new Set(views.filter((v) => v.visible === false).map((v) => v.id));
+  const detailsFilled = Boolean(meta.customer || meta.site || meta.ticket || meta.engineer || meta.description);
+  const every = probes.length ? probes[0]!.intervalSeconds : PROBE_DEFAULTS.intervalSeconds;
+  const misses = probes.length ? probes[0]!.failureThreshold : PROBE_DEFAULTS.failureThreshold;
+  const running = session.state === 'running' || session.state === 'starting' || session.state === 'stopping';
+  const filterWords = filter
+    ? ([
+        filter.types?.length ? tr('inspector.filterTypes', { count: filter.types.length }) : null,
+        filter.vendor, filter.role, filter.vlan ? `VLAN ${filter.vlan}` : null, filter.subnet, filter.status, filter.crawl, filter.tag, filter.text,
+      ].filter(Boolean) as string[]).join(' · ')
+    : '';
+  const cells: { status: HealthStatus; label: string }[] = [
+    { status: 'healthy', label: tr('inspector.up') },
+    { status: 'warning', label: tr('inspector.warning') },
+    { status: 'down', label: tr('inspector.down') },
+    { status: 'unknown', label: tr('inspector.notChecked') },
+  ];
   return (
-    <>
-      <h2 className="cv-inspector-title">{tr('inspector.project')}</h2>
-      <Field label="Project name">
-        <input
-          className="cv-input"
-          value={meta.name}
-          onChange={(e) => updateMeta({ name: e.target.value })}
-        />
-      </Field>
-      <Field label="Customer or organisation">
-        <input
-          className="cv-input"
-          value={meta.customer}
-          onChange={(e) => updateMeta({ customer: e.target.value })}
-        />
-      </Field>
-      <Field label="Site or location">
-        <input
-          className="cv-input"
-          value={meta.site}
-          onChange={(e) => updateMeta({ site: e.target.value })}
-        />
-      </Field>
-      <Field label="Change ticket">
-        <input
-          className="cv-input"
-          value={meta.ticket}
-          onChange={(e) => updateMeta({ ticket: e.target.value })}
-        />
-      </Field>
-      <Field label="Engineer">
-        <input
-          className="cv-input"
-          value={meta.engineer}
-          onChange={(e) => updateMeta({ engineer: e.target.value })}
-        />
-      </Field>
-      <Field label="Description">
-        <textarea
-          className="cv-input"
-          rows={4}
-          value={meta.description}
-          onChange={(e) => updateMeta({ description: e.target.value })}
-        />
-      </Field>
-      <ProjectCheckTiming />
-
-      <p className="cv-help">
-        {tr('inspector.selectANodeOr')}
-      </p>
-    </>
+    <div data-region="diagram-summary">
+      <h2 className="cv-inspector-title">{tr('inspector.diagram')}</h2>
+      <div className="cv-diagram-cells">
+        {cells.map((c) => (
+          <div key={c.status} className={`cv-diagram-cell is-${c.status}${counts[c.status] > 0 && c.status !== 'unknown' ? ' is-hot' : ''}`}>
+            <b><span className="cv-count-dot" aria-hidden="true" />{counts[c.status]}</b>
+            <span>{c.label}</span>
+          </div>
+        ))}
+      </div>
+      <dl className="cv-diagram-facts">
+        <div><dt>{tr('inspector.lastCheck')}</dt><dd>{lastCheck ? formatTime(lastCheck, timeFormat) : tr('inspector.never')}</dd></div>
+        <div><dt>{tr('inspector.onThePage')}</dt><dd>{tr('inspector.devicesLinks', { devices, links })} · {tr('plural.page', { count: doc.pages.length })}</dd></div>
+        {views.length > 0 && (
+          <div><dt>{tr('inspector.views')}</dt><dd>{views.map((v) => (hiddenViews.has(v.id) ? tr('inspector.viewHidden', { name: v.name }) : v.name)).join(' · ')}</dd></div>
+        )}
+        {filterWords && (
+          <div><dt>{tr('inspector.filterOn')}</dt><dd>{filterWords} <button type="button" className="cv-link-btn" onClick={() => useStore.getState().setCanvasFilter(null)}>{tr('inspector.clearFilter')}</button></dd></div>
+        )}
+      </dl>
+      <div className="cv-diagram-verbs">
+        {running ? (
+          <button type="button" className="cv-btn cv-btn-small cv-btn-stop" onClick={() => void useStore.getState().stopValidation()} disabled={session.state !== 'running'}>{tr('inspector.stopChecks')}</button>
+        ) : (
+          <button type="button" className="cv-btn cv-btn-small cv-btn-start" onClick={() => void useStore.getState().startValidation()}>{tr('topbar.startChecks')}</button>
+        )}
+        <button type="button" className="cv-btn cv-btn-small" onClick={() => { useStore.getState().setDockTab('crawl'); useStore.getState().setPanelOpen(true); }}>{tr('inspector.discoverMore')}</button>
+        <button type="button" className="cv-btn cv-btn-small" onClick={() => { useStore.getState().setDockTab('backup'); useStore.getState().setPanelOpen(true); }}>{tr('inspector.backUp')}</button>
+      </div>
+      <details className="cv-inspector-fold cv-check-timing-fold">
+        <summary><ChromeIcon name="chevron-right" size={12} className="cv-fold-caret" />{tr('inspector.checksSentence', { every, misses })}</summary>
+        <ProjectCheckTiming />
+      </details>
+      <details className="cv-inspector-fold cv-project-details" open={detailsFilled || undefined} data-region="project-details">
+        <summary><ChromeIcon name="chevron-right" size={12} className="cv-fold-caret" />{tr('inspector.projectDetails')}<span className="cv-fold-hint">{tr('inspector.projectDetailsHint')}</span></summary>
+        <Field label="Project name">
+          <input
+            className="cv-input"
+            value={meta.name}
+            onChange={(e) => updateMeta({ name: e.target.value })}
+          />
+        </Field>
+        <Field label="Customer or organisation">
+          <input
+            className="cv-input"
+            value={meta.customer}
+            onChange={(e) => updateMeta({ customer: e.target.value })}
+          />
+        </Field>
+        <Field label="Site or location">
+          <input
+            className="cv-input"
+            value={meta.site}
+            onChange={(e) => updateMeta({ site: e.target.value })}
+          />
+        </Field>
+        <Field label="Change ticket">
+          <input
+            className="cv-input"
+            value={meta.ticket}
+            onChange={(e) => updateMeta({ ticket: e.target.value })}
+          />
+        </Field>
+        <Field label="Engineer">
+          <input
+            className="cv-input"
+            value={meta.engineer}
+            onChange={(e) => updateMeta({ engineer: e.target.value })}
+          />
+        </Field>
+        <Field label="Description">
+          <textarea
+            className="cv-input"
+            rows={4}
+            value={meta.description}
+            onChange={(e) => updateMeta({ description: e.target.value })}
+          />
+        </Field>
+      </details>
+      <p className="cv-help">{tr('inspector.selectANodeOr')}</p>
+    </div>
   );
 }
-
 /**
  * The timing policy for every check in the project.
  *
@@ -1110,12 +1189,17 @@ function NodeInspector({ nodeId }: { nodeId: string }) {
 
   return (
     <>
-      <h2 className="cv-inspector-title">
-        Node
-        <span className="cv-status-chip" style={{ background: STATUS_COLOR[status] }}>
-          {STATUS_GLYPH[status]} {STATUS_LABEL[status]}
+      <h2 className="cv-inspector-title cv-device-title">
+        <span className="cv-device-name" title={deviceLabel}>{deviceLabel || tr('inspector.node')}</span>
+        <span className={`cv-status-word is-${status}`} title={STATUS_LABEL[status]}>
+          <span className="cv-count-dot" style={{ background: statusMark(status, ground) ?? undefined }} aria-hidden="true" />
+          {status === 'unknown' ? tr('inspector.notChecked') : STATUS_LABEL[status]}
         </span>
       </h2>
+      <p className="cv-inspector-sub cv-device-sub">
+        <span>{DEVICE_LABEL[d.deviceType] ?? d.deviceType}</span>
+        {primaryAddress(d) && <><span aria-hidden="true"> · </span><span className="cv-mono">{primaryAddress(d)}</span></>}
+      </p>
       {/* What you do with a device, in one row. */}
       <div className="cv-inspector-actions" role="toolbar" aria-label={tr('inspector.actions')}>
         <button type="button" className="cv-btn cv-btn-small" title={tr('ssh.panel')}

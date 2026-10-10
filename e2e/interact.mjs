@@ -1286,8 +1286,9 @@ await dismissRecovery();
       await page.mouse.click(heldBox.x + heldBox.width / 2, heldBox.y + 22);
       await page.waitForTimeout(350);
       const title = await page.locator(".cv-inspector-title").first().innerText();
+      // The inspector names the selected device in its title.
       check("a device standing in a section is still selectable",
-        /Node/i.test(title), title.replace(/\n/g, " ").slice(0, 60));
+        /Bystander/.test(title), title.replace(/\n/g, " ").slice(0, 60));
     }
 
     // Dragging the section carries what is standing in it.
@@ -2290,7 +2291,8 @@ await dismissRecovery();
   await box.press("Enter");
   await page.waitForTimeout(600);
   const title = await page.locator(".cv-inspector-title").first().innerText();
-  check("Enter jumps to and selects the first match", /Node/i.test(title),
+  // The inspector names the selected device in its title.
+  check("Enter jumps to and selects the first match", /Bystander/.test(title),
     title.replace(/\n/g, " ").slice(0, 30));
 
   await box.fill("");

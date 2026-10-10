@@ -194,8 +194,9 @@ if (await report.count()) {
     await goneLine.click();
     await page.waitForTimeout(600);
     const title = await page.locator(".cv-inspector-title").first().innerText();
+    // A selected device is named in the inspector's title and has its tabs.
     check("clicking it selects the device the line is about",
-      /Node/i.test(title), title.replace(/\n/g, " ").slice(0, 40));
+      !/^Diagram$/.test(title.trim()) && (await page.locator(".cv-inspector-tabs").count()) === 1, title.replace(/\n/g, " ").slice(0, 40));
     await inspectorTab("Identity");
     const label = await page.locator(".cv-inspector input").first().inputValue();
     check("and it is the right one", label === "OLD-SW", label);

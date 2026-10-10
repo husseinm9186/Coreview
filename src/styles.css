@@ -862,9 +862,40 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-inspector .cv-help,
 .cv-inspector .cv-field-hint { overflow-wrap: anywhere; }
 .cv-inspector-title {
-  font-size: var(--text-lg); margin: 0 0 0.92307692rem;
+  font-size: var(--text-xl); font-weight: 600; margin: 0 0 0.92307692rem;
   display: flex; align-items: center; justify-content: space-between; gap: 0.61538462rem;
 }
+/* A selected device: its name as the title, its status as a dot and a
+   word at the right, the kind and the address beneath. */
+.cv-device-title { margin-bottom: 0.15384615rem; }
+.cv-device-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-status-word { display: inline-flex; align-items: center; gap: 0.46153846rem; font-size: var(--text-sm); font-weight: 500; color: var(--text-dim); white-space: nowrap; flex: none; }
+.cv-status-word .cv-count-dot { background: var(--not-checked); }
+.cv-status-word.is-warning { color: var(--warning); } .cv-status-word.is-down { color: var(--down); font-weight: 600; }
+.cv-device-sub { margin: 0 0 0.92307692rem; font-size: var(--text-sm); color: var(--text-dim); }
+/* The diagram summary when nothing is selected. */
+.cv-diagram-cells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.46153846rem; margin: 0 0 0.92307692rem; }
+.cv-diagram-cell { border: 1px solid var(--line); border-radius: var(--radius); padding: 0.46153846rem 0.61538462rem; display: flex; flex-direction: column; gap: 0.15384615rem; min-width: 0; }
+.cv-diagram-cell b { display: inline-flex; align-items: center; gap: 0.46153846rem; font-size: var(--text-lg); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-faint); }
+.cv-diagram-cell span { font-size: var(--text-xs); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-diagram-cell.is-healthy .cv-count-dot { background: var(--healthy); } .cv-diagram-cell.is-warning .cv-count-dot { background: var(--warning); }
+.cv-diagram-cell.is-down .cv-count-dot { background: var(--down); } .cv-diagram-cell.is-unknown .cv-count-dot { background: transparent; border: 1px dashed var(--not-checked); }
+.cv-diagram-cell.is-hot b { color: var(--text); }
+.cv-diagram-cell.is-healthy.is-hot { background: var(--healthy-soft); } .cv-diagram-cell.is-warning.is-hot { background: var(--warning-soft); } .cv-diagram-cell.is-down.is-hot { background: var(--down-soft); }
+.cv-diagram-facts { margin: 0 0 0.92307692rem; display: grid; gap: 0.30769231rem; font-size: var(--text-md); }
+.cv-diagram-facts > div { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.61538462rem; }
+.cv-diagram-facts dt { color: var(--text-dim); } .cv-diagram-facts dd { margin: 0; }
+.cv-diagram-verbs { display: flex; flex-direction: column; gap: 0.30769231rem; margin: 0 0 1.07692308rem; }
+.cv-diagram-verbs .cv-btn { text-align: left; }
+/* A folded section of the inspector: a sentence that opens. */
+.cv-inspector-fold { margin: 0.61538462rem 0 0; border-top: 1px solid var(--line); padding-top: 0.61538462rem; }
+.cv-inspector-fold > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.46153846rem; font-size: var(--text-md); color: var(--text); }
+.cv-inspector-fold > summary::-webkit-details-marker { display: none; }
+.cv-inspector-fold[open] > summary .cv-fold-caret { transform: rotate(90deg); }
+.cv-fold-caret { color: var(--text-faint); transition: transform 120ms; flex: none; }
+.cv-fold-hint { color: var(--text-faint); font-size: var(--text-xs); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-inspector-fold > :not(summary) { margin-top: 0.61538462rem; }
+.cv-inspector .cv-layers { margin: 0 0 0.61538462rem; }
 /* Discover's four steps. */
 .cv-step { border-top: 1px solid var(--line); padding: 0.61538462rem 0 0.30769231rem; margin-top: 0.61538462rem; }
 .cv-step-head { display: flex; align-items: center; gap: 0.61538462rem; margin: 0 0 0.46153846rem; font-size: var(--text-md); font-weight: 600; color: var(--text); }
@@ -878,7 +909,7 @@ details.cv-discover-advanced[open] > summary::after { content: '▾'; }
 .cv-inspector-tabs { margin: 0 0 0.92307692rem; padding-bottom: 0.46153846rem; border-bottom: 1px solid var(--line); gap: 0.15384615rem; }
 /* Five on one row at the inspector's narrowest. */
 .cv-tabs.cv-inspector-tabs button { padding: 0.23076923rem 0.53846154rem; font-size: var(--text-sm); }
-.cv-kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.30769231rem 0.76923077rem; margin: 0 0 1.07692308rem; font-size: var(--text-md); }
+.cv-kv { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.30769231rem 0.76923077rem; margin: 0 0 1.07692308rem; font-size: var(--text-md); }
 .cv-kv-row { display: contents; }
 .cv-kv dt { color: var(--text-dim); white-space: nowrap; }
 .cv-kv dd { margin: 0; overflow-wrap: anywhere; }
