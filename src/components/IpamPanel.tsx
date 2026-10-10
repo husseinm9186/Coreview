@@ -872,8 +872,8 @@ function SubnetRows({
     <>
       <tr className="cv-ipam-subnet">
         <td>
-          <button type="button" className="cv-link" aria-expanded={open} onClick={onToggle}>
-            <ChromeIcon name={open ? 'chevron-down' : 'chevron-right'} size={12} /> {block.cidr}
+          <button type="button" className="cv-link cv-cidr" aria-expanded={open} onClick={onToggle}>
+            <ChromeIcon name={open ? 'chevron-down' : 'chevron-right'} size={12} className="cv-fold-caret" /> <span className="cv-mono">{block.cidr}</span>
           </button>
         </td>
         <td>
@@ -882,7 +882,9 @@ function SubnetRows({
         </td>
         <td>{block.vlan ?? ''}</td>
         <td>
-          <span className="cv-ipam-meter" title={t('ipam.utilisation', { percent: used, usable: block.usable })}>
+          {/* Banded: the accent until three quarters, the warning colour to
+              nine tenths, then the down colour. */}
+          <span className={`cv-ipam-meter${used >= 90 ? ' is-full' : used >= 75 ? ' is-high' : ''}`} title={t('ipam.utilisation', { percent: used, usable: block.usable })}>
             <span className="cv-ipam-meter-fill" style={{ width: `${used}%` }} />
           </span>
           {t('ipam.usedOf', { used: block.used, usable: block.usable })}

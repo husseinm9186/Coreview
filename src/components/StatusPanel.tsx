@@ -77,22 +77,41 @@ const ObjectRows = memo(function ObjectRows({
 }) {
   return (
     <>
-      {rows.map((r) => (
-        <tr key={r.id} onClick={() => (r.kind === 'node' ? select(r.id, null) : select(null, r.id))}>
-          <td>
-            <span className="cv-status-chip" style={{ background: STATUS_COLOR[r.status] }}>
-              {STATUS_GLYPH[r.status]} {STATUS_LABEL[r.status]}
-            </span>
-          </td>
-          <td>{r.kind}</td>
-          <td>{r.name}</td>
-          <td className="cv-mono">{r.type}</td>
-          <td className="cv-mono">{r.target || '—'}</td>
-          <td className="cv-mono">{r.rtt != null ? `${r.rtt.toFixed(0)} ms` : '—'}</td>
-          <td className="cv-mono cv-stale">{r.checked ?? '—'}</td>
-          <td className="cv-mono cv-ellipsis">{r.detail || '—'}</td>
-        </tr>
-      ))}
+      {rows.map((r) => {
+        const pick = () => (r.kind === 'node' ? select(r.id, null) : select(null, r.id));
+        return (
+          <tr
+            key={r.id}
+            className={`is-${r.status}`}
+            tabIndex={0}
+            onClick={pick}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                pick();
+              }
+            }}
+          >
+            <td>
+              {/* A dot and a word; the word in the status colour only when
+                  there is something wrong. The glyph stays for the screen
+                  reader, so colour is never the only carrier. */}
+              <span className={`cv-status-chip is-${r.status}`}>
+                <span className="cv-count-dot" aria-hidden="true" />
+                <span className="cv-sr">{STATUS_GLYPH[r.status]} </span>
+                {r.status === 'unknown' ? t('dock.notChecked') : STATUS_LABEL[r.status]}
+              </span>
+            </td>
+            <td className="cv-kind">{r.kind}</td>
+            <td className="cv-name">{r.name}</td>
+            <td>{r.type}</td>
+            <td className="cv-mono">{r.target || <span className="cv-dash">—</span>}</td>
+            <td className="cv-num">{r.rtt != null ? r.rtt.toFixed(0) : <span className="cv-dash">—</span>}</td>
+            <td className="cv-num cv-stale">{r.checked ?? <span className="cv-dash">—</span>}</td>
+            <td className="cv-ellipsis">{r.detail || <span className="cv-dash">—</span>}</td>
+          </tr>
+        );
+      })}
     </>
   );
 });
@@ -549,7 +568,14 @@ export function StatusPanel() {
         ) : tab === 'ssh' ? (
           <SshPanel />
         ) : tab === 'objects' ? (
-          <table className="cv-table">
+          <table className="cv-table cv-targets">
+            {/* The column contract: what is counted is right-aligned and
+                tabular, what could be pasted into a terminal is mono, and
+                the last result takes what is left. */}
+            <colgroup>
+              <col className="col-status" /><col className="col-kind" /><col className="col-name" /><col className="col-type" />
+              <col className="col-target" /><col className="col-num" /><col className="col-num" /><col />
+            </colgroup>
             <thead>
               <tr>
                 <th>Status</th>
@@ -557,8 +583,8 @@ export function StatusPanel() {
                 <th>Name</th>
                 <th>Type / rule</th>
                 <th>Target</th>
-                <th>RTT</th>
-                <th>Checked</th>
+                <th className="cv-num">RTT ms</th>
+                <th className="cv-num">Checked</th>
                 <th>Last result</th>
               </tr>
             </thead>

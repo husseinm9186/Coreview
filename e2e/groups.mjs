@@ -114,7 +114,8 @@ const groupRows = section.locator("fieldset");
 const groupField = (i, label) =>
   groupRows.nth(i).locator(".cv-field", { has: page.locator(`span:text-is("${label}")`) }).locator("input").first();
 const option = (label) => section.locator(".cv-check", { hasText: label }).locator("input");
-const backUp = () => page.locator("button", { hasText: /^Back up/ }).first();
+// The dock's own button: the inspector's diagram summary offers "Back up devices" too, which only opens this tab.
+const backUp = () => page.locator(".cv-panel button", { hasText: /^Back up/ }).first();
 const starts = () => page.evaluate(() => window.__cvCalls.filter((c) => c.cmd === "start_backup"));
 const namesIn = (call) => (call?.args?.input?.targets ?? []).map((t) => t.name);
 const steps = () => page.locator(".cv-group-progress li").allInnerTexts();

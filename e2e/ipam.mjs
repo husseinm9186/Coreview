@@ -258,7 +258,7 @@ check("and removed", !entries.some((e) => e.address === "203.0.113.70"), JSON.st
 // ------------------------------------------------- editing the subnets
 
 // A subnet the app worked out for itself is named, which adopts it.
-await rowFor("198.51.100.0/24").locator("button", { hasText: "Name it" }).click();
+await rowFor("198.51.100.0/24").locator("button", { hasText: "Rename" }).click();
 await page.waitForTimeout(250);
 await field("Name").fill("Server VLAN");
 await field("VLAN").fill("120");
@@ -269,7 +269,7 @@ check("naming a derived subnet adopts it into the register",
 check("and it now says it was declared", (await cellText("198.51.100.0/24", 6)).startsWith("declared"),
   await cellText("198.51.100.0/24", 6));
 check("while still saying what derived it",
-  (await cellText("198.51.100.0/24", 6)).includes("from addresses"), await cellText("198.51.100.0/24", 6));
+  (await cellText("198.51.100.0/24", 6)).includes("addresses on the diagram"), await cellText("198.51.100.0/24", 6));
 check("the device on it is still there", (await page.evaluate(() =>
   window.__cvStore.getState().doc.ipam.subnets.length)) === 2);
 
@@ -298,7 +298,7 @@ await rowFor("198.51.100.0/24").locator("button", { hasText: "Remove" }).click()
 await page.waitForTimeout(400);
 check("removing an adopted subnet leaves the subnet itself",
   (await rowFor("198.51.100.0/24").count()) === 1);
-check("derived again, and unnamed", (await cellText("198.51.100.0/24", 6)) === "from addresses",
+check("derived again, and unnamed", (await cellText("198.51.100.0/24", 6)) === "addresses on the diagram",
   await cellText("198.51.100.0/24", 6));
 check("with its address still on it", (await cellText("198.51.100.0/24", 3)).includes("1 of 254"),
   await cellText("198.51.100.0/24", 3));

@@ -138,7 +138,8 @@ const openBackups = async () => {
 const checkbox = (label) => page.locator(".cv-check", { hasText: label }).locator("input").first();
 const field = (label) =>
   page.locator(".cv-field", { has: page.locator(`span:text-is("${label}")`) }).locator("input").first();
-const backUp = () => page.locator("button", { hasText: /^Back up/ }).first();
+// The dock's own button: the inspector's diagram summary offers "Back up devices" too, which only opens this tab.
+const backUp = () => page.locator(".cv-panel button", { hasText: /^Back up/ }).first();
 const lastStart = () =>
   page.evaluate(() => [...window.__cvCalls].reverse().find((c) => c.cmd === "start_backup")?.args ?? null);
 
