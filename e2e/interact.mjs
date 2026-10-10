@@ -705,8 +705,8 @@ const dragNode = async (selector, dx, dy, witnessSelector) => {
     // Validation has never been started in this fixture, so nothing is known
     // about any of it. Claiming otherwise is the failure this guards.
     const label = (await strip.getAttribute("aria-label")) ?? "";
-    check("an unwatched period reads as unknown, not healthy",
-      /Unknown/.test(label) && !/Healthy/.test(label), label.slice(0, 80));
+    check("an unwatched period reads as not-checked, not up",
+      /Not checked/.test(label) && !/\bUp\b/.test(label), label.slice(0, 80));
 
     const windows = await page.locator(".cv-history-windows button").allTextContents();
     check("the window can be changed", windows.join(",") === "15m,1h,6h", windows.join(","));
@@ -3098,7 +3098,7 @@ await dismissRecovery();
     body.includes("311430:07Z AUG 26") && body.includes("311430:21Z AUG 26"),
     body.split("\n").slice(1, 3).join(" | "));
   check("and still says what changed",
-    /Healthy/.test(body) && /Down/.test(body));
+    /\bUp\b/.test(body) && /Down/.test(body));
   await page.locator(".cv-tabs button", { hasText: "Monitored objects" }).click();
   await page.waitForTimeout(300);
   await page.evaluate(() => window.__cvStore.setState({ events: [] }));

@@ -127,6 +127,32 @@ await page.locator(".cv-panel.is-collapsed button", { hasText: "Show status and 
 await page.waitForTimeout(250);
 await st(() => window.__cvStore.getState().setJobs([]));
 
+// --------------------------------------------- not checked, and the counts
+{
+  await page.locator('.cv-panel button[role="tab"]', { hasText: "Monitored objects" }).click();
+  await page.waitForTimeout(300);
+  // This project has never been checked, so the list says so.
+  check("before any check has run, the list says so",
+    (await page.locator(".cv-nocheck").count()) === 1 && /Checks have not run/.test(await page.locator(".cv-nocheck").innerText()));
+  check("with Start checks on the banner", (await page.locator('[data-region="banner-start-checks"]').count()) === 1);
+  // Not checked reads as the word, not "Unknown".
+  check("the rows read Not checked, not Unknown",
+    (await page.locator(".cv-targets .cv-status-chip.is-unknown").first().innerText()).includes("Not checked"));
+  // The top bar's health counts are buttons into the list.
+  const notChecked = page.locator('.cv-topbar [data-region="count-unknown"]');
+  check("the top bar counts the two as not checked", /2/.test(await notChecked.innerText()) && (await notChecked.getAttribute("title")) === "Show the Not checked list");
+  // Down count opens the list filtered to Down.
+  await page.locator('.cv-topbar [data-region="count-down"]').click();
+  await page.waitForTimeout(300);
+  check("clicking the Down count opens the list filtered to Down",
+    (await st(() => window.__cvStore.getState().dockTab)) === "objects" &&
+    (await page.locator('.cv-panel-seg button.is-on').innerText()) === "Down");
+  // Up relabelled from Healthy.
+  check("the Up count carries the new word", (await page.locator('.cv-topbar [data-region="count-healthy"]').getAttribute("title")) === "Show the Up list");
+  await page.locator('.cv-panel-seg button', { hasText: "All" }).click();
+  await page.waitForTimeout(200);
+}
+
 // ------------------------------------------------------------- pop out
 
 const side = page.locator('[data-action="dock-side"]');

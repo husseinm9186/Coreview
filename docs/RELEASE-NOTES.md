@@ -18,6 +18,15 @@ Newest first.
   Arrange menu releases them. **Lay out radially** is on the Arrange menu
   as well.
 
+**The words for a device's health**
+- *Up* for a device that answers, *Not checked* for one no check has run
+  against — a different thing from *Down*, a check that got no reply. Not
+  checked shows as a dashed outline, not a filled dot, because nothing was
+  measured. The top bar's four health counts are buttons now: each opens
+  the monitored list it stands for, Down filtered to the down devices. A
+  project no check has run on says so, with Start checks, at the top of
+  the list.
+
 **Discover and the terminal dock on the right**
 - Discovering devices and the terminal open down the right of the window,
   beside the inspector rather than in place of it: Discover at a narrow

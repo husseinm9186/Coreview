@@ -575,6 +575,14 @@ a:hover { color: var(--text); }
   border-radius: var(--radius); font-size: var(--text-md); font-variant-numeric: tabular-nums; color: var(--text-faint);
 }
 .cv-count-dot { width: 0.53846154rem; height: 0.53846154rem; border-radius: 50%; background: var(--unknown); }
+/* The top bar's health counts are buttons into the list each stands for. */
+button.cv-count { background: none; border: 0; font: inherit; cursor: pointer; }
+button.cv-count:hover, button.cv-count:focus-visible { outline: none; }
+button.cv-count:hover .cv-count-dot, button.cv-count:focus-visible .cv-count-dot { box-shadow: 0 0 0 2px var(--hover); }
+.cv-count.is-unknown .cv-count-dot { background: transparent; border: 1px dashed var(--not-checked); }
+/* The 'no checks have run' banner at the top of the list. */
+.cv-nocheck-row td { background: var(--panel-2); }
+.cv-nocheck { display: inline-flex; align-items: center; gap: 0.46153846rem; color: var(--text-dim); font-size: var(--text-sm); }
 .cv-count.is-healthy .cv-count-dot { background: var(--healthy); }
 .cv-count.is-warning .cv-count-dot { background: var(--warning); }
 .cv-count.is-down .cv-count-dot { background: var(--down); }
@@ -681,7 +689,10 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-status-chip .cv-count-dot { background: var(--not-checked); }
 .cv-status-chip.is-healthy .cv-count-dot { background: var(--healthy); } .cv-status-chip.is-warning .cv-count-dot { background: var(--warning); }
 .cv-status-chip.is-down .cv-count-dot { background: var(--down); } .cv-status-chip.is-maintenance .cv-count-dot { background: var(--maintenance); }
-.cv-status-chip.is-disabled .cv-count-dot { background: var(--disabled); } .cv-status-chip.is-unknown .cv-count-dot { background: var(--unknown); }
+.cv-status-chip.is-disabled .cv-count-dot { background: var(--disabled); }
+/* Not checked reads as an outline, not a filled dot: nothing has been
+   measured, so there is no colour to show. */
+.cv-status-chip.is-unknown .cv-count-dot { background: transparent; border: 1px dashed var(--not-checked); }
 .cv-status-chip.is-warning { color: var(--warning); font-weight: 600; } .cv-status-chip.is-down { color: var(--down); font-weight: 600; }
 .cv-status-chip {
   display: inline-flex; align-items: center; gap: 0.46153846rem;

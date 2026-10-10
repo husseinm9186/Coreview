@@ -183,7 +183,7 @@ await st((probes) => {
 }, started.probes);
 await page.waitForTimeout(500);
 const counts = await page.locator(".cv-counts").textContent();
-check("   and the results reach the diagram", /Down 1/.test(counts) && /Healthy [1-9]/.test(counts), counts);
+check("   and the results reach the diagram", /Down 1/.test(counts) && /Up [1-9]/.test(counts), counts);
 
 // 5. Export and report.
 const menu = page.locator(".cv-dropdown").filter({ has: page.locator("summary", { hasText: "Export" }) });

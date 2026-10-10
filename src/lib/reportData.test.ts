@@ -31,6 +31,6 @@ describe('what a report says', () => {
     expect(r.ports[0]).toEqual({ device: 'CORE-SW1', port: 'Gi1/0/1', status: 'connected', speed: '1000 full', vlan: 'trunk 1,10', errors: '3' });
     expect(r.probes[0]).toMatchObject({ object: 'CORE-SW1', kind: 'TCP', target: '192.0.2.10:22', every: '10 s', thresholds: '3 down / 2 up', enabled: 'yes' });
     expect(r.results[0]).toMatchObject({ status: 'Down', rtt: '—', availability: '50%', last: 'Refused' });
-    expect(r.transitions[0]).toMatchObject({ object: 'CORE-SW1', change: 'Healthy → Down', time: '1970-01-01 00:00' });
+    expect(r.transitions[0]).toMatchObject({ object: 'CORE-SW1', change: 'Up → Down', time: '1970-01-01 00:00' });
   });
 });

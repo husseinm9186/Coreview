@@ -730,13 +730,22 @@ export function TopBar({ onExit }: { onExit: () => void }) {
           is on the canvas (CanvasToolbar); the machine preferences are in
           Settings. */}
       <div className="cv-topbar-centre">
-        <div className="cv-counts" role="group" aria-label={t('topbar.health')}>
+<div className="cv-counts" role="group" aria-label={t('topbar.health')}>
           {STRIP.map((st) => (
-            <span key={st} className={`cv-count is-${st}${counts[st] > 0 ? ' is-hot' : ''}`} title={`${STATUS_LABEL[st]} ${counts[st]}`}>
+            <button key={st} type="button" data-region={`count-${st}`}
+              className={`cv-count is-${st}${counts[st] > 0 ? ' is-hot' : ''}`}
+              title={t('topbar.countFilter', { status: STATUS_LABEL[st] })}
+              onClick={() => {
+                const s = useStore.getState();
+                s.setPanelOpen(true);
+                // Down to the Down list; Warning to problems; the rest just
+                // open the full list the count stands for.
+                s.requestDockFilter(st === 'down' ? 'down' : st === 'warning' ? 'problems' : 'all');
+              }}>
               <span className="cv-count-dot" aria-hidden="true" />
               <span className="cv-sr">{STATUS_LABEL[st]} </span>
               {counts[st]}
-            </span>
+            </button>
           ))}
         </div>
         {session.state === 'running' || session.state === 'stopping' || session.state === 'starting' ? (

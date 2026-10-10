@@ -694,6 +694,10 @@ interface Store {
   removeInkStroke: (id: string) => void;
   setFocus: (f: { ids: string[]; hops: number } | null) => void;
   requestPanelTab: (tab: string | null) => void;
+  /** A filter the Monitored objects table should take — set from the top
+   *  bar's health counts, so a count is a way into the list it stands for. */
+  dockFilterRequest: 'all' | 'problems' | 'down' | null;
+  requestDockFilter: (f: 'all' | 'problems' | 'down' | null) => void;
   setGridSnap: (on: boolean) => void;
   /** The project's credential rules by subnet or vendor. */
   setCredentialRules: (rules: CredentialRule[]) => void;
@@ -1403,6 +1407,7 @@ export const useStore = create<Store>((set, get) => ({
   presenting: false,
   printing: false,
   panelRequest: null,
+  dockFilterRequest: null,
   pendingCrawlResult: null,
   discoverRun: null,
   canvasFilter: null,
@@ -1747,6 +1752,10 @@ export const useStore = create<Store>((set, get) => ({
   setDiscoverRun(r) {
     set({ discoverRun: r });
   },
+  requestDockFilter(f) {
+    set({ dockFilterRequest: f });
+  },
+
   requestPanelTab(tab) {
     set({ panelRequest: tab, ...(tab ? { panelOpen: true } : {}) });
   },

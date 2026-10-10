@@ -267,7 +267,7 @@ describe('the glyph presentation', () => {
     const svg = render([device('n1', 0, 0)], [], 'healthy', 'glyph');
     expect(svg).toContain('Device n1');
     expect(svg).toContain('10.0.0.1');
-    expect(svg).toContain('Healthy');
+    expect(svg).toContain('Up');
     expect(svg).toContain('<path');
     // No node body box. Counting <rect> would not show this — the chassis
     // glyph is drawn from rects too — so look for the box at the node's own
@@ -383,6 +383,7 @@ describe('sections in the export', () => {
     });
     expect(svg).toContain('DMZ');
     expect(svg).not.toContain('Unknown');
+    expect(svg).not.toContain('Not checked');
   });
 
   it('draws a section behind what stands in it', () => {

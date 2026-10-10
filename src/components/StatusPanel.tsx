@@ -182,6 +182,7 @@ export function StatusPanel() {
   const open = useStore((s) => s.panelOpen);
   // A tab asked for from the command palette.
   const panelRequest = useStore((s) => s.panelRequest);
+  const dockFilterRequest = useStore((s) => s.dockFilterRequest);
   const setOpen = useStore((s) => s.setPanelOpen);
   // The pages and the probes, not the whole document.
   const pages = useStore((s) => s.doc.pages);
@@ -220,6 +221,14 @@ export function StatusPanel() {
     }
     useStore.getState().requestPanelTab(null);
   }, [panelRequest, setTab]);
+  // A health count in the top bar sets the list's filter and opens it.
+  useEffect(() => {
+    if (!dockFilterRequest) return;
+    setProblems(dockFilterRequest);
+    setQuery('');
+    setTab('objects');
+    useStore.getState().requestDockFilter(null);
+  }, [dockFilterRequest, setTab]);
   // Devices handed over from a crawl, so a discovery can go straight to a
   // backup without being drawn first.
   const [handedOver, setHandedOver] = useState<{ address: string; name: string }[]>([]);
@@ -512,6 +521,9 @@ export function StatusPanel() {
   const shown = tab === 'objects' ? filtered.length : filteredEvents.length;
   const total = tab === 'objects' ? rows.length : events.length;
   const down = counts.down ?? 0;
+  // No session has ever run and nothing has a live result: the table is a
+  // list of targets, not of results, and says so.
+  const neverChecked = session.state === 'stopped' && runtime.size === 0 && rows.length > 0;
   const warning = counts.warning ?? 0;
 
   return (
@@ -674,6 +686,18 @@ export function StatusPanel() {
               </tr>
             </thead>
             <tbody>
+              {neverChecked && (
+                <tr className="cv-nocheck-row">
+                  <td colSpan={8}>
+                    <span className="cv-nocheck">
+                      <ChromeIcon name="alert" />
+                      {t('dock.neverChecked')}
+                      <button type="button" className="cv-link-btn" data-region="banner-start-checks"
+                        onClick={() => void useStore.getState().startValidation()}>{t('topbar.startChecks')}</button>
+                    </span>
+                  </td>
+                </tr>
+              )}
               {tree.length === 0 ? (
                 <ObjectRows rows={filtered} select={select} selectedId={selectedId} />
               ) : (

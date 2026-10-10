@@ -510,8 +510,12 @@ export interface ProbeRuntime {
 export type SessionState = 'stopped' | 'starting' | 'running' | 'stopping' | 'error';
 
 export const STATUS_LABEL: Record<HealthStatus, string> = {
-  unknown: 'Unknown',
-  healthy: 'Healthy',
+  // A device that answers its check is "Up"; one that no check has run
+  // against is "Not checked", a different thing from "Down" (a check ran
+  // and the device did not answer). "No answer" is the wording the dock
+  // uses while a device is missing replies but not yet called down.
+  unknown: 'Not checked',
+  healthy: 'Up',
   warning: 'Warning',
   down: 'Down',
   disabled: 'Disabled',
