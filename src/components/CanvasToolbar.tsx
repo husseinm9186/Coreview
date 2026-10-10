@@ -7,7 +7,7 @@
  * in the top bar; the ink tools used to float on the pane in a bar of
  * their own, which took the top-left band away from lassos and drops.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useReactFlow, useViewport } from '@xyflow/react';
 
 import { t } from '../i18n';
@@ -19,6 +19,7 @@ import { CanvasFilterMenu } from './CanvasFilterMenu';
 import { CanvasTypeFilter } from './CanvasTypeFilter';
 import { ChromeIcon, IconButton } from './chromeIcons';
 import { arrangeByLayerMessage, layoutMessage } from './arrangeMessages';
+import { foldableRoles, holdersBelow, holdersOfRole, ROLE_WORD, siteKeys } from '../lib/clusters';
 
 /** The pen's inks. Chosen to read on both grounds. */
 const COLOURS: [string, string][] = [
@@ -41,12 +42,47 @@ export function CanvasToolbar() {
   const inkCount = (pg.canvas.ink ?? []).length;
   const selected = pg.nodes.filter((n) => n.selected).length;
   const pinnedCount = pg.nodes.filter((n) => (n.data as { placedBy?: string }).placedBy === 'hand').length;
+  const foldFans = useStore((s) => s.settings.foldFans);
+  // What there is to fold, read when the menu opens rather than on every
+  // change: every device's branch is walked to find the fans.
+  const [folds, setFolds] = useState<{ sites: string[]; roles: ReturnType<typeof foldableRoles>; holders: Map<string, Set<string>> } | null>(null);
+  const readFolds = () => {
+    const holders = holdersBelow(pg.nodes, pg.edges);
+    setFolds({ sites: siteKeys(pg.nodes), roles: foldableRoles(pg.nodes, holders), holders });
+  };
   const [color, setColor] = useState(COLOURS[0]![0]);
   const [width, setWidth] = useState(3);
   const { zoom } = useViewport();
   const gridStyle = (pg.canvas.gridEnabled ?? true) ? (pg.canvas.gridStyle ?? 'lines') : 'none';
   const growPage = pg.canvas.growPage ?? true;
   const closeMenus = (e: React.MouseEvent) => (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+  // A bare <details> opens and then stays open: neither Escape nor a click
+  // elsewhere closes it, so a menu sat over the canvas until its own summary
+  // was clicked again — and the next click on the summary closed rather
+  // than opened it. Every menu in the strip gets the dismissal the top bar's
+  // export menu has.
+  const strip = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const openMenus = () => [...(strip.current?.querySelectorAll<HTMLDetailsElement>('details[open]') ?? [])];
+    const away = (e: Event) => {
+      for (const el of openMenus()) if (!el.contains(e.target as Node)) el.open = false;
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const open = openMenus();
+      if (open.length === 0) return;
+      for (const el of open) el.open = false;
+      // Focus goes back to the control that opened it, or it lands on <body>
+      // and the next Tab restarts from the top of the page.
+      open[0]?.querySelector('summary')?.focus();
+    };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', key);
+    };
+  }, []);
   const setGrid = (style: 'lines' | 'dots' | 'none') => useStore.getState().setCanvas({ gridEnabled: style !== 'none', gridStyle: style });
   // The sheet as a paper size. Choosing one fixes the sheet to it —
   // a page that grew past A4 would not be A4 — and "fit the diagram" lets it
@@ -88,7 +124,7 @@ export function CanvasToolbar() {
   };
 
   return (
-    <div className="cv-canvas-tools" role="toolbar" aria-label={t('canvasTools.title')} data-region="canvas-tools">
+    <div className="cv-canvas-tools" role="toolbar" aria-label={t('canvasTools.title')} data-region="canvas-tools" ref={strip}>
       {/* The view. */}
       <div className="cv-strip-group" role="group" aria-label={t('canvasTools.zoomLevel')}>
         {/* First in the row, and first in the DOM: the zoom menu behind it
@@ -218,7 +254,7 @@ export function CanvasToolbar() {
 
       {/* Arranging, filtering, the overview. */}
       <div className="cv-strip-group" role="group" aria-label={t('canvasTools.arrange')}>
-        <details className="cv-dropdown cv-arrange-menu">
+        <details className="cv-dropdown cv-arrange-menu" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) readFolds(); }}>
           <summary className="cv-icon-btn is-menu" title={t('canvasTools.arrangeHint')} data-region="arrange-menu">
             <ChromeIcon name="arrange" />
             <span className="cv-icon-word">{t('canvasTools.arrange')}</span>
@@ -231,6 +267,35 @@ export function CanvasToolbar() {
               onClick={(e) => { closeMenus(e); const n = useStore.getState().unpinMoved(); useStore.getState().setStatusMessage(t('canvasTools.unpinned', { devices: t('plural.device', { count: n }) })); }}>
               {t('canvasTools.unpinMoved')}{pinnedCount ? ` (${pinnedCount})` : ''}
             </button>
+            {/* Folding: sites into boxes, fans into chips, and everything back. */}
+            <button type="button" role="menuitem" data-region="collapse-by-site" disabled={!folds || folds.sites.length === 0}
+              onClick={(e) => {
+                closeMenus(e);
+                if (!folds) return;
+                useStore.getState().setFoldedGroups(folds.sites);
+                useStore.getState().setStatusMessage(t('canvasTools.collapsedSites', { sites: t('plural.siteFolded', { count: folds.sites.length }) }));
+              }}>
+              {t('canvasTools.collapseBySite', { count: folds?.sites.length ?? 0 })}
+            </button>
+            {(folds?.roles ?? []).map((r) => (
+              <button key={r.role} type="button" role="menuitem" data-region={`collapse-below-${r.role}`}
+                onClick={(e) => {
+                  closeMenus(e);
+                  if (!folds) return;
+                  useStore.getState().collapseMany(holdersOfRole(pg.nodes, folds.holders, r.role));
+                  useStore.getState().setStatusMessage(t('canvasTools.collapsedBelow', { role: ROLE_WORD[r.role].title, fans: t('plural.fan', { count: r.holders }), devices: t('plural.device', { count: r.devices }) }));
+                }}>
+                {t('canvasTools.collapseBelow', { role: ROLE_WORD[r.role].title, fans: t('plural.fan', { count: r.holders }), devices: t('plural.device', { count: r.devices }) })}
+              </button>
+            ))}
+            <button type="button" role="menuitem" data-region="expand-everything"
+              onClick={(e) => { closeMenus(e); useStore.getState().expandAll(); useStore.getState().setStatusMessage(t('canvasTools.expandedAll')); }}>
+              {t('canvasTools.expandEverything')}
+            </button>
+            <label className="cv-check" title={t('canvasTools.foldFansHint')}>
+              <input type="checkbox" data-region="fold-fans" checked={foldFans} onChange={(e) => useStore.getState().setSettings({ foldFans: e.target.checked })} />
+              {t('canvasTools.foldFans')}
+            </label>
             <p className="cv-help">{selected < 2 ? t('canvasTools.arrangeSelectHint') : t('canvasTools.arrangeSelected', { count: selected })}</p>
             {([
               ['left', t('canvasTools.alignLeft')], ['centre', t('canvasTools.alignCentre')], ['right', t('canvasTools.alignRight')],

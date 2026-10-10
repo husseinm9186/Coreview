@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useStableList } from '../lib/useStableList';
 import { useReactFlow } from '@xyflow/react';
 import { findNodes } from '../lib/findNodes';
@@ -25,10 +25,10 @@ import { ChromeIcon, IconButton } from './chromeIcons';
 import type { DeviceNodeData, HealthStatus, LinkData, ProbeRuntime } from '../types/domain';
 import { STATUS_GLYPH, STATUS_LABEL } from '../types/domain';
 import { activePage, allEdges, allNodes } from '../lib/pages';
+import { roleOf } from '../lib/clusters';
+import { buildTree, flattenTree, openForFit, type TreeBranch, type TreeLeafRow } from '../lib/objectTree';
 
-type Row = {
-  id: string;
-  kind: 'node' | 'link';
+type Row = TreeLeafRow & {
   name: string;
   type: string;
   target: string;
@@ -71,9 +71,15 @@ function checkedAgo(live: ProbeRuntime | undefined, now: number): string | null 
 const ObjectRows = memo(function ObjectRows({
   rows,
   select,
+  depth = 0,
+  selectedId = null,
 }: {
   rows: Row[];
   select: (nodeId: string | null, edgeId: string | null) => void;
+  /** How far under a branch the rows sit. */
+  depth?: number;
+  /** The row selected on the canvas, marked so the table follows it. */
+  selectedId?: string | null;
 }) {
   return (
     <>
@@ -82,7 +88,8 @@ const ObjectRows = memo(function ObjectRows({
         return (
           <tr
             key={r.id}
-            className={`is-${r.status}`}
+            className={`is-${r.status}${depth ? ` is-depth-${depth}` : ''}${r.id === selectedId ? ' is-selected' : ''}`}
+            data-id={r.id}
             tabIndex={0}
             onClick={pick}
             onKeyDown={(e) => {
@@ -115,6 +122,41 @@ const ObjectRows = memo(function ObjectRows({
     </>
   );
 });
+
+/** One branch of the tree: a site or a role, with how many it holds and
+ *  the worst of them. Click or Enter opens and closes it. */
+function BranchRow({ branch, open, onToggle }: { branch: TreeBranch<Row>; open: boolean; onToggle: () => void }) {
+  const problems = [
+    branch.down ? t('dock.branchDown', { count: branch.down }) : '',
+    branch.warning ? t('dock.branchWarning', { count: branch.warning }) : '',
+  ].filter(Boolean);
+  return (
+    <tr
+      className={`cv-tree-branch is-depth-${branch.depth} is-${branch.worst}${open ? ' is-open' : ''}`}
+      data-branch={branch.key}
+      tabIndex={0}
+      aria-expanded={open}
+      onClick={onToggle}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
+    >
+      <td colSpan={8}>
+        <span className="cv-tree-toggle" aria-hidden="true">
+          <ChromeIcon name={open ? 'chevron-down' : 'chevron-right'} size={12} />
+        </span>
+        {/* Spaces between the parts, so the row reads "HQ 20 2 down" to a
+            screen reader rather than as one word. */}
+        <span className="cv-tree-label">{branch.label}</span>{' '}
+        <span className="cv-tree-count">{branch.count}</span>{' '}
+        {problems.length > 0 && <span className={`cv-status-chip is-${branch.worst}`}><span className="cv-count-dot" aria-hidden="true" />{problems.join(' · ')}</span>}
+      </td>
+    </tr>
+  );
+}
 
 /** The dock's tabs by what they answer. Every tab is here once. */
 const DOCK_GROUPS: { key: 'monitor' | 'discover' | 'paths' | 'ops'; tabs: DockTab[] }[] = [
@@ -293,6 +335,7 @@ export function StatusPanel() {
     // Every page: monitoring is project-wide regardless of which
     // page a device or link is drawn on.
     const labelOf = new Map(nodes.map((n) => [n.id, (n.data as DeviceNodeData | undefined)?.label]));
+    const siteOf = new Map(nodes.map((n) => [n.id, ((n.data as DeviceNodeData | undefined)?.site ?? '').trim()]));
     for (const n of nodes) {
       if (n.type !== 'device') continue;
       const d = n.data as DeviceNodeData;
@@ -302,6 +345,8 @@ export function StatusPanel() {
       out.push({
         id: n.id,
         kind: 'node',
+        site: siteOf.get(n.id) ?? '',
+        role: roleOf(d),
         name: d.label,
         type: d.deviceType,
         target: primary?.target ?? '',
@@ -320,6 +365,8 @@ export function StatusPanel() {
       out.push({
         id: e.id,
         kind: 'link',
+        site: siteOf.get(e.source) ?? '',
+        role: 'links',
         name: `${nameOf(e.source)} ↔ ${nameOf(e.target)}`,
         type: d.healthRule?.type ?? 'manual',
         target: linkProbes[0]?.target ?? '',
@@ -358,6 +405,41 @@ export function StatusPanel() {
       }),
     [rows, problems, query],
   );
+
+  // The table as a tree — site › role › device — once there is something
+  // to fold. The branches that will not fit the panel fold first; the one
+  // holding what is selected on the canvas is always open; what somebody
+  // opened or closed by hand stays as they left it.
+  const selectedNodeId = useStore((s) => s.selectedNodeId);
+  const selectedEdgeId = useStore((s) => s.selectedEdgeId);
+  const selectedId = selectedNodeId ?? selectedEdgeId;
+  const tree = useMemo(() => buildTree(filtered, (site) => site || t('dock.noSite')), [filtered]);
+  const [manualOpen, setManualOpen] = useState<Map<string, boolean>>(() => new Map());
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // How many rows the panel's body shows without scrolling.
+  const [fits, setFits] = useState(40);
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      const rowPx = parseFloat(getComputedStyle(document.documentElement).fontSize) * 2.30769231 || 30;
+      // Less the header row.
+      setFits(Math.max(3, Math.floor(el.getBoundingClientRect().height / rowPx) - 1));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tab]);
+  const openKeys = useMemo(() => openForFit(tree, fits, selectedId, manualOpen), [tree, fits, selectedId, manualOpen]);
+  const drawn = useMemo(() => flattenTree(tree, openKeys), [tree, openKeys]);
+  const toggleBranch = (key: string) => setManualOpen((was) => new Map(was).set(key, !openKeys.has(key)));
+  // The table follows the canvas: the selected row is brought into view.
+  useEffect(() => {
+    if (!selectedId || tab !== 'objects') return;
+    const row = bodyRef.current?.querySelector<HTMLElement>(`tr[data-id="${CSS.escape(selectedId)}"]`);
+    row?.scrollIntoView({ block: 'nearest' });
+  }, [selectedId, tab, drawn]);
 
   // Tick events, then copy or save exactly those. The table
   // is one tab stop and the arrows walk it.
@@ -545,7 +627,7 @@ export function StatusPanel() {
 
       {statusMessage && <div className="cv-panel-message" role="status" aria-live="polite">{statusMessage}</div>}
 
-      <div className="cv-panel-body">
+      <div className="cv-panel-body" ref={bodyRef}>
         {tab === 'discover' ? (
           <DiscoverPanel />
         ) : tab === 'crawl' || tab === 'collect' ? (
@@ -589,7 +671,25 @@ export function StatusPanel() {
               </tr>
             </thead>
             <tbody>
-              <ObjectRows rows={filtered} select={select} />
+              {tree.length === 0 ? (
+                <ObjectRows rows={filtered} select={select} selectedId={selectedId} />
+              ) : (
+                drawn.map((d) =>
+                  d.kind === 'branch' ? (
+                    <BranchRow key={d.branch.key} branch={d.branch} open={d.open} onToggle={() => toggleBranch(d.branch.key)} />
+                  ) : null,
+                ).map((el, i) => {
+                  // Leaves are drawn by branch, so a branch's rows stay one memoised run.
+                  const d = drawn[i]!;
+                  if (d.kind !== 'branch' || !d.open || d.branch.leaves.length === 0) return el;
+                  return (
+                    <Fragment key={d.branch.key}>
+                      {el}
+                      <ObjectRows rows={d.branch.leaves} select={select} depth={d.branch.depth + 1} selectedId={selectedId} />
+                    </Fragment>
+                  );
+                })
+              )}
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={7} className="cv-help">

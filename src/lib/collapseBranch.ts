@@ -26,9 +26,17 @@ import type { DeviceNodeData } from '../types/domain';
 /** Everything hanging below `id`, excluding `id` itself — it stays on the
  *  page holding the branch, and is what you click to get it back. */
 export function hiddenByCollapsing(id: string, nodes: TopoNode[], edges: TopoEdge[]): Set<string> {
-  const ids = new Set(nodes.map((n) => n.id));
-  if (!ids.has(id)) return new Set();
+  return branchFolder(nodes, edges)(id);
+}
 
+/**
+ * The same, with the page read once: the neighbours and the tiers are
+ * built on the first call and reused, so asking for every device's branch
+ * — which the auto-fold and the Arrange menu do — walks the page once per
+ * device rather than once per device per device.
+ */
+export function branchFolder(nodes: TopoNode[], edges: TopoEdge[]): (id: string) => Set<string> {
+  const ids = new Set(nodes.map((n) => n.id));
   const near = new Map<string, string[]>();
   for (const n of nodes) near.set(n.id, []);
   for (const e of edges) {
@@ -41,16 +49,26 @@ export function hiddenByCollapsing(id: string, nodes: TopoNode[], edges: TopoEdg
   // link direction the crawl proved and what a MAC table showed is
   // plugged into what — so a branch folds the same way the diagram is
   // already drawn, rather than inventing a second opinion about hierarchy.
-  const tier = tiersFor(
-    nodes.map((n) => ({
-      id: n.id,
-      deviceType: (n.data as DeviceNodeData).deviceType,
-      width: 0,
-      height: 0,
-    })),
-    edges.map((e) => ({ source: e.source, target: e.target })),
-  );
-  const tierOf = (x: string) => tier.get(x) ?? 0;
+  let tier: Map<string, number> | null = null;
+  const tierOf = (x: string) => {
+    if (!tier) {
+      tier = tiersFor(
+        nodes.map((n) => ({
+          id: n.id,
+          deviceType: (n.data as DeviceNodeData).deviceType,
+          width: 0,
+          height: 0,
+        })),
+        edges.map((e) => ({ source: e.source, target: e.target })),
+      );
+    }
+    return tier.get(x) ?? 0;
+  };
+  return (id: string) => hiddenBelow(id, ids, near, tierOf);
+}
+
+function hiddenBelow(id: string, ids: Set<string>, near: Map<string, string[]>, tierOf: (x: string) => number): Set<string> {
+  if (!ids.has(id)) return new Set();
   const mine = tierOf(id);
 
   // Walk each way out of the device separately. A direction folds when
@@ -88,8 +106,9 @@ export function hiddenByCollapsing(id: string, nodes: TopoNode[], edges: TopoEdg
  *  folds away stays folded, and neither collapsed device is ever hidden. */
 export function hiddenByAll(collapsed: Iterable<string>, nodes: TopoNode[], edges: TopoEdge[]): Set<string> {
   const hidden = new Set<string>();
+  const fold = branchFolder(nodes, edges);
   for (const id of collapsed) {
-    for (const h of hiddenByCollapsing(id, nodes, edges)) hidden.add(h);
+    for (const h of fold(id)) hidden.add(h);
   }
   for (const id of collapsed) hidden.delete(id);
   return hidden;

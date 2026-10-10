@@ -30,7 +30,9 @@ import { ShortcutHelp } from './ShortcutHelp';
 import { GuidePanel } from './GuidePanel';
 import { CommandPalette, type PaletteCommand } from './CommandPalette';
 import { hidingUnmatched, litNodes } from '../lib/canvasFilter';
-import { collapseLabel, foldedCount, hiddenByAll, worthCollapsing } from '../lib/collapseBranch';
+import { branchFolder, collapseLabel, hiddenByAll, worthCollapsing } from '../lib/collapseBranch';
+import { AUTO_FOLD_ZOOM, holdersBelow, lowestHolders } from '../lib/clusters';
+import { CanvasCrumbs, ClusterChips, type ChipSpec, type Crumb } from './ClusterChips';
 import { nearestInDirection, nearestTo, type Direction } from '../lib/spatialNav';
 import { edgeAriaLabel, nodeAriaLabel } from '../lib/ariaLabels';
 import { InkStrokes, InkTools } from './InkLayer';
@@ -38,7 +40,7 @@ import { TraceroutePanel } from './TraceroutePanel';
 import { Page } from './Page';
 import { PageTabs } from './PageTabs';
 import { effectivePage, pageForContent } from '../lib/pageRect';
-import { collapseView, groupIdOf, isCollapsed } from '../lib/collapse';
+import { collapseView, foldKeyOf, foldLabel, groupIdOf, isCollapsed } from '../lib/collapse';
 import { routeForView } from '../lib/routeLinks';
 import { alignmentFor, spacingHint, type Box, type Guide } from '../lib/alignment';
 import { allPrinted, isEditable, isPrinted, isVisible, layersOf } from '../lib/layers';
@@ -277,8 +279,25 @@ export function Canvas() {
     [rf],
   );
   // A view, not a document change: folding a site must not touch what is
-  // saved, so expanding restores exactly what was there.
-  const [folded, setFolded] = useState<Set<string>>(() => new Set());
+  // saved, so expanding restores exactly what was there. Window state, so
+  // the Arrange menu and the breadcrumb can fold and open sites too.
+  const foldedGroups = useStore((s) => s.foldedGroups);
+  const folded = useMemo(() => new Set(foldedGroups), [foldedGroups]);
+  const setFolded = useCallback((next: Set<string> | ((was: Set<string>) => Set<string>)) => {
+    const was = new Set(useStore.getState().foldedGroups);
+    useStore.getState().setFoldedGroups([...(typeof next === 'function' ? next(was) : next)]);
+  }, []);
+  /** Folds or opens one branch, whichever list holds it: a fan folded by
+   *  hand is in `collapsed`, one folded by the zoom in `autoCollapsed`. */
+  const setBranchFolded = useCallback((id: string, fold: boolean) => {
+    const s = useStore.getState();
+    if (fold) {
+      if (!s.collapsed.includes(id)) s.collapseMany([id]);
+      return;
+    }
+    if (s.collapsed.includes(id)) s.toggleCollapsed(id);
+    if (s.autoCollapsed.includes(id)) s.setAutoCollapsed(s.autoCollapsed.filter((x) => x !== id));
+  }, []);
   const [menu, setMenu] = useState<MenuState | null>(null);
 
   const doc = useStore((s) => s.doc);
@@ -414,7 +433,7 @@ export function Canvas() {
               onSelect: () => {
                 const was = collapsed.includes(nodeId);
                 const n = hiddenByAll([nodeId], pg.nodes, pg.edges).size;
-                useStore.getState().toggleCollapsed(nodeId);
+                setBranchFolded(nodeId, !was);
                 useStore.getState().setStatusMessage(
                   was
                     ? `Expanded — ${t('plural.device', { count: n })} back on the page.`
@@ -1314,17 +1333,140 @@ export function Canvas() {
   // And whatever is folded away behind a collapsed device. The two
   // are independent — a device can be filtered out, folded away, or both —
   // so they are one set of ids to leave out of the drawing.
-  const collapsed = useStore((s) => s.collapsed);
-  const foldedBranches = useMemo(
-    () => (collapsed.length > 0 ? hiddenByAll(collapsed, view.nodes, view.edges) : null),
-    [collapsed, view.nodes, view.edges],
+  const manualCollapsed = useStore((s) => s.collapsed);
+  const autoCollapsed = useStore((s) => s.autoCollapsed);
+  const collapsed = useMemo(
+    () => (autoCollapsed.length === 0 ? manualCollapsed : [...new Set([...manualCollapsed, ...autoCollapsed])]),
+    [manualCollapsed, autoCollapsed],
   );
+  // The page read once for every branch asked about.
+  const folder = useMemo(() => branchFolder(view.nodes, view.edges), [view.nodes, view.edges]);
+  const foldedBranches = useMemo(() => {
+    if (collapsed.length === 0) return null;
+    const hidden = new Set<string>();
+    for (const id of collapsed) for (const h of folder(id)) hidden.add(h);
+    for (const id of collapsed) hidden.delete(id);
+    return hidden;
+  }, [collapsed, folder]);
   const shownNodes = useMemo(
     () =>
       view.nodes.filter(
         (n) => !(hiding && lit && !lit.has(n.id)) && !(foldedBranches && foldedBranches.has(n.id)),
       ),
     [view.nodes, hiding, lit, foldedBranches],
+  );
+
+  // Zoomed out past the line where labels go, every fan of six or more
+  // folds into a chip on its own — unless the setting is off, or the fan
+  // was opened from its chip, which is the one way back in.
+  const zoomedOut = useFlowStore((s) => s.transform[2] < AUTO_FOLD_ZOOM);
+  const foldFans = settings.foldFans;
+  const drill = useStore((s) => s.drill);
+  // What the fans are depends on the links, not on where anything is, so
+  // the holders are read again only when the page's shape changes.
+  const structure = useMemo(
+    () => `${pg.nodes.map((n) => n.id).join('\u0000')}|${pg.edges.map((e) => `${e.source}>${e.target}`).join('\u0000')}`,
+    [pg.nodes, pg.edges],
+  );
+  // Folds as the zoom crosses the line, not on every change after: a fan
+  // opened from its chip, or everything opened from the menu, stays open
+  // until the view goes out and comes back.
+  useEffect(() => {
+    const s = useStore.getState();
+    if (!foldFans || !zoomedOut || printing || presenting) {
+      s.setAutoCollapsed([]);
+      return;
+    }
+    const page = activePage(s.doc);
+    s.setAutoCollapsed(lowestHolders(holdersBelow(page.nodes, page.edges)).filter((id) => !s.drill.includes(id)));
+  }, [foldFans, zoomedOut, structure, printing, presenting]);
+
+  // The chips: one under each device holding a folded fan, one under each
+  // folded site's box.
+  const chips = useMemo<ChipSpec[]>(() => {
+    if (presenting || printing) return [];
+    const byId = new Map(pg.nodes.map((n) => [n.id, n]));
+    const shownById = new Map(shownNodes.map((n) => [n.id, n]));
+    const out: ChipSpec[] = [];
+    for (const id of collapsed) {
+      const node = shownById.get(id);
+      if (!node) continue;
+      const held = [...folder(id)].map((h) => byId.get(h)).filter((n): n is TopoNode => Boolean(n && n.type === 'device'));
+      if (held.length > 0) out.push({ id, kind: 'branch', node, held });
+    }
+    for (const node of shownNodes) {
+      if (!isCollapsed(node.id)) continue;
+      const key = groupIdOf(node.id);
+      const held = pg.nodes.filter((n) => n.type === 'device' && foldKeyOf(n, folded) === key);
+      out.push({ id: node.id, kind: 'site', node, held, label: (node.data as DeviceNodeData).label });
+    }
+    return out;
+  }, [collapsed, shownNodes, folder, pg.nodes, folded, presenting, printing]);
+  /** Brings the view to a set of devices, by where the document has them
+   *  — folded or not, so a chip's fan is framed where it will open. */
+  const fitTo = useCallback(
+    (ids: Iterable<string>) => {
+      const want = new Set(ids);
+      const boxes = activePage(useStore.getState().doc).nodes.filter((n) => want.has(n.id));
+      if (boxes.length === 0) return;
+      const x1 = Math.min(...boxes.map((n) => n.position.x));
+      const y1 = Math.min(...boxes.map((n) => n.position.y));
+      const x2 = Math.max(...boxes.map((n) => n.position.x + (n.width ?? n.measured?.width ?? 76)));
+      const y2 = Math.max(...boxes.map((n) => n.position.y + (n.height ?? n.measured?.height ?? 76)));
+      rf.fitBounds({ x: x1, y: y1, width: x2 - x1, height: y2 - y1 }, { padding: 0.3, duration: 250 });
+    },
+    [rf],
+  );
+  /** A chip opened: the fan or site comes back, the view goes to it, and
+   *  the breadcrumb remembers the way in. */
+  const openChip = useCallback(
+    (chip: ChipSpec) => {
+      const s = useStore.getState();
+      if (chip.kind === 'site') {
+        setFolded((was) => {
+          const next = new Set(was);
+          next.delete(groupIdOf(chip.id));
+          return next;
+        });
+      } else {
+        setBranchFolded(chip.id, false);
+      }
+      s.setDrill([...s.drill.filter((d) => d !== chip.id), chip.id]);
+      fitTo([...(chip.kind === 'site' ? [] : [chip.id]), ...chip.held.map((n) => n.id)]);
+    },
+    [fitTo, setBranchFolded, setFolded],
+  );
+  /** A crumb clicked: everything opened after it folds again, and the view
+   *  goes back to that level. */
+  const backTo = useCallback(
+    (index: number) => {
+      const s = useStore.getState();
+      for (const id of s.drill.slice(index + 1)) {
+        if (isCollapsed(id)) setFolded((was) => new Set(was).add(groupIdOf(id)));
+        else setBranchFolded(id, true);
+      }
+      s.setDrill(s.drill.slice(0, index + 1));
+      const target = s.drill[index];
+      if (target === undefined) rf.fitView({ padding: 0.1, duration: 250 });
+      else if (!isCollapsed(target)) fitTo([target, ...folder(target)]);
+    },
+    [rf, fitTo, folder, setFolded, setBranchFolded],
+  );
+  const trail = useMemo<Crumb[]>(
+    () =>
+      drill.map((id) => {
+        if (isCollapsed(id)) {
+          const key = groupIdOf(id);
+          return { id, label: foldLabel(key, pg.nodes.filter((n) => foldKeyOf(n, new Set([key])) === key)) };
+        }
+        const n = pg.nodes.find((x) => x.id === id);
+        return { id, label: (n?.data as DeviceNodeData | undefined)?.label ?? id };
+      }),
+    [drill, pg.nodes],
+  );
+  const hiddenDevices = useMemo(
+    () => pg.nodes.filter((n) => n.type === 'device').length - shownNodes.filter((n) => n.type === 'device' && !isCollapsed(n.id)).length,
+    [pg.nodes, shownNodes],
   );
   const derived = useRef(new WeakMap<TopoNode, { zIndex: number; locked: boolean; dimmed: boolean; holding: number; out: TopoNode }>());
   const nodes = useMemo(
@@ -1350,7 +1492,7 @@ export function Canvas() {
         // Nothing on the page is dimmed while hiding: what would have been
         // faint is simply not here.
         const dimmed = !hiding && lit !== null && !lit.has(n.id);
-        const holding = collapsed.includes(n.id) ? foldedCount(n.id, view.nodes, view.edges) : 0;
+        const holding = collapsed.includes(n.id) ? folder(n.id).size : 0;
         const was = derived.current.get(n);
         if (was && was.zIndex === zIndex && was.locked === locked && was.dimmed === dimmed && was.holding === holding) return was.out;
         // What a screen reader says for it.
@@ -1367,7 +1509,7 @@ export function Canvas() {
         derived.current.set(n, { zIndex, locked, dimmed, holding, out });
         return out;
       }),
-    [shownNodes, pg.canvas.layers, lit, hiding, collapsed, view.nodes, view.edges],
+    [shownNodes, pg.canvas.layers, lit, hiding, collapsed, folder],
   );
   // Names each link for a screen reader; Dims some. The copy is
   // kept per link object and reused while its label and dimming are unchanged,
@@ -1763,6 +1905,20 @@ export function Canvas() {
             is what made the desk and the page look like one surface. */}
         <Page />
         <InkStrokes />
+        {chips.length > 0 && <ClusterChips chips={chips} onOpen={openChip} />}
+        {!presenting && !printing && (trail.length > 0 || collapsed.length > 0 || folded.size > 0) && (
+          <CanvasCrumbs
+            trail={trail}
+            fans={chips.filter((c) => c.kind === 'branch').length}
+            sites={folded.size}
+            hidden={hiddenDevices}
+            onBack={backTo}
+            onExpandAll={() => {
+              useStore.getState().expandAll();
+              rf.fitView({ padding: 0.1, duration: 250 });
+            }}
+          />
+        )}
         {settings.minimap && (
           <HealthMiniMap health={Boolean(pg.canvas.minimapHealth)} ground={ground} />
         )}

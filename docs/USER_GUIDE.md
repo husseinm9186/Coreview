@@ -797,6 +797,35 @@ neither is one you moved by hand since the last arrangement: it is pinned, what
 hangs off it gathers under where you put it, and the message says how many
 stayed. **Unpin moved devices** on the Arrange menu releases them.
 
+### Folding a big estate
+
+A device with six or more below it can fold them away. Right-click it and
+choose **Collapse**; what hung off it leaves the page and a chip appears
+under the device saying what it holds and the worst of it — *12 access ·
+2 down*. Click the chip to open the fan again: the view goes to it, and a
+breadcrumb at the top-left of the canvas — *Diagram › DIST-2* — names the
+way back; clicking **Diagram** folds it again and shows the whole page.
+
+Zoomed out past 40 %, where the canvas stops drawing labels, every such fan
+folds on its own, so a two-thousand-device estate reads as its backbone with
+chips rather than as dust. Zoom back in and the fans return. **Fold fans
+when zoomed out**, on the Arrange menu, turns this off for this machine.
+
+The Arrange menu also folds in bulk: **Collapse by site** folds each site the
+devices carry — or each group, where devices are grouped and carry no site —
+into one box with a chip; **Collapse below Distribution** (or whichever
+roles have a fan to fold) folds the fans under every device of that role;
+**Expand everything** opens all of it. Nothing is deleted or moved by any of
+this: folding is a way of looking, and a diagram saved while folded reopens
+whole.
+
+The **Monitored objects** table is a tree of the same estate: site › role ›
+device, with links under each site. A branch says how many it holds and how
+many are down or warning, and opens on a click. The branches that will not
+fit the panel fold first, except the one holding whatever is selected on the
+canvas — selecting a device opens its branch and brings its row into view —
+and a branch you opened or closed by hand stays as you left it.
+
 ### Stacks and chassis pairs
 
 A stack is one device on a diagram and several boxes an RMA is raised against,

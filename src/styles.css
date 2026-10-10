@@ -1057,6 +1057,19 @@ details.cv-discover-advanced[open] > summary::after { content: '▾'; }
 .cv-table .cv-name { font-weight: 600; }
 .cv-table .cv-dash { color: var(--text-faint); }
 .cv-table tr.is-down td:first-child { box-shadow: inset 2px 0 0 var(--down); }
+/* The tree: a site or role row spans the table, says how many it holds and
+   the worst of them, and opens on a click; the rows under it are indented
+   by their depth. The selected row carries the accent at its edge. */
+.cv-table tr.cv-tree-branch td { background: var(--panel-2); font-weight: 600; color: var(--text); }
+.cv-table tr.cv-tree-branch.is-depth-1 td { padding-left: 1.84615385rem; }
+.cv-table tr.cv-tree-branch td > * { vertical-align: middle; }
+.cv-tree-toggle { display: inline-flex; width: 1.23076923rem; color: var(--text-dim); }
+.cv-tree-label { margin-right: 0.61538462rem; }
+.cv-tree-count { color: var(--text-dim); font-weight: 500; font-variant-numeric: tabular-nums; margin-right: 0.61538462rem; }
+.cv-table tr.is-depth-1 > td:first-child { padding-left: 1.84615385rem; }
+.cv-table tr.is-depth-2 > td:first-child { padding-left: 2.92307692rem; }
+.cv-table tr.is-selected td { background: var(--hover); }
+.cv-table tr.is-selected td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
 .cv-targets .col-status { width: 7.5rem; } .cv-targets .col-kind { width: 3.6rem; } .cv-targets .col-name { width: 16rem; }
 .cv-targets .col-type { width: 9rem; } .cv-targets .col-target { width: 11rem; } .cv-targets .col-num { width: 5.5rem; }
 
@@ -3419,6 +3432,42 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 
 /* A device holding a folded branch. */
 .react-flow__node.is-collapsed { filter: drop-shadow(0 0 0 transparent); }
+
+/* The chips over folded fans and sites, in screen space, and the
+   breadcrumb at the top-left of the pane. Chrome, not canvas: they are
+   controls over the drawing, not part of it. */
+.cv-cluster-chips { position: absolute; inset: 0; pointer-events: none; z-index: 6; overflow: hidden; }
+.cv-cluster-chip {
+  position: absolute; transform: translate(-50%, 0); pointer-events: auto;
+  height: 22px; display: inline-flex; align-items: center; gap: 0.38461538rem;
+  padding: 0 0.61538462rem 0 0.46153846rem; border-radius: 999px;
+  font-size: var(--text-xs); font-weight: 600; line-height: 1; white-space: nowrap;
+  color: var(--text); background: var(--panel); border: 1px solid var(--edge);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35); cursor: pointer;
+}
+.cv-cluster-chip:hover, .cv-cluster-chip:focus-visible { border-color: var(--accent); outline: none; }
+.cv-cluster-dot { width: 0.53846154rem; height: 0.53846154rem; border-radius: 50%; background: var(--not-checked); }
+.cv-cluster-chip.is-healthy .cv-cluster-dot { background: var(--healthy); }
+.cv-cluster-chip.is-warning .cv-cluster-dot { background: var(--warning); }
+.cv-cluster-chip.is-down .cv-cluster-dot { background: var(--down); }
+.cv-cluster-chip.is-maintenance .cv-cluster-dot { background: var(--maintenance); }
+.cv-cluster-chip.is-warning { color: var(--warning); }
+.cv-cluster-chip.is-down { color: var(--down); }
+.cv-canvas-crumbs {
+  position: absolute; left: 0.92307692rem; top: 0.61538462rem; z-index: 7;
+  display: flex; align-items: center; gap: 0.30769231rem; height: 1.84615385rem; max-width: calc(100% - 1.84615385rem);
+  padding: 0 0.61538462rem; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px;
+  font-size: var(--text-sm); color: var(--text-dim); white-space: nowrap; overflow: hidden;
+}
+.cv-canvas-crumbs .cv-crumb { display: inline-flex; align-items: center; gap: 0.30769231rem; }
+.cv-canvas-crumbs .cv-crumb-sep { color: var(--text-faint); }
+.cv-canvas-crumbs > button, .cv-canvas-crumbs .cv-crumb > button {
+  background: none; border: 0; color: var(--text); font: inherit; cursor: pointer; padding: 0 0.15384615rem; border-radius: 3px;
+}
+.cv-canvas-crumbs > button:hover, .cv-canvas-crumbs .cv-crumb > button:hover { background: var(--hover); }
+.cv-canvas-crumbs button.is-current { font-weight: 600; }
+.cv-canvas-crumbs .cv-crumb-summary { margin-left: 0.46153846rem; padding-left: 0.61538462rem; border-left: 1px solid var(--line); color: var(--text-faint); }
+.cv-canvas-crumbs .cv-link-btn { margin-left: 0.30769231rem; }
 .react-flow__node.is-collapsed::after {
   content: '+'; position: absolute; top: -6px; right: -6px;
   width: 16px; height: 16px; line-height: 15px; text-align: center;

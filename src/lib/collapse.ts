@@ -14,9 +14,27 @@ import type { TopoEdge, TopoNode } from '../state/store';
 import type { DeviceNodeData } from '../types/domain';
 
 export const COLLAPSED_PREFIX = 'collapsed:';
+/** A fold key for a site rather than a group: `site:<name>`. A group's
+ *  key is its id as it is. */
+export const SITE_KEY_PREFIX = 'site:';
 
 function groupOf(node: TopoNode): string | undefined {
   return (node.data as { groupId?: string }).groupId;
+}
+
+/** The fold key a node answers to, among those folded: its site, if the
+ *  site is folded, else its group. */
+export function foldKeyOf(node: TopoNode, folded: Set<string>): string | undefined {
+  const site = (node.data as { site?: string }).site?.trim();
+  if (site && folded.has(`${SITE_KEY_PREFIX}${site}`)) return `${SITE_KEY_PREFIX}${site}`;
+  const g = groupOf(node);
+  return g && folded.has(g) ? g : undefined;
+}
+
+/** What a fold key is called: the site's name, or the group's name from
+ *  what is inside it. */
+export function foldLabel(key: string, members: TopoNode[]): string {
+  return key.startsWith(SITE_KEY_PREFIX) ? key.slice(SITE_KEY_PREFIX.length) : nameForGroup(members);
 }
 
 function labelOf(node: TopoNode): string {
@@ -65,12 +83,14 @@ export function collapseView(
   if (collapsed.size === 0) return { nodes, edges };
 
   const members = new Map<string, TopoNode[]>();
+  const keyed = new Map<string, string>();
   for (const n of nodes) {
-    const g = groupOf(n);
-    if (g && collapsed.has(g)) {
-      const list = members.get(g);
+    const key = foldKeyOf(n, collapsed);
+    if (key) {
+      keyed.set(n.id, key);
+      const list = members.get(key);
       if (list) list.push(n);
-      else members.set(g, [n]);
+      else members.set(key, [n]);
     }
   }
   // A group id nobody carries any more — the nodes were deleted or ungrouped
@@ -78,10 +98,7 @@ export function collapseView(
   if (members.size === 0) return { nodes, edges };
 
   const standIn = new Map<string, string>();
-  const outNodes: TopoNode[] = nodes.filter((n) => {
-    const g = groupOf(n);
-    return !g || !members.has(g);
-  });
+  const outNodes: TopoNode[] = nodes.filter((n) => !keyed.has(n.id));
 
   for (const [group, inside] of members) {
     const id = `${COLLAPSED_PREFIX}${group}`;
@@ -98,7 +115,7 @@ export function collapseView(
       width: 200,
       height: 96,
       data: {
-        label: nameForGroup(inside),
+        label: foldLabel(group, inside),
         deviceType: 'site',
         tags: [],
         addresses: [],

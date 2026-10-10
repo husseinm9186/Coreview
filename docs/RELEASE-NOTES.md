@@ -18,6 +18,24 @@ Newest first.
   Arrange menu releases them. **Lay out radially** is on the Arrange menu
   as well.
 
+**Clusters: chips, a breadcrumb and the dock as a tree**
+- A device holding six or more folds to a 22 px chip that says what is
+  inside and the worst of it — *12 access · 2 down* — and opens on a
+  click, with the view brought to the fan. Zoomed out past 40 %, where
+  the labels go, every such fan folds on its own; **Fold fans when zoomed
+  out** on the Arrange menu turns that off. A breadcrumb at the top-left
+  of the canvas names the way back in and how much is folded.
+- **Collapse by site** folds each site (or group) into one box with a
+  chip; **Collapse below** a role folds the fans under every device of
+  that role; **Expand everything** opens all of it.
+- The Monitored objects table is a site › role › device tree, links under
+  each site. A branch counts what it holds and what is wrong; the
+  branches that will not fit the panel fold first, the one holding the
+  canvas selection stays open and its row comes into view, and a branch
+  opened or closed by hand stays as it was left.
+- The strip's menus close on Escape and on a click elsewhere, as the top
+  bar's export menu already did.
+
 ## 2.10.0 — 2026-10-10
 
 **The interface, redesigned**

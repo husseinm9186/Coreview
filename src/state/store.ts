@@ -275,6 +275,10 @@ export interface AppSettings {
   /** The overview box, bottom-right. A view preference for this machine, like
    *  which panels are open — not part of any project. */
   minimap: boolean;
+  /** Whether a fan of six or more folds into a chip on its own when the
+   *  diagram is zoomed out so far that its labels would be unreadable. A
+   *  view preference for this machine. */
+  foldFans: boolean;
   /** Paper for exports and printing. 'fit' sizes the file to the diagram. */
   paper: string;
   orientation: 'portrait' | 'landscape';
@@ -659,6 +663,22 @@ interface Store {
    *  document — nothing here is saved with the project. */
   collapsed: string[];
   toggleCollapsed: (id: string) => void;
+  /** Folds several at once — the fans below one role, from the Arrange
+   *  menu. */
+  collapseMany: (ids: string[]) => void;
+  /** Devices folded on their own because the diagram is zoomed out too far
+   *  to read their fans. Replaced whole as the zoom crosses the line. */
+  autoCollapsed: string[];
+  setAutoCollapsed: (ids: string[]) => void;
+  /** Sites and groups folded into one box each: a group's id, or
+   *  `site:<name>`. A view, never the document. */
+  foldedGroups: string[];
+  setFoldedGroups: (keys: string[]) => void;
+  /** The chips opened on the way in, for the breadcrumb: the device or
+   *  fold key each one stood for, outermost first. */
+  drill: string[];
+  setDrill: (ids: string[]) => void;
+  /** Everything open again: branches, fans, sites, and the trail. */
   expandAll: () => void;
   focus: { ids: string[]; hops: number } | null;
   /** The ink tool in hand, if any, and its colour and width. */
@@ -923,6 +943,11 @@ export const FORCE_LAYOUT_LIMIT = 1500;
  * this file reads them, they are meaningless on another machine, and losing
  * them costs a click.
  */
+/** Whether two lists hold the same ids in the same order. */
+function sameList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
+}
+
 function viewPref(key: string, fallback = true): boolean {
   try {
     const v = localStorage.getItem(`coreview.view.${key}`);
@@ -1326,6 +1351,7 @@ export const useStore = create<Store>((set, get) => ({
       }
     })(),
     minimap: viewPref('minimap'),
+    foldFans: viewPref('foldFans'),
     wheel: (() => {
       try {
         return localStorage.getItem('coreview.view.wheel') === 'scroll' ? 'scroll' : 'zoom';
@@ -1383,6 +1409,9 @@ export const useStore = create<Store>((set, get) => ({
   discoverRun: null,
   canvasFilter: null,
   collapsed: [],
+  autoCollapsed: [],
+  foldedGroups: [],
+  drill: [],
   focus: null,
   inkTool: null,
   inkDraft: null,
@@ -1686,8 +1715,24 @@ export const useStore = create<Store>((set, get) => ({
     }));
   },
 
+  collapseMany(ids) {
+    set((s) => ({ collapsed: [...new Set([...s.collapsed, ...ids])] }));
+  },
+
+  setAutoCollapsed(ids) {
+    set((s) => (sameList(s.autoCollapsed, ids) ? {} : { autoCollapsed: ids }));
+  },
+
+  setFoldedGroups(keys) {
+    set({ foldedGroups: keys });
+  },
+
+  setDrill(ids) {
+    set({ drill: ids });
+  },
+
   expandAll() {
-    set({ collapsed: [] });
+    set({ collapsed: [], autoCollapsed: [], foldedGroups: [], drill: [] });
   },
 
   setCanvasFilter(f) {
@@ -3980,6 +4025,7 @@ export const useStore = create<Store>((set, get) => ({
 
   setSettings(patch) {
     if (patch.minimap !== undefined) rememberView('minimap', patch.minimap);
+    if (patch.foldFans !== undefined) rememberView('foldFans', patch.foldFans);
     // A machine preference, kept like the others.
     if (patch.highContrast !== undefined) rememberView('highContrast', patch.highContrast);
     if (patch.uiScale !== undefined) {
