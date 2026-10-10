@@ -1486,11 +1486,42 @@ details.cv-discover-advanced[open] > summary::after { content: '▾'; }
 .cv-register-body .cv-ipam-scroll { overflow-x: auto; }
 
 /* Settings, on the same screen. Chrome colours throughout. */
-.cv-settings { display: flex; flex-direction: column; gap: 1.38461538rem; padding: 1.07692308rem; max-width: 75.38461538rem; }
-.cv-settings-block { display: flex; flex-direction: column; gap: 0.61538462rem; }
+/* Two panes: a section nav that keeps its place on the left, the content
+   capped at a reading width on the right. */
+.cv-settings { display: grid; grid-template-columns: 13rem minmax(0, 44rem); gap: 1.84615385rem; align-items: start; padding: 1.07692308rem 1.84615385rem 3rem; }
+.cv-settings-nav { position: sticky; top: 0.61538462rem; display: flex; flex-direction: column; gap: 0.92307692rem; }
+.cv-settings-nav-group { display: flex; flex-direction: column; gap: 0.07692308rem; }
+.cv-settings-nav-title { font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin: 0 0 0.30769231rem 0.76923077rem; }
+.cv-settings-nav-item { text-align: left; background: none; border: 0; border-left: 2px solid transparent; color: var(--text-dim); font: inherit; font-size: var(--text-md); padding: 0.30769231rem 0.76923077rem; cursor: pointer; border-radius: 0 var(--radius) var(--radius) 0; }
+.cv-settings-nav-item:hover { color: var(--text); background: var(--hover); }
+.cv-settings-nav-item.is-current { color: var(--text); border-left-color: var(--accent); }
+.cv-settings-main { display: flex; flex-direction: column; gap: 2.46153846rem; min-width: 0; }
+.cv-settings-group { display: flex; flex-direction: column; gap: 0; }
+.cv-settings-group-title { font-size: var(--text-xl); font-weight: 600; margin: 0 0 0.30769231rem; }
+.cv-settings-banner { margin: 0; padding: 0.46153846rem 0.76923077rem; background: var(--notice-bg); border: 1px solid var(--notice-line); border-radius: var(--radius); color: var(--notice-text); font-size: var(--text-sm); }
+.cv-settings-block { display: flex; flex-direction: column; gap: 0.61538462rem; padding: 1.23076923rem 0 0.61538462rem; border-top: 1px solid var(--line); margin-top: 0.61538462rem; }
+.cv-settings-group > .cv-settings-block:first-of-type { border-top: 0; margin-top: 0; padding-top: 0.30769231rem; }
+/* Controls at a reading width: a text field twenty rem, a select to its words. */
+/* A field in a column stack is as tall as its content: the general rule's
+   flex-basis is a width in a row, and was a height here — the empty bands. */
+.cv-settings .cv-field { flex: 0 0 auto; margin-bottom: 0.61538462rem; }
+.cv-settings .cv-row .cv-field { flex: 1 1 12rem; }
+.cv-settings .cv-input { max-width: 20rem; }
+.cv-settings select.cv-input { max-width: 18rem; width: auto; min-width: 12rem; }
+.cv-settings .cv-field-narrow .cv-input { max-width: 8.46153846rem; }
+.cv-settings-sample { margin: 0.30769231rem 0 0; font-size: var(--text-lg); color: var(--text-dim); }
+.cv-settings-under { margin: -0.30769231rem 0 0.30769231rem 2.92307692rem; }
+/* A switch: the checkbox stays for the keyboard and the harnesses; the track is what is seen. */
+.cv-switch { position: relative; gap: 0.61538462rem; min-height: 2.46153846rem; }
+/* The checkbox lies over the track at the track's size, invisible but there: the keyboard, a screen reader and a pointer all meet the real control. */
+.cv-switch input { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 2.46153846rem; height: 1.38461538rem; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.cv-switch-track { width: 2.46153846rem; height: 1.38461538rem; border-radius: 999px; background: var(--edge); position: relative; flex: none; transition: background 120ms; }
+.cv-switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: calc(1.38461538rem - 4px); height: calc(1.38461538rem - 4px); border-radius: 50%; background: var(--text); transition: transform 120ms; }
+.cv-switch input:checked + .cv-switch-track { background: var(--accent); }
+.cv-switch input:checked + .cv-switch-track::after { transform: translateX(1.07692308rem); background: var(--accent-ink); }
+.cv-switch input:focus-visible + .cv-switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
 .cv-settings-block h2 {
-  margin: 0; font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--text-dim);
+  font-size: var(--text-lg); font-weight: 600; color: var(--text); margin: 0;
 }
 .cv-settings-block > .cv-help { margin: 0; max-width: 78ch; }
 .cv-settings-creds { display: flex; flex-direction: column; gap: 0.76923077rem; }

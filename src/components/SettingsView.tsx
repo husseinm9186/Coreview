@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { t } from '../i18n';
 import { CredentialOverride } from './CredentialOverride';
@@ -27,8 +27,45 @@ import { TIME_FORMATS, isLocalFormat, zoneLabel, type TimeFormat } from '../lib/
  * The rest of the vault is one disclosure away and says plainly that it is the
  * whole machine.
  */
+type SectionId = 'display' | 'terminal' | 'updates' | 'logins' | 'folders' | 'sftp' | 'meraki' | 'credentials';
+
+/** The sections, in the order they are shown, grouped by whose they are. */
+const NAV: { key: 'application' | 'project'; sections: SectionId[] }[] = [
+  { key: 'application', sections: ['display', 'terminal', 'updates'] },
+  { key: 'project', sections: ['logins', 'folders', 'sftp', 'meraki', 'credentials'] },
+];
+
 export function SettingsView() {
   const uiScale = useStore((s) => s.settings.uiScale);
+  const reduceMotion = useStore((s) => s.settings.reduceMotion);
+  const [current, setCurrent] = useState<SectionId>('display');
+  const mainRef = useRef<HTMLDivElement>(null);
+  // Which section is in view, for the nav: the topmost one that crosses
+  // the upper part of the scrolling box.
+  useEffect(() => {
+    const root = mainRef.current?.closest('.cv-tools-body') ?? null;
+    const sections = [...document.querySelectorAll<HTMLElement>('[data-settings-section]')];
+    if (sections.length === 0) return;
+    const seen = new Map<SectionId, number>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          const id = (e.target as HTMLElement).dataset.settingsSection as SectionId;
+          if (e.isIntersecting) seen.set(id, e.boundingClientRect.top);
+          else seen.delete(id);
+        }
+        const top = [...seen.entries()].sort((a, b) => a[1] - b[1])[0];
+        if (top) setCurrent(top[0]);
+      },
+      { root, rootMargin: '0px 0px -60% 0px', threshold: 0 },
+    );
+    sections.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+  const goTo = (id: SectionId) => {
+    document.getElementById(`settings-${id}`)?.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
+    setCurrent(id);
+  };
   const settings = useStore((s) => s.settings);
   const projectDefaults = useStore((s) => s.doc.credentialDefaults);
   // Only what the scope reads.
@@ -89,8 +126,136 @@ export function SettingsView() {
   const updateBusy = update.state === 'checking' || update.state === 'installing';
 
   return (
-    <div className="cv-settings">
-      <section className="cv-settings-block">
+    <div className="cv-settings" ref={mainRef}>
+      {/* Two panes: the sections down the left, the content capped at a
+          reading width on the right. The machine's own preferences first,
+          then this project's. */}
+      <nav className="cv-settings-nav" aria-label={t('settings.sections')}>
+        {NAV.map((g) => (
+          <div key={g.key} className="cv-settings-nav-group">
+            <span className="cv-settings-nav-title">{t(`settings.group.${g.key}`)}</span>
+            {g.sections.map((id) => (
+              <button key={id} type="button" className={`cv-settings-nav-item${current === id ? ' is-current' : ''}`} aria-current={current === id ? 'true' : undefined}
+                onClick={() => goTo(id)}>
+                {t(`settings.section.${id}`)}
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
+      <div className="cv-settings-main">
+        {!isDesktop && <p className="cv-settings-banner">{t('settings.browserBanner')}</p>}
+        <div className="cv-settings-group" data-region="settings-application">
+          <h2 className="cv-settings-group-title">{t('settings.group.application')}</h2>
+      <section id="settings-display" data-settings-section="display" className="cv-settings-block" data-region="display">
+        <h2>{t('settings.display')}</h2>
+        <p className="cv-help">{t('settings.displayHint')}</p>
+        <div className="cv-field cv-field-narrow">
+          <span>{t('settings.uiScale')}</span>
+          <div className="cv-seg" role="group" aria-label={t('settings.uiScale')} data-field="ui-scale">
+            {[0.85, 1, 1.15, 1.3, 1.4].map((v) => (
+              <button key={v} type="button" className={uiScale === v ? 'is-on' : ''} aria-pressed={uiScale === v}
+                onClick={() => useStore.getState().setSettings({ uiScale: v })}>
+                {Math.round(v * 100)} %
+              </button>
+            ))}
+          </div>
+          <p className="cv-settings-sample" aria-hidden="true">{t('settings.uiSample')}</p>
+        </div>
+        {/* What the wheel does on the diagram. */}
+        <label className="cv-field cv-field-narrow" title={t('settings.wheelHint')}>
+          <span>{t('settings.wheel')}</span>
+          <select className="cv-input" value={settings.wheel} aria-label={t('settings.wheel')} onChange={(e) => useStore.getState().setSettings({ wheel: e.target.value === 'scroll' ? 'scroll' : 'zoom' })}>
+            <option value="zoom">{t('settings.wheelZoom')}</option>
+            <option value="scroll">{t('settings.wheelScroll')}</option>
+          </select>
+        </label>
+        {/* The three machine preferences that lived in the top bar. */}
+        <label className="cv-check cv-switch" title={t('settings.reduceMotionHint')}>
+          <input type="checkbox" checked={settings.reduceMotion} onChange={(e) => useStore.getState().setSettings({ reduceMotion: e.target.checked })} />
+          <span className="cv-switch-track" aria-hidden="true" />
+          {t('settings.reduceMotion')}
+        </label>
+        <p className="cv-help cv-settings-under">{t('settings.reduceMotionHint')}</p>
+        <label className="cv-check cv-switch" title={t('settings.highContrastHint')}>
+          <input type="checkbox" checked={settings.highContrast} onChange={(e) => useStore.getState().setSettings({ highContrast: e.target.checked })} />
+          <span className="cv-switch-track" aria-hidden="true" />
+          {t('settings.highContrast')}
+        </label>
+        <p className="cv-help cv-settings-under">{t('settings.highContrastHint')}</p>
+        <label className="cv-field cv-field-narrow" title={`Times shown in ${isLocalFormat(settings.timeFormat) ? zoneLabel() : 'Zulu (UTC)'}`}>
+          <span>{t('settings.times')}</span>
+          <select className="cv-input" value={settings.timeFormat} onChange={(e) => useStore.getState().setSettings({ timeFormat: e.target.value as TimeFormat })}>
+            {TIME_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
+        </label>
+      </section>
+      <section id="settings-terminal" data-settings-section="terminal" className="cv-settings-block">
+        <h2>{t('settings.terminal')}</h2>
+        <p className="cv-help">{t('settings.terminalHint')}</p>
+        <div className="cv-row">
+          <label className="cv-field cv-field-narrow">
+            <span>{t('settings.openWith')}</span>
+            <select className="cv-input" value={terminal.openWith}
+              onChange={(e) => setTerminal({ openWith: e.target.value === 'external' ? 'external' : 'panel' })}>
+              <option value="panel">{t('settings.openPanel')}</option>
+              <option value="external">{t('settings.openExternal')}</option>
+            </select>
+          </label>
+          <label className="cv-field">
+            <span>{t('settings.externalCommand')}</span>
+            <input className="cv-input cv-mono" value={terminal.externalCommand}
+              placeholder="putty -ssh {user}@{host} -P {port}" spellCheck={false}
+              onChange={(e) => setTerminal({ externalCommand: e.target.value })} />
+          </label>
+        </div>
+        <p className="cv-help">{t('settings.externalHint')}</p>
+        <label className="cv-check cv-check-inline">
+          <input type="checkbox" checked={terminal.logByDefault}
+            onChange={(e) => setTerminal({ logByDefault: e.target.checked })} />
+          {t('settings.logByDefault')}
+        </label>
+      </section>
+      {/* The one host nobody typed in. Nothing is sent until the button is
+          pressed or the tick, off until somebody ticks it, is on. */}
+      <section id="settings-updates" data-settings-section="updates" className="cv-settings-block" data-region="updates">
+        <h2>{t('settings.updates')}</h2>
+        <p className="cv-help">{t('settings.updatesHint')}</p>
+        <div className="cv-row cv-update-row">
+          <button type="button" className="cv-btn" data-action="check-updates" disabled={updateBusy}
+            onClick={() => void useStore.getState().checkForUpdate()}>
+            {t('settings.checkForUpdates')}
+          </button>
+          {updateStatus && <span className={update.state === 'problem' ? 'cv-help cv-update-problem' : 'cv-help'} data-hint="updates" role="status">{updateStatus}</span>}
+        </div>
+        {update.state === 'available' && (
+          <div className="cv-update-found" data-region="update-found">
+            {update.date && <p className="cv-help">{t('settings.updatePublished', { date: update.date.slice(0, 10) })}</p>}
+            {update.notes && (
+              <details className="cv-update-notes">
+                <summary>{t('settings.updateNotes')}</summary>
+                <pre>{update.notes}</pre>
+              </details>
+            )}
+            <button type="button" className="cv-btn cv-btn-start" data-action="install-update"
+              onClick={() => void useStore.getState().installUpdate()}>
+              {t('settings.updateInstall')}
+            </button>
+            <p className="cv-help">{t('settings.updateInstallHint')}</p>
+          </div>
+        )}
+        <label className="cv-check" title={t('settings.updateOnStartHint')}>
+          <input type="checkbox" data-field="update-on-start" checked={settings.updateCheckOnStart}
+            onChange={(e) => void useStore.getState().setUpdateCheckOnStart(e.target.checked)} />
+          {t('settings.updateOnStart')}
+        </label>
+        <p className="cv-help">{t('settings.updateOnStartHint')}</p>
+        <p className="cv-help">{t('settings.updateReleases')}</p>
+      </section>
+        </div>
+        <div className="cv-settings-group" data-region="settings-project">
+          <h2 className="cv-settings-group-title">{t('settings.group.project')}</h2>
+      <section id="settings-logins" data-settings-section="logins" className="cv-settings-block">
         <h2>{t('settings.globalLogins')}</h2>
         <p className="cv-help">{t('settings.globalHint')}</p>
         {!isDesktop ? (
@@ -158,14 +323,14 @@ export function SettingsView() {
       </section>
 
       {/* This project's folders, chosen where the project is open. */}
-      <section className="cv-settings-block" data-region="project-folders">
+      <section id="settings-folders" data-settings-section="folders" className="cv-settings-block" data-region="project-folders">
         <FolderSettings />
       </section>
 
       {/* The server a Cisco device sends its configuration to when a backup
           is asked for over SNMP, and the login it is given. A project's,
           like the folders. The tick itself is on the Backups tab. */}
-      <section className="cv-settings-block" data-region="snmp-backup">
+      <section id="settings-sftp" data-settings-section="sftp" className="cv-settings-block" data-region="snmp-backup">
         <h2>{t('settings.sftp')}</h2>
         <p className="cv-help">{t('settings.sftpHint')}</p>
         <div className="cv-row">
@@ -195,103 +360,13 @@ export function SettingsView() {
         />
       </section>
 
-      <section className="cv-settings-block" data-region="display">
-        <h2>{t('settings.display')}</h2>
-        <p className="cv-help">{t('settings.displayHint')}</p>
-        <label className="cv-field cv-field-narrow">
-          <span>{t('settings.uiScale')}</span>
-          <select className="cv-input" value={String(uiScale)} onChange={(e) => useStore.getState().setSettings({ uiScale: Number(e.target.value) })}>
-            {[0.85, 1, 1.15, 1.3, 1.4].map((v) => <option key={v} value={String(v)}>{Math.round(v * 100)} %</option>)}
-          </select>
-        </label>
-        {/* What the wheel does on the diagram. */}
-        <label className="cv-field cv-field-narrow" title={t('settings.wheelHint')}>
-          <span>{t('settings.wheel')}</span>
-          <select className="cv-input" value={settings.wheel} aria-label={t('settings.wheel')} onChange={(e) => useStore.getState().setSettings({ wheel: e.target.value === 'scroll' ? 'scroll' : 'zoom' })}>
-            <option value="zoom">{t('settings.wheelZoom')}</option>
-            <option value="scroll">{t('settings.wheelScroll')}</option>
-          </select>
-        </label>
-        {/* The three machine preferences that lived in the top bar. */}
-        <label className="cv-check" title={t('settings.reduceMotionHint')}>
-          <input type="checkbox" checked={settings.reduceMotion} onChange={(e) => useStore.getState().setSettings({ reduceMotion: e.target.checked })} />
-          {t('settings.reduceMotion')}
-        </label>
-        <label className="cv-check" title={t('settings.highContrastHint')}>
-          <input type="checkbox" checked={settings.highContrast} onChange={(e) => useStore.getState().setSettings({ highContrast: e.target.checked })} />
-          {t('settings.highContrast')}
-        </label>
-        <label className="cv-field cv-field-narrow" title={`Times shown in ${isLocalFormat(settings.timeFormat) ? zoneLabel() : 'Zulu (UTC)'}`}>
-          <span>{t('settings.times')}</span>
-          <select className="cv-input" value={settings.timeFormat} onChange={(e) => useStore.getState().setSettings({ timeFormat: e.target.value as TimeFormat })}>
-            {TIME_FORMATS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-          </select>
-        </label>
-      </section>
-      {/* The one host nobody typed in. Nothing is sent until the button is
-          pressed or the tick, off until somebody ticks it, is on. */}
-      <section className="cv-settings-block" data-region="updates">
-        <h2>{t('settings.updates')}</h2>
-        <p className="cv-help">{t('settings.updatesHint')}</p>
-        <div className="cv-row cv-update-row">
-          <button type="button" className="cv-btn" data-action="check-updates" disabled={updateBusy}
-            onClick={() => void useStore.getState().checkForUpdate()}>
-            {t('settings.checkForUpdates')}
-          </button>
-          {updateStatus && <span className={update.state === 'problem' ? 'cv-help cv-update-problem' : 'cv-help'} data-hint="updates" role="status">{updateStatus}</span>}
-        </div>
-        {update.state === 'available' && (
-          <div className="cv-update-found" data-region="update-found">
-            {update.date && <p className="cv-help">{t('settings.updatePublished', { date: update.date.slice(0, 10) })}</p>}
-            {update.notes && (
-              <details className="cv-update-notes">
-                <summary>{t('settings.updateNotes')}</summary>
-                <pre>{update.notes}</pre>
-              </details>
-            )}
-            <button type="button" className="cv-btn cv-btn-start" data-action="install-update"
-              onClick={() => void useStore.getState().installUpdate()}>
-              {t('settings.updateInstall')}
-            </button>
-            <p className="cv-help">{t('settings.updateInstallHint')}</p>
-          </div>
-        )}
-        <label className="cv-check" title={t('settings.updateOnStartHint')}>
-          <input type="checkbox" data-field="update-on-start" checked={settings.updateCheckOnStart}
-            onChange={(e) => void useStore.getState().setUpdateCheckOnStart(e.target.checked)} />
-          {t('settings.updateOnStart')}
-        </label>
-        <p className="cv-help">{t('settings.updateOnStartHint')}</p>
-        <p className="cv-help">{t('settings.updateReleases')}</p>
-      </section>
-      <section className="cv-settings-block">
-        <h2>{t('settings.terminal')}</h2>
-        <p className="cv-help">{t('settings.terminalHint')}</p>
-        <div className="cv-row">
-          <label className="cv-field cv-field-narrow">
-            <span>{t('settings.openWith')}</span>
-            <select className="cv-input" value={terminal.openWith}
-              onChange={(e) => setTerminal({ openWith: e.target.value === 'external' ? 'external' : 'panel' })}>
-              <option value="panel">{t('settings.openPanel')}</option>
-              <option value="external">{t('settings.openExternal')}</option>
-            </select>
-          </label>
-          <label className="cv-field">
-            <span>{t('settings.externalCommand')}</span>
-            <input className="cv-input cv-mono" value={terminal.externalCommand}
-              placeholder="putty -ssh {user}@{host} -P {port}" spellCheck={false}
-              onChange={(e) => setTerminal({ externalCommand: e.target.value })} />
-          </label>
-        </div>
-        <p className="cv-help">{t('settings.externalHint')}</p>
-        <label className="cv-check cv-check-inline">
-          <input type="checkbox" checked={terminal.logByDefault}
-            onChange={(e) => setTerminal({ logByDefault: e.target.checked })} />
-          {t('settings.logByDefault')}
-        </label>
+      {/* "make sure it goes to the settings at the top menu with
+          options to select the customers and networks". */}
+      <section id="settings-meraki" data-settings-section="meraki" className="cv-settings-block" data-region="meraki">
+        <MerakiSettings credentials={saved} />
       </section>
 
-      <section className="cv-settings-block" data-region="project-credentials">
+      <section id="settings-credentials" data-settings-section="credentials" className="cv-settings-block" data-region="project-credentials">
         <h2>{t('settings.projectCredentials')}</h2>
         <p className="cv-help">{t('settings.projectCredentialsHint')}</p>
         {mine.length === 0 ? (
@@ -321,12 +396,8 @@ export function SettingsView() {
             whole vault is managed from the start screen, with no project open. */}
         <p className="cv-help cv-settings-elsewhere">{t('settings.otherProjects')}</p>
       </section>
-
-      {/* "make sure it goes to the settings at the top menu with
-          options to select the customers and networks". */}
-      <section className="cv-settings-block" data-region="meraki">
-        <MerakiSettings credentials={saved} />
-      </section>
+        </div>
+      </div>
     </div>
   );
 }
