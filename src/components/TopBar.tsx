@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 
 import { useStore } from '../state/store';
 import { ipc } from '../lib/ipc';
-import { IconButton } from './chromeIcons';
+import { ChromeIcon, IconButton } from './chromeIcons';
+import { formatTime } from '../lib/timeFormat';
 import { buildMarkdownReport, saveExport, slug, svgToPng } from '../lib/exports';
 import { cableSchedule, cableScheduleCsv } from '../lib/cableSchedule';
 import { renderDiagramSvg } from '../lib/diagram';
@@ -30,13 +31,8 @@ import { t } from '../i18n';
 import type { ProjectPage } from '../state/store';
 import { artworkSummary, vendorSafeDocument, vendorSafeNodes } from '../lib/thirdPartyArt';
 
-const SESSION_LABEL: Record<string, string> = {
-  stopped: 'Validation stopped',
-  starting: 'Starting',
-  running: 'Running',
-  stopping: 'Stopping',
-  error: 'Error',
-};
+/** The one health strip's order: what is wrong first is read first. */
+const STRIP: HealthStatus[] = ['healthy', 'warning', 'down', 'unknown'];
 
 export function TopBar({ onExit }: { onExit: () => void }) {
   const meta = useStore((s) => s.meta);
@@ -116,6 +112,8 @@ export function TopBar({ onExit }: { onExit: () => void }) {
   if (!meta) return null;
 
   const counts = statusCounts();
+  const checkedCount = counts.healthy + counts.warning + counts.down + counts.unknown;
+  const every = Math.min(...(doc.probes.length ? doc.probes.map((p) => p.intervalSeconds) : [5]));
 
   /** Runs an export and reports where it landed, or that it failed. */
   const paper = paperById(settings.paper);
@@ -692,12 +690,16 @@ export function TopBar({ onExit }: { onExit: () => void }) {
               <rect x="50" y="206" width="100" height="84" rx="18" />
             </g>
           </svg>
-          Coreview
+          <span className="cv-sr">Coreview</span>
         </span>
         <span className="cv-project-name" title={meta.description}>
           {meta.name}
         </span>
-        {meta.customer && <span className="cv-project-sub">{meta.customer}</span>}
+        {(meta.customer || meta.site) && (
+          <span className="cv-project-sub" title={[meta.customer, meta.site].filter(Boolean).join(' · ')}>
+            {[meta.customer, meta.site].filter(Boolean).join(' · ')}
+          </span>
+        )}
         {meta.ticket && <span className="cv-ticket">{meta.ticket}</span>}
         {/* What is running, beside the save state, one line each —
             Only while a screen hides the dock and its strip. */}
@@ -722,44 +724,43 @@ export function TopBar({ onExit }: { onExit: () => void }) {
         </span>
       </div>
 
-      {/* One row. The centre is validation and the four
-          numbers you look at all day; the right is search, export, help and
-          the rest behind More. What acts on the canvas is on the canvas
-          (CanvasToolbar); the machine preferences are in Settings. */}
+      {/* One row. The centre is the health strip — the four numbers you
+          look at all day, dim when zero — and the one filled primary, which
+          becomes the running pill while checks run. What acts on the canvas
+          is on the canvas (CanvasToolbar); the machine preferences are in
+          Settings. */}
       <div className="cv-topbar-centre">
-
-        {session.state === 'running' || session.state === 'stopping' ? (
-          <button
-            type="button"
-            className="cv-btn cv-btn-stop"
-            onClick={() => void useStore.getState().stopValidation()}
-          >
-            Stop validation
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="cv-btn cv-btn-start"
-            onClick={() => void useStore.getState().startValidation()}
-            disabled={session.state === 'starting'}
-          >
-            Start validation
-          </button>
-        )}
-
-        <span className={`cv-session-state is-${session.state}`}>
-          <span className="cv-dot" aria-hidden />
-          {SESSION_LABEL[session.state]}
-        </span>
-
-        <div className="cv-counts">
-          {(['healthy', 'warning', 'down', 'unknown'] as HealthStatus[]).map((s) => (
-            <span key={s} className={`cv-count is-${s}`} title={STATUS_LABEL[s]}>
-              {STATUS_LABEL[s]} {counts[s]}
+        <div className="cv-counts" role="group" aria-label={t('topbar.health')}>
+          {STRIP.map((st) => (
+            <span key={st} className={`cv-count is-${st}${counts[st] > 0 ? ' is-hot' : ''}`} title={`${STATUS_LABEL[st]} ${counts[st]}`}>
+              <span className="cv-count-dot" aria-hidden="true" />
+              <span className="cv-sr">{STATUS_LABEL[st]} </span>
+              {counts[st]}
             </span>
           ))}
         </div>
-
+        {session.state === 'running' || session.state === 'stopping' || session.state === 'starting' ? (
+          <span className={`cv-run-pill is-${session.state}`} data-region="run-pill">
+            <span className="cv-run-state">
+              <span className="cv-run-dot" aria-hidden="true" />
+              {session.state === 'running'
+                ? t('topbar.checking', { count: checkedCount, seconds: every })
+                : session.state === 'starting' ? t('topbar.starting') : t('topbar.stopping')}
+            </span>
+            <button type="button" className="cv-run-stop" onClick={() => void useStore.getState().stopValidation()} disabled={session.state !== 'running'}>
+              {t('topbar.stop')}
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="cv-btn cv-btn-primary cv-btn-start"
+            onClick={() => void useStore.getState().startValidation()}
+            title={session.state === 'error' ? t('topbar.sessionError') : t('topbar.startChecksHint')}
+          >
+            {t('topbar.startChecks')}
+          </button>
+        )}
       </div>
 
       <div className="cv-topbar-actions">
@@ -772,10 +773,8 @@ export function TopBar({ onExit }: { onExit: () => void }) {
             {t('topbar.updateAvailable', { version: updateWaiting })}
           </button>
         )}
-        <button type="button" className="cv-btn cv-btn-search" title={t('topbar.searchTitle')}
-          onClick={() => useStore.getState().requestCommandPalette(true)}>
-          <span aria-hidden>⌕</span> {t('topbar.search')}
-        </button>
+        <IconButton icon="search" className="cv-btn-search" label={t('topbar.search')} shortcut="Ctrl+K" region="search"
+          onClick={() => useStore.getState().requestCommandPalette(true)} />
 
         <details className="cv-dropdown" ref={exportMenu}>
           <summary className="cv-btn">Export</summary>
@@ -957,17 +956,11 @@ export function TopBar({ onExit }: { onExit: () => void }) {
         </details>
 
         {/* The guide is in the app, not only in the repository. */}
-        <button type="button" className="cv-btn cv-btn-help"
-          title="How to use Coreview — the whole user guide, searchable"
-          onClick={() => useStore.getState().setHelpOpen(true)}>
-          {t('help.open')}
-        </button>
+        <IconButton icon="help" className="cv-btn-help" label={t('help.open')} region="help"
+          onClick={() => useStore.getState().setHelpOpen(true)} />
         <details className="cv-dropdown cv-more">
-          <summary className="cv-btn" title={t('topbar.more')} aria-label={t('topbar.more')}>⋯</summary>
+          <summary className="cv-icon-btn" title={t('topbar.more')} aria-label={t('topbar.more')}><ChromeIcon name="more" /></summary>
           <div className="cv-dropdown-menu" onClick={(e) => { (e.currentTarget.parentElement as HTMLDetailsElement).open = false; }}>
-            <button type="button" onClick={() => void useStore.getState().saveProject()}>Save <kbd>Ctrl+S</kbd></button>
-            <button type="button" onClick={useStore.getState().undo}>Undo <kbd>Ctrl+Z</kbd></button>
-            <button type="button" onClick={useStore.getState().redo}>Redo <kbd>Ctrl+Y</kbd></button>
             <button type="button" onClick={() => setAbout(true)}>About</button>
             <button
               type="button"
@@ -983,6 +976,7 @@ export function TopBar({ onExit }: { onExit: () => void }) {
             </button>
           </div>
         </details>
+        <Clock />
       </div>
 
       {about && <AboutDialog onClose={() => setAbout(false)} />}
@@ -1010,6 +1004,33 @@ function statusCounts(): Record<HealthStatus, number> {
     counts[s.nodeStatus(n.id)] += 1;
   }
   return counts;
+}
+
+/** Now, in the format chosen under Settings, always in sight; a click
+ *  copies it, which is what a change record wants. */
+function Clock() {
+  const timeFormat = useStore((s) => s.settings.timeFormat);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, []);
+  const text = formatTime(now, timeFormat, false);
+  return (
+    <button
+      type="button"
+      className="cv-clock cv-mono"
+      title={t('topbar.clockHint')}
+      onClick={() => {
+        navigator.clipboard?.writeText(text).then(
+          () => useStore.getState().setStatusMessage(t('topbar.clockCopied', { time: text })),
+          () => undefined,
+        );
+      }}
+    >
+      {text}
+    </button>
+  );
 }
 
 function AboutDialog({ onClose }: { onClose: () => void }) {

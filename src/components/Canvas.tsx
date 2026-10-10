@@ -854,7 +854,7 @@ export function Canvas() {
       { id: 'grid', label: 'Toggle snapping to the grid', hint: 'Ctrl+Shift+G', run: () => s().setGridSnap(!s().doc.gridSnap) },
       { id: 'page', label: 'Add a page', run: () => s().addPage('Page') },
       { id: 'arrange', label: 'Arrange top to bottom', run: () => s().flowLayout() },
-      { id: 'start', label: 'Start validation', run: () => void s().startValidation() },
+      { id: 'start', label: 'Start checks', run: () => void s().startValidation() },
       { id: 'stop', label: 'Stop validation', run: () => void s().stopValidation() },
       { id: 'help', label: 'Keyboard shortcuts', hint: '?', run: () => setHelp(true) },
       tab('discover', 'Ping sweep'),

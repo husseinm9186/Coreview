@@ -94,7 +94,8 @@ await page.waitForTimeout(150);
 
 check("the strip runs along the dock's bottom",
   (await box(".cv-panel .cv-dock-strip")).y > (await box(".cv-panel-body")).y);
-const clock = page.locator(".cv-dock-clock");
+// The clock lives in the top bar now, in sight on every screen; the strip is the jobs' line.
+const clock = page.locator(".cv-topbar .cv-clock");
 const dtg = await clock.innerText();
 check("with the clock in the DTG the setting starts on", /^\d{6}Z [A-Z]{3} \d{2}$/.test(dtg), dtg);
 await st(() => window.__cvStore.getState().setSettings({ timeFormat: "local-24" }));

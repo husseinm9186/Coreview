@@ -594,16 +594,11 @@ export function StatusPanel() {
  * The clock ticks once a second; nothing else here re-renders for it.
  */
 function DockStrip({ compact = false }: { compact?: boolean }) {
-  const timeFormat = useStore((s) => s.settings.timeFormat);
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const tick = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(tick);
-  }, []);
+  // The clock moved to the top bar, where it is in sight on every screen;
+  // the strip is the jobs' line.
   return (
     <div className={`cv-dock-strip${compact ? ' is-compact' : ''}`} data-region="dock-strip">
       <JobsBar compact />
-      <span className="cv-dock-clock cv-mono" title={t('dock.clockHint')}>{formatTime(now, timeFormat, false)}</span>
     </div>
   );
 }

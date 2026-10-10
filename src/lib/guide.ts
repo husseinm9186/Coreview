@@ -43,8 +43,8 @@ export const GUIDE_STEPS: GuideStep[] = [
   },
   {
     id: 'validate',
-    title: 'Start validation',
-    detail: 'Press Start validation at the top. Every device with an address is checked from this computer, over and over, until you stop.',
+    title: 'Start checks',
+    detail: 'Press Start checks at the top. Every device with an address is checked from this computer, over and over, until you stop.',
     now: (s) => s.sessionRunning,
   },
   {

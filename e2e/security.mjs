@@ -91,7 +91,7 @@ check("one credential's use can be picked out", (await calls("list_credential_us
 // --------------------------------------------- what the backend is sent
 await page.locator(".cv-project-open").first().click();
 await page.waitForTimeout(800);
-await page.locator("button", { hasText: "Start validation" }).first().click();
+await page.locator("button", { hasText: "Start checks" }).first().click();
 await page.waitForTimeout(500);
 const sent = (await calls("start_validation")).at(-1)?.args.probes?.[0];
 check("a probe is sent with the engine's fields only", sent && sent.target === "192.0.2.10" && !("notes" in sent) && !("is_primary" in sent) && !("isPrimary" in sent), JSON.stringify(sent));

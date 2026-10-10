@@ -70,7 +70,7 @@ await page.waitForTimeout(400);
 check("reading a link does too, and its ports show the errors it hides", /2 of 6/.test(await guide.textContent()) && /790 CRC/.test(await page.locator(".cv-inspector").textContent()), (await guide.textContent()).slice(0, 80));
 if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
 
-await page.locator("button", { hasText: "Start validation" }).first().click();
+await page.locator("button", { hasText: "Start checks" }).first().click();
 await page.waitForTimeout(400);
 await st(() => {
   const s = window.__cvStore.getState();

@@ -301,7 +301,8 @@ h1, h2, h3, h4, h5, h6 { line-height: 1.25; }
 /* The rail and the shell beside it. */
 /* The rail: 62 px at the laptop size — it was 52, and "Addresses" at the
    rail's type size needs 46 inside the padding and borders. */
-.cv-workspace { display: grid; grid-template-columns: 4.76923077rem 1fr; grid-template-rows: 100%; }
+/* 64 px: "Addresses" at the rail's 11 px label fits with room. */
+.cv-workspace { display: grid; grid-template-columns: 4.92307692rem 1fr; grid-template-rows: 100%; }
 .cv-shell { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; }
 /* The canvas and the dock; the dock along the bottom, or down the right. */
 .cv-body { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
@@ -327,8 +328,8 @@ h1, h2, h3, h4, h5, h6 { line-height: 1.25; }
 }
 .cv-nav-item {
   display: flex; flex-direction: column; align-items: center; gap: 0.15384615rem;
-  padding: 0.46153846rem 0.15384615rem; border: 1px solid transparent; border-radius: var(--radius);
-  background: transparent; color: var(--text-dim); font: inherit; font-size: var(--text-2xs); line-height: 1.1;
+  padding: 0.46153846rem 0.07692308rem; border: 1px solid transparent; border-radius: var(--radius);
+  background: transparent; color: var(--text-dim); font: inherit; font-size: var(--text-xs); font-weight: 500; line-height: 1.1;
   cursor: pointer; text-align: center; min-width: 0;
 }
 /* A label never widens the rail: it clips with an ellipsis, and the title says the rest. */
@@ -489,29 +490,30 @@ h1, h2, h3, h4, h5, h6 { line-height: 1.25; }
 
 /* ---------------------------------------------------------------- topbar */
 
+/* One 40 px row about the project: the name, the health strip and the one
+   primary, search, export and the rest; the clock at the right end. */
 .cv-topbar {
-  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-  gap: 0.92307692rem; padding: 0.46153846rem 0.92307692rem;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center;
+  gap: 0.92307692rem; padding: 0 0.92307692rem; height: 3.07692308rem;
   background: var(--chrome);
   border-bottom: 1px solid var(--chrome-edge);
 }
-.cv-topbar-centre { display: flex; align-items: center; gap: 0.46153846rem; flex-wrap: wrap; justify-content: center; }
+.cv-topbar-centre { display: flex; align-items: center; gap: 0.92307692rem; justify-content: center; white-space: nowrap; }
 .cv-topbar-actions { justify-self: end; }
 .cv-more summary { padding-inline: 0.61538462rem; }
 .cv-dropdown-menu kbd { margin-left: auto; color: var(--text-faint); font-family: var(--mono); font-size: var(--text-xs); padding-left: 0.92307692rem; }
-.cv-topbar-left { display: flex; align-items: baseline; gap: 0.76923077rem; min-width: 0; white-space: nowrap; overflow: hidden; }
+.cv-topbar-left { display: flex; align-items: center; gap: 0.61538462rem; min-width: 0; white-space: nowrap; overflow: hidden; }
 .cv-topbar-left > * { flex: none; }
-.cv-topbar-left .cv-project-name { overflow: hidden; text-overflow: ellipsis; max-width: 24.61538462rem; }
+.cv-topbar-left .cv-project-name { overflow: hidden; text-overflow: ellipsis; max-width: 24.61538462rem; font-size: var(--text-lg); }
+/* The customer and site give way first, with an ellipsis, never clipped mid-word. */
+.cv-topbar-left .cv-project-sub { flex: 0 1 auto; min-width: 3rem; overflow: hidden; text-overflow: ellipsis; font-size: var(--text-sm); }
 /* Links take the accent rather than the browser's blue, which on the green
    ground reads as a rendering fault. */
 a { color: var(--accent); }
 a:hover { color: var(--text); }
 
-.cv-brand {
-  font-weight: 600; letter-spacing: 0.04em; color: var(--accent);
-  display: inline-flex; align-items: center; gap: 0.53846154rem;
-}
-.cv-brand-mark { width: 1.30769231rem; height: 1.30769231rem; flex: none; }
+.cv-brand { color: var(--text); display: inline-flex; align-items: center; }
+.cv-brand-mark { width: 1.53846154rem; height: 1.53846154rem; flex: none; }
 .cv-project-name { font-weight: 600; }
 .cv-project-sub, .cv-project-date { color: var(--text-dim); }
 .cv-ticket {
@@ -533,27 +535,38 @@ a:hover { color: var(--text); }
 .cv-topbar-actions { display: flex; align-items: center; gap: 0.46153846rem; flex-wrap: wrap; }
 .cv-divider { width: 1px; height: 1.69230769rem; background: var(--line); margin: 0 0.30769231rem; }
 
-.cv-session-state {
-  display: inline-flex; align-items: center; gap: 0.46153846rem;
-  font-size: var(--text-md); color: var(--text-dim);
-  padding: 0.23076923rem 0.69230769rem; border: 1px solid var(--line); border-radius: 999px;
-}
-.cv-session-state .cv-dot {
-  width: 0.53846154rem; height: 0.53846154rem; border-radius: 50%; background: var(--unknown);
-}
-.cv-session-state.is-running { color: var(--healthy); border-color: color-mix(in srgb, var(--healthy) 45%, transparent); }
-.cv-session-state.is-running .cv-dot { background: var(--healthy); }
-.cv-session-state.is-error { color: var(--down); }
-.cv-session-state.is-error .cv-dot { background: var(--down); }
-
-.cv-counts { display: flex; gap: 0.30769231rem; }
+/* The health strip: a dot and a number per status, the number faint at
+   zero and on a soft tint of its colour when there is something to see. */
+.cv-counts { display: flex; gap: 0.15384615rem; }
 .cv-count {
-  font-size: var(--text-sm); padding: 0.15384615rem 0.53846154rem; border-radius: 4px;
-  border: 1px solid var(--line); color: var(--text-dim);
+  display: inline-flex; align-items: center; gap: 0.46153846rem; height: 2rem; padding: 0 0.61538462rem;
+  border-radius: var(--radius); font-size: var(--text-md); font-variant-numeric: tabular-nums; color: var(--text-faint);
 }
-.cv-count.is-healthy { color: var(--healthy); }
-.cv-count.is-warning { color: var(--warning); }
-.cv-count.is-down { color: var(--down); }
+.cv-count-dot { width: 0.53846154rem; height: 0.53846154rem; border-radius: 50%; background: var(--unknown); }
+.cv-count.is-healthy .cv-count-dot { background: var(--healthy); }
+.cv-count.is-warning .cv-count-dot { background: var(--warning); }
+.cv-count.is-down .cv-count-dot { background: var(--down); }
+.cv-count.is-hot { color: var(--text); }
+.cv-count.is-healthy.is-hot { background: var(--healthy-soft); }
+.cv-count.is-warning.is-hot { background: var(--warning-soft); }
+.cv-count.is-down.is-hot { background: var(--down-soft); }
+/* The one filled primary on the screen. */
+.cv-btn-primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; height: 2.46153846rem; padding: 0 1.07692308rem; }
+.cv-btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, white); border-color: color-mix(in srgb, var(--accent) 88%, white); }
+/* The running pill: what is being checked, and Stop as its other half. */
+.cv-run-pill { display: inline-flex; align-items: stretch; height: 2.46153846rem; border: 1px solid var(--edge); border-radius: 999px; overflow: hidden; font-size: var(--text-md); font-weight: 500; }
+.cv-run-state { display: inline-flex; align-items: center; gap: 0.61538462rem; padding: 0 1.07692308rem 0 0.92307692rem; background: var(--panel-2); color: var(--text); white-space: nowrap; }
+.cv-run-dot { width: 0.46153846rem; height: 0.46153846rem; border-radius: 50%; background: var(--healthy); box-shadow: 0 0 0 3px var(--healthy-soft); }
+.cv-run-pill.is-running .cv-run-dot { animation: cv-pulse 1.6s ease-in-out infinite; }
+@keyframes cv-pulse { 50% { box-shadow: 0 0 0 5px rgba(53, 194, 111, 0.08); } }
+.is-reduce-motion .cv-run-dot { animation: none; }
+@media (prefers-reduced-motion: reduce) { .cv-run-dot { animation: none; } }
+.cv-run-stop { border: 0; border-left: 1px solid var(--edge); background: transparent; color: var(--down); font: inherit; font-weight: 600; padding: 0 0.92307692rem; cursor: pointer; }
+.cv-run-stop:hover:not(:disabled) { background: var(--down-soft); }
+.cv-run-stop:disabled { color: var(--text-faint); cursor: default; }
+/* The clock, a button so it can be copied, in the font digits belong in. */
+.cv-clock { background: none; border: 0; color: var(--text); font-size: var(--text-md); letter-spacing: 0.04em; font-variant-numeric: tabular-nums; padding: 0 0.30769231rem; cursor: copy; white-space: nowrap; }
+.cv-clock:hover { color: var(--accent); }
 
 /* --------------------------------------------------------------- controls */
 
@@ -914,7 +927,6 @@ details.cv-discover-advanced[open] > summary::after { content: '▾'; }
 .cv-dock-strip { display: flex; align-items: center; gap: 0.92307692rem; padding: 0.23076923rem 0.76923077rem; border-top: 1px solid var(--line); background: var(--panel-2); font-size: var(--text-sm); min-height: 1.84615385rem; }
 .cv-dock-strip > .cv-jobs { flex: 1; }
 .cv-dock-strip.is-compact { border-top: 0; background: transparent; padding: 0; margin-left: auto; min-height: 0; }
-.cv-dock-clock { margin-left: auto; color: var(--text-dim); white-space: nowrap; }
 .cv-tabs button {
   white-space: nowrap;
   background: none; border: 1px solid transparent; color: var(--text-dim);

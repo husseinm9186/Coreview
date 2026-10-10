@@ -167,7 +167,7 @@ const edges = await st(() => window.__cvStore.getState().doc.pages[0].edges.map(
 check("   with the link between them and its ports", edges.some((e) => e.sourcePortLabel === "Gi1/0/2" || e.targetPortLabel === "Gi1/0/2"), JSON.stringify(edges));
 
 // 4. Validate.
-await page.locator("button", { hasText: "Start validation" }).first().click();
+await page.locator("button", { hasText: "Start checks" }).first().click();
 await page.waitForTimeout(400);
 const started = (await calls("start_validation")).at(-1)?.args;
 check("4. validation checks every watched device", started?.probes.length >= 3 && started.probes.every((p) => p.target && !("notes" in p)), JSON.stringify(started?.probes?.map((p) => p.target)));
