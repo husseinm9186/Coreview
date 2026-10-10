@@ -175,13 +175,14 @@ if (await front.count()) {
   await page.keyboard.press("f");
   await page.waitForTimeout(500);
   // The toggle moved from the top bar to the canvas's own toolbar.
-  const toggle = page.locator(".cv-canvas-tools button", { hasText: /^Grid snap (on|off)$/ });
-  check("the toolbar always shows whether grid snap is on", (await toggle.count()) === 1 && (await toggle.innerText()) === "Grid snap off",
+  const toggle = page.locator('.cv-canvas-tools [data-region="snap-toggle"]');
+  const snapOn = async () => (await toggle.getAttribute("aria-pressed")) === "true";
+  check("the toolbar always shows whether grid snap is on", (await toggle.count()) === 1 && !(await snapOn()),
     (await toggle.count()) ? await toggle.innerText() : "missing");
   await page.keyboard.press("Control+Shift+G");
   await page.waitForTimeout(300);
   check("Ctrl+Shift+G turns it on for the project",
-    (await toggle.innerText()) === "Grid snap on" && (await st(() => window.__cvStore.getState().doc.gridSnap)) === true,
+    (await snapOn()) && (await st(() => window.__cvStore.getState().doc.gridSnap)) === true,
     await toggle.innerText());
   const posOf = (id) => st((i) => window.__cvStore.getState().doc.pages[0].nodes.find((n) => n.id === i).position, id);
   /** Drags a box by an awkward screen offset, well clear of the others. */
@@ -205,7 +206,7 @@ if (await front.count()) {
   check("holding Alt drops it off the grid for that drag", !onGrid(altered), JSON.stringify(altered));
   await toggle.click();
   await page.waitForTimeout(300);
-  check("the toolbar button turns it off", (await toggle.innerText()) === "Grid snap off");
+  check("the toolbar button turns it off", !(await snapOn()));
   const free = await dragBy("e", 31, 23);
   check("with grid snap off, a box lands where it is dropped", !onGrid(free), JSON.stringify(free));
 }

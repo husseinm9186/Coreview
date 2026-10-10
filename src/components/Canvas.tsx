@@ -1,7 +1,6 @@
 import { nodeForDrop } from '../lib/paletteDrop';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Controls,
   applyNodeChanges,
   MiniMap,
   ReactFlow,
@@ -1765,7 +1764,6 @@ export function Canvas() {
             is what made the desk and the page look like one surface. */}
         <Page />
         <InkStrokes />
-        <Controls showInteractive={false} />
         {settings.minimap && (
           <HealthMiniMap health={Boolean(pg.canvas.minimapHealth)} ground={ground} />
         )}

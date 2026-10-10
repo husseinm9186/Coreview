@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { useStore } from '../state/store';
 import { ipc } from '../lib/ipc';
+import { IconButton } from './chromeIcons';
 import { buildMarkdownReport, saveExport, slug, svgToPng } from '../lib/exports';
 import { cableSchedule, cableScheduleCsv } from '../lib/cableSchedule';
 import { renderDiagramSvg } from '../lib/diagram';
@@ -712,6 +713,12 @@ export function TopBar({ onExit }: { onExit: () => void }) {
         >
           {save.tone === 'acknowledged' && <span className="cv-save-tick" aria-hidden="true">✓</span>}
           {save.at === null ? save.label : `${save.label} ${new Date(save.at).toLocaleTimeString()}`}
+        </span>
+        {/* The document's own verbs, beside its save state. */}
+        <span className="cv-doc-verbs" role="group" aria-label={t('topbar.document')}>
+          <IconButton icon="save" label={t('topbar.save')} shortcut="Ctrl+S" region="save" onClick={() => void useStore.getState().saveProject()} />
+          <IconButton icon="undo" label={t('topbar.undo')} shortcut="Ctrl+Z" region="undo" onClick={() => useStore.getState().undo()} />
+          <IconButton icon="redo" label={t('topbar.redo')} shortcut="Ctrl+Y" region="redo" onClick={() => useStore.getState().redo()} />
         </span>
       </div>
 

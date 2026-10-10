@@ -341,11 +341,31 @@ h1, h2, h3, h4, h5, h6 { line-height: 1.25; }
 /* The floating toolbar on the canvas; the ink strip sits under it. */
 .cv-canvas-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .cv-canvas-col > .cv-canvas { flex: 1; min-height: 0; }
+/* One 32 px strip: 28 px ghost icon buttons in groups, a 1 px rule between
+   groups, the zoom value the only word that is always there. */
 .cv-canvas-tools {
-  display: flex; align-items: center; gap: 0.30769231rem; flex-wrap: wrap;
-  padding: 0.30769231rem 0.61538462rem; background: var(--chrome); border-bottom: 1px solid var(--chrome-edge);
+  display: flex; align-items: center; gap: 0.15384615rem; flex-wrap: nowrap; overflow: hidden;
+  height: 2.46153846rem; padding: 0 0.61538462rem; background: var(--chrome); border-bottom: 1px solid var(--chrome-edge);
 }
-.cv-canvas-tools .cv-divider { height: 1.23076923rem; margin: 0 0.15384615rem; }
+.cv-strip-group { display: flex; align-items: center; gap: 0.15384615rem; }
+.cv-strip-sep { width: 1px; height: 1.23076923rem; background: var(--line); margin: 0 0.46153846rem; flex: none; }
+.cv-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.30769231rem;
+  min-width: 2.15384615rem; height: 2.15384615rem; padding: 0 0.38461538rem;
+  background: transparent; color: var(--text-dim); border: 1px solid transparent; border-radius: var(--radius);
+  font: inherit; font-size: var(--text-md); cursor: pointer; white-space: nowrap; list-style: none;
+}
+.cv-icon-btn::-webkit-details-marker { display: none; }
+.cv-icon-btn:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.cv-icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.cv-icon-btn.is-on { color: var(--accent); background: var(--accent-soft); }
+.cv-icon-btn.is-menu .cv-icon-caret { width: 0.76923077rem; height: 0.76923077rem; margin-left: -0.15384615rem; opacity: 0.7; }
+.cv-icon-btn .cv-icon-word { font-size: var(--text-md); }
+.cv-canvas-tools .cv-dropdown > summary.cv-icon-btn { list-style: none; }
+.cv-canvas-tools .cv-zoom-level { min-width: 3.6rem; font-variant-numeric: tabular-nums; color: var(--text); }
+.cv-ink-options { display: inline-flex; align-items: center; gap: 0.23076923rem; margin-left: 0.15384615rem; }
+/* The top bar's document verbs read the same button. */
+.cv-doc-verbs { display: inline-flex; align-items: center; gap: 0; margin-left: 0.30769231rem; }
 /* The zoom level and the grid, each a small menu. */
 .cv-canvas-tools .cv-dropdown > summary.cv-btn-small { list-style: none; }
 .cv-canvas-tools .cv-dropdown > summary::-webkit-details-marker { display: none; }
@@ -410,7 +430,6 @@ h1, h2, h3, h4, h5, h6 { line-height: 1.25; }
 .cv-workspace.is-presenting .cv-main { grid-template-columns: minmax(0, 1fr); }
 .cv-workspace.is-presenting .cv-main > :not(.cv-canvas-col) { display: none; }
 .cv-workspace.is-presenting .cv-page-tabs,
-.cv-workspace.is-presenting .react-flow__controls,
 .cv-workspace.is-presenting .react-flow__minimap,
 .cv-workspace.is-presenting .cv-legend { display: none; }
 
@@ -679,10 +698,6 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 /* Background is stated once, with the ground, near the top of this file. */
 .cv-canvas { position: relative; min-width: 0; }
 .react-flow__attribution { background: transparent; color: var(--text-faint); font-size: var(--canvas-text-2xs); }
-.react-flow__controls button {
-  background: var(--panel-2); border-bottom: 1px solid var(--line); fill: var(--text-dim);
-}
-.react-flow__controls button:hover { background: var(--hover); }
 .cv-minimap {
   background: var(--desk);
   border: 1px solid var(--chrome-edge); border-radius: var(--radius);
@@ -1009,7 +1024,7 @@ details.cv-discover-advanced[open] > summary::after { content: '▾'; }
 .cv-modal-actions { display: flex; justify-content: flex-end; gap: 0.61538462rem; margin-top: 1.38461538rem; }
 
 @media print {
-  .cv-topbar, .cv-palette, .cv-inspector, .cv-panel, .react-flow__controls, .cv-minimap,
+  .cv-topbar, .cv-palette, .cv-inspector, .cv-panel, .cv-minimap,
   .cv-guide, .cv-find { display: none !important; }
 
   /* Paper is white, so the diagram is drawn for white — not the dark palette
@@ -2148,7 +2163,6 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
   font-family: var(--mono); font-size: var(--canvas-text-xs); font-weight: 600;
   color: var(--ink); background: var(--label-bg); border: 1px solid var(--canvas-accent); border-radius: 3px; padding: 0 0.3rem;
 }
-.cv-canvas:has(.cv-rulers) .cv-ink-bar { top: 26px; left: 26px; }
 
 /* The lasso being drawn. */
 .cv-lasso {
@@ -2251,25 +2265,25 @@ details[open] > .cv-palette-sub::before { transform: rotate(90deg); }
    canvas's own width rather than the whole window — the shape palette and
    inspector rails either side keep their own space, the way Lucidchart's
    page tabs sit only under the drawing area. */
+/* A 28 px row; the active page is a 2 px accent underline, not a box. */
 .cv-page-tabs {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
-  display: flex; align-items: stretch; gap: 0.15384615rem; padding: 0.30769231rem 0.61538462rem;
-  background: var(--panel); border-top: 1px solid var(--line);
+  display: flex; align-items: stretch; gap: 0.15384615rem; padding: 0 0.61538462rem; height: 2.15384615rem;
+  background: var(--panel-2); border-top: 1px solid var(--line);
   overflow-x: auto;
 }
 .cv-page-tab {
   display: flex; align-items: center; padding: 0 0.30769231rem;
-  border: 1px solid transparent; border-radius: 4px 4px 0 0;
+  border: 0; border-bottom: 2px solid transparent;
   background: none; cursor: pointer; max-width: 12.30769231rem;
 }
 .cv-page-tab:hover { background: var(--hover); }
-.cv-page-tab.is-active {
-  background: var(--bg); border-color: var(--line) var(--line) var(--bg);
-}
+.cv-page-tab.is-active { border-bottom-color: var(--accent); }
+.cv-page-tab.is-active .cv-page-tab-name { color: var(--text); font-weight: 500; }
 .cv-page-tab-name {
   min-width: 0; width: 100%; background: none; border: none;
-  color: var(--text); font-size: var(--text-md); font-family: inherit;
-  padding: 0.38461538rem 0.30769231rem; cursor: inherit; text-overflow: ellipsis;
+  color: var(--text-dim); font-size: var(--text-md); font-family: inherit;
+  padding: 0 0.30769231rem; cursor: inherit; text-overflow: ellipsis;
 }
 .cv-page-tab.is-active .cv-page-tab-name { cursor: text; }
 .cv-page-tab-name:focus { outline: none; }
@@ -3090,15 +3104,12 @@ details[open] > .cv-palette-lib::before { content: '▾'; }
 .cv-note-number { margin: 0; }
 .cv-note-number > span:first-child { opacity: 0.8; }
 /* Freehand ink. */
-.cv-ink-bar { position: absolute; top: 10px; left: 10px; z-index: 7; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; max-width: calc(100% - 20px); }
-.cv-ink-bar .cv-btn.is-on { border-color: var(--accent); color: var(--text); background: var(--panel-2); }
 .cv-ink-swatch { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line); cursor: pointer; padding: 0; }
 .cv-ink-swatch.is-on { box-shadow: 0 0 0 2px var(--accent); }
-.cv-ink-width { width: auto; font-size: var(--canvas-text-sm); padding: 1px 4px; }
+.cv-ink-width { width: auto; height: 1.84615385rem; font-size: var(--text-sm); padding: 0 0.30769231rem; }
 .cv-ink-sheet { position: absolute; inset: 0; z-index: 6; touch-action: none; }
 .cv-ink-sheet.is-pen { cursor: crosshair; }
 .cv-ink-sheet.is-eraser { cursor: cell; }
-@media print { .cv-ink-bar { display: none; } }
 /* Comments. */
 .cv-comment { border-left: 3px solid var(--accent); padding: 0.30769231rem 0.61538462rem; margin: 0.46153846rem 0; font-size: var(--text-md); color: var(--text); }
 .cv-comment.is-resolved { border-left-color: var(--line); opacity: 0.7; }

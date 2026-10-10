@@ -301,8 +301,8 @@ check("a sticky note can be added", await st(() => window.__cvStore.getState().d
 await blur();
 await page.keyboard.press("Escape");
 const ink = () => st(() => window.__cvStore.getState().doc.pages[0].canvas.ink ?? []);
-await page.locator(".cv-ink-bar button", { hasText: "Pen" }).click();
-await page.locator(".cv-ink-bar").getByLabel("Blue ink").click();
+await page.locator('.cv-canvas-tools [data-region="pen"]').click();
+await page.locator(".cv-canvas-tools").getByLabel("Blue ink").click();
 const sheet = await page.locator(".cv-ink-sheet").boundingBox();
 const [sx, sy] = [sheet.x + sheet.width * 0.3, sheet.y + sheet.height * 0.35];
 await page.mouse.move(sx, sy);
@@ -311,14 +311,14 @@ for (let i = 1; i <= 20; i++) await page.mouse.move(sx + i * 8, sy + Math.sin(i 
 await page.mouse.up();
 await page.waitForTimeout(250);
 const strokes = await ink();
-check("the pen draws a stroke that is kept on the page", strokes.length === 1 && strokes[0].color === "#4ea8f0" && strokes[0].points.length >= 6 && strokes[0].points.length < 42,
+check("the pen draws a stroke that is kept on the page", strokes.length === 1 && strokes[0].color === "#5aa7f5" && strokes[0].points.length >= 6 && strokes[0].points.length < 42,
   JSON.stringify(strokes.map((s) => [s.color, s.points.length])));
 check("and drawn on the canvas", (await page.locator("svg.cv-ink path[data-stroke]").count()) === 1);
-await page.locator(".cv-ink-bar button", { hasText: "Hide ink" }).click();
+await page.locator('.cv-canvas-tools [data-region="ink-visible"][aria-pressed="true"]').click();
 await page.waitForTimeout(200);
 check("hiding ink takes it off the canvas and keeps it", (await page.locator("svg.cv-ink path[data-stroke]").count()) === 0 && (await ink()).length === 1);
-await page.locator(".cv-ink-bar button", { hasText: /^Show ink/ }).click();
-await page.locator(".cv-ink-bar button", { hasText: "Eraser" }).click();
+await page.locator('.cv-canvas-tools [data-region="ink-visible"][aria-pressed="false"]').click();
+await page.locator('.cv-canvas-tools [data-region="eraser"]').click();
 const box = await page.locator("svg.cv-ink path[data-stroke]").boundingBox();
 await page.mouse.click(sx, sy);
 await page.waitForTimeout(250);

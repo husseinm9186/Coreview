@@ -2192,11 +2192,11 @@ await dismissRecovery();
   const vp = () => page.locator(".react-flow__viewport").evaluate((el) => el.style.transform);
   check("the overview box is on by default", (await page.locator(".cv-minimap").count()) === 1);
   const vpBefore = await vp();
-  await page.locator("label", { hasText: "Overview" }).locator("input").uncheck();
+  await page.locator('[data-region="overview-toggle"][aria-pressed="true"]').click();
   await page.waitForTimeout(300);
   check("the toggle hides it", (await page.locator(".cv-minimap").count()) === 0);
   check("without moving the canvas", (await vp()) === vpBefore);
-  await page.locator("label", { hasText: "Overview" }).locator("input").check();
+  await page.locator('[data-region="overview-toggle"][aria-pressed="false"]').click();
   await page.waitForTimeout(300);
   check("and brings it back", (await page.locator(".cv-minimap").count()) === 1);
 }
@@ -3305,7 +3305,7 @@ await dismissRecovery();
     const zoom = await page.evaluate(() => Number(getComputedStyle(
       document.querySelector(".react-flow__viewport")).transform.split("(")[1].split(",")[0]));
     if (zoom >= 0.9) break;
-    await page.locator(".react-flow__controls-zoomin").click();
+    await page.locator('[data-region="zoom-in"]').click();
     await page.waitForTimeout(120);
   }
   await page.waitForTimeout(400);
@@ -3318,7 +3318,7 @@ await dismissRecovery();
     const zoom = await page.evaluate(() => Number(getComputedStyle(
       document.querySelector(".react-flow__viewport")).transform.split("(")[1].split(",")[0]));
     if (zoom <= 0.3) break;
-    await page.locator(".react-flow__controls-zoomout").click();
+    await page.locator('[data-region="zoom-out"]').click();
     await page.waitForTimeout(120);
   }
   await page.waitForTimeout(400);
