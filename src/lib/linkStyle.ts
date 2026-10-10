@@ -26,9 +26,13 @@ export function dashFor(style: LinkLineStyle | undefined, status: HealthStatus):
       return '12 5 2 5';
     default:
       // The health meaning, which is what this did before the choice existed.
+      // Pattern as well as colour, so a projector and a colour-blind eye
+      // read the same thing: down dashed, warning dotted.
       return status === 'down'
         ? '10 6'
-        : status === 'disabled'
+        : status === 'warning'
+          ? '2 4'
+          : status === 'disabled'
           ? '2 6'
           : status === 'maintenance'
             ? '12 6'

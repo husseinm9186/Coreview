@@ -229,9 +229,12 @@ export interface NotePalette {
 
 export const NOTE_DARK: Record<'plain' | 'change' | 'sticky', NotePalette> = {
   plain: { text: '#d8e2ec', background: '#141c26', border: '#25313f' },
-  change: { text: '#f2e6c8', background: '#2a2313', border: '#8a6d1f' },
-  // A sticky note reads as one on either ground.
-  sticky: { text: '#2b2408', background: '#e8d36a', border: '#b89c2a' },
+  // A plain surface with one warm bar at its left (styles.css); no longer a
+  // box in the warning colour, which it never meant.
+  change: { text: '#e8edf3', background: '#1c2029', border: '#2a3240' },
+  // A sticky note reads as one on either ground; dimmed from #e8d36a so
+  // it is not the brightest thing on the dark page.
+  sticky: { text: '#2b2408', background: '#d9c45a', border: '#b89c2a' },
 };
 
 export const NOTE_LIGHT: Record<'plain' | 'change' | 'sticky', NotePalette> = {

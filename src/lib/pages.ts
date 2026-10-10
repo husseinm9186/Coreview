@@ -17,6 +17,9 @@ import type { ProjectDocument, ProjectPage, TopoEdge, TopoNode } from '../state/
 
 export const DEFAULT_PAGE_CANVAS: ProjectPage['canvas'] = {
   gridEnabled: true,
+  // Dots for a page made from now on; a page saved before this said
+  // nothing and keeps reading as lines, so nobody's habit moves under them.
+  gridStyle: 'dots',
   snapEnabled: true,
   minimap: true,
   nodeStyle: 'glyph',

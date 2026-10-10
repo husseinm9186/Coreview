@@ -13,6 +13,8 @@ import {
   type Connection,
   type NodeChange,
   type OnConnect,
+  getNodesBounds,
+  useViewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -118,11 +120,27 @@ function HealthMiniMap({ health, ground }: { health: boolean; ground: Ground }) 
   useStore((s) => (health ? s.runtime : null));
   useStore((s) => (health ? s.session.state : null));
   const status = (id: string): HealthStatus => useStore.getState().nodeStatus(id);
+  // While the whole diagram is in view the overview says nothing the page
+  // does not, so it fades back and returns on hover — or the moment
+  // something is off the edge.
+  const viewport = useViewport();
+  const nodes = useStore((s) => activePage(s.doc).nodes);
+  const quiet = useMemo(() => {
+    if (nodes.length === 0) return true;
+    const pane = document.querySelector('.react-flow__pane')?.getBoundingClientRect();
+    if (!pane) return false;
+    const b = getNodesBounds(nodes);
+    const left = b.x * viewport.zoom + viewport.x;
+    const top = b.y * viewport.zoom + viewport.y;
+    const right = (b.x + b.width) * viewport.zoom + viewport.x;
+    const bottom = (b.y + b.height) * viewport.zoom + viewport.y;
+    return left >= -8 && top >= -8 && right <= pane.width + 8 && bottom <= pane.height + 8;
+  }, [nodes, viewport.x, viewport.y, viewport.zoom]);
   return (
     <MiniMap
       pannable
       zoomable
-      className={`cv-minimap${health ? ' is-health' : ''}`}
+      className={`cv-minimap${health ? ' is-health' : ''}${quiet ? ' is-quiet' : ''}`}
       nodeColor={(n) =>
         n.type === 'note'
           ? palette.minimapNote

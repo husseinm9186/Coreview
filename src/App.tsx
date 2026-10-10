@@ -28,6 +28,7 @@ import { t } from './i18n';
 export default function App() {
   const meta = useStore((s) => s.meta);
   const highContrast = useStore((s) => s.settings.highContrast);
+  const reduceMotion = useStore((s) => s.settings.reduceMotion);
   const uiScale = useStore((s) => s.settings.uiScale);
   const dockSide = useStore((s) => s.settings.dockSide);
   const dockMax = useStore((s) => s.dockMax);
@@ -130,7 +131,7 @@ export default function App() {
 
   if (!meta) {
     return (
-      <div className={`cv-app ${highContrast ? 'is-contrast' : ''} ${ground === 'light' ? 'is-light' : ''}`}>
+      <div className={`cv-app ${highContrast ? 'is-contrast' : ''} ${ground === 'light' ? 'is-light' : ''} ${reduceMotion ? 'is-reduce-motion' : ''}`}>
         {!isDesktop && (
           <div className="cv-browser-banner">
             <span>{t('banner.browser')}</span>
@@ -145,7 +146,7 @@ export default function App() {
   return (
     <ReactFlowProvider>
       <div
-        className={`cv-app cv-workspace ${highContrast ? 'is-contrast' : ''} ${ground === 'light' ? 'is-light' : ''}${
+        className={`cv-app cv-workspace ${highContrast ? 'is-contrast' : ''} ${ground === 'light' ? 'is-light' : ''} ${reduceMotion ? 'is-reduce-motion' : ''}${
           presenting ? ' is-presenting' : ''
         }`}
       >
