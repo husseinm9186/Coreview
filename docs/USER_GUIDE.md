@@ -335,7 +335,12 @@ running — a crawl, a backup, a sweep — with its progress and a **Cancel**.
 **Pop out** sends the dock down the right of the window, the full
 height, for a wide table; the canvas gives way and the palette and
 inspector fold with their own handles. **Dock below** puts it back, and
-either choice is remembered on this machine. **Hide** folds the dock to one
+either choice is remembered on this machine, kept for each tab: discovering
+devices and the terminal open down the right on their own — Discover at a
+narrow column, the terminal at half the window — while the monitored
+objects, the paths and the backups stay along the bottom where their wide
+tables want the room. Moving one with **Dock to the right** or **Dock
+below** is remembered for that tab alone. **Hide** folds the dock to one
 row that keeps the counts and the strip.
 
 **Paths.** Path-Trace, Path check, Tracert and Where is answer one

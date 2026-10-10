@@ -130,7 +130,7 @@ await st(() => window.__cvStore.getState().setJobs([]));
 // ------------------------------------------------------------- pop out
 
 const side = page.locator('[data-action="dock-side"]');
-check("the dock offers Pop out", (await side.innerText()) === "Pop out");
+check("on a wide-table tab the dock offers to dock to the right", (await side.innerText()) === "Dock to the right");
 const below = { panel: await box(".cv-panel"), canvas: await box(".cv-canvas") };
 check("and starts along the bottom, under the canvas", below.panel.y >= below.canvas.y + below.canvas.height - 1,
   JSON.stringify(below));
@@ -167,7 +167,8 @@ await page.waitForTimeout(400);
 const back = { panel: await box(".cv-panel"), canvas: await box(".cv-canvas") };
 check("Dock below puts it back under the canvas", back.panel.y >= back.canvas.y + back.canvas.height - 1 && back.panel.width > 1200,
   JSON.stringify(back));
-check("and that is remembered too", (await st(() => localStorage.getItem("coreview.view.dockSide"))) === "bottom");
+check("and that is remembered too, keyed by the tab",
+  (await st(() => JSON.parse(localStorage.getItem("coreview.view.dockPlacements") ?? "{}"))).objects === "bottom");
 
 await browser.close();
 if (failures) {

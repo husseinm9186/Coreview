@@ -318,6 +318,7 @@ check("the device is told the real terminal size once it has been laid out",
 // ------------------------------------------------- font and size
 
 const controls = page.locator(".cv-ssh-controls");
+const foot = page.locator('[data-region="ssh-foot"]');
 const control = (label) =>
   controls.locator(".cv-field", { has: page.locator(`span:text-is("${label}")`) }).locator("input, select").first();
 
@@ -383,8 +384,8 @@ const starts = await st(() => window.__logStarts);
 check("it is asked for by device and folder, the same two a backup uses",
   starts.length === 1 && starts[0].folder === "/tmp/cv-configs" && starts[0].device === "CORE-SW1" &&
   starts[0].address === "192.0.2.10", JSON.stringify(starts[0]));
-check("and the tab says where it is being written",
-  /Logging to .*CORE-SW1/.test(await controls.textContent()), (await controls.textContent()).slice(0, 160));
+check("and the footer says where it is being written",
+  /Logging to .*CORE-SW1/.test(await foot.textContent()), (await foot.textContent()).slice(0, 160));
 check("with a mark on the tab itself, so it is visible from any other one",
   (await page.locator(".cv-ssh-tab", { hasText: "CORE-SW1" }).textContent())?.includes("logging"));
 
@@ -408,8 +409,8 @@ check("changing it reaches every open session, not just the next one opened",
 
 await st(() => window.__deviceIsAlive("ssh-1", 1758240000000));
 await page.waitForTimeout(400);
-check("and the panel says when the device last took one",
-  /Last confirmed/.test(await controls.textContent()), (await controls.textContent()).slice(0, 200));
+check("and the footer says when the device last took one",
+  /Last confirmed/.test(await foot.textContent()), (await foot.textContent()).slice(0, 200));
 
 // --------------------------------------- somebody else's terminal
 

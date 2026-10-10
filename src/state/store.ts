@@ -24,6 +24,7 @@ import {
   type CustomFieldDraft,
 } from '../lib/ipamMeta';
 import { tidyLayout as evenOutSpacing } from '../lib/tidyLayout';
+import { readDockPlacements } from '../lib/dockPlacement';
 import { hierarchicalLayout } from '../lib/hierarchyLayout';
 import { routeLinks as chooseLinkSides } from '../lib/routeLinks';
 import { zoneDeltas } from '../lib/zones';
@@ -269,9 +270,6 @@ export interface AppSettings {
   /** The chrome's size, as a multiple of the root size the screen
    *  sets (0.85–1.4). A machine preference. The canvas's zoom is its own. */
   uiScale: number;
-  /** Where the dock sits — along the bottom, or popped out to the
-   *  right for wide tables. A view preference for this machine. */
-  dockSide: 'bottom' | 'right';
   /** The overview box, bottom-right. A view preference for this machine, like
    *  which panels are open — not part of any project. */
   minimap: boolean;
@@ -468,6 +466,12 @@ interface Store {
   dockTab: DockTab;
   /** The dock taking the canvas's room, until it is restored. */
   dockMax: boolean;
+  /** Which side each dock tab sits on when it is not the default: a
+   *  per-machine override of `dockSideFor`. The dock follows the active
+   *  tab's side, so discovering devices and the terminal open down the
+   *  right without moving the wide tables there. */
+  dockPlacements: Partial<Record<DockTab, 'bottom' | 'right'>>;
+  setDockPlacement: (tab: DockTab, side: 'bottom' | 'right') => void;
   setDockTab: (tab: DockTab) => void;
   setDockMax: (on: boolean) => void;
   /** Which of the device inspector's tabs is showing. Kept across a
@@ -1343,13 +1347,6 @@ export const useStore = create<Store>((set, get) => ({
         return 1;
       }
     })(),
-    dockSide: (() => {
-      try {
-        return localStorage.getItem('coreview.view.dockSide') === 'right' ? 'right' : 'bottom';
-      } catch {
-        return 'bottom';
-      }
-    })(),
     minimap: viewPref('minimap'),
     foldFans: viewPref('foldFans'),
     wheel: (() => {
@@ -1386,6 +1383,7 @@ export const useStore = create<Store>((set, get) => ({
   panelOpen: viewPref('panelOpen'),
   dockTab: 'objects',
   dockMax: false,
+  dockPlacements: readDockPlacements(),
   inspectorTab: 'status',
   backupHandover: null,
   discoverAdvanced: false,
@@ -1772,6 +1770,18 @@ export const useStore = create<Store>((set, get) => ({
   },
   setDockMax(on) {
     set({ dockMax: on });
+  },
+
+  setDockPlacement(tab, side) {
+    set((s) => {
+      const next = { ...s.dockPlacements, [tab]: side };
+      try {
+        localStorage.setItem('coreview.view.dockPlacements', JSON.stringify(next));
+      } catch {
+        /* private mode — the choice lasts this session */
+      }
+      return { dockPlacements: next };
+    });
   },
 
   setDockTab(tab) {
@@ -4045,13 +4055,6 @@ export const useStore = create<Store>((set, get) => ({
     if (patch.wheel !== undefined) {
       try {
         localStorage.setItem('coreview.view.wheel', patch.wheel);
-      } catch {
-        /* private mode — the choice lasts this session */
-      }
-    }
-    if (patch.dockSide !== undefined) {
-      try {
-        localStorage.setItem('coreview.view.dockSide', patch.dockSide);
       } catch {
         /* private mode — the choice lasts this session */
       }

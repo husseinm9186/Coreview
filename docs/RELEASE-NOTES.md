@@ -18,6 +18,15 @@ Newest first.
   Arrange menu releases them. **Lay out radially** is on the Arrange menu
   as well.
 
+**Discover and the terminal dock on the right**
+- Discovering devices and the terminal open down the right of the window,
+  beside the inspector rather than in place of it: Discover at a narrow
+  column with its step headers staying in sight and a footer carrying the
+  Discover button and a one-line summary of the run; the terminal at half
+  the window with its session tabs and its own footer. The wide tables —
+  the monitored objects, the paths, the backups — stay along the bottom.
+  The side is kept per tab, so moving one does not move the others.
+
 **Clusters: chips, a breadcrumb and the dock as a tree**
 - A device holding six or more folds to a 22 px chip that says what is
   inside and the worst of it — *12 access · 2 down* — and opens on a

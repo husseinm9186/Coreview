@@ -20,6 +20,7 @@ let keychainTried = false;
 /** The at-start check for a newer release, likewise once per window. */
 let updateCheckTried = false;
 import { useStore } from './state/store';
+import { dockSideFor, dockWidthClass } from './lib/dockPlacement';
 import { NavRail } from './components/NavRail';
 import { CanvasToolbar } from './components/CanvasToolbar';
 
@@ -30,8 +31,12 @@ export default function App() {
   const highContrast = useStore((s) => s.settings.highContrast);
   const reduceMotion = useStore((s) => s.settings.reduceMotion);
   const uiScale = useStore((s) => s.settings.uiScale);
-  const dockSide = useStore((s) => s.settings.dockSide);
-  const dockMax = useStore((s) => s.dockMax);
+  const dockTab = useStore((s) => s.dockTab);
+  const dockPlacements = useStore((s) => s.dockPlacements);
+  const dockSide = dockSideFor(dockTab, dockPlacements);
+  // Maximise is a bottom-dock idea: a right dock already takes a column, and
+  // the canvas must not vanish when a tall tab opens beside it.
+  const dockMax = useStore((s) => s.dockMax) && dockSide === 'bottom';
   const ground = useStore((s) => s.settings.ground);
   const applyEngineEvent = useStore((s) => s.applyEngineEvent);
   // Read above the early return: a hook after one is called conditionally,
@@ -170,7 +175,7 @@ export default function App() {
             and which one depends on whether there is something to inspect. */}
         {/* The body holds the canvas and the dock, so the dock can sit
             along the bottom or, popped out, down the right. */}
-        <div className={`cv-body${dockSide === 'right' ? ' is-dock-right' : ''}${dockMax ? ' is-dock-max' : ''}${registerOpen || helpOpen || toolsOpen ? ' is-behind' : ''}`}>
+        <div className={`cv-body${dockSide === 'right' ? ` is-dock-right ${dockWidthClass(dockTab)}` : ''}${dockMax ? ' is-dock-max' : ''}${registerOpen || helpOpen || toolsOpen ? ' is-behind' : ''}`}>
         <div
           className={[
             'cv-main',

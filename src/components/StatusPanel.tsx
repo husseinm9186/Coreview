@@ -22,6 +22,7 @@ import { STATUS_COLOR } from './edges/LiveEdge';
 import { linkStatus } from '../health/evaluate';
 import { formatTime } from '../lib/timeFormat';
 import { ChromeIcon, IconButton } from './chromeIcons';
+import { dockSideFor, dockWidthClass } from '../lib/dockPlacement';
 import type { DeviceNodeData, HealthStatus, LinkData, ProbeRuntime } from '../types/domain';
 import { STATUS_GLYPH, STATUS_LABEL } from '../types/domain';
 import { activePage, allEdges, allNodes } from '../lib/pages';
@@ -198,7 +199,7 @@ export function StatusPanel() {
   // The tab lives in the store, so the rail can open and name it.
   const tab = useStore((s) => s.dockTab);
   const setTab = useStore((s) => s.setDockTab);
-  const dockSide = useStore((s) => s.settings.dockSide);
+  const dockPlacements = useStore((s) => s.dockPlacements);
   useEffect(() => {
     if (!panelRequest) return;
     // The register moved to a screen of its own. Anything that still
@@ -266,7 +267,7 @@ export function StatusPanel() {
   /** All, problems (warning and down), or down only. */
   const [problems, setProblems] = useState<'all' | 'problems' | 'down'>('all');
   const problemsOnly = problems !== 'all';
-  const dockMax = useStore((s) => s.dockMax);
+  const dockMaxRaw = useStore((s) => s.dockMax);
   // The dock's height, dragged on its grip and remembered on this machine.
   const [dockHeight, setDockHeight] = useState<number | null>(() => {
     try {
@@ -506,6 +507,8 @@ export function StatusPanel() {
 
   const tall = tab === 'crawl' || tab === 'collect' || tab === 'discover' || tab === 'backup' || tab === 'ssh' || tab === 'trace' || tab === 'tracert' || tab === 'whereis';
   const listTab = tab === 'objects' || tab === 'events';
+  const dockSide = dockSideFor(tab, dockPlacements);
+  const dockMax = dockMaxRaw && dockSide === 'bottom';
   const shown = tab === 'objects' ? filtered.length : filteredEvents.length;
   const total = tab === 'objects' ? rows.length : events.length;
   const down = counts.down ?? 0;
@@ -514,7 +517,7 @@ export function StatusPanel() {
   return (
     <div
       ref={panelRef}
-      className={`cv-panel${tall ? ' is-tall' : ''}${dockMax ? ' is-max' : ''}`}
+      className={`cv-panel${tall ? ' is-tall' : ''}${dockMax ? ' is-max' : ''}${dockSide === 'right' ? ` is-dock-right ${dockWidthClass(tab)}` : ''}`}
       style={dockSide === 'bottom' && !dockMax && dockHeight ? { height: `${dockHeight}px` } : undefined}
     >
       {/* The grip: drag to resize, double-click for a third or six tenths. */}
@@ -580,11 +583,11 @@ export function StatusPanel() {
             type="button"
             className="cv-icon-btn"
             data-action="dock-side"
-            title={dockSide === 'right' ? t('dock.dockBelowHint') : t('dock.popOutHint')}
-            onClick={() => useStore.getState().setSettings({ dockSide: dockSide === 'right' ? 'bottom' : 'right' })}
+            title={dockSide === 'right' ? t('dock.dockBelowHint') : t('dock.dockRightHint')}
+            onClick={() => useStore.getState().setDockPlacement(tab, dockSide === 'right' ? 'bottom' : 'right')}
           >
             <ChromeIcon name="pop-out" />
-            <span className="cv-sr">{dockSide === 'right' ? t('dock.dockBelow') : t('dock.popOut')}</span>
+            <span className="cv-sr">{dockSide === 'right' ? t('dock.dockBelow') : t('dock.dockRight')}</span>
           </button>
           <IconButton icon="hide" label={t('dock.hide')} region="dock-hide" onClick={() => setOpen(false)} />
         </span>

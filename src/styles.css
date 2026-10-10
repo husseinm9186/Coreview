@@ -325,9 +325,30 @@ h1, h2, h3, h4, h5, h6 { line-height: 1.25; }
 .cv-body.is-dock-right > .cv-main.palette-hidden:not(.inspector-hidden) { grid-template-columns: minmax(0, 1fr) clamp(18.46153846rem, 22vw, 26.15384615rem); }
 .cv-body.is-dock-right > .cv-main.inspector-hidden:not(.palette-hidden) { grid-template-columns: clamp(11.53846154rem, 15vw, 16.76923077rem) minmax(0, 1fr); }
 .cv-body.is-dock-right > .cv-panel, .cv-body.is-dock-right > .cv-panel.is-tall {
-  height: auto; width: clamp(24.61538462rem, 40vw, 61.53846154rem); flex: none;
+  height: auto; flex: none;
   border-top: 0; border-left: 1px solid var(--chrome-edge);
 }
+/* Discovering devices is a column of form steps and reads at ~480 px; the
+   terminal wants half the window, since a wrapped command line is
+   unreadable. The canvas keeps the rest. */
+.cv-body.is-dock-right.is-dock-narrow > .cv-panel { width: clamp(27.69230769rem, 32vw, 36.92307692rem); }
+.cv-body.is-dock-right.is-dock-wide > .cv-panel { width: clamp(33.84615385rem, 50vw, 61.53846154rem); }
+/* The step headers stay in sight as the form scrolls under them, and the
+   run bar stays at the foot with the one-line summary on it. */
+.cv-body.is-dock-right .cv-step-head { position: sticky; top: 0; z-index: 2; background: var(--chrome); padding-top: 0.30769231rem; }
+.cv-body.is-dock-right .cv-discover-run {
+  position: sticky; bottom: 0; z-index: 3; margin: 0 -1.07692308rem -1.23076923rem; padding: 0.53846154rem 1.07692308rem;
+  background: var(--chrome); border-top: 1px solid var(--chrome-edge); display: flex; align-items: center; gap: 0.76923077rem;
+}
+.cv-discover-run-summary { display: none; }
+.cv-body.is-dock-right .cv-discover-run-summary { display: block; flex: 1; min-width: 0; color: var(--text-dim); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-ssh-foot {
+  display: flex; align-items: center; gap: 0.76923077rem; flex: 0 0 auto;
+  padding: 0.30769231rem 0.61538462rem; border-top: 1px solid var(--chrome-edge);
+  font-size: var(--text-sm); color: var(--text-faint); white-space: nowrap; overflow: hidden;
+}
+.cv-ssh-foot-name { color: var(--text-dim); font-weight: 600; }
+.cv-ssh-foot-alive { margin-left: auto; }
 .cv-body.is-dock-right > .cv-panel.is-collapsed { width: auto; flex-direction: column; align-items: stretch; }
 .cv-nav {
   display: flex; flex-direction: column; align-items: stretch; gap: 0.15384615rem;

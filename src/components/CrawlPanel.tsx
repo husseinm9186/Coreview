@@ -1318,13 +1318,18 @@ export function CrawlPanel({
         {advanced && <CollectionPanel />}
       </details>
 
-      <div className="cv-discover-run">
+<div className="cv-discover-run">
+        {/* In the right dock this bar is sticky at the foot, so the one-line
+            summary of the run and the Discover/Stop button stay in sight as
+            the form scrolls. Hidden along the bottom, where the full status
+            line below has room. */}
+        <span className="cv-discover-run-summary">{problem ? problem : (status ?? (running ? t('crawl.running') : t('crawl.ready')))}</span>
         {running ? (
           <button type="button" className="cv-btn cv-btn-stop" onClick={() => void (engine === 'collector' ? ipc.cancelCollection() : ipc.cancelCrawl())}>
             Stop
           </button>
         ) : (
-          <button type="button" className="cv-btn cv-btn-start" onClick={() => void start()}
+          <button type="button" className="cv-btn cv-btn-start" data-region="crawl-start" onClick={() => void start()}
             disabled={!seed.trim() || (!credentialId && (!username || !password))}>
             Discover
           </button>

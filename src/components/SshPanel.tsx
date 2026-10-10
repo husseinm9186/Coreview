@@ -373,12 +373,6 @@ export function SshPanel() {
         onClick={() => { setSending(true); setTargets(new Set()); setConfirming(false); setNote(null); }}>
         {t('ssh.sendToMany')}
       </button>
-      <span className="cv-help cv-ssh-state">
-        {current?.logPath && <span className="cv-ssh-logging">{t('ssh.logTo', { path: current.logPath })}</span>}
-        {current?.lastAlive !== undefined && (
-          <span>{t('ssh.aliveAt', { time: formatTime(current.lastAlive, timeFormat) })}</span>
-        )}
-      </span>
     </div>
   );
 
@@ -386,6 +380,9 @@ export function SshPanel() {
     return (
       <div className="cv-ssh cv-ssh-empty">
         <p className="cv-help">{t('ssh.empty')}</p>
+        <div className="cv-ssh-foot" data-region="ssh-foot">
+          <span className="cv-ssh-foot-name">{t('ssh.noSession')}</span>
+        </div>
       </div>
     );
   }
@@ -502,6 +499,15 @@ export function SshPanel() {
         {tabs.map((tab) => (
           <SshTerminal key={tab.tabKey ?? tab.id} tab={tab} visible={tab.id === active} />
         ))}
+      </div>
+      {/* The terminal's own footer: which session, whether it is logging,
+          and when it last answered a keepalive. */}
+      <div className="cv-ssh-foot" data-region="ssh-foot">
+        <span className="cv-ssh-foot-name">{current ? current.label : t('ssh.noSession')}</span>
+        {current?.logPath && <span className="cv-ssh-logging">{t('ssh.logTo', { path: current.logPath })}</span>}
+        {current?.lastAlive !== undefined && (
+          <span className="cv-ssh-foot-alive">{t('ssh.aliveAt', { time: formatTime(current.lastAlive, timeFormat) })}</span>
+        )}
       </div>
     </div>
   );
