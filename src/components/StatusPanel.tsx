@@ -684,8 +684,8 @@ export function StatusPanel() {
                 <tr>
                   <td colSpan={9}>
                     {events.length === 0
-                      ? <EmptyState what={t('empty.events.what')} why={t('empty.events.why')} />
-                      : <EmptyState what={t('empty.events.filtered')} />}
+                      ? <EmptyState icon="note" title={t('empty.events.what')} line={t('empty.events.why')} />
+                      : <EmptyState icon="filter" title={t('empty.events.filtered')} />}
                   </td>
                 </tr>
               )}

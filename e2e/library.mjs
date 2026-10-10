@@ -68,6 +68,9 @@ await page.waitForTimeout(800);
 check("the library is offered when the desktop backend is there",
   (await page.locator("button", { hasText: "Load folder" }).count()) === 1);
 
+// Your own icons are one folded row at the palette's foot until a folder is loaded.
+await page.locator('[data-region="icon-library"] > summary').click();
+await page.waitForTimeout(200);
 await page.getByPlaceholder("/path/to/icons").fill("/shapes");
 await page.locator("button", { hasText: "Load folder" }).first().click();
 await page.waitForTimeout(900);
@@ -98,7 +101,8 @@ await page.waitForTimeout(300);
 
 // And a library shape has to reach the canvas.
 const before = await page.locator(".react-flow__node").count();
-await page.locator(".cv-palette-item", { hasText: "Router" }).first()
+// The library's own Router, not the built-in one, which now comes first in the palette.
+await page.locator('[data-region="icon-library"] .cv-palette-item', { hasText: "Router" }).first()
   .dragTo(page.locator(".react-flow__pane"), { targetPosition: { x: 400, y: 300 } });
 await page.waitForTimeout(600);
 check("a library shape can be dropped on the canvas",

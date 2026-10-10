@@ -513,9 +513,7 @@ export function BackupPanel({
 
   if (!isDesktop) {
     return (
-      <p className="cv-help cv-discover-empty">
-        Backups need the desktop app — a browser cannot open SSH connections or write files.
-      </p>
+      <EmptyState icon="backup" title={t('empty.backups.desktopTitle')} line={t('empty.backups.desktopLine')} desktopOnly />
     );
   }
 
@@ -858,7 +856,7 @@ export function BackupPanel({
         <section>
           <h4 className="cv-backup-head">Backups taken</h4>
           {devices.length === 0 ? (
-            <EmptyState what={t('empty.backups.what')} why={t('empty.backups.why')} />
+            <EmptyState icon="backup" title={t('empty.backups.what')} line={t('empty.backups.why')} />
           ) : (
             <>
             {/* Filter as you type over the devices with backups. */}

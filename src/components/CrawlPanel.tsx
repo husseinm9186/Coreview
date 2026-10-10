@@ -791,9 +791,7 @@ export function CrawlPanel({
 
   if (!isDesktop) {
     return (
-      <p className="cv-help cv-discover-empty">
-        Discovery needs the desktop app — a browser cannot open SSH connections.
-      </p>
+      <EmptyState icon="find" title={t('empty.discover.desktopTitle')} line={t('empty.discover.desktopLine')} desktopOnly />
     );
   }
 
@@ -1854,7 +1852,7 @@ function CrawlFindingsList({ result }: { result: Pick<CrawlResult, 'devices' | '
   return (
     <>
       {findings.length === 0 ? (
-        <EmptyState what={t('empty.findings.what')} why={t('empty.findings.why')} />
+        <EmptyState icon="check" title={t('empty.findings.what')} line={t('empty.findings.why')} />
       ) : (
         <details className="cv-findings" open>
           <summary>

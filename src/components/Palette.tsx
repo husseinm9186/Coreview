@@ -11,6 +11,7 @@ import { Layers } from './Layers';
 
 export function Palette() {
   const ground = useStore((s) => s.settings.ground);
+  const iconLibraryDir = useStore((s) => s.iconLibraryDir);
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
 
@@ -34,42 +35,6 @@ export function Palette() {
           be reached with a device open in the inspector, and the diagram
           summary only reports it. */}
       <Layers />
-
-      <div className="cv-palette-group">
-        <h3>{t('palette.annotation')}</h3>
-        <div className="cv-palette-grid">
-          <button type="button" className="cv-palette-item" draggable onDragStart={(e) => drag(e, 'note')}>
-            <span className="cv-palette-glyph"><ChromeIcon name="note" size={20} /></span>
-            Note
-          </button>
-          <button
-            type="button"
-            className="cv-palette-item"
-            draggable
-            onDragStart={(e) => drag(e, 'change-note')}
-          >
-            <span className="cv-palette-glyph"><ChromeIcon name="pen" size={20} /></span>
-            {t('palette.changeNote')}
-          </button>
-          <button
-            type="button"
-            className="cv-palette-item"
-            draggable
-            onDragStart={(e) => drag(e, 'sticky-note')}
-          >
-            <span className="cv-palette-glyph"><ChromeIcon name="sticky" size={20} /></span>
-            {t('palette.stickyNote')}
-          </button>
-        </div>
-      </div>
-
-      <CustomShapesSection query={q} onDrag={drag} />
-
-      <BundledShapesSection query={q} onDrag={drag} />
-
-      <StencilPacksSection />
-
-      <IconLibrarySection query={q} onDrag={drag} />
 
       {PALETTE_GROUPS.map((group) => {
         const items = group.items.filter(
@@ -137,6 +102,48 @@ export function Palette() {
           </div>
         );
       })()}
+      <CustomShapesSection query={q} onDrag={drag} />
+
+      <BundledShapesSection query={q} onDrag={drag} />
+
+      <StencilPacksSection />
+
+      <div className="cv-palette-group">
+        <h3>{t('palette.annotation')}</h3>
+        <div className="cv-palette-grid">
+          <button type="button" className="cv-palette-item" draggable onDragStart={(e) => drag(e, 'note')}>
+            <span className="cv-palette-glyph"><ChromeIcon name="note" size={20} /></span>
+            Note
+          </button>
+          <button
+            type="button"
+            className="cv-palette-item"
+            draggable
+            onDragStart={(e) => drag(e, 'change-note')}
+          >
+            <span className="cv-palette-glyph"><ChromeIcon name="pen" size={20} /></span>
+            {t('palette.changeNote')}
+          </button>
+          <button
+            type="button"
+            className="cv-palette-item"
+            draggable
+            onDragStart={(e) => drag(e, 'sticky-note')}
+          >
+            <span className="cv-palette-glyph"><ChromeIcon name="sticky" size={20} /></span>
+            {t('palette.stickyNote')}
+          </button>
+        </div>
+      </div>
+      {/* Your own icons, one folded row at the foot, open once a folder is
+          loaded or while searching. In a browser the folder cannot be read
+          and the button says so, but the row stays, so clearing a library
+          leaves the way to choose another. */}
+      <details className="cv-palette-fold" data-region="icon-library" open={Boolean(iconLibraryDir) || Boolean(q) || undefined}>
+        <summary className="cv-palette-sub">{t('palette.yourIcons')}</summary>
+        <IconLibrarySection query={q} onDrag={drag} />
+      </details>
+
       <p className="cv-palette-hint">{t('palette.dragAnItemOn')}</p>
     </aside>
   );
@@ -384,7 +391,6 @@ function IconLibrarySection({
 
   return (
     <div className="cv-palette-group">
-      <h3>{t('palette.iconLibrary')}</h3>
 
       {!dir && (
         <div className="cv-palette-note">
@@ -403,9 +409,10 @@ function IconLibrarySection({
             type="button"
             className="cv-btn"
             disabled={!isDesktop || !path.trim()}
+            title={isDesktop ? undefined : t('palette.desktopOnlyHint')}
             onClick={() => load(path.trim())}
           >
-            {isDesktop ? 'Load folder' : 'Desktop app only'}
+            {t('palette.loadFolder')}
           </button>
         </div>
       )}

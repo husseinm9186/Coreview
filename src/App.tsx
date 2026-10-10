@@ -23,6 +23,8 @@ import { useStore } from './state/store';
 import { NavRail } from './components/NavRail';
 import { CanvasToolbar } from './components/CanvasToolbar';
 
+import { DESKTOP_APP_URL } from './components/EmptyState';
+import { t } from './i18n';
 export default function App() {
   const meta = useStore((s) => s.meta);
   const highContrast = useStore((s) => s.settings.highContrast);
@@ -131,8 +133,8 @@ export default function App() {
       <div className={`cv-app ${highContrast ? 'is-contrast' : ''} ${ground === 'light' ? 'is-light' : ''}`}>
         {!isDesktop && (
           <div className="cv-browser-banner">
-            Running in a browser. Projects are kept in browser storage and no probing is possible —
-            start the desktop app with <code>npm run tauri dev</code> to run checks.
+            <span>{t('banner.browser')}</span>
+            <a href={DESKTOP_APP_URL} target="_blank" rel="noreferrer noopener">{t('banner.getApp')}</a>
           </div>
         )}
         <ProjectScreen />

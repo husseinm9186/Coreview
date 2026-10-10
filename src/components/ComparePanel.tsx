@@ -183,7 +183,7 @@ export function ComparePanel() {
         <>
           <div className="cv-discover-actions">
             {rows.length === 0
-              ? <EmptyState what={t('empty.compare.what')} why={t('empty.compare.why')} />
+              ? <EmptyState icon="check" title={t('empty.compare.what')} line={t('empty.compare.why')} />
               : <span className="cv-help">{`${t('plural.difference', { count: rows.length })}, worst first.`}</span>}
             <button type="button" className="cv-btn cv-btn-small" onClick={() => void save('md')}>Save as Markdown</button>
             <button type="button" className="cv-btn cv-btn-small" onClick={() => void save('csv')}>Save as CSV</button>

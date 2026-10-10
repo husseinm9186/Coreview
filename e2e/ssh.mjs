@@ -386,7 +386,7 @@ check("it is asked for by device and folder, the same two a backup uses",
 check("and the tab says where it is being written",
   /Logging to .*CORE-SW1/.test(await controls.textContent()), (await controls.textContent()).slice(0, 160));
 check("with a mark on the tab itself, so it is visible from any other one",
-  (await page.locator(".cv-ssh-tab", { hasText: "CORE-SW1" }).textContent())?.includes("✎"));
+  (await page.locator(".cv-ssh-tab", { hasText: "CORE-SW1" }).textContent())?.includes("logging"));
 
 await logging.click();
 await page.waitForTimeout(600);

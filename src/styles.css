@@ -481,11 +481,13 @@ h1, h2, h3, h4, h5, h6 { line-height: 1.25; }
 }
 
 .cv-browser-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.92307692rem;
+  min-height: 2.46153846rem; padding: 0 0.92307692rem;
   background: var(--notice-bg);
   border-bottom: 1px solid var(--notice-line);
-  color: var(--notice-text);
-  padding: 0.61538462rem 1.07692308rem;
+  color: var(--notice-text); font-size: var(--text-sm);
 }
+.cv-browser-banner a { color: var(--notice-text); font-weight: 600; white-space: nowrap; }
 .cv-browser-banner code { font-family: var(--mono); }
 
 /* ---------------------------------------------------------------- topbar */
@@ -686,17 +688,19 @@ select.cv-input option { background: var(--bg-raised); color: var(--text); }
 .cv-palette-group h3 {
   font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em;
   color: var(--text-dim); margin: 0.92307692rem 0 0.46153846rem; font-weight: 600;}
-.cv-palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.38461538rem; }
+/* Shapes as rows, one per line: a glyph in its family's tint and a name,
+   dragged from the row. Fourteen fit where six tiles sat. */
+.cv-palette-grid { display: grid; grid-template-columns: 1fr; gap: 0.07692308rem; }
 .cv-palette-item {
-  display: flex; flex-direction: column; align-items: center; gap: 0.30769231rem;
-  background: var(--panel-2); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 0.61538462rem 0.30769231rem;
-  font-size: var(--text-xs); color: var(--text-dim); font-family: inherit;
-  cursor: grab; text-align: center; line-height: 1.25;
+  display: flex; flex-direction: row; align-items: center; gap: 0.61538462rem;
+  background: none; border: 0;
+  border-radius: var(--radius); padding: 0 0.46153846rem; min-height: 2.30769231rem;
+  font-size: var(--text-md); color: var(--text); font-family: inherit;
+  cursor: grab; text-align: left; line-height: 1.25;
 }
-.cv-palette-item:hover { border-color: var(--accent); color: var(--text); }
-.cv-palette-icon { width: 1.69230769rem; height: 1.69230769rem; color: var(--accent); }
-.cv-palette-glyph { font-size: var(--text-3xl); color: var(--accent); line-height: 1.69230769rem; }
+.cv-palette-item:hover { background: var(--hover); color: var(--text); }
+.cv-palette-icon { width: 1.53846154rem; height: 1.53846154rem; color: var(--accent); flex: none; }
+.cv-palette-glyph { display: inline-flex; color: var(--text-dim); line-height: 1; flex: none; }
 .cv-palette-hint { color: var(--text-faint); font-size: var(--text-xs); margin-top: 1.07692308rem; }
 /* A captured shape — its own remove "×", pinned to the corner of
    the draggable tile rather than nested inside it (a button in a button is
@@ -1613,8 +1617,13 @@ details.cv-discover-advanced[open] > summary::after { content: '▾'; }
 .cv-select-bar { display: flex; align-items: center; gap: 0.61538462rem; padding: 0.30769231rem 0.61538462rem; margin: 0.30769231rem 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; font-size: var(--text-md); }
 .cv-pick-col { width: 1.84615385rem; text-align: center; }
 tr[data-picked="yes"] td { background: var(--hover); }
-.cv-empty { margin: 0.61538462rem 0; }
-.cv-empty-what { color: var(--text); }
+/* One empty state for every panel: a glyph, a title, a line, one action. */
+.cv-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 0.46153846rem; padding: 1.84615385rem 0.92307692rem; max-width: 48ch; }
+.cv-empty-glyph { color: var(--text-faint); }
+.cv-empty-title { margin: 0; font-size: var(--text-lg); font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 0.61538462rem; flex-wrap: wrap; }
+.cv-empty-line { margin: 0; font-size: var(--text-sm); color: var(--text-dim); }
+.cv-empty-chip { font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); border: 1px solid var(--edge); border-radius: 4px; padding: 0 0.38461538rem; }
+.cv-empty a.cv-btn { text-decoration: none; display: inline-flex; align-items: center; }
 /* The running jobs, one header each. */
 .cv-jobs { display: flex; flex-direction: column; gap: 0.30769231rem; padding: 0.46153846rem 0.92307692rem; border-bottom: 1px solid var(--line); background: var(--panel-2); }
 .cv-jobs.is-compact { flex-direction: row; flex-wrap: wrap; padding: 0; border: 0; background: transparent; gap: 0.61538462rem; }
@@ -2318,6 +2327,7 @@ input[type="password"]::-webkit-credentials-auto-fill-button {
 /* A group inside the icon library. A real shape set is hundreds of icons
    across a dozen families, and one flat alphabetical list of them is not
    something anyone finds anything in. */
+.cv-palette-fold { margin-top: 0.92307692rem; border-top: 1px solid var(--line); padding-top: 0.61538462rem; }
 .cv-palette-sub {
   cursor: pointer; list-style: none; font-size: var(--text-xs); font-weight: 600;
   letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim);

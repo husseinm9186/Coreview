@@ -14,6 +14,7 @@ import { activePage, allNodes } from '../lib/pages';
 import { findDrawnNode } from '../lib/topology';
 import { gatewayGuess, knownOnDiagram, sweepPatch } from '../lib/sweepKnown';
 
+import { EmptyState } from './EmptyState';
 /** `macFromGateway`: the MAC was read from the gateway's ARP table,
  *  not from this machine's. */
 type Hit = SweepHit & { picked: boolean; macFromGateway?: string };
@@ -268,10 +269,7 @@ export function DiscoverPanel() {
 
   if (!isDesktop) {
     return (
-      <p className="cv-help cv-discover-empty">
-        Discovery needs the desktop app — a browser cannot send ICMP. Run Coreview itself to sweep
-        a subnet.
-      </p>
+      <EmptyState icon="find" title={t('empty.discover.desktopTitle')} line={t('empty.sweep.desktopLine')} desktopOnly />
     );
   }
 
